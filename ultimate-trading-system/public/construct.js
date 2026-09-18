@@ -8711,7 +8711,7 @@ function cWalkRow(r, shapes) {
   const blanks = all.filter((w) => w.thin || w.n === 0 || w.perTrade == null).length;
   const says = `${all.length} window(s) in this coin's history · ${all.length - blanks} counted`
     + `${blanks ? ` · ${blanks} had too few trades to count and show as a dash` : ''}`;
-  const strip = !open ? '' : `<tr class="cwscan"><td colspan="16">
+  const strip = !open ? '' : `<tr class="cwscan"><td colspan="19">
     <p class="cwsays">${esc(says)}</p>
     <div class="cwstrip">${all.map((w) => {
     const v = w.perTrade;
@@ -8732,6 +8732,15 @@ function cWalkRow(r, shapes) {
     <td>${cSpread(r) == null ? '—' : `${Number(cSpread(r)).toFixed(2)}%`}</td>
     <td>${cPerSpread(r) == null ? '—' : Number(cPerSpread(r)).toFixed(3)}</td>
     <td>${scr}</td><td>${sld}</td>
+    <td>${(() => { const p = cMark(r); return p == null ? '—' : `${p.latePerTrade > 0 ? '+' : ''}${Number(p.latePerTrade).toFixed(3)}%`; })()}</td>
+    <td>${(() => { const p = cMark(r); return p == null ? '—' : `${p.lead > 0 ? '+' : ''}${Number(p.lead).toFixed(3)}%`; })()}</td>
+    <td>${(() => {
+    const p = cMark(r);
+    if (p == null) return '—';
+    if (p.sameBothHalves) return '<b class="cr">yes</b>';
+    const lb = p.lateBestLookback === 'own' ? 'own' : `${esc(String(p.lateBestLookback))}h`;
+    return `<span class="muted">no — ${lb} / ${esc(String(p.lateBestBand))}</span>`;
+  })()}</td>
   </tr>${strip}`;
 }
 // A SORTER ON EVERY COLUMN, the same one Boards has had all along -- a box
@@ -8770,6 +8779,11 @@ const C_WALK_OF = {
   perSpread: (r) => cPerSpread(r),
   asGood: (r) => r.asGood,
   asGoodSlid: (r) => r.asGoodSlid,
+  // the split's three, on the row it chose. A row it did not choose sorts
+  // last whichever way the arrow points, the same as any missing figure.
+  late: (r) => { const p = cMark(r); return p ? p.latePerTrade : null; },
+  lead: (r) => { const p = cMark(r); return p ? p.lead : null; },
+  both: (r) => { const p = cMark(r); return p ? (p.sameBothHalves ? 1 : 0) : null; },
 };
 // AND WHAT SITS BEHIND EACH OF ITS SHARES. Both of these are a count out of
 // the row's counted windows, so more windows is the tie-break for both.
@@ -8849,6 +8863,7 @@ const C_SPLIT_OF = {
   wholeBand: (p) => p.wholeBand,
   wholePerTrade: (p) => p.wholePerTrade,
   sameAsEarly: (p) => (p.sameAsEarly ? 1 : 0),
+  both: (p) => (p.sameBothHalves ? 1 : 0),
 };
 // AND WHAT SITS BEHIND ITS SHARE. late windows up is a share too and has no
 // entry here: it has never had a second key, and giving it one would reorder a
@@ -8888,6 +8903,10 @@ function cWalkList(matches) {
     if (!atLeast(r.windows, f.minWindows)) return false;
     if (!atLeast(r.windows ? (r.windowsUp / r.windows) * 100 : null, f.minUp)) return false;
     if (cPaid(r) != null && !atLeast(r.windows ? (cPaid(r) / r.windows) * 100 : null, f.minPaid)) return false;
+    // AND WITH NO READING TAKEN IT HIDES NOTHING. A tick that empties a
+    // fifteen-thousand-row table because a reading has not been pressed is the
+    // 3.164.1 fault wearing a different coat.
+    if (f.bothOnly === 'yes' && cSplitMarks().size) { const p = cMark(r); if (!p || !p.sameBothHalves) return false; }
     if (!atLeast(r.best, f.minBest)) return false;
     if (!atLeast(r.worst, f.minWorst)) return false;
     if (!atMost(cSpread(r), f.maxSpread)) return false;
@@ -9056,6 +9075,28 @@ const cPerSpread = (r) => {
   if (sp == null || r.perTrade == null || !(sp > 1e-9)) return null;
   return r.perTrade / sp;
 };
+// THE SPLIT'S ANSWER, MARKED ON THE WALK TABLE (3.167.0, owner order
+// 2026-09-18). Choose early, read late picks ONE row per coin and shape, and
+// that pick IS a walk row -- same coin, shape, look-back and band. So its
+// verdict belongs on the row it chose rather than in a table off to the side:
+// the filter boxes already here then do the choosing, over a few marked rows
+// instead of fifteen thousand unmarked ones.
+//
+// EVERY OTHER ROW OF THAT PAIR READS A DASH, on purpose. The reading has
+// nothing to say about them -- it never chose them -- and printing its pair's
+// figures against them would read as a result for a row that earned none.
+let cMarkFor = null;
+let cMarkWas = null;
+function cSplitMarks() {
+  if (cMarkFor === cSplit && cMarkWas) return cMarkWas;
+  const m = new Map();
+  for (const p of (cSplit && cSplit.pairs) || []) {
+    m.set(`${p.coin}|${p.geometry}|${p.lookback}|${p.band}`, p);
+  }
+  cMarkFor = cSplit; cMarkWas = m;
+  return m;
+}
+const cMark = (r) => cSplitMarks().get(`${r.coin}|${r.geometry}|${r.lookback}|${r.band}`) || null;
 // ONE FILTER PASS PER DRAW. The count line, the empty-table notice and the
 // tbody all need the same answer, and walking 4,896 rows three times for it is
 // three times the work for one number.
@@ -9089,11 +9130,17 @@ function cWalkShown(rows, shapes) {
 // this file for `id="..."` and a control whose id is assembled from a variable
 // is one it cannot see -- so it would be described on Help and found nowhere,
 // which is the opposite fault to the one it guards.
-const C_WALK_F_KEYS = ['coin', 'shape', 'back', 'band', 'minTrades', 'minPer', 'minWindows', 'minUp', 'minPaid',
+const C_WALK_F_KEYS = ['bothOnly', 'coin', 'shape', 'back', 'band', 'minTrades', 'minPer', 'minWindows', 'minUp', 'minPaid',
   'minBest', 'minWorst', 'maxSpread', 'minPerSpread', 'maxGood', 'maxSlid'];
 function cFilterBoxesNow() {
   const out = {};
-  for (const k of C_WALK_F_KEYS) { const el = $(`#wf_${k}`); if (el) out[k] = el.value; }
+  for (const k of C_WALK_F_KEYS) {
+    const el = $(`#wf_${k}`);
+    // A TICK'S value IS "on" WHATEVER ITS STATE, so it is read by .checked and
+    // stored as 'yes' or blank. Blank still means "hides nothing", which keeps
+    // cFilterSame and the Apply button waking exactly as they were.
+    if (el) out[k] = el.type === 'checkbox' ? (el.checked ? 'yes' : '') : el.value;
+  }
   return out;
 }
 const cFilterSame = (a, b) => C_WALK_F_KEYS.every((k) => String((a || {})[k] || '').trim() === String((b || {})[k] || '').trim());
@@ -9143,6 +9190,7 @@ function cWalkFilterRow() {
     <label title="hide rows that pay less than this for every point of scatter between their best half-year and their worst. This is the one box that asks for high money AND tight windows at once."><span class="fname">least per trade per spread</span><span class="fbox"><input id="wf_minPerSpread" type="number" step="any" value="${v('minPerSpread')}"></span></label>
     <label title="hide rows that more than this many scrambled copies matched."><span class="fname">most scrambles as good</span><span class="fbox"><input id="wf_maxGood" type="number" step="any" value="${v('maxGood')}"></span></label>
     <label title="hide rows that more than this many sliding copies matched."><span class="fname">most slides as good</span><span class="fbox"><input id="wf_maxSlid" type="number" step="any" value="${v('maxSlid')}"></span></label>
+    <label class="c frow" title="keep only the rows Choose early, read late picked AND that also topped the LATE half — one setting winning both halves of the history. With no reading taken yet it hides nothing, the same as an empty box."><input id="wf_bothOnly" type="checkbox"${cState.wF && cState.wF.bothOnly ? ' checked' : ''}> only rows best on both halves</label>
     <span class="frow"><button id="wfApply" class="pri" disabled title="puts every box above on at once. Greyed out until a box says something different from what the table is already showing, and greyed out again if you type it back. Not needed while auto-apply settings is ticked.">Apply settings</button>
     <label class="c" title="ticked, each box goes on the moment you leave it. Unticked, nothing goes on until you press Apply settings &mdash; one wait for the whole set of boxes rather than one wait per box. The same control, and the same words, as the filters on Boards."><input type="checkbox" id="wfAuto"${cState.wAuto ? ' checked' : ''}> auto-apply settings</label>
     <button id="wfClear" title="empties every filter above and shows the whole table again">Clear filters</button>
@@ -9205,6 +9253,7 @@ function cSplitPanel() {
       &middot; the pick beat picking at random on <b>${s.beat} of ${s.of}</b> (chance is ${s.chance.toFixed(0)})
       &middot; pooled late money <span class="${cls(s.pooled)}">${pc(s.pooled)}</span>, after the ${s.cost}% round trip <span class="${cls(s.netPooled)}">${pc(s.netPooled)}</span>
       &middot; ${s.paid} of ${s.of} pick(s) pay after that round trip
+      &middot; <b>${s.sameBothHalves} of ${s.of}</b> had ONE setting win both halves
       &middot; the average pick landed at the <b>${s.meanPercentile == null ? '&mdash;' : s.meanPercentile.toFixed(0)}th</b> percentile of its own rows on the late windows (50 is no skill)
       &middot; ${s.longChoices} of ${s.of} pick(s) chose a look-back of 240 hours or more</p>
     <p class="note"><b>What to tune with is the whole history, not this reading.</b> The four columns on the
@@ -9229,6 +9278,7 @@ function cSplitPanel() {
       <th title="the look-back the WHOLE history chooses for this coin and shape &mdash; which is the one to tune with. The early/late columns to the left only say whether the choosing is worth anything; they are not the setting to trade, because they throw away half the history to stay honest.">whole look-back${cSortBtn('sSorts', 'ssort', 'wholeLookback', 'asc')}</th>
       <th title="the band the whole history chooses">whole band${cSortBtn('sSorts', 'ssort', 'wholeBand', 'asc')}</th>
       <th title="what that whole-history row made a trade over all of its windows">whole per trade${cSortBtn('sSorts', 'ssort', 'wholePerTrade', 'desc')}</th>
+      <th title="whether THIS pick was also the best of its coin and shape on the LATE half — one setting winning both halves. Where it was not, the cell names what did win late. This compares two stretches that share nothing; same pick beside it compares the early half against the WHOLE history, which contains it.">best on both halves${cSortBtn('sSorts', 'ssort', 'both', 'desc')}</th>
       <th title="whether the whole history picked the same look-back and band as the early windows did. They need not agree: the early half has less to go on.">same pick${cSortBtn('sSorts', 'ssort', 'sameAsEarly', 'desc')}</th>
     </tr></thead><tbody>
     ${cSplitSorted(s.pairs).map((p) => `<tr>
@@ -9245,6 +9295,8 @@ function cSplitPanel() {
       <td>${p.wholeLookback == null ? '&mdash;' : (p.wholeLookback === 'own' ? 'own' : `${esc(String(p.wholeLookback))}h`)}</td>
       <td>${p.wholeBand == null ? '&mdash;' : p.wholeBand}</td>
       <td class="${cls(p.wholePerTrade)}">${pc(p.wholePerTrade)}</td>
+      <td>${p.sameBothHalves ? '<b class="cr">yes</b>'
+    : `<span class="muted">no — ${p.lateBestLookback === 'own' ? 'own' : `${esc(String(p.lateBestLookback))}h`} / ${esc(String(p.lateBestBand))}</span>`}</td>
       <td>${p.sameAsEarly ? 'yes' : 'no'}</td>
     </tr>`).join('')}
     </tbody></table></div>
@@ -9364,6 +9416,9 @@ function cWalkPanel() {
       <th title="per trade divided by the spread &mdash; how much this row pays for every point of scatter between its best half-year and its worst. HIGH IS GOOD, and it is the one column that answers high money AND tight windows in a single number. A row with one counted window has none and reads as a dash.">per trade per spread${cWalkSortBtn('perSpread', 'desc')}</th>
       <th title="how many scrambled copies of this same coin did AT LEAST AS WELL. Low is the result; with hundreds of rows on this table, merely positive is not. Read it beside the column to its right, not on its own.">scrambles as good${cWalkSortBtn('asGood', 'asc')}</th>
       <th title="the same count against SLIDING copies. A sliding copy moves every outcome along by the same amount and wraps the tail round to the front, so each outcome keeps the outcomes it actually happened next to and the only thing cut is which reading it sat under. The column to the left deals them into a new order instead, which also destroys the run of the outcomes themselves &mdash; the stretches where a coin simply drifts one way. On a made-up coin that drifts, that makes the dealt copies far harder to beat than they should be, while the slid ones come out fair. Where the two disagree, trust this one.">slides as good${cWalkSortBtn('asGoodSlid', 'asc')}</th>
+      <th title="what this row made on the LATE windows, when Choose early, read late picked it for its coin and shape on the early ones. A row it did not pick reads a dash: the reading has nothing to say about a row it never chose. Press Choose early, read late below to fill this column.">late${cWalkSortBtn('late', 'desc')}</th>
+      <th title="its late money less what a row taken at random from the same coin and shape would have paid on those same late windows. Above nought means the choosing carried something.">lead${cWalkSortBtn('lead', 'desc')}</th>
+      <th title="whether THIS row was also the best of its coin and shape on the LATE half — one setting winning both halves of the history. Where it was not, the cell names the look-back and band that did win late, so how far off the pick was is readable. NOT the same as same pick on the reading below, which compares the early half against the WHOLE history: the whole contains the early half, so agreement there is partly baked in. These two halves share nothing.">best on both halves${cWalkSortBtn('both', 'desc')}</th>
     </tr></thead>
     <tbody>${cWalkSorted(cWalkShown(rows, shapes)).map((r) => cWalkRow(r, shapes)).join('')}</tbody></table></div>
     <p class="note">${(() => { const n = cWalkShown(rows, shapes).length; return n === rows.length

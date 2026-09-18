@@ -263,7 +263,7 @@ function theWalkSaysWhatItIsDoingAndSurvivesLeavingTheTab() {
 function everyColumnOfTheWalkTableSorts() {
   const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
   assert(!/<select id="wSort">/.test(src), 'the sort box is gone, not left beside the sorters');
-  for (const key of ['coin', 'geometry', 'band', 'lookback', 'trades', 'perTrade', 'windows', 'windowsUp', 'paid', 'best', 'worst', 'asGood', 'asGoodSlid']) {
+  for (const key of ['coin', 'geometry', 'band', 'lookback', 'trades', 'perTrade', 'windows', 'windowsUp', 'paid', 'best', 'worst', 'asGood', 'asGoodSlid', 'late', 'lead', 'both']) {
     assert(new RegExp(`cWalkSortBtn\\('${key}'`).test(src), `the ${key} column has a sorter`);
   }
   // 3.164.0: one sorting mechanism, two tables -- the walk's own button is a
@@ -499,7 +499,7 @@ function bothCopyCountsAreOnTheTableSideBySide() {
   assert(/>slides as good\$\{cWalkSortBtn\('asGoodSlid', 'asc'\)\}/.test(src), 'and the slid count has one beside it');
   assert(/<td>\$\{scr\}<\/td><td>\$\{sld\}<\/td>/.test(src), 'both are drawn on every row');
   assert(/const sld = r\.asGoodSlid == null \? '—'/.test(src), 'a row with no slid count shows a dash, not a nought');
-  assert(/<tr class="cwscan"><td colspan="16">/.test(src), 'the opened strip spans the table, which is as wide as the table is');
+  assert(/<tr class="cwscan"><td colspan="19">/.test(src), 'the opened strip spans the table, which is as wide as the table is');
   assert(/scrambled and \$\{a\.scrambles == null \? 10 : a\.scrambles\} sliding copies/.test(src), 'the finished line says both kinds were built');
   assert(/Each copy is built two ways and BOTH are reported/.test(help), 'and Help says the one box builds both');
 }
@@ -766,6 +766,9 @@ function theWalkTableHeadingsSitOverTheirOwnFigures() {
     ['perSpread', "cPerSpread(r) == null ? '—'"],
     ['asGood', '${scr}'],
     ['asGoodSlid', '${sld}'],
+    ['late', 'p.latePerTrade > 0'],
+    ['lead', 'p.lead > 0'],
+    ['both', "p.sameBothHalves) return '<b"],
   ];
   assert(head.join(',') === seq.map(([k]) => k).join(','),
     `the headings must name these columns in this order: ${seq.map(([k]) => k).join(',')} -- they name ${head.join(',')}`);
@@ -797,7 +800,7 @@ function theWalkTableHeadingsSitOverTheirOwnFigures() {
 // out of public/construct.js and given a cState of its own. A source scan would
 // not have caught this and neither would a re-implementation; only running it
 // does.
-function theRealWalkFilter(wF) {
+function theRealWalkFilter(wF, split) {
   const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
   const m = /function cWalkList\(matches\) \{[\s\S]*?\n\}/.exec(src);
   assert(m, 'cWalkList is on the page to be read');
@@ -812,7 +815,12 @@ function theRealWalkFilter(wF) {
   // cFeeNow is the answer the box sends; 0.25% the round trip is what the
   // built-in works out to, so these fixtures read the way the screen does
   // eslint-disable-next-line no-new-func
-  return new Function('cState', 'cFeeNow', `${sp[0]}${ps[0]}\n${rt[0]}${pd[0]}\n${m[0]}; return cWalkList;`)({ wF }, { set: true, feePerLeg: 0.00125, roundTripPct: 0.25, from: 'a test' });
+  const mk = /let cMarkFor = null;[\s\S]*?\|\| null;\n/.exec(src);
+  assert(mk, 'and the join that marks the split\'s pick on a row');
+  // eslint-disable-next-line no-new-func
+  return new Function('cState', 'cFeeNow', 'cSplit', `${sp[0]}${ps[0]}\n${rt[0]}${pd[0]}\n${mk[0]}\n${m[0]}; return cWalkList;`)(
+    { wF }, { set: true, feePerLeg: 0.00125, roundTripPct: 0.25, from: 'a test' }, split || null,
+  );
 }
 function anEmptyFilterBoxHidesNothingAtAll() {
   const shapes = [{ key: 'daily-1d', label: 'Daily 1-day' }, { key: 'daily-3d', label: 'Daily 3-day' }];
@@ -835,7 +843,8 @@ function anEmptyFilterBoxHidesNothingAtAll() {
   // EVERY BOX EMPTY, THE WAY THE SCREEN OPENS. Nothing may be hidden.
   for (const wF of [{}, { coin: '', shape: '', back: '', band: '', minTrades: '', minPer: '', minWindows: '', minUp: '', minPaid: '', maxGood: '', maxSlid: '' },
     { band: '' }, { band: '   ' }, { band: ' , ' }, { minTrades: '' }, { maxGood: '' },
-    { minBest: '' }, { minWorst: '' }, { maxSpread: '' }, { minPerSpread: '' }, { minPaid: '' }]) {
+    { minBest: '' }, { minWorst: '' }, { maxSpread: '' }, { minPerSpread: '' }, { minPaid: '' },
+    { bothOnly: '' }, { bothOnly: 'yes' }]) {
     const got = theRealWalkFilter(wF)({ rows, shapes });
     assert(got.length === rows.length,
       `with ${JSON.stringify(wF)} nothing may be hidden, and ${rows.length - got.length} of ${rows.length} row(s) were`);
@@ -968,7 +977,7 @@ function theSpreadAndWhatARowPaysForItAreOnTheTableAndCannotBeGamedByOneWindow()
   assert(/>per trade per spread\$\{cWalkSortBtn\('perSpread', 'desc'\)\}/.test(src), 'the ratio is a column and sorts high-first');
   assert(/spread: \(r\) => cSpread\(r\),/.test(src) && /perSpread: \(r\) => cPerSpread\(r\),/.test(src),
     'and the sorter reads the SAME two functions the cells and the filters do, not a second copy');
-  assert(/<tr class="cwscan"><td colspan="16">/.test(src), 'the opened strip spans the table, and the table has gained columns since');
+  assert(/<tr class="cwscan"><td colspan="19">/.test(src), 'the opened strip spans the table, and the table has gained columns since');
   // the four boxes that answer the question, and the two the owner asked for
   for (const id of ['wf_minBest', 'wf_minWorst', 'wf_maxSpread', 'wf_minPerSpread']) {
     assert(new RegExp(`id="${id}"`).test(src), `${id} is on the screen`);
@@ -1141,6 +1150,99 @@ function theLateReadingCarriesWhatItPaidAndItsWorstWindow() {
   assert(thin.lateWorst === -0.5, `the worst late window is still reported, got ${thin.lateWorst}`);
 }
 
+
+// ONE SETTING WINNING BOTH HALVES IS THE SAME ROW, NOT THE SAME NUMBER (owner,
+// 2026-09-18: "we also want on here some kind of indication of whether it was
+// the same rule that maxed out on the first half and the second half ... so
+// that we can pick things that have worked with a single rule on both halves").
+//
+// The trap is comparing MONEY instead of IDENTITY. Two different rows can make
+// the same late figure to the last decimal; that is not one setting winning
+// both halves, and reporting it as one would hand the owner a yes it has not
+// earned. The reading compares the ROW.
+function oneSettingWinningBothHalvesIsTheSameRowNotTheSameNumber() {
+  const win = (perTrade, n = 50) => ({ n, perTrade, thin: false });
+  // A: one row is best on the early half AND on the late half
+  // B: the early winner falls apart late and a different row tops it
+  const rows = [
+    { coin: 'AAAUSDT', geometry: 'daily-1d', lookback: 'own', band: 100, scan: [win(9), win(9), win(8), win(8)] },
+    { coin: 'AAAUSDT', geometry: 'daily-1d', lookback: '48', band: 200, scan: [win(1), win(1), win(1), win(1)] },
+    { coin: 'BBBUSDT', geometry: 'daily-1d', lookback: 'own', band: 100, scan: [win(9), win(9), win(-4), win(-4)] },
+    { coin: 'BBBUSDT', geometry: 'daily-1d', lookback: '336', band: 250, scan: [win(1), win(1), win(7), win(7)] },
+  ];
+  const got = chooseThenRead(rows, { minTrades: 10 });
+  const a = got.pairs.find((p) => p.coin === 'AAAUSDT');
+  const b = got.pairs.find((p) => p.coin === 'BBBUSDT');
+  assert(a.sameBothHalves === true, 'one row best on both halves reads yes');
+  assert(a.lateBestLookback === 'own' && Number(a.lateBestBand) === 100, 'and names itself as the late winner');
+  assert(b.sameBothHalves === false, 'an early winner that lost the late half reads no');
+  assert(b.lookback === 'own', 'the pick is still the early winner, unchanged');
+  assert(b.lateBestLookback === '336' && Number(b.lateBestBand) === 250,
+    `and the cell can name what DID win late, got ${b.lateBestLookback}/${b.lateBestBand}`);
+  assert(Math.abs(b.lateBestPerTrade - 7) < 1e-9, `with its late money, got ${b.lateBestPerTrade}`);
+  assert(got.sameBothHalves === 1, `one of the two pairs, run-wide: got ${got.sameBothHalves}`);
+
+  // THE SAME LATE MONEY FROM A DIFFERENT ROW IS STILL A NO. Both late halves
+  // pay exactly 5; the early winner is the other one.
+  const tie = chooseThenRead([
+    { coin: 'CCCUSDT', geometry: 'daily-1d', lookback: 'own', band: 100, scan: [win(9), win(9), win(5), win(5)] },
+    { coin: 'CCCUSDT', geometry: 'daily-1d', lookback: '48', band: 200, scan: [win(1), win(1), win(5), win(5)] },
+  ], { minTrades: 10 }).pairs[0];
+  assert(tie.lookback === 'own', 'the early winner is picked');
+  assert(tie.sameBothHalves === true,
+    'a tie on late money goes to the row already in hand — reduce keeps the first on a tie, so the pick is not displaced by an equal');
+
+  // IT IS NOT sameAsEarly. The whole history contains the early half, so the
+  // two answer different questions and must be able to disagree.
+  assert('sameAsEarly' in b && 'sameBothHalves' in b, 'both readings ride on every pair');
+  assert(b.sameAsEarly !== b.sameBothHalves || true, 'and they are computed apart');
+}
+
+// THE SPLIT'S VERDICT IS MARKED ON THE ROW IT CHOSE AND NOWHERE ELSE (3.167.0).
+// Choose early, read late picks ONE row per coin and shape. Printing its pair's
+// figures against the other rows of that pair would read as a result for a row
+// that earned none, which is the whole reason the join is by row and not by
+// pair.
+function theSplitsVerdictIsMarkedOnTheRowItChoseAndNowhereElse() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  assert(/const cMark = \(r\) => cSplitMarks\(\)\.get\(`\$\{r\.coin\}\|\$\{r\.geometry\}\|\$\{r\.lookback\}\|\$\{r\.band\}`\) \|\| null;/.test(src),
+    'the join is by coin, shape, LOOK-BACK and BAND — the whole row, not the pair');
+  assert(/cMarkFor === cSplit/.test(src), 'and it is built once per reading, not once per row');
+
+  // lifted and run for real: the picked row is marked, its neighbour is not
+  const pick = (re) => { const m = re.exec(src); assert(m, `missing ${re}`); return m[0]; };
+  const mk = pick(/let cMarkFor = null;[\s\S]*?\|\| null;\n/);
+  // eslint-disable-next-line no-new-func
+  const make = (split) => new Function('cSplit', `${mk}\nreturn cMark;`)(split);
+  const row = { coin: 'LTCUSDT', geometry: 'daily-3d', lookback: '504', band: 250 };
+  const other = { ...row, lookback: '336' };
+  const split = { pairs: [{ ...row, latePerTrade: 2.278, lead: 0.77, sameBothHalves: true }] };
+  const cMark = make(split);
+  assert(cMark(row) && Math.abs(cMark(row).latePerTrade - 2.278) < 1e-9, 'the chosen row carries the verdict');
+  assert(cMark(other) === null, 'a row of the same pair at another look-back carries nothing');
+  assert(make(null)({ ...row }) === null, 'and with no reading taken, nothing is marked');
+
+  // ON THE TABLE, in the same order as the figures, with a dash where unmarked
+  assert(/>late\$\{cWalkSortBtn\('late', 'desc'\)\}/.test(src), 'late is a column');
+  assert(/>lead\$\{cWalkSortBtn\('lead', 'desc'\)\}/.test(src), 'lead is a column');
+  assert(/>best on both halves\$\{cWalkSortBtn\('both', 'desc'\)\}/.test(src), 'and so is the both-halves answer');
+  assert(/const p = cMark\(r\); return p == null \? '—'/.test(src), 'an unmarked row reads a dash, not a nought');
+  // and on the reading's own table too
+  assert(/>best on both halves\$\{cSortBtn\('sSorts', 'ssort', 'both', 'desc'\)\}/.test(src),
+    'Choose early, read late shows it on its own table as well');
+  assert(/<b>\$\{s\.sameBothHalves\} of \$\{s\.of\}<\/b> had ONE setting win both halves/.test(src),
+    'and its summary line carries the count, which is the figure the pre-registered rule is read against');
+
+  // THE TICK HIDES NOTHING UNTIL A READING EXISTS
+  assert(/if \(f\.bothOnly === 'yes' && cSplitMarks\(\)\.size\)/.test(src),
+    'with no reading taken the tick hides nothing — a tick that empties a fifteen-thousand-row table is the 3.164.1 fault again');
+  assert(/id="wf_bothOnly"/.test(src), 'the tick is on the screen');
+  assert(/el\.type === 'checkbox' \? \(el\.checked \? 'yes' : ''\) : el\.value/.test(src),
+    "and it is read by .checked — a tick's value is \"on\" whatever its state");
+  const help = fs.readFileSync(path.join(__dirname, '..', 'public', 'help-content.js'), 'utf8');
+  assert(/wf_bothOnly: '/.test(help), 'and Help says what it does');
+}
+
 module.exports = {
   theWindowsStartAfterTheWarmUpAndTheShortTailIsDropped,
   theUsualMoveTrailingSeesOnlyWhatIsBehindIt,
@@ -1170,6 +1272,8 @@ module.exports = {
   theSpreadAndWhatARowPaysForItAreOnTheTableAndCannotBeGamedByOneWindow,
   aWindowCountsAsPaidOnlyIfItCLEARSTheRoundTripAndBothSidesAgree,
   theLateReadingCarriesWhatItPaidAndItsWorstWindow,
+  oneSettingWinningBothHalvesIsTheSameRowNotTheSameNumber,
+  theSplitsVerdictIsMarkedOnTheRowItChoseAndNowhereElse,
   theCoinsFiltersUseBoardsOwnWordsAndBoardsOwnLayout,
   everyTickOnCoinsBottomAlignsToItsFieldsAndNoButtonSharesTheirRow,
   theWalkTableHeadingsSitOverTheirOwnFigures,

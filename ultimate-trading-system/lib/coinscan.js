@@ -498,6 +498,27 @@ function chooseThenRead(rows, opts = {}) {
     }
     if (scored.length < 2) continue;
     const pick = scored.reduce((a, b) => (b.early.perTrade > a.early.perTrade ? b : a));
+    // DID ONE SETTING WIN BOTH HALVES? (owner, 2026-09-18: "we also want on
+    // here some kind of indication of whether it was the same rule that maxed
+    // out on the first half and the second half ... so that we can pick things
+    // that have worked with a single rule on both halves of the history").
+    //
+    // Every eligible row is already scored on both halves separately. The
+    // reading takes the best on the early half; this also takes the best on
+    // the LATE half and says whether they are the SAME ROW. Where they differ
+    // it names what did win late, so how far off the pick was is readable
+    // rather than a bare no.
+    //
+    // IT IS NOT `sameAsEarly`. That compares the early half against the WHOLE
+    // history, and the whole history contains the early half, so agreement
+    // there is partly baked in. These two halves share nothing.
+    //
+    // AND IT IS A CONSISTENCY READING, NOT A FORECAST ONE. It is worked out
+    // after both halves are known, so it sits BESIDE lead rather than
+    // replacing it: a row can be well ahead of picking blind without topping
+    // the late half outright.
+    const lateBest = scored.reduce((a, b) => (b.late.perTrade > a.late.perTrade ? b : a));
+    const sameBothHalves = lateBest.row === pick.row;
     const lates = scored.map((s) => s.late.perTrade);
     const blind = lates.reduce((a, b) => a + b, 0) / lates.length;
     const sorted = lates.slice().sort((a, b) => a - b);
@@ -529,6 +550,10 @@ function chooseThenRead(rows, opts = {}) {
       latePerTrade: pick.late.perTrade, lateTrades: pick.late.trades,
       lateWindows: pick.late.windows, lateWindowsUp: pick.late.windowsUp,
       lateWindowsPaid: pick.late.windowsPaid, lateWorst: pick.late.worst,
+      sameBothHalves,
+      lateBestLookback: lateBest.row.lookback,
+      lateBestBand: lateBest.row.band,
+      lateBestPerTrade: lateBest.late.perTrade,
       blind, lead: pick.late.perTrade - blind,
       bestPossible: sorted[sorted.length - 1],
       percentile: scored.length > 1 ? (below / (scored.length - 1)) * 100 : 50,
@@ -560,6 +585,10 @@ function chooseThenRead(rows, opts = {}) {
     of: n, beat, paid, pooled, netPooled: pooled == null ? null : pooled - cost,
     chance: n / 2, meanPercentile: n ? pct / n : null,
     sameChoice: pairs.filter((p) => p.sameAsEarly).length,
+    // how many pairs one setting won BOTH halves of. Pre-registered in
+    // LOOP-2026-09-18-COINS.md before this ran: more than 3 is beyond chance,
+    // 0 or 1 means the column has nothing in it, 2 or 3 is inconclusive.
+    sameBothHalves: pairs.filter((p) => p.sameBothHalves).length,
     wholePooled: (() => { let t = 0; let s2 = 0; for (const p of pairs) { if (p.wholePerTrade == null) continue; t += p.wholeTrades; s2 += p.wholePerTrade * p.wholeTrades; } return t ? s2 / t : null; })(),
     longChoices: pairs.filter((p) => p.lookback !== 'own' && Number(p.lookback) >= 240).length,
     verdict,
