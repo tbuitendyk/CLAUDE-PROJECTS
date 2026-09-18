@@ -1162,9 +1162,13 @@ function swProvenance() {
     const geoWord = (g) => { const hit = ((VOCAB && VOCAB.geometry) || []).find((o) => o.value === g); return hit ? hit.label : String(g); };
     const pairWords = (list) => (Array.isArray(list) ? list : []).map((x) => `${x.coin} ${geoWord(x.geometry)}`).sort().join(', ') || 'none';
     const CHECKS = [
-      ['only the coins and shapes ticked on Coins', tickBox ? 'on' : 'off', setPairs ? 'on' : 'off'],
+      // NAMED AS THE TWO SCREENS NAME THEM. The tick reads "only what is ticked
+      // on Coins" and the list it reads is "Candidates for Sweep" -- which now
+      // holds promoted rows as well, so calling it "coins and shapes that pass"
+      // named one of its two boxes and left the other out of the sentence.
+      ['only what is ticked on Coins', tickBox ? 'on' : 'off', setPairs ? 'on' : 'off'],
       ...(tickBox || setPairs
-        ? (tickBox && setPairs ? [['coins and shapes that pass', pairWords(swPassersNow), pairWords(setPairs)]] : [])
+        ? (tickBox && setPairs ? [['Candidates for Sweep', pairWords(swPassersNow), pairWords(setPairs)]] : [])
         : [['trade coins', wantUni.split(',').join(', '), setUni.split(',').join(', ')],
           ['chunk shape', shape(c('#swPermGeom'), v('#swGeom')), shape(geos.length > 1, geos[0] || 'unrecorded')]]),
       ['compare coins', wantCmp ? wantCmp.split(',').join(', ') : 'none', setCmp ? setCmp.split(',').join(', ') : 'none'],
@@ -9379,6 +9383,7 @@ function cWalkPanel() {
       <button id="wBacksAll"${off}${(cBacksNow.inRecords || []).length ? '' : ' disabled'} title="puts every look-back the records actually carry into the box above, so you can see what is there and trim it. A look-back the records do NOT carry cannot be walked at all — to add one, put it in look-backs to store, hours and press Read these coins first.">Take the ${(cBacksNow.inRecords || []).length} the records carry</button>
       <span class="note">the records carry <b>${(cBacksNow.inRecords || []).length ? esc((cBacksNow.inRecords || []).join(', ')) : 'none but each shape&rsquo;s own span'}</b>.
         A look-back not among them is left out of the walk rather than guessed.</span>
+    </div>
     <div class="row">
       <label class="f" title="trailing: worked out from everything before each window, which is what a run would have had in hand. whole history: one figure over the whole span, which is what the reading above uses.">the coin's usual move<select id="wUsual"${off}>
         <option value="trailing"${cState.wUsual === 'trailing' ? ' selected' : ''}>trailing</option>
@@ -9688,20 +9693,14 @@ async function cWalkTick() {
 // halves are worked out afresh on every press of Choose early, read late and
 // move with its two boxes; printing them here would freeze one reading's
 // answer and show it as a property of the row.
-function cPromotedPanel(sets) {
+function cPromotedBoxes(sets) {
   const groups = sets || [];
   if (!groups.length) return '';
-  const n = groups.reduce((a, g) => a + g.rows.length, 0);
-  const on = groups.reduce((a, g) => a + g.rows.filter((r) => r.ticked).length, 0);
   const pc3 = (v, d = 3) => (v == null ? '—' : `${v > 0 ? '+' : ''}${Number(v).toFixed(d)}%`);
   const cls = (v) => (v == null ? 'muted' : (v > 0 ? 'cr' : 'cf'));
-  return `<div class="panel">
-    <p class="note"><b>promoted from a walk</b> — <b>${on} of ${n}</b> ticked. Ticked rows are what Sweep runs when its own tick is on,
-      alongside the ticked rows above. A coin and chunk shape can be in both lists at once: they are different readings of the same coin and
-      they go forward together.
-      Each row belongs to the walk set it came from &mdash; <b>delete that set and its rows here go with it</b>.</p>
-    ${groups.map((g) => `<div class="passbox">
-      <div class="passname">from <b>${esc(g.name)}</b> <span class="muted">${esc(g.id)} · ${g.rows.length} promoted · release ${esc(String(g.release || '—'))}</span></div>
+  return `${groups.map((g) => `<div class="passbox">
+      <div class="passname">from <b>${esc(g.name)}</b> &mdash; ${g.rows.length} promoted
+        <span class="muted">${esc(g.id)} · release ${esc(String(g.release || '—'))}</span></div>
       <div class="cwbox"><table class="cgap cpassers"><thead><tr>
         <th></th><th title="the coin">coin</th><th title="the chunk shape">chunk shape</th>
         <th title="how far back the move was measured from, ending at the decision">look-back</th>
@@ -9728,24 +9727,29 @@ function cPromotedPanel(sets) {
         <td><button class="cunprom" data-set="${esc(g.id)}" data-key="${esc(r.key)}" title="takes this row back off the list. The walk set keeps it; only the promotion goes.">Remove</button></td>
       </tr>`).join('')}
       </tbody></table></div>
-    </div>`).join('')}
-  </div>`;
+    </div>`).join('')}`;
 }
 // the chunk shape's screen label, off the same answer every other table reads
 const shapeLabelOf = (k) => (cShapesNow.find((x) => x.key === k) || {}).label || k;
-function cPassersPanel(pass) {
+// ONE BOX PER SOURCE, INSIDE Candidates for Sweep. This one holds what the
+// check on a reading passed; cPromotedBoxes holds what was promoted off a
+// walk. Neither draws a panel or a count of its own -- the section above them
+// carries the heading, the one count and the sentence, so the owner reads
+// "4 of 11 ticked" once rather than two counts that have to be added up.
+function cPassersBox(pass) {
   if (!pass) return '';
   const rows = pass.rows || [];
   const head = `<p class="note"><b>coins and shapes that pass</b> — the check with the link cut found a plateau at least this strong in at most
-      <input id="cPassBar" type="number" min="0" max="${pass.trials}" step="1" value="${esc(String(pass.bar))}" style="width:4rem" title="the bar: a coin and shape passes when, of the deals with the link cut, at most this many produced a plateau at least as strong as the real one. 0 is the strictest; the default is ${pass.default}. It has one home, beside the band."> of ${pass.trials} deals.
-      Ticked rows are what Sweep runs when its own tick is on.</p>
+      <input id="cPassBar" type="number" min="0" max="${pass.trials}" step="1" value="${esc(String(pass.bar))}" style="width:4rem" title="the bar: a coin and shape passes when, of the deals with the link cut, at most this many produced a plateau at least as strong as the real one. 0 is the strictest; the default is ${pass.default}. It has one home, beside the band."> of ${pass.trials} deals.</p>
     ${(pass.behindGrid || []).length ? `<p class="note warn"><b>${pass.behindGrid.length} coin and shape reading(s) are not listed here because their check was taken on a different band grid.</b>
       The grid the plateau is searched on now reaches 500, because that is what <b>bands to try</b> on Walk it forward can reach. A plateau found over the
       new grid, graded against deals checked over the old one, is two measurements read as one &mdash; so they are left out rather than counted.
       Press <b>Read these coins</b> to take the check again: ${pass.behindGrid.slice(0, 12).map((x) => `<b>${esc(x.coin)}</b> ${esc(x.shape)}`).join(', ')}${pass.behindGrid.length > 12 ? ` and ${pass.behindGrid.length - 12} more` : ''}.</p>` : ''}`;
-  if (!rows.length) return `<div class="panel">${head}<p class="note">no coin and shape passes at this bar</p></div>`;
-  return `<div class="panel">${head}
-    <table class="cgap cpassers"><thead><tr>
+  const box = (inner) => `<div class="passbox">
+    <div class="passname">from <b>Read these coins</b></div>
+    ${head}${inner}</div>`;
+  if (!rows.length) return box('<p class="note">no coin and shape passes at this bar</p>');
+  return box(`<div class="cwbox"><table class="cgap cpassers"><thead><tr>
       <th></th>
       <th title="the coin">coin</th>
       <th title="the chunk shape whose reading passed">chunk shape</th>
@@ -9770,7 +9774,29 @@ function cPassersPanel(pass) {
       <td>${cLeanWord(r.lean && r.lean.rising)}</td><td>${cLeanWord(r.lean && r.lean.falling)}</td>
       <td>${(r.traits || []).map((w) => `<span class="ctrait">${esc(w)}</span>`).join(' ')}</td>
       <td>${r.judged == null ? '—' : r.judged}</td><td>${r.tradesAMonth == null ? '—' : cNum(r.tradesAMonth, 1)}</td>
-    </tr>`).join('')}</tbody></table>
+    </tr>`).join('')}</tbody></table></div>`);
+}
+
+// EVERYTHING THE SWEEP TICK RUNS COMES FROM HERE AND ONLY FROM HERE (the
+// owner's design, 2026-09-18: the basket at the very top, above the reading,
+// with the two sources as boxes inside one section and one count across both).
+// Ticks only. Nothing in this section computes anything or starts anything.
+// A coin and chunk shape may legitimately be in both boxes at once: they are
+// different readings of the same coin and they go forward together.
+function cCandidatesPanel(pass, sets) {
+  const groups = sets || [];
+  const rows = (pass && pass.rows) || [];
+  const n = rows.length + groups.reduce((a, g) => a + g.rows.length, 0);
+  const on = rows.filter((r) => r.ticked).length
+    + groups.reduce((a, g) => a + g.rows.filter((r) => r.ticked).length, 0);
+  if (!pass && !groups.length) return '';
+  return `<div class="panel">
+    <h3 style="margin-top:0">Candidates for Sweep</h3>
+    <p class="note"><b>${on} of ${n}</b> ticked. Sweep runs the ticked rows when <b>only what is ticked on Coins</b> is on over there,
+      and nothing else does. A row that passed a reading carries a coin, a chunk shape and its own sweet spot band; a row promoted off a
+      walk carries a look-back as well.${groups.length ? ` Each promoted row belongs to the walk set it came from &mdash; <b>delete that set and its rows here go with it</b>.` : ''}</p>
+    ${cPassersBox(pass)}
+    ${cPromotedBoxes(groups)}
   </div>`;
 }
 
@@ -9855,14 +9881,13 @@ async function drawCoins() {
     return c.months > r.provenance.cachedMonths ? c.months - r.provenance.cachedMonths : 0;
   };
 
-  $('#view').innerHTML = `<div class="panel">
-    <h3 style="margin-top:0">Coins</h3>
-    <p class="note">A picture of each coin's history, one bar per chunk shape, to judge whether the coin is apt for
-      dual member voting or better left on the traditional single member set voting. <b>One coloured unit is one
-      decision</b>, the same rows Sweep trains on: <span class="cr">green</span> where price rose across that
-      decision's own window, <span class="cf">red</span> where it fell, <span class="cs">black</span> where it moved
-      too little either way and would sit out. Above each bar, ${esc(cLayoutLabel(layouts[0]))}: train, test, held.
-      Below it, ${esc(cLayoutLabel(layouts[1]))}: train, test, held, reserve. <b>Nothing here refuses a coin.</b></p>
+  // THE BASKET FIRST, THEN THE READING, THEN THE PICTURE (the owner's design,
+  // 2026-09-18). Candidates for Sweep is what leaves this screen, so it is what
+  // the screen opens on; the press that writes the records comes next; the bars
+  // and the two controls that only change what is DRAWN come after it.
+  $('#view').innerHTML = `${cCandidatesPanel(d && d.passers, d && d.promoted)}
+  <div class="panel">
+    <h3 style="margin-top:0">Read these coins</h3>
     <div class="row" style="align-items:flex-end">
       <label class="f" title="which coins to read, comma separated. Blank reads every coin whose prices are downloaded on this box, the same as a blank box on Sweep.">coins (blank = all ${d && d.downloaded != null ? d.downloaded : '—'} downloaded)<input id="cCoins" placeholder="LTCUSDT,XRPUSDT" value="${esc(cState.coins || '')}" style="width:16rem"${off}></label>
       <label class="f" title="the look-backs a reading stores, in hours, comma separated. The chunk shape decides the TRADE; a look-back decides what is LOOKED AT, and there is no reason they should be the same length. Measured from candles at read time, so a change only reaches the records when the coins are read again &mdash; which is why it lives here and not on Walk it forward.">look-backs to store, hours<input id="cBacks" value="${esc(((d && d.lookbacks && d.lookbacks.value) || []).join(','))}" style="width:36.4rem"${off}></label>
@@ -9877,10 +9902,14 @@ async function drawCoins() {
     ${unreadable.length ? `<p class="note warn">${unreadable.length} file(s) on disk this release cannot draw: ${unreadable.map((u) => `<b>${esc(u.coin)}</b> — ${esc(u.why)}`).join('; ')}</p>
     <div class="row"><button id="cClean" class="danger"${off}>Remove these files</button><span id="cCleanOut" class="muted">removes exactly the ${unreadable.length} file(s) named above and nothing else</span></div>` : ''}
   </div>
-  ${cPassersPanel(d && d.passers)}
-  ${cPromotedPanel(d && d.promoted)}
   <div class="panel">
     <h3 style="margin-top:0">How each coin reads</h3>
+    <p class="note">A picture of each coin's history, one bar per chunk shape, to judge whether the coin is apt for
+      dual member voting or better left on the traditional single member set voting. <b>One coloured unit is one
+      decision</b>, the same rows Sweep trains on: <span class="cr">green</span> where price rose across that
+      decision's own window, <span class="cf">red</span> where it fell, <span class="cs">black</span> where it moved
+      too little either way and would sit out. Above each bar, ${esc(cLayoutLabel(layouts[0]))}: train, test, held.
+      Below it, ${esc(cLayoutLabel(layouts[1]))}: train, test, held, reserve. <b>Nothing here refuses a coin.</b></p>
     <p class="note"><b>The sit-out band is one number for every coin, read on each coin's own scale.</b> It is a share
       of that coin's median window move for the shape: at 50, a decision sits out when it moved less than half what
       the coin typically moves over that window. Change it and every bar recolours; nothing is read again. Sweep

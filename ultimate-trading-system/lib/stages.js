@@ -635,7 +635,10 @@ function startStage1(params) {
     : Array.isArray(params.passers)
       ? params.passers.map((x) => ({ coin: String((x || {}).coin || '').trim().toUpperCase(), geometry: (x || {}).geometry })).filter((x) => x.coin && GEOMETRIES[x.geometry])
       : null;
-  if (passers && !passers.length) throw new Error('no coin and shape is ticked on Coins — tick some there, or untick "only the coins and shapes ticked on Coins"');
+  // THE REFUSAL QUOTES THE TICK BY ITS LABEL, so it has to be the label the
+  // tick carries: "only what is ticked on Coins" (3.172.0). It also names where
+  // to go and tick: Candidates for Sweep, at the top of Coins.
+  if (passers && !passers.length) throw new Error('nothing is ticked under Candidates for Sweep on Coins — tick some rows there, or untick "only what is ticked on Coins"');
   const universe = passers
     ? [...new Set(passers.map((x) => x.coin))]
     : Array.isArray(params.universe) && params.universe.length

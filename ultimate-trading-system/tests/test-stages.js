@@ -936,7 +936,7 @@ module.exports = {
 
   // A SET LAUNCHED FROM THE COINS LIST IS HELD UP TO THE TICK, NOT TO THE
   // GREYED BOXES (3.130.3, owner order: "fix it so the tick is compared
-  // instead"). Under "only the coins and shapes ticked on Coins" the launch
+  // instead"). Under "only what is ticked on Coins" the launch
   // never reads trade coins or chunk shape, so comparing them painted Stage 2
   // red for ever. Read from the source, the way the chain routine's own test
   // reads it, plus the launch's record and the route that hands the screen
@@ -947,8 +947,11 @@ module.exports = {
     const fn = UI.slice(UI.indexOf('function swProvenance() {'), UI.indexOf('\n}\n', UI.indexOf('function swProvenance() {')));
     assert.ok(fn.includes("const tickBox = c('#swPassers');"), 'the tick is read as a box of its own');
     assert.ok(fn.includes('const setPairs = Array.isArray(p.passers) && p.passers.length ? p.passers : null;'), 'and the set says whether it was launched with it');
-    assert.ok(fn.includes("['only the coins and shapes ticked on Coins', tickBox ? 'on' : 'off', setPairs ? 'on' : 'off'],"), 'the tick is compared, on against on');
-    assert.ok(fn.includes("? (tickBox && setPairs ? [['coins and shapes that pass', pairWords(swPassersNow), pairWords(setPairs)]] : [])"),
+    // NAMED AS THE SCREENS NAME THEM (3.172.0): the tick reads "only what is
+    // ticked on Coins", and the list it reads is "Candidates for Sweep", which
+    // holds promoted rows as well as rows that passed a reading.
+    assert.ok(fn.includes("['only what is ticked on Coins', tickBox ? 'on' : 'off', setPairs ? 'on' : 'off'],"), 'the tick is compared, on against on');
+    assert.ok(fn.includes("? (tickBox && setPairs ? [['Candidates for Sweep', pairWords(swPassersNow), pairWords(setPairs)]] : [])"),
       'with both on, the pairs ticked now are held up to the pairs the set recorded');
     assert.ok(/: \[\['trade coins', wantUni\.split/.test(fn) && /\['chunk shape', shape\(c\('#swPermGeom'\), v\('#swGeom'\)\)/.test(fn),
       'without the tick on either side the two boxes are compared as before');
@@ -5322,7 +5325,9 @@ module.exports = {
     const was = coinsrun.passingUnits;
     coinsrun.passingUnits = () => [];
     try {
-      assert.throws(() => stages.startStage1({ passers: true, sizes, nullN: 3, fee: 0.00125, name: `p-${Date.now().toString(36)}` }), /no coin and shape is ticked on Coins/);
+      // the refusal names the section to go and tick, and quotes the tick by
+      // the label it carries (3.172.0)
+      assert.throws(() => stages.startStage1({ passers: true, sizes, nullN: 3, fee: 0.00125, name: `p-${Date.now().toString(36)}` }), /nothing is ticked under Candidates for Sweep on Coins/);
     } finally { coinsrun.passingUnits = was; }
     // and the launch's own source: pairs replace the boxes and are written on the set
     const st = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');

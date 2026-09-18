@@ -141,13 +141,25 @@ function requirePlaywright() {
   // textContent, NOT innerText: the stylesheet upper-cases the part names.
   const text = async () => page.locator('#view').textContent();
 
-  expect(/Coins/.test(await page.locator('#view h3').first().textContent()), 'the screen draws');
+  // THE BASKET IS THE FIRST THING ON THE SCREEN (the owner's design, 3.172.0):
+  // Candidates for Sweep, then Read these coins, then How each coin reads.
+  const headings = await page.evaluate(() => [...document.querySelectorAll('#view > .panel > h3')].map((h) => h.textContent.trim()));
+  expect(headings.slice(0, 3).join(' | ') === 'Candidates for Sweep | Read these coins | How each coin reads',
+    `the screen draws in the design's order, got ${headings.join(' | ')}`);
   const body = await text();
 
-  // THREE CONTROLS, THE TICK, THE PASSERS' BAR AND ROW TICKS, AND NOTHING ELSE.
-  const controls = await page.evaluate(() => [...document.querySelectorAll('#view input, #view select, #view button, #view textarea')].map((e) => e.id).filter(Boolean));
-  expect(controls.sort().join(',') === ['cAuto', 'cBand', 'cClean', 'cCoins', 'cPassBar', 'cRun'].join(','), `three controls, the tick and the passers' bar, plus the cleanup while there is something to remove, and nothing else: ${controls.join(', ')}`);
-  const unnamed = await page.evaluate(() => [...document.querySelectorAll('#view input:not([id]), #view select:not([id]), #view button:not([id])')].map((e) => e.className));
+  // THE BASKET, THE READING AND THE PICTURE HOLD THESE CONTROLS AND NO OTHERS.
+  // Scoped to everything ABOVE Walk it forward, because this assertion is about
+  // the reading's own controls. It named six and had been failing since the walk
+  // arrived on the tab with fourteen of its own plus the look-backs box -- a
+  // hardcoded roll-call of the whole screen goes stale every time the screen
+  // grows, which is how a test ends up red and unread. The walk's own controls
+  // are checked in tests/test-coinscan.js, which reads them out of the source.
+  const SCOPE = '#view > .panel input, #view > .panel select, #view > .panel button, #view > .panel textarea';
+  const controls = await page.evaluate((sel) => [...document.querySelectorAll(sel)].map((e) => e.id).filter(Boolean), SCOPE);
+  expect(controls.sort().join(',') === ['cAuto', 'cBacks', 'cBand', 'cClean', 'cCoins', 'cPassBar', 'cRun'].join(','),
+    `the reading's three boxes, the button, the band, its tick and the bar, plus the cleanup while there is something to remove, and nothing else: ${controls.join(', ')}`);
+  const unnamed = await page.evaluate((sel) => [...document.querySelectorAll(sel)].filter((e) => !e.id).map((e) => e.className), SCOPE);
   expect(unnamed.length === 2 && unnamed.every((c) => c === 'cpass'), `the only controls without a name are the passers' row ticks: ${JSON.stringify(unnamed)}`);
   // THE PASSERS' TABLE sits after the controls and before the first coin, with its numbers
   const passers = await page.evaluate(() => {
@@ -157,17 +169,23 @@ function requirePlaywright() {
       heads: t ? [...t.querySelectorAll('th')].map((e) => e.textContent) : [],
       rows: t ? [...t.querySelectorAll('tbody tr')].map((r) => [...r.querySelectorAll('td')].map((d) => d.textContent.trim())) : [],
       ticks: t ? [...t.querySelectorAll('input.cpass')].map((e) => e.checked) : [],
-      sentence: panel ? panel.querySelector('p.note').textContent.replace(/\s+/g, ' ').trim() : null,
+      sentence: panel ? [...panel.querySelectorAll('p.note')].map((n) => n.textContent).join(' ').replace(/\s+/g, ' ').trim() : null,
+      heading: panel ? panel.querySelector('h3').textContent.trim() : null,
+      boxname: panel ? (panel.querySelector('.passbox .passname') || {}).textContent : null,
       beforeFirstCoin: panel ? (panel.compareDocumentPosition(document.querySelector('.panel.ccoin')) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 : false,
-      afterControls: panel ? (document.querySelector('#cRun').closest('.panel').compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 : false,
+      beforeTheReading: panel ? (panel.compareDocumentPosition(document.querySelector('#cRun')) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 : false,
     };
   });
   expect(passers.heads.join('|') === '|coin|chunk shape|check|sweet spot band|called|edge per called trade|per decision|edge over chance|after rising|after falling|traits|judged|trades a month', `the table names every column, got ${passers.heads.join('|')}`);
   expect(passers.rows.length === 2 && passers.rows[0].slice(1, 9).join('|') === `AAAUSDT|${SHAPES.find((s) => s.key === 'daily-3d').label}|0 of 50|170|29%|+1.26%|+0.362%|1.96×`, `the first row carries the numbers at its sweet spot, got ${passers.rows[0].join('|')}`);
   expect(passers.rows[0][9] === 'down' && passers.rows[0][10] === 'up' && passers.rows[0][12] === '201' && passers.rows[0][13] === '8.8', `the leans, the judged count and trades a month, got ${passers.rows[0].slice(9).join('|')}`);
   expect(passers.ticks.join(',') === 'true,false', `the ticks show what the service holds, got ${passers.ticks.join(',')}`);
-  expect(/coins and shapes that pass/.test(passers.sentence) && /of 50 deals/.test(passers.sentence) && /Ticked rows are what Sweep runs when its own tick is on/.test(passers.sentence), `the sentence, got ${passers.sentence}`);
-  expect(passers.beforeFirstCoin && passers.afterControls, 'the table sits after the controls and before the first coin');
+  expect(/coins and shapes that pass/.test(passers.sentence) && /of 50 deals/.test(passers.sentence)
+    && /Sweep runs the ticked rows when only what is ticked on Coins is on over there/.test(passers.sentence),
+    `the sentence, got ${passers.sentence}`);
+  expect(passers.heading === 'Candidates for Sweep' && /from Read these coins/.test(passers.boxname || ''),
+    `the table sits in a named box inside Candidates for Sweep, got ${passers.heading} / ${passers.boxname}`);
+  expect(passers.beforeFirstCoin && passers.beforeTheReading, 'the basket is above the reading and above the first coin');
   expect(await page.inputValue('#cPassBar') === '2', 'the bar box shows the number the service holds');
   expect(/each shape at its own sweet spot/.test(body), 'the tick is labelled');
   expect(await page.isChecked('#cAuto') === false, 'the tick shows what the service holds: off');

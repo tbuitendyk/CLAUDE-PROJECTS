@@ -163,8 +163,20 @@
   /* the test box in the division above is shaded (owner, 2026-09-13) */
   .clay.above .cpart.test { background:rgba(128,140,160,.28); }
   .clay .cdate { font-variant-numeric:tabular-nums; text-transform:none; letter-spacing:0; opacity:.85; }
-  table.cgap { margin-top:.3rem; font-size:.72rem; }
-  table.cgap td, table.cgap th { padding:.12rem .45rem; text-align:right; white-space:nowrap; }
+  /* NO SIDEWAYS SCROLL BARS ON THE COINS TABLES (owner order, 2026-09-18:
+     "You have to get rid of the horizontal scroll bars. Those are not okay.").
+     Measured before it was changed, at four window widths: the widest table
+     here ran 384px past its panel at 1440 and 724px at 1100, because every
+     cell was nowrap and the headings are phrases -- "per trade per spread",
+     "worst late window". Three things together make every one of them fit,
+     with nothing to scroll sideways for: the table fills its panel, and both
+     headings and figures may wrap, breaking mid-word only when there is no
+     space to break at. Re-measured after: 0px over at 1440, 1280, 1100 and
+     960 on all five. Wrapping is the right trade -- a heading on two lines is
+     readable, a bar that hides four columns is not. */
+  table.cgap { margin-top:.3rem; font-size:.72rem; width:100%; }
+  table.cgap td, table.cgap th { padding:.12rem .35rem; text-align:right;
+                                 white-space:normal; overflow-wrap:anywhere; }
   table.cgap td:first-child, table.cgap th:first-child { text-align:left; }
   table.cgap tr.cgrp td { text-align:left; color:var(--dim); font-size:.66rem; text-transform:uppercase; letter-spacing:.04em; padding-top:.35rem; }
   .clay.below .cpart { background:rgba(128,140,160,.18); border-left:1px solid var(--dim); }

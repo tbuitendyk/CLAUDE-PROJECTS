@@ -1360,6 +1360,130 @@ function theWalksOwnLeanIsKeptAndSpeaksTheSameLanguageAsAPassers() {
     'and a promoted row passed over for one is named, never dropped in silence');
 }
 
+
+// EVERY DIV A COINS PANEL OPENS, IT CLOSES (3.171.1, owner: a photograph of
+// the screen, with the walk's controls stranded at the top, a mile of white
+// space, and the filter boxes in a column off the right edge).
+//
+// 3.168.0 added the `Take the N the records carry` press by replacing the
+// `</div>` that closed the row above it with `</div>` plus a new opening
+// `<div class="row">` -- and never closed the new one. Every row after it
+// nested inside it and the whole panel's layout collapsed.
+//
+// NOTHING IN THE SUITE COULD SEE IT. Every guard here reads the source for a
+// string, and the string was all present and correct. Counting is what catches
+// a structure fault, so this counts -- it is ten lines and it answers in a
+// millisecond, which is the whole of RULE EIGHT's argument.
+function everyDivACoinsPanelOpensItAlsoCloses() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const bad = [];
+  let checked = 0;
+  for (const name of ['cWalkPanel', 'cCandidatesPanel', 'cPassersBox', 'cPromotedBoxes', 'cSplitPanel', 'cWalkRow', 'cSetsRow']) {
+    const at = src.indexOf(`function ${name}(`);
+    if (at < 0) continue;
+    // to the next function declared at the start of a line
+    const rest = src.slice(at + 1);
+    const end = rest.search(/\nfunction /);
+    const body = rest.slice(0, end < 0 ? rest.length : end);
+    const open = (body.match(/<div\b/g) || []).length;
+    const close = (body.match(/<\/div>/g) || []).length;
+    checked++;
+    if (open !== close) bad.push(`${name}: ${open} opened, ${close} closed`);
+  }
+  assert(checked >= 4, `there are Coins panels to count — found ${checked}`);
+  assert(bad.length === 0,
+    `a panel that opens more divs than it closes swallows everything drawn after it: ${bad.join('; ')}`);
+
+  // AND THE ROW THE FAULT WAS IN, named, so a revert reads plainly
+  const walk = src.slice(src.indexOf('function cWalkPanel()'), src.indexOf('function cWalkRepaint()'));
+  assert(/A look-back not among them is left out of the walk rather than guessed\.<\/span>\s*\n\s*<\/div>/.test(walk),
+    "the press's own row is closed before the next one opens — this is the row 3.168.0 left hanging");
+}
+
+
+// THE BASKET IS THE FIRST THING ON THE COINS SCREEN, AND IT IS ONE SECTION
+// (the owner's design, 3.172.0: "You're not following the plan, the design").
+// Everything Sweep's tick runs comes from Candidates for Sweep and only from
+// there, so it is what the screen opens on -- above the press that writes the
+// records, not below it. Two sources, two boxes, ONE count across both: two
+// counts the owner has to add up is what the design replaced.
+function theBasketOpensTheCoinsScreenAsOneSectionWithOneCount() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const draw = src.slice(src.indexOf('async function drawCoins()'), src.indexOf('function cWalkRepaint()') > src.indexOf('async function drawCoins()')
+    ? src.indexOf('function cWalkRepaint()') : src.length);
+  const tpl = draw.slice(draw.indexOf("$('#view').innerHTML"));
+
+  // FIRST, before the reading's own panel and before the bars
+  const atBasket = tpl.indexOf('cCandidatesPanel(');
+  const atRead = tpl.indexOf('Read these coins</h3>');
+  const atBars = tpl.indexOf('cbarwrap');
+  assert(atBasket > 0, 'drawCoins draws Candidates for Sweep');
+  assert(atRead > atBasket, `the reading's panel comes after the basket — basket at ${atBasket}, reading at ${atRead}`);
+  assert(atBars > atRead, `the bars come after the reading — reading at ${atRead}, bars at ${atBars}`);
+  // and the two old panels are gone, not merely unreferenced
+  assert(!/cPassersPanel|cPromotedPanel/.test(src),
+    'the two loose panels are gone; a name left behind is a second way to draw the same thing');
+
+  // ONE SECTION: one panel, one heading, both boxes inside it
+  const panel = src.slice(src.indexOf('function cCandidatesPanel('), src.indexOf('function cShapeBlock('));
+  assert((panel.match(/<div class="panel">/g) || []).length === 1, 'Candidates for Sweep is one panel');
+  assert(/<h3 style="margin-top:0">Candidates for Sweep<\/h3>/.test(panel), 'and it carries that heading');
+  assert(/cPassersBox\(pass\)/.test(panel) && /cPromotedBoxes\(groups\)/.test(panel),
+    'with both sources inside it');
+  // neither box draws a panel or a heading of its own
+  for (const name of ['cPassersBox', 'cPromotedBoxes']) {
+    const at = src.indexOf(`function ${name}(`);
+    const body = src.slice(at, src.indexOf('\nfunction ', at + 1));
+    assert(!/<div class="panel">/.test(body), `${name} draws a box, not a panel of its own`);
+    assert(!/<h3/.test(body), `${name} carries no heading of its own`);
+    assert(/class="passbox"/.test(body) && /class="passname"/.test(body),
+      `${name} draws its rows in a named box inside the section`);
+  }
+
+  // ONE COUNT, ACROSS BOTH SOURCES. The arithmetic is read, not guessed: run it.
+  const m = panel.match(/const n = ([^;]+);\s*const on = ([\s\S]*?);/);
+  assert(m, 'the count is worked out in the panel');
+  const rows = [{ ticked: true }, { ticked: false }, { ticked: true }];
+  const groups = [{ rows: [{ ticked: true }, { ticked: false }] }, { rows: [{ ticked: false }] }];
+  // eslint-disable-next-line no-new-func
+  const count = new Function('rows', 'groups', `const n = ${m[1]}; const on = ${m[2]}; return [on, n];`);
+  const [on, n] = count(rows, groups);
+  assert(n === 6, `the count spans both sources — 3 passed plus 3 promoted is 6, got ${n}`);
+  assert(on === 3, `and so does the ticked count — 2 passed plus 1 promoted is 3, got ${on}`);
+}
+
+// NO SIDEWAYS SCROLL BARS ON THE COINS TABLES (owner order, 2026-09-18: "You
+// have to get rid of the horizontal scroll bars. Those are not okay.").
+//
+// Measured in a browser at 1920, 1440, 1280 and 1100 before the change and
+// after it. Before: the walk table ran 384px past its panel at 1440 and 724px
+// at 1100; four of the five overflowed somewhere. After: 0px on all five at
+// every width. Three declarations do it and all three are needed --
+//   width:100%        so the table fills the panel instead of its own content
+//   white-space:normal on both headings and figures, so a squeezed column wraps
+//   overflow-wrap:anywhere so a long single word cannot force the table wider
+// -- and `white-space:nowrap`, which was there before, is what forced the bar.
+// This is a source check, not a re-measurement: a browser costs a minute and
+// the three lines are what the minute established (RULE EIGHT).
+function noCoinsTableIsStyledSoWideItNeedsASidewaysBar() {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.html'), 'utf8');
+  const rule = (css.match(/table\.cgap \{[^}]*\}/) || [])[0];
+  const cells = (css.match(/table\.cgap td, table\.cgap th \{[^}]*\}/) || [])[0];
+  assert(rule, 'table.cgap is styled');
+  assert(cells, 'and so are its cells');
+  assert(/width:\s*100%/.test(rule), `the table fills its panel, got: ${rule}`);
+  assert(/white-space:\s*normal/.test(cells), `headings and figures may wrap, got: ${cells}`);
+  assert(/overflow-wrap:\s*anywhere/.test(cells), `and a long word cannot force it wider, got: ${cells}`);
+  assert(!/white-space:\s*nowrap/.test(cells), `nowrap is what forced the bar, got: ${cells}`);
+  // and every Coins table is one of these -- a table added outside the class
+  // would not be covered, so count them
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const coins = src.slice(src.indexOf('function cHead()'));
+  const tables = (coins.match(/<table\b[^>]*>/g) || []);
+  const bare = tables.filter((t) => !/class="[^"]*cgap/.test(t));
+  assert(bare.length === 0, `every table drawn on Coins carries cgap, so this rule reaches it: ${bare.join(' ')}`);
+}
+
 module.exports = {
   theWindowsStartAfterTheWarmUpAndTheShortTailIsDropped,
   theUsualMoveTrailingSeesOnlyWhatIsBehindIt,
@@ -1393,6 +1517,7 @@ module.exports = {
   theSplitsVerdictIsMarkedOnTheRowItChoseAndNowhereElse,
   everyCoinsControlSitsBesideTheThingItChanges,
   theWalksOwnLeanIsKeptAndSpeaksTheSameLanguageAsAPassers,
+  everyDivACoinsPanelOpensItAlsoCloses,
   theCoinsFiltersUseBoardsOwnWordsAndBoardsOwnLayout,
   everyTickOnCoinsBottomAlignsToItsFieldsAndNoButtonSharesTheirRow,
   theWalkTableHeadingsSitOverTheirOwnFigures,
@@ -1403,4 +1528,6 @@ module.exports = {
   aChoiceThatCarriesNothingLandsAtThePackAverage,
   aChoiceThatCarriesSomethingRisesAboveIt,
   theChooseEarlyPanelIsOnScreenWithItsDoorAndItsWords,
+  theBasketOpensTheCoinsScreenAsOneSectionWithOneCount,
+  noCoinsTableIsStyledSoWideItNeedsASidewaysBar,
 };

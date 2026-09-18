@@ -122,8 +122,10 @@ module.exports = {
 
     const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     // one box per walk set, headed by the set — the provenance the owner asked for
-    assert.ok(/function cPromotedPanel\(sets\) \{/.test(src), 'the screen draws the promoted rows');
+    assert.ok(/function cPromotedBoxes\(sets\) \{/.test(src), 'the screen draws the promoted rows');
     assert.ok(/<div class="passname">from <b>\$\{esc\(g\.name\)\}<\/b>/.test(src), 'one box per walk set, headed by the set it came from');
+    // the sentence is in the section above the boxes now (3.172.0), because
+    // there is one sentence for both sources rather than one per box
     assert.ok(/delete that set and its rows here go with it/.test(src), 'and says plainly that they are a reference, not a copy');
     assert.ok(/class="cprom"/.test(src) && /class="cunprom"/.test(src), 'with a tick and a way back off the list on every row');
     // ONE PROMOTION DOOR (owner's decision), and it is the walk table
@@ -622,10 +624,17 @@ module.exports = {
     // order down the screen is now: the passers, the bars and their own two
     // controls, then Walk it forward -- which is why the walk no longer sits
     // above the first coin.
-    // 3.170.0: and the rows promoted out of a walk set sit between them, so the
+    // 3.170.0: and the rows promoted out of a walk set sit beside them, so the
     // list at the top of Coins is BOTH sources one under the other.
-    assert.ok(/\$\{cPassersPanel\(d && d\.passers\)\}\n  \$\{cPromotedPanel\(d && d\.promoted\)\}\n  <div class="panel">\n    <h3 style="margin-top:0">How each coin reads<\/h3>/.test(src),
-      'the passers panel, then the promoted rows, then the bars and their own two controls');
+    // 3.172.0 (owner: "You're not following the plan, the design"): the two of
+    // them are BOXES inside one section, Candidates for Sweep, and that section
+    // is the FIRST thing on the screen -- above the press that writes the
+    // records, not below it. The order is checked in tests/test-coinscan.js ::
+    // theBasketOpensTheCoinsScreenAsOneSectionWithOneCount.
+    assert.ok(/\$\('#view'\)\.innerHTML = `\$\{cCandidatesPanel\(d && d\.passers, d && d\.promoted\)\}\n  <div class="panel">\n    <h3 style="margin-top:0">Read these coins<\/h3>/.test(src),
+      'the basket first, then the reading');
+    assert.ok(/\$\{cPassersBox\(pass\)\}\n    \$\{cPromotedBoxes\(groups\)\}/.test(src),
+      'with what passed a reading and what was promoted off a walk as two boxes inside it');
     assert.ok(/<div class="cbarwrap">\n  \$\{!recs\.length \?/.test(src), 'the coins are drawn inside the window');
     assert.ok(/\n  <\/div>\n  <div id="cWalkWrap">\$\{cWalkPanel\(\)\}<\/div>`;/.test(src),
       'and Walk it forward sits under the window, a short scroll away rather than a mile');

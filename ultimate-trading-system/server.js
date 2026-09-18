@@ -621,7 +621,7 @@ app.get('/api/stagesets', (req, res) => res.json({
   busy: (() => { try { return stages.stageBusy(); } catch (_) { return null; } })(),
   coinsDownloaded: require('./lib/dataset').defaultCoins(),
   // THE PAIRS TICKED ON COINS NOW (3.130.3): the stage headings hold a set
-  // launched with "only the coins and shapes ticked on Coins" up to these,
+  // launched with "only what is ticked on Coins" up to these,
   // not to the trade coins and chunk shape boxes the launch never read.
   // Memoised on the record files, so the poll that asks every few seconds
   // pays a handful of stats, not a read.
