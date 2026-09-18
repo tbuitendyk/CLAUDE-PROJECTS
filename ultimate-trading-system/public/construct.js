@@ -3987,11 +3987,11 @@ async function drawBoards() {
           // THE FIRST PRESS ASKS. The notice is a cheap read of the documents,
           // so the counts are not in it; this is where they come from, one set
           // at a time and only because the owner asked for them.
-          el.disabled = true; el.textContent = 'reading…';
+          el.disabled = true;
           try {
             const p = await post('api/d1/migrate', { id });
             bD1Armed = id;
-            el.disabled = false; el.textContent = 'Press again to do it';
+            el.disabled = false; el.textContent = 'Keep the row the dial was off for\u2026';
             if (say) {
               say.innerHTML = `<b>${esc(p.name || id)}</b> &mdash; ${Number(p.rows).toLocaleString()} rows in ${p.blocks} blocks; `
                 + `<b>${Number(p.keep).toLocaleString()} stay, ${Number(p.drop).toLocaleString()} go</b>`
@@ -4000,12 +4000,12 @@ async function drawBoards() {
             }
             if (!p.can) { bD1Armed = null; el.disabled = true; }
           } catch (err) {
-            el.disabled = false; el.textContent = 'What would go?';
+            el.disabled = false; el.textContent = 'Keep the row the dial was off for\u2026';
             if (say) say.innerHTML = `<span class="warn">${esc(err.message)}</span>`;
           }
           return;
         }
-        el.disabled = true; el.textContent = 'rewriting…';
+        el.disabled = true; el.textContent = 'Keep the row the dial was off for\u2026';
         try {
           const out = await post('api/d1/migrate', { id, confirm: id });
           bD1Armed = null;
@@ -4037,7 +4037,7 @@ async function drawBoards() {
       what would go. The rows are rewritten beside the set, checked against it row by row, and only then moved into place, so a set
       that does not come out right is left exactly as it is; the totals are thrown away and built again from what is left.</p>
       ${d1.map((x) => `<div class="row">
-        <button class="bd1" data-set="${esc(x.id)}">${bD1Armed === x.id ? 'Press again to do it' : 'What would go?'}</button>
+        <button class="bd1" data-set="${esc(x.id)}">Keep the row the dial was off for&hellip;</button>
         <span class="muted" id="bd1say-${esc(x.id)}"><b>${esc(x.name)}</b>${x.rows == null ? '' : ` &mdash; ${x.rows.toLocaleString()} rows`}</span>
       </div>`).join('')}` : ''}
   </div>
