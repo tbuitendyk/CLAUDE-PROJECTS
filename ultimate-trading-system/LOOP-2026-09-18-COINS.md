@@ -234,12 +234,78 @@ failure:
 | 3.169.0 | the band grid reaches 500, and a check says which grid it came from | deployed |
 | 3.170.0 | C — the list at the top, both sources, one promotion door, references not copies | deployed |
 | 3.171.0 | D first half — the walk's lean kept, and stage 3 reads its look-back | deployed |
+| 3.172.0 | the design followed: `Candidates for Sweep` opens the screen; no sideways scroll bars; the missing `</div>` | deployed |
 
 Parked, each with its reason above and its cost measured: **D1**, **D's second
 half**, **E**.
 
 **The loop ends here, because everything left is parked.** Three decisions are
 the owner's and none of them is one a session may take.
+
+## 3.172.0 — the owner sent back two photographs
+
+The owner put the design beside the live screen: *"Do you notice anything
+different about these? You're not following the plan, the design."* Then:
+*"You have to get rid of the horizontal scroll bars. Those are not okay."*
+
+Three differences, every one of them mine to have missed.
+
+1. **The basket was under the reading instead of over it.** The design has it
+   first, because everything that leaves this screen leaves through it.
+2. **It was two loose panels with two counts.** The design has one section,
+   `Candidates for Sweep`, with one count across both sources and the two of
+   them as boxes inside it — `from Read these coins` and `from <set> — N
+   promoted`. Two counts the owner has to add up is what the design replaced.
+3. **The tables scrolled sideways.**
+
+**The scroll bars were measured before they were fixed, not looked at.** A
+browser probe at four window widths: the walk table ran 384px past its panel at
+1440 and 724px at 1100, and four of the five tables overflowed somewhere. The
+cause was `white-space:nowrap` on every cell together with headings that are
+phrases — the table sized itself to its own content and the box grew a bar.
+Three declarations fix it and all three are needed; re-measured after, 0px over
+on all five at 1920, 1440, 1280 and 960. A heading on two lines is readable; a
+bar hiding four columns is not.
+
+**Decisions this session took, inside the approved step** (RULE SIX: small
+choices are the session's to make and to record):
+
+- **Headings wrap, figures wrap only as a last resort.** Five candidates were
+  measured. Equal-width columns (`table-layout:fixed`) also reached 0px but
+  wastes the tick column's width on nothing; letting both wrap with
+  `overflow-wrap:anywhere` under automatic widths was the only one that fitted
+  at every width AND kept the columns sized to what is in them.
+- **The reading's panel is headed `Read these coins`**, and the paragraph about
+  the bars moved down beside the bars, both as the design draws them.
+- **Three labels renamed to what the screens say.** The chain-mismatch line on
+  Sweep called the tick `only the coins and shapes ticked on Coins` (its label
+  is `only what is ticked on Coins`) and called the list `coins and shapes that
+  pass`, which is now one of two boxes; the stage 3 launch's own refusal quoted
+  the old label and said to tick "some there" without saying where. All three
+  were fallout from renames earlier in THIS loop, so they are the loop's work
+  to finish, not a find to leave.
+
+**Instrument hunted, and it bit.** `tests/ui-coins.js` asserted the screen holds
+exactly six named controls. `Walk it forward` arrived on this tab with fourteen
+of its own plus the look-backs box, so that assertion — and the whole file's
+exit code — had been red since before today, and nobody was reading it. A
+hardcoded roll-call of a growing screen goes stale every time the screen grows.
+It is scoped to the panels above the walk now. Test-only; nothing shipped
+depends on it.
+
+**And one thing I did to myself, recorded because it cost real time.** I started
+two full suites concurrently. They share `data/`, so each deleted the other's
+fixtures and the run reported five failures that were pure collision — "no
+reference run", "a record set called ... already exists". I then had to work out
+which of the five were real. One suite at a time; the seven orphaned fixture
+sets the killed runs left (`ZZZ pause ...`, `unread-grade test S1`, two S4 sets,
+all written between 06:48:02 and 06:48:09) were removed with their rowstores and
+manifests. None of the owner's 33 record sets was touched.
+
+**RULE ONE-A discharged.** The served record had been stale since 3.148.0 on
+2026-09-15 at the owner's word. It is recaptured now and `SCREEN-WORDS.md`
+regenerated from it — 11 tabs, 1202 control labels, 97 options — which takes in
+every label moved from 3.149.0 through 3.172.0, not only today's.
 
 ## Found and left alone (RULE ZERO)
 
@@ -249,3 +315,17 @@ the owner's and none of them is one a session may take.
 - Parts 7 and 8 of `REGIME-DESIGN.md` sit after its Appendix.
 - Two known-false rows in CLAUDE.md's RULE ONE-A word table (`committee`, `promoted`).
 - `late windows up` on Choose early, read late is a share with no second key.
+- **`tests/test-sweepwords.js :: theWordListSeesEveryVisibleLabel` fails on a
+  fault in the READER, not a hole in the list.** It reports `rows.length` as
+  visible on Coins; it is on no screen. The reader takes any text between a `>`
+  and a `<` that holds no `$`, `{`, `}` or backtick, and `cWalkPanel` has the
+  shape `...open a set above</p>') : (!rows.length ? '<p class="note">no coin`
+  — so JavaScript sitting between two single-quoted strings passes the filter.
+  The text has been there since at least 3.169.0; it surfaced only because this
+  is the first regeneration since. The list has no hole: `theListIsNotStale` and
+  `theListHasNothingTheScreenDoesNot` both pass. The fix would be to skip a
+  match whose text holds a quote character, since a screen label never sits
+  beside one.
+- **`test-pool.js :: poolSizeLeavesHeadroom`** wants the worker pool to leave
+  four CPUs free; this container has exactly four and the Compute setting is 2.
+  It is about where the suite runs, not about the code.
