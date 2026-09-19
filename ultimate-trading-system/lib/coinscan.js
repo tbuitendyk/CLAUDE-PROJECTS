@@ -507,11 +507,32 @@ function moneyOver(scan, from, to, cost = ROUND_TRIP) {
     windowsPaid: paid, worst,
   };
 }
+// LEAVING OUT THE CHUNK SHAPE'S OWN SPAN (3.191.0, owner order).
+//
+// A row whose look-back is `own` reads the same window the committee's members
+// already read, so promoting it adds NO member to its unit -- the unit runs as
+// a plain one and the walk's finding does not travel (lib/walkset.js
+// promotedUnits). On the owner's set that was 17 of 31 chosen pairs: more than
+// half the reading pointing at rows that cannot be used.
+//
+// So the exclusion happens HERE, before anything is chosen, and not as a column
+// of second-best alternates bolted on afterwards. The difference matters. Every
+// figure this function reports -- the early pick, picking blind, the lead over
+// it, the percentile, the whole-history columns and the pass count -- is then
+// about the SAME procedure the owner would actually use. An alternate column
+// would hand them a row to promote whose selection had never been tested, which
+// is the shape of hindsight this whole reading exists to avoid.
+//
+// AND THE NUMBERS MAY GET WORSE. On a pair whose best row was `own`, the
+// restricted choosing takes second best. If the count and the percentile fall,
+// that is the honest answer: the walk's edge was in rows that add no member.
+const isOwnLookback = (r) => r == null || r.lookback == null || String(r.lookback) === 'own';
 function chooseThenRead(rows, opts = {}) {
-  const { firstWindows = null, minTrades = 30, cost = ROUND_TRIP } = opts || {};
+  const { firstWindows = null, minTrades = 30, cost = ROUND_TRIP, skipOwn = false } = opts || {};
   const byPair = new Map();
   for (const r of rows || []) {
     if (!r || !Array.isArray(r.scan) || !r.scan.length) continue;
+    if (skipOwn && isOwnLookback(r)) continue;
     const k = r.coin + '|' + r.geometry;
     if (!byPair.has(k)) byPair.set(k, []);
     byPair.get(k).push(r);
@@ -630,5 +651,5 @@ module.exports = {
   BANDS_WHEN_UNSAID, SCRAMBLES_WHEN_UNSAID, ROUND_TRIP, chooseThenRead, moneyOver,
   forwardHoursOf, oneShapePerForwardTime,
   windowsOf, usualMoveAt, signsBefore, priceWindow, walk, scrambled, seededOrder, slidOffsets, periodsForMonths, HOURS_A_MONTH,
-  walkTask, walkTasksFor, rowOf, leanOver,
+  walkTask, walkTasksFor, rowOf, leanOver, isOwnLookback,
 };

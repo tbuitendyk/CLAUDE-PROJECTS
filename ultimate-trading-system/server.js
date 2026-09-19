@@ -348,6 +348,9 @@ app.post('/api/coins/walk/split', (req, res) => {
       firstWindows: Number.isFinite(Number(b.firstWindows)) && Number(b.firstWindows) > 0 ? Number(b.firstWindows) : null,
       minTrades: Number.isFinite(Number(b.minTrades)) ? Math.max(0, Number(b.minTrades)) : 30,
       setId: b.setId ? String(b.setId) : null,
+      // leave out rows reading the chunk shape's own span, before anything is
+      // chosen (3.191.0) -- those rows add no member to their unit
+      skipOwn: b.skipOwn === true,
     }));
   } catch (err) { return res.status(400).json({ error: err.message }); }
 });

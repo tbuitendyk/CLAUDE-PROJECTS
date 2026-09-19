@@ -8650,6 +8650,10 @@ const cState = (() => {
   const d = {
     coins: '',
     wWindow: 6, wWarm: 12, wBands: '50,100,150,200', wSpot: true,
+    // OFF BY DEFAULT: the reading has always been over every row, and a tick
+    // that changed what the numbers mean without being pressed would rewrite
+    // an answer the owner already has (3.191.0)
+    sSkipOwn: false,
     wUsual: 'trailing', wSigns: 'rolled', wScrambles: 10, wFloor: 5, wCoins: '',
     wBandFrom: 200, wBandTo: 500, wBandStep: 25,
     wSort: 'asGood', wDir: 'asc',
@@ -9873,9 +9877,10 @@ function cSplitPanel() {
       at random from the same coin and shape would have paid on those same late windows.
       <b>Written down before the numbers: a pass needs the picks ahead on at least 60 of 90, and the
       pooled late money above the ${cTripPc()} round trip.</b></p>
-    <div class="row">
+    <div class="row" style="align-items:flex-end">
       <label class="f" title="how many of the earliest windows the choosing may see. Blank cuts each coin and shape in half. A bigger number leaves fewer windows to read the answer on.">windows to choose on (blank = half)<input id="sCut" value="${esc(String(cState.sCut || ''))}" placeholder="half" style="width:7rem"></label>
       <label class="f" title="a coin and shape whose row placed fewer trades than this in either half is left out, because a handful of trades is not a choice and not a reading either.">fewest trades each half must have<input id="sMin" type="number" min="0" step="1" value="${esc(String(cState.sMin))}" style="width:6rem"></label>
+      <label class="c" title="leave out every row whose look-back is the chunk shape's own span, BEFORE anything is chosen. Those rows add no member to their unit on a sweep — they read the same window the committee already reads — so a reading that picks them points at rows you cannot use. Ticked, the pick, picking blind, the lead, the percentile and the four whole-history columns are all worked out over the rows that DO add a member, and the pass count above is re-measured for that choosing. It may come out worse: on a pair whose best row was its own span, this takes second best."><input type="checkbox" id="sSkipOwn"${cState.sSkipOwn ? ' checked' : ''}> leave out the chunk shape's own span</label>
     </div>
     <div class="row">
       <button id="sRun" class="pri">Choose early, read late</button>
@@ -9967,6 +9972,9 @@ async function cSplitAsk() {
     cSplit = await post('api/coins/walk/split', {
       firstWindows: String(cState.sCut || '').trim() === '' ? null : Number(cState.sCut),
       minTrades: Number(cState.sMin),
+      // it changes the READING, not the view: every figure the reading reports
+      // is worked out over the rows that are left (3.191.0)
+      skipOwn: !!cState.sSkipOwn,
     });
   } catch (err) {
     cSplit = { none: true, why: String(err && err.message ? err.message : err) };
@@ -10252,6 +10260,7 @@ function cWalkBind() {
   keep('#wCoins', 'wCoins', false);
   keep('#sCut', 'sCut', false);
   keep('#sMin', 'sMin', true);
+  keep('#sSkipOwn', 'sSkipOwn', false);
   keep('#wName', 'wName', false);
   if ($('#sRun')) $('#sRun').onclick = cSplitAsk;
   // THE FILTER BOXES (3.164.0). Typed into, remembered, and redrawn at once --

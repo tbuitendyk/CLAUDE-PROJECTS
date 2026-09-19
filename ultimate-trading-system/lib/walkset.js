@@ -50,23 +50,104 @@ function readWalk(id) {
   } catch (_) { return null; }
 }
 
-// THE LIST IS CHEAP ON PURPOSE. A set is megabytes -- the rows carry every
-// window of every reading -- so the list reads each file once and keeps only
-// the header, never the rows. Callers that want rows ask for one set by name.
+// ---- ONE PARSE PER FILE, AND ONLY WHEN THE FILE CHANGES (3.191.0, owner
+// ---- order: "each 'Remove' button ... takes about 30 seconds ... FIX THAT") --
+//
+// The list said it was cheap and it was not. It called readWalk, which parses
+// the WHOLE set -- every window of every reading -- and then kept the header
+// and threw the rows away. On the owner's 141MB set that is three seconds, and
+// nothing asked for it once: promoted() called listWalks and then parsed every
+// file a SECOND time; the status the screen polls called listWalks and then
+// nextName, which calls listWalks again. One press of Remove walked that file
+// eight or nine times over.
+//
+// This is the same defect as the one that took the service down on 2026-09-19,
+// wearing different clothes: a full parse on a path that runs on every draw.
+//
+// So the file is parsed once, when it changes, and what the cheap callers need
+// is kept: the header, and the rows the owner has promoted. Both are small --
+// a header is a dozen fields and a set's promoted rows are the handful the
+// owner ticked out of tens of thousands. The rows themselves are NOT kept.
+// Change detection is the file's own modification time and size, so a set
+// written by anything at all -- this process or a future one -- is re-read.
+const brief = new Map();
+function statOf(id) { try { return fs.statSync(walkFile(id)); } catch (_) { return null; } }
+
+function headOf(doc, bytes) {
+  return {
+    id: doc.id, name: doc.name, release: doc.release, bytes,
+    startedAt: doc.startedAt, finishedAt: doc.finishedAt,
+    rows: Array.isArray(doc.rows) ? doc.rows.length : 0,
+    picked: Array.isArray(doc.picked) ? doc.picked.length : 0,
+    asked: doc.asked || null,
+  };
+}
+
+// WHAT A PROMOTED ROW IS, worked out at the one parse. It carries what the row
+// IS, never what a reading said about it -- see promoted(), which this serves.
+function promotedRowsOf(doc) {
+  const want = new Set(doc.picked || []);
+  if (!want.size) return [];
+  const off = new Set(doc.off || []);
+  const rows = [];
+  for (const r of doc.rows || []) {
+    const k = rowKey(r);
+    if (!want.has(k)) continue;
+    rows.push({
+      key: k,
+      coin: r.coin,
+      geometry: r.geometry,
+      lookback: r.lookback == null ? 'own' : r.lookback,
+      band: r.band,
+      trades: r.trades,
+      perTrade: r.perTrade,
+      windows: r.windows,
+      windowsUp: r.windowsUp,
+      best: r.best,
+      worst: r.worst,
+      copies: r.copies,
+      asGood: r.asGood,
+      asGoodSlid: r.asGoodSlid,
+      // the two signs this row's whole history gives, at its own look-back
+      // and band -- null on a set walked before 3.171.0 kept them
+      lean: r.lean || null,
+      scan: r.scan || [],
+      ticked: !off.has(k),
+    });
+  }
+  return rows;
+}
+
+function briefOf(id) {
+  const st = statOf(id);
+  if (!st) { brief.delete(id); return null; }
+  const had = brief.get(id);
+  if (had && had.mtimeMs === st.mtimeMs && had.size === st.size) return had;
+  const doc = readWalk(id);
+  const made = doc
+    ? { mtimeMs: st.mtimeMs, size: st.size, head: headOf(doc, st.size), rows: promotedRowsOf(doc) }
+    : { mtimeMs: st.mtimeMs, size: st.size, head: { id, name: id, broken: true, bytes: st.size }, rows: [] };
+  brief.set(id, made);
+  return made;
+}
+
+// AND A WRITER HANDS OVER WHAT IT ALREADY HAS. Every write path here has the
+// whole document in memory at the moment it writes it, so re-reading 141MB off
+// the disk to learn what we just put there is the same waste one layer down.
+function keepBrief(doc) {
+  const st = statOf(doc.id);
+  if (!st) { brief.delete(doc.id); return; }
+  brief.set(doc.id, { mtimeMs: st.mtimeMs, size: st.size, head: headOf(doc, st.size), rows: promotedRowsOf(doc) });
+}
+function forgetBrief(id) { brief.delete(id); }
+
+// THE LIST IS CHEAP ON PURPOSE, and now it is. Callers that want rows ask for
+// one set by name with readWalk, which still parses the lot.
 function listWalks() {
   const out = [];
   for (const id of idsOnDisk()) {
-    let doc = null; let bytes = 0;
-    try { bytes = fs.statSync(walkFile(id)).size; } catch (_) { bytes = 0; }
-    doc = readWalk(id);
-    if (!doc) { out.push({ id, name: id, broken: true, bytes }); continue; }
-    out.push({
-      id: doc.id, name: doc.name, release: doc.release, bytes,
-      startedAt: doc.startedAt, finishedAt: doc.finishedAt,
-      rows: Array.isArray(doc.rows) ? doc.rows.length : 0,
-      picked: Array.isArray(doc.picked) ? doc.picked.length : 0,
-      asked: doc.asked || null,
-    });
+    const b = briefOf(id);
+    if (b) out.push(b.head);
   }
   out.sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
   return out;
@@ -144,7 +225,10 @@ function unfinishedWalks() {
   const out = [];
   for (const f of files) {
     const id = f.replace(/\.jsonl$/, '');
-    if (readWalk(id)) continue;
+    // WAS THIS PART SEALED? That is one bit, and it used to be answered by
+    // parsing the whole set (3.191.0). briefOf answers it from the one parse.
+    const sealed = briefOf(id);
+    if (sealed && !sealed.head.broken) continue;
     const got = readPart(id);
     if (!got) continue;
     let bytes = 0;
@@ -202,6 +286,7 @@ function saveWalkAs(id, { asked, shapes, collapse, rows, startedAt, finishedAt, 
   const tmp = `${walkFile(id)}.tmp`;
   fs.writeFileSync(tmp, `${JSON.stringify(doc)}\n`);
   fs.renameSync(tmp, walkFile(id));
+  keepBrief(doc);
   let bytes = 0;
   try { bytes = fs.statSync(walkFile(id)).size; } catch (_) { bytes = 0; }
   return { id: doc.id, name: doc.name, rows: doc.rows.length, bytes };
@@ -212,6 +297,7 @@ function writeBack(doc) {
   const tmp = `${walkFile(doc.id)}.tmp`;
   fs.writeFileSync(tmp, `${JSON.stringify(doc)}\n`);
   fs.renameSync(tmp, walkFile(doc.id));
+  keepBrief(doc);
 }
 
 function renameWalk(id, name) {
@@ -313,37 +399,16 @@ function setRowOff(id, key, off) {
 function promoted() {
   const out = [];
   for (const head of listWalks()) {
-    const doc = readWalk(head.id);
-    if (!doc || !(doc.picked || []).length) continue;
-    const want = new Set(doc.picked);
-    const off = new Set(doc.off || []);
-    const rows = [];
-    for (const r of doc.rows || []) {
-      const k = rowKey(r);
-      if (!want.has(k)) continue;
-      rows.push({
-        key: k,
-        coin: r.coin,
-        geometry: r.geometry,
-        lookback: r.lookback == null ? 'own' : r.lookback,
-        band: r.band,
-        trades: r.trades,
-        perTrade: r.perTrade,
-        windows: r.windows,
-        windowsUp: r.windowsUp,
-        best: r.best,
-        worst: r.worst,
-        copies: r.copies,
-        asGood: r.asGood,
-        asGoodSlid: r.asGoodSlid,
-        // the two signs this row's whole history gives, at its own look-back
-        // and band -- null on a set walked before 3.171.0 kept them
-        lean: r.lean || null,
-        scan: r.scan || [],
-        ticked: !off.has(k),
-      });
-    }
-    if (rows.length) out.push({ id: doc.id, name: doc.name, release: doc.release, finishedAt: doc.finishedAt, rows });
+    const b = brief.get(head.id);
+    if (!b || !b.rows.length) continue;
+    // A FRESH OBJECT PER ROW, so a caller that writes on what it is handed
+    // cannot write on the kept copy. It is a handful of rows and it costs
+    // nothing; sharing them would be a fault that showed up as a wrong number
+    // on some other screen an hour later.
+    out.push({
+      id: head.id, name: head.name, release: head.release, finishedAt: head.finishedAt,
+      rows: b.rows.map((r) => ({ ...r })),
+    });
   }
   return out;
 }
@@ -428,6 +493,7 @@ function deleteWalk(id, confirm) {
     return { preview: true, id: doc.id, name: doc.name, rows, bytes, picked, confirmWith: doc.id };
   }
   try { fs.unlinkSync(walkFile(id)); } catch (err) { throw new Error(`${doc.id} could not be removed: ${err.message}`); }
+  forgetBrief(id);
   return { deleted: true, id: doc.id, name: doc.name, rows, bytes, picked };
 }
 
@@ -436,4 +502,6 @@ module.exports = {
   // a walk keeps what it has done, and can be carried on (3.189.0)
   PARTS, partFile, startPart, appendPart, readPart, removePart, unfinishedWalks, partKeys, sealPart,
   setPicked, setPickedMany, setRowOff, pickedUnits, promoted, promotedUnits, promotedLeans, deleteWalk,
+  // one parse per file, and only when the file changes (3.191.0)
+  briefOf, forgetBrief,
 };
