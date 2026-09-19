@@ -275,9 +275,18 @@ app.post('/api/coins/lookbacks', (req, res) => {
 // (RULE FIVE). Same shape as the look-backs' door and for the same reason: the
 // sweep runs at read time, so changing it says so rather than pretending an
 // existing reading will pick it up.
-app.post('/api/coins/grid', (req, res) => {
-  try { return res.json(require('./lib/coinsignal').setBandGrid((req.body || {}).grid)); }
-  catch (err) { return res.status(400).json({ error: err.message }); }
+app.post('/api/coins/sweep-bands', (req, res) => {
+  try {
+    const sg = require('./lib/coinsignal');
+    const b = req.body || {};
+    // ASKED FOR A RANGE, it hands back the list the three boxes make and stores
+    // nothing; given a list, it stores it. The list is the truth of the matter,
+    // and the range is only one way of filling it in.
+    if (b.from !== undefined || b.to !== undefined || b.step !== undefined) {
+      return res.json({ bands: sg.bandsFromRange(b.from, b.to, b.step), applied: true });
+    }
+    return res.json(sg.setSweepBands(b.bands));
+  } catch (err) { return res.status(400).json({ error: err.message }); }
 });
 app.post('/api/coins/band', (req, res) => {
   try {

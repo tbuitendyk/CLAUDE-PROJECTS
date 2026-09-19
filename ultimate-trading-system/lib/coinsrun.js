@@ -676,11 +676,30 @@ function coinsRecords() {
     // take, so the screen has to be able to say it and to set it. The built-in
     // travels with it, the way the band's and the look-backs' do, so the screen
     // can say what it would go back to.
-    grid: (() => {
+    sweep: (() => {
       try {
         const sg = require('./coinsignal');
-        const g = sg.bandGridNow();
-        return { value: g, default: { ...sg.BUILT_IN_GRID }, points: sg.gridPoints(g), most: sg.MAX_GRID_POINTS };
+        const bands = sg.sweepBands();
+        return {
+          bands,
+          count: bands.length,
+          most: sg.MAX_SWEEP_BANDS,
+          builtIn: { from: sg.BUILT_IN_FROM, to: sg.BUILT_IN_TO, step: sg.BUILT_IN_STEP, count: sg.BUILT_IN_BANDS.length },
+          // WHAT THE RECORDS WERE ACTUALLY SWEPT ON, which is not always what
+          // is set now: the screen names the sweep behind the bars rather than
+          // the one the next reading would use.
+          inRecords: (() => {
+            const seen = new Set();
+            for (const rec of records || []) {
+              if (!rec || !rec.read || !rec.shapes) continue;
+              for (const sr of Object.values(rec.shapes)) {
+                const g = sr && sr.signal && sr.signal.grid;
+                if (Array.isArray(g) && g.length) seen.add(JSON.stringify(g));
+              }
+            }
+            return [...seen].map((j) => JSON.parse(j));
+          })(),
+        };
       } catch (_) { return null; }
     })(),
     // WHAT IT COSTS TO GET IN AND OUT, and whether that is the owner's figure
@@ -720,6 +739,65 @@ function coinsRecords() {
 // nothing while it waits -- so the press starts a run, the screen polls it, and
 // leaving the tab and coming back finds it still going with its count intact.
 let walkRun = null;
+
+// THE WALK FILLS IN A LOOK-BACK THE RECORDS LACK, RATHER THAN SKIPPING IT
+// (owner order, 2026-09-19: "if the user specifies more look-backs THEN THE
+// CODE DOES THEM").
+//
+// It used to leave one out and print a line saying so, which put the owner in
+// the position of asking for something and being quietly given less. The moves
+// for a look-back are arithmetic over the same candles the reading already
+// walked, so there was never a reason the walk could not do them itself.
+//
+// Done ONCE and written back: the top-up costs a candle load per coin that
+// needs it, and storing the answer means the next walk pays nothing. A coin
+// with no cached prices cannot be topped up and says so instead of guessing.
+async function topUpLookbacks(records, wanted, onNote = () => {}) {
+  const want = [...new Set((wanted || []).map(Number).filter((h) => Number.isFinite(h) && h > 0))];
+  if (!want.length) return { filled: 0, coins: [], couldNotFill: [] };
+  const pipeline = require('./pipeline');
+  const { toHourlyMap, forwardFill } = require('./dataset');
+  const filledCoins = []; const couldNotFill = [];
+  let filled = 0;
+  for (const rec of records || []) {
+    if (!rec || !rec.read || !rec.shapes) continue;
+    const missing = new Set();
+    for (const sr of Object.values(rec.shapes)) {
+      if (!sr || !sr.periods) continue;
+      for (const h of want) {
+        const arr = sr.moves && sr.moves[String(h)];
+        if (!Array.isArray(arr) || arr.length !== (sr.move || []).length) missing.add(h);
+      }
+    }
+    if (!missing.size) continue;
+    const hours = [...missing].sort((a, b) => a - b);
+    onNote(`${rec.coin}: working out ${hours.length} look-back(s) the records did not carry`);
+    let map = null;
+    try {
+      const loaded = await pipeline.loadSymbolAll(rec.coin, () => {});
+      if (!loaded.rows.length) throw new Error('no cached prices on this box');
+      map = forwardFill(toHourlyMap(loaded.rows)).map;
+    } catch (err) {
+      couldNotFill.push({ coin: rec.coin, why: err.message, hours });
+      continue;
+    }
+    for (const sh of coins.shapes()) {
+      const sr = rec.shapes[sh.key];
+      if (!sr || !sr.periods) continue;
+      let wm = null;
+      try { wm = coins.windowMoves(map, sh.key, hours); } catch (_) { continue; }
+      if (!wm || wm.periods !== sr.periods) continue;   // a different reading: leave it alone
+      sr.moves = sr.moves || {};
+      for (const h of hours) {
+        const arr = wm.moves && wm.moves[String(h)];
+        if (Array.isArray(arr) && arr.length === sr.move.length) { sr.moves[String(h)] = arr; filled++; }
+      }
+    }
+    try { fs.writeFileSync(recordFile(rec.coin), JSON.stringify(rec)); } catch (_) { /* the walk still has it in hand */ }
+    filledCoins.push(rec.coin);
+  }
+  return { filled, coins: filledCoins, couldNotFill };
+}
 
 function walkPieces(opts) {
   const signal = require('./coinsignal');
@@ -763,6 +841,7 @@ function coinsWalkStatus() {
   }
   return {
     running: !!r.running, none: false, done: r.done, of: r.of, cpu,
+    filling: r.filling || null, filled: r.filled || 0, couldNotFill: r.couldNotFill || [],
     error: r.error, rows: r.running ? null : r.rows, asked: r.asked,
     startedAt: r.startedAt, finishedAt: r.finishedAt, stopping: !!r.stop,
     shapes: r.shapes, workers: r.workers,
@@ -847,20 +926,38 @@ function coinsWalkStart(opts = {}) {
   const scan = require('./coinscan');
   const { GEOMETRIES } = require('./dataset');
   const { createPool, configuredSize } = require('./pool');
-  const { records, sweetSpots, fixedUpTo } = walkPieces(opts);
-  const tasks = scan.walkTasksFor(records, GEOMETRIES, { ...opts, sweetSpots, fixedUpTo });
   const shapes = coins.shapes().map((s) => ({ key: s.key, label: s.label }));
   const collapse = scan.oneShapePerForwardTime(GEOMETRIES);
-  if (!tasks.length) {
-    walkRun = { running: false, done: 0, of: 0, rows: [], error: null, asked: opts, startedAt: Date.now(), finishedAt: Date.now(), stop: false, shapes, collapse, workers: 0, pool: null };
-    return { started: true, of: 0 };
-  }
   const size = configuredSize();
-  const pool = createPool();
-  walkRun = { running: true, done: 0, of: tasks.length, rows: [], error: null, asked: opts, startedAt: Date.now(), finishedAt: null, stop: false, shapes, collapse, workers: size, pool };
+  // THE PRESS ANSWERS AT ONCE, AND THEN THE WALK FILLS IN WHAT IT NEEDS
+  // (3.176.0). A look-back the records do not carry is worked out from the
+  // candles rather than skipped, which costs a candle load for each coin that
+  // needs one -- seconds, sometimes -- and the press may not wait for it. So
+  // the run exists from this moment with nothing counted yet, the filling says
+  // what it is doing, and `of` is filled in when the tasks are built.
+  walkRun = {
+    running: true, done: 0, of: 0, rows: [], error: null, asked: opts,
+    startedAt: Date.now(), finishedAt: null, stop: false, shapes, collapse,
+    workers: size, pool: null,
+    filling: 'working out any look-back the records do not carry', couldNotFill: [],
+  };
   const run = walkRun;
   (async () => {
+    let tasks = [];
+    let pool = null;
     try {
+      // FILLED IN AND WRITTEN BACK, so the next walk pays nothing for it.
+      const top = await topUpLookbacks(scanRecords().records, opts.lookbacks || [], (m) => { run.filling = m; });
+      run.couldNotFill = top.couldNotFill;
+      run.filled = top.filled;
+      run.filling = null;
+      if (run.stop) return;
+      const { records, sweetSpots, fixedUpTo } = walkPieces(opts);
+      tasks = scan.walkTasksFor(records, GEOMETRIES, { ...opts, sweetSpots, fixedUpTo });
+      run.of = tasks.length;
+      if (!tasks.length) return;
+      pool = createPool();
+      run.pool = pool;
       // AS MANY IN FLIGHT AS THERE ARE WORKERS, and the next one starts the
       // moment any of them lands -- a fixed batch would idle every worker that
       // finished early waiting for the slowest of its batch.
@@ -880,7 +977,8 @@ function coinsWalkStart(opts = {}) {
     } catch (err) {
       if (!run.stop) run.error = String(err && err.message ? err.message : err);
     } finally {
-      try { pool.abort(); } catch (_) { /* already down */ }
+      run.filling = null;
+      try { if (pool) pool.abort(); } catch (_) { /* already down or never made */ }
       run.pool = null;
       run.running = false;
       run.finishedAt = Date.now();
@@ -900,7 +998,9 @@ function coinsWalkStart(opts = {}) {
       }
     }
   })();
-  return { started: true, of: tasks.length, workers: size };
+  // `of` IS NOT KNOWN YET and saying a number here would be inventing one: the
+  // tasks are built after the filling. The screen polls for it.
+  return { started: true, of: null, workers: size };
 }
 
 module.exports = {

@@ -152,30 +152,31 @@ module.exports = {
   // That is a refusal to guess, not a translation of an old record (RULE NINE).
   async aCheckTakenOnAnotherBandGridDoesNotAdmitAPasser() {
     const sig = require('../lib/coinsignal');
-    // THE BUILT-IN reaches the bands the walk can try; since 3.173.0 the owner
-    // can set their own on Coins, and everything downstream reads the one in
-    // force rather than this.
-    assert.strictEqual(sig.BUILT_IN_GRID.to, 500, 'the built-in grid reaches the bands the walk can try');
-    assert.strictEqual(sig.BUILT_IN_GRID.from, 0);
-    assert.strictEqual(sig.BUILT_IN_GRID.step, 10);
+    // THE BUILT-IN reaches the bands the walk can try; the owner sets their own
+    // list on Coins, and everything downstream reads the list in force.
+    assert.strictEqual(sig.BUILT_IN_TO, 500, 'the built-in sweep reaches the bands the walk can try');
+    assert.strictEqual(sig.BUILT_IN_FROM, 0);
+    assert.strictEqual(sig.BUILT_IN_STEP, 10);
 
     const plateau = { points: 3, meanRatio: 1.2 };
     const base = { trials: 50, found: 1, strengths: [1.0] };
     const worth = (lc) => sig.linkCutWorth(plateau, lc);
-    assert.strictEqual(worth({ ...base, grid: { ...sig.bandGridNow() } }).onGrid, true,
+    assert.strictEqual(worth({ ...base, grid: sig.sweepBands() }).onGrid, true,
       'a check taken on this grid is this plateau\'s check');
-    assert.strictEqual(worth({ ...base, grid: { from: 0, to: 300, step: 10 } }).onGrid, false,
+    assert.strictEqual(worth({ ...base, grid: [0, 100, 200, 300] }).onGrid, false,
       'one taken on the narrower grid is not');
     assert.strictEqual(worth({ ...base, grid: { from: 0, to: 500, step: 25 } }).onGrid, false,
       'nor one at a different step, even reaching the same distance');
     assert.strictEqual(worth(base).onGrid, false,
       'and a record from before the grid was stamped carries none, which is named the same way rather than assumed');
-    assert.ok(worth(base).wantGrid.to === 500, 'the reading says which grid it wanted, so the screen can explain itself');
+    const want = worth(base).wantGrid;
+    assert.ok(Array.isArray(want) && want[want.length - 1] === 500,
+      'the reading says which sweep it wanted, so the screen can explain itself');
 
     // and the screen says so where the passers are listed, with what to press
     const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     assert.ok(/pass\.behindGrid/.test(src), 'the panel reads the list of readings left out');
-    assert.ok(/their check was taken on a different band grid/.test(src), 'and says why they are left out');
+    assert.ok(/they were swept over different sit-out bands/.test(src), 'and says why they are left out');
     assert.ok(/Press <b>Read these coins<\/b> to take the check again/.test(src), 'and what to press about it');
     const run = fs.readFileSync(path.join(__dirname, '..', 'lib', 'coinsrun.js'), 'utf8');
     assert.ok(/lc && lc\.onGrid !== false && lc\.asStrong != null/.test(run),
@@ -531,7 +532,7 @@ module.exports = {
       // reading writes it. Without it this record is one from before the grid
       // reached 500 and is correctly NOT called a passer -- which is what
       // aCheckTakenOnAnotherBandGridDoesNotAdmitAPasser proves next door.
-      linkCut: { trials: 50, found: strengths.length, strengths, meanRatioWhenFound: null, grid: { ...require('../lib/coinsignal').bandGridNow() } } };
+      linkCut: { trials: 50, found: strengths.length, strengths, meanRatioWhenFound: null, grid: require('../lib/coinsignal').sweepBands() } };
       return { v: runner.RECORD_V, coin, read: true, why: null, provenance: { release: require('../package.json').version, capturedAt: '2026-09-14T00:00:00Z', cachedMonths: 60, candles: 1800 * 24 }, shapes };
     };
     const files = { ZZZPASSAUSDT: runner.recordFile('ZZZPASSAUSDT'), ZZZPASSBUSDT: runner.recordFile('ZZZPASSBUSDT') };
@@ -605,7 +606,7 @@ module.exports = {
   theScreenDrawsTheTickTheGreenLineAndTheBandInUse() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.html'), 'utf8');
-    assert.ok(/<input id="cAuto" type="checkbox"\$\{band\.auto \? ' checked' : ''\}> each shape at its own best sit-out band<\/label>/.test(src), 'the tick, labelled, showing what the service holds');
+    assert.ok(/<input id="cAuto" type="checkbox"\$\{band\.auto \? ' checked' : ''\}> each shape at its own best sit-out band\$\{cSweepSaid\(\)\}<\/label>/.test(src), 'the tick, labelled with the sweep behind it, showing what the service holds');
     assert.ok(/post\('api\/coins\/band', \{ auto: \$\('#cAuto'\)\.checked \}\)/.test(src), 'the tick is set through the band\'s one door');
     assert.ok(/const on = sig\.sweetSpot && sig\.sweetSpot\.ratio > 1;/.test(src), 'green means the sweet spot\'s edge is above 1.0× chance');
     assert.ok(/<div class="csig\$\{on \? ' on' : ''\}">/.test(src), 'and the whole line carries it');

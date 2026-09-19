@@ -428,7 +428,18 @@ function theLookBacksHaveOneBoxAndItIsOnTheWalk() {
   // until the coins are read, and that is the whole reason two presses exist.
   assert(/lookbacksNotStored/.test(run), 'the service works out which set look-backs the records lack');
   assert(/notStored: lookbacksNotStored\(records\)/.test(run), 'and serves it with the answer');
-  assert(/in the box are not in the records yet/.test(src), 'and the screen says so beside the box');
+  assert(/of the ones in the box are not among them/.test(src), 'and the screen says which beside the box');
+  // AND IT PROMISES WHAT THE CODE NOW DOES (owner order, 2026-09-19: "if the
+  // user specifies more look-backs THEN THE CODE DOES THEM"). The screen used
+  // to say a look-back the records lacked was left out; it is worked out now,
+  // so nothing may still say it is skipped.
+  assert(/The walk works those out from the candles when it starts and keeps them/.test(src),
+    'and says the walk works them out rather than leaving them out');
+  assert(!/press <b>Read these coins<\/b> above to add them/.test(src),
+    'and no longer sends the owner off to press something else for them');
+  assert(/async function topUpLookbacks/.test(run), 'and the walk really does work them out');
+  assert(/await topUpLookbacks\(scanRecords\(\)\.records, opts\.lookbacks \|\| \[\]/.test(run),
+    'before it builds its tasks');
   assert(/read the coins again for this to reach the records/.test(run),
     'and setting them SAYS a read is needed, rather than looking as though it took effect');
   assert(/const RECORD_V = 9;/.test(run), 'the record shape moved, so a record written under the old reading is refused rather than mixed in');
@@ -1418,8 +1429,17 @@ function everyDivACoinsPanelOpensItAlsoCloses() {
     `a panel that opens more divs than it closes swallows everything drawn after it: ${bad.join('; ')}`);
 
   // AND THE ROW THE FAULT WAS IN, named, so a revert reads plainly
+  // THE ROW THE FAULT WAS IN, ANCHORED ON THE BUTTON RATHER THAN ON A SENTENCE.
+  // It used to quote the words beside the press, and every time that wording
+  // changed this failed for a reason that had nothing to do with the fault it
+  // guards -- three times in two days. The button's id does not move.
   const walk = src.slice(src.indexOf('function cWalkPanel()'), src.indexOf('function cWalkRepaint()'));
-  assert(/They are measured from the candles, so press <b>Read these coins<\/b> above to add them\.` : ''\}<\/span>\s*\n\s*<\/div>/.test(walk),
+  const at = walk.indexOf('id="wBacksAll"');
+  assert(at > 0, 'the walk still has the press this guard watches');
+  const after = walk.slice(at);
+  const nextRow = after.indexOf('<div class="row"');
+  const row = nextRow < 0 ? after : after.slice(0, nextRow);
+  assert(/<\/div>/.test(row),
     "the press's own row is closed before the next one opens — this is the row 3.168.0 left hanging");
 }
 

@@ -26,16 +26,16 @@ function series(n, { pull = -0.35, seed = 99, noise = 4 } = {}) {
   return { move, out };
 }
 
-// THE GRID IS A SETTING NOW, so a test that changes it must put the box back
+// THE SWEEP IS A SETTING NOW, so a test that changes it must put the box back
 // exactly as it found it -- including putting the file back to not having the
 // key at all, which is not the same as having it set to the built-in.
-function withGrid(grid, fn) {
+function withBands(bands, fn) {
   const fs = require('fs'); const path = require('path');
   const f = path.join(__dirname, '..', 'data', 'settings.json');
   let before = null; let had = false;
   try { before = fs.readFileSync(f, 'utf8'); had = true; } catch (_) { /* no file yet */ }
   try {
-    S.setBandGrid(grid);
+    S.setSweepBands(bands);
     return fn();
   } finally {
     if (had) fs.writeFileSync(f, before);
@@ -44,55 +44,71 @@ function withGrid(grid, fn) {
 }
 
 module.exports = {
-  // THE OWNER SETS THE RANGE `sweet spot band` CAN TAKE (owner order,
-  // 2026-09-18: "PUT THAT GRID ONSCREEN AS A CONTROL"). It was three numbers
-  // frozen in lib/coinsignal.js that no screen could reach, which under RULE
-  // FIVE is functionality the user cannot originate. What matters is not that a
-  // setter exists but that EVERYTHING downstream reads the one in force.
-  theGridIsTheOwnersAndEveryReaderTakesTheOneInForce() {
-    withGrid({ from: 100, to: 300, step: 50 }, () => {
-      assert.deepStrictEqual({ ...S.bandGridNow() }, { from: 100, to: 300, step: 50 });
-      assert.deepStrictEqual(S.bandGrid(), [100, 150, 200, 250, 300], 'the sweep walks the owner\'s bands');
-      assert.strictEqual(S.gridPoints(S.bandGridNow()), 5);
+  // THE SWEEP IS A LIST THE OWNER OWNS (owner order, 2026-09-19: "that field
+  // becomes the truth of the matter, and how it's constructed with gaps and
+  // extras etc. etc. is completely irrelevant").
+  //
+  // It began as three numbers frozen in the file, then three boxes; it is a
+  // list now and the three boxes only fill it in. So the thing to check is not
+  // that a range works but that an ARBITRARY list does -- gaps, one extra band
+  // on its own, out of order -- and that every reader takes it.
+  theSweepIsAListTheOwnerOwnsAndEveryReaderTakesIt() {
+    withBands('0, 50, 60, 70, 500, 137', () => {
+      assert.deepStrictEqual(S.sweepBands(), [0, 50, 60, 70, 137, 500],
+        'a list with a gap and an extra is just a list, sorted and deduped');
+      assert.deepStrictEqual(S.bandGrid(), [0, 50, 60, 70, 137, 500], 'and it is what the sweep walks');
       const r = S.signalSummary(series(600), 'daily-1d', LAYOUTS, 50);
-      assert.deepStrictEqual(r.sweep.map((x) => x.band), [100, 150, 200, 250, 300], 'and so does a reading');
-      assert.deepStrictEqual({ ...r.grid }, { from: 100, to: 300, step: 50 }, 'and it says which grid it walked');
-      // and the check that refuses a reading taken on another grid compares
-      // against the owner's, not against the built-in
-      const w = S.linkCutWorth({ points: 3, meanRatio: 1.2 },
-        { trials: 50, found: 1, strengths: [1.0], grid: { from: 100, to: 300, step: 50 } });
-      assert.strictEqual(w.onGrid, true, 'a check taken on the grid in force is this plateau\'s check');
-      assert.deepStrictEqual({ ...w.wantGrid }, { from: 100, to: 300, step: 50 }, 'and the panel is told which grid it wants');
+      assert.deepStrictEqual(r.sweep.map((x) => x.band), [0, 50, 60, 70, 137, 500], 'and what a reading walks');
+      assert.deepStrictEqual(r.grid, [0, 50, 60, 70, 137, 500], 'and a reading records the list it walked');
+      // the check that refuses a reading taken on another sweep compares LISTS
+      const same = S.linkCutWorth({ points: 3, meanRatio: 1.2 },
+        { trials: 50, found: 1, strengths: [1.0], grid: [0, 50, 60, 70, 137, 500] });
+      assert.strictEqual(same.onGrid, true, 'a check taken on this list is this plateau\'s check');
+      assert.deepStrictEqual(same.wantGrid, [0, 50, 60, 70, 137, 500], 'and the panel is told which list it wants');
+      const other = S.linkCutWorth({ points: 3, meanRatio: 1.2 },
+        { trials: 50, found: 1, strengths: [1.0], grid: [0, 50, 60, 70, 500] });
+      assert.strictEqual(other.onGrid, false, 'one band different is a different sweep');
+      // AND A READING FROM BEFORE THE LIST carries the old from/to/step shape,
+      // which is not a list and must be NAMED rather than compared
       const old = S.linkCutWorth({ points: 3, meanRatio: 1.2 },
-        { trials: 50, found: 1, strengths: [1.0], grid: { ...S.BUILT_IN_GRID } });
-      assert.strictEqual(old.onGrid, false, 'one taken on the built-in no longer is');
+        { trials: 50, found: 1, strengths: [1.0], grid: { from: 0, to: 500, step: 10 } });
+      assert.strictEqual(old.onGrid, false, 'a reading taken before the sweep was a list is left out, not misread');
     });
   },
 
-  // A TYPING MISTAKE IS REFUSED BY NAME, the way the fee is. And a value that
-  // could never be SET can never be READ either: the stored value goes through
-  // the same check, so a settings file edited by hand cannot start a sweep the
-  // screen would have refused.
-  aGridThatCouldOnlyBeATypingMistakeIsRefusedByName() {
+  // THE THREE BOXES ONLY FILL THE LIST IN; they are not the setting.
+  theThreeBoxesMakeAListAndStoreNothing() {
+    assert.deepStrictEqual(S.bandsFromRange(100, 300, 50), [100, 150, 200, 250, 300]);
+    assert.deepStrictEqual(S.bandsFromRange(0, 10, 2.5), [0, 2.5, 5, 7.5, 10], 'a step need not be whole');
     const bad = [
-      [{ from: -1, to: 500, step: 10 }, /lowest band is 0 or more/],
-      [{ from: 300, to: 300, step: 10 }, /highest band is above the lowest/],
-      [{ from: 0, to: 500, step: 0 }, /step is above zero/],
-      [{ from: 0, to: 500, step: 0.1 }, /5001 bands .* 200 is the most/],
-      [{ from: 0, to: 'x', step: 10 }, /highest band is above the lowest/],
-      [null, /lowest band is 0 or more/],
+      [[-1, 500, 10], /lowest sit-out band is 0 or more/],
+      [[300, 300, 10], /highest sit-out band is above the lowest/],
+      [[0, 500, 0], /step is above zero/],
+      [[0, 500, 0.1], /5000 sit-out bands .* 200 is the most/],
     ];
-    for (const [g, why] of bad) assert.throws(() => S.setBandGrid(g), why, `${JSON.stringify(g)} was accepted`);
-    // a stored value that would have been refused is ignored, not obeyed
+    for (const [r, why] of bad) assert.throws(() => S.bandsFromRange(...r), why, `${JSON.stringify(r)} was accepted`);
+  },
+
+  // A TYPING MISTAKE IS REFUSED BY NAME, and a value that could never be SET is
+  // never READ either: a settings file edited by hand cannot start a sweep the
+  // screen would have refused.
+  aSweepListThatCouldOnlyBeATypingMistakeIsRefusedByName() {
+    const bad = [
+      ['', /at least one sit-out band/],
+      ['0,abc', /a sit-out band is a number of 0 or more — not "abc"/],
+      ['-5,10', /a sit-out band is a number of 0 or more — not "-5"/],
+      [Array.from({ length: 201 }, (_, i) => i), /201 sit-out bands .* 200 is the most/],
+    ];
+    for (const [g, why] of bad) assert.throws(() => S.setSweepBands(g), why, `${JSON.stringify(g)} was accepted`);
     const fs = require('fs'); const path = require('path');
     const f = path.join(__dirname, '..', 'data', 'settings.json');
     let before = null; let had = false;
     try { before = fs.readFileSync(f, 'utf8'); had = true; } catch (_) { /* none */ }
     try {
       fs.mkdirSync(path.dirname(f), { recursive: true });
-      fs.writeFileSync(f, JSON.stringify({ ...(had ? JSON.parse(before) : {}), coins_plateau_grid: { from: 0, to: 500, step: 0.1 } }));
-      assert.deepStrictEqual({ ...S.bandGridNow() }, { ...S.BUILT_IN_GRID },
-        'a grid nobody could have set through the screen falls back to the built-in rather than running');
+      fs.writeFileSync(f, JSON.stringify({ ...(had ? JSON.parse(before) : {}), coins_sweep_bands: ['abc'] }));
+      assert.deepStrictEqual(S.sweepBands(), S.BUILT_IN_BANDS.slice(),
+        'a sweep nobody could have set through the screen falls back to the built-in rather than running');
     } finally {
       if (had) fs.writeFileSync(f, before); else { try { fs.rmSync(f, { force: true }); } catch (_) { /* none */ } }
     }
@@ -106,7 +122,7 @@ module.exports = {
     const bad = [];
     for (const rel of ['lib/coinsrun.js', 'lib/coinscan.js', 'lib/stages.js', 'server.js', 'public/construct.js']) {
       const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
-      if (/BAND_GRID/.test(src)) bad.push(`${rel} names BAND_GRID`);
+      if (/BAND_GRID|bandGridNow/.test(src)) bad.push(`${rel} keeps its own idea of the sweep`);
     }
     assert.deepStrictEqual(bad, [], `the grid has one home and these kept their own copy: ${bad.join('; ')}`);
   },
@@ -117,14 +133,11 @@ module.exports = {
   // pass on a box whose owner had changed it and prove nothing.
   theBandGridHasOneHomeAndTheSweepWalksAllOfIt() {
     const grid = S.bandGrid();
-    const now = S.bandGridNow();
-    assert.strictEqual(grid[0], now.from);
-    assert.strictEqual(grid[grid.length - 1], now.to);
-    for (let i = 1; i < grid.length; i++) assert.strictEqual(grid[i] - grid[i - 1], now.step);
-    assert.strictEqual(grid.length, S.gridPoints(now), 'the count the screen prints is the count the sweep walks');
+    const now = S.sweepBands();
+    assert.deepStrictEqual(grid, now, 'the sweep walks exactly the bands in force, in order');
     const r = S.signalSummary(series(600), 'daily-1d', LAYOUTS, 50);
-    assert.deepStrictEqual(r.sweep.map((x) => x.band), grid, 'the sweep must visit every band of the grid, in order');
-    assert.deepStrictEqual({ ...r.grid }, { ...now }, 'and say which grid it walked');
+    assert.deepStrictEqual(r.sweep.map((x) => x.band), grid, 'the sweep must visit every band of the list, in order');
+    assert.deepStrictEqual(r.grid, now, 'and say which list it walked');
     // called share falls as the band widens, never rises
     for (let i = 1; i < r.sweep.length; i++) assert.ok(r.sweep[i].called <= r.sweep[i - 1].called + 1e-12, `called share rose from band ${r.sweep[i - 1].band} to ${r.sweep[i].band}`);
     assert.strictEqual(r.sweep[0].called, 1, 'at band 0 every decision that moved at all is called');

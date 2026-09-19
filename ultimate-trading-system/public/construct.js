@@ -8433,6 +8433,7 @@ const cState = (() => {
     coins: '',
     wWindow: 6, wWarm: 12, wBands: '50,100,150,200', wSpot: true,
     wUsual: 'trailing', wSigns: 'rolled', wScrambles: 10, wFloor: 5, wCoins: '',
+    wBandFrom: 200, wBandTo: 500, wBandStep: 25,
     wSort: 'asGood', wDir: 'asc',
     wSorts: [{ key: 'asGood', dir: 'asc' }], wF: {}, wAuto: false, wName: '', wSetPick: '',
     sCut: '', sMin: 30, sSorts: [{ key: 'latePerTrade', dir: 'desc' }],
@@ -8482,7 +8483,7 @@ let cFeeNow = null;
 // THE BANDS THE PLATEAU IS SEARCHED OVER (3.173.0). Served with every records
 // answer, never known by this file: the built-in stands in only until the first
 // answer lands, so the screen never shows a range the box is not using.
-let cGridNow = { value: { from: 0, to: 500, step: 10 }, default: { from: 0, to: 500, step: 10 }, points: 51, most: 200 };
+let cSweepNow = { bands: [], count: 0, most: 200, builtIn: { from: 0, to: 500, step: 10, count: 51 }, inRecords: [] };
 let cWalksNow = [];    // the walk sets on disk, headers only
 let cWalkNextName = '';
 // THE COLOURS ARE THE OWNER'S: "red, green, and black for sit out". The bar is
@@ -9378,16 +9379,33 @@ function cWalkPanel() {
     <div class="row" style="align-items:flex-end">
       <label class="f" title="how long one window is. Six months is a reasonable place to start: long enough to hold trades, short enough that a phase shows as a phase. Each chunk shape converts it to its own number of decisions.">window, months<input${off} id="wWindow" type="number" min="1" step="1" value="${esc(String(cState.wWindow))}" style="width:5rem"></label>
       <label class="f" title="how much history has to sit behind the first window before anything is priced. The signs are learned from it, so too little and the first windows are guesses.">history before the first window, months<input${off} id="wWarm" type="number" min="1" step="1" value="${esc(String(cState.wWarm))}" style="width:5rem"></label>
-      <label class="f" title="how big a move has to be before it counts, as a percentage of the coin's usual move. Comma separated; every one of them is walked and every one is reported, never only the best.">bands to try<input${off} id="wBands" value="${esc(String(cState.wBands))}" style="width:11rem"></label>
-      <label class="f" title="the look-backs, in hours, comma separated. The chunk shape decides the TRADE &mdash; when it opens and how long it is held; a look-back decides what is LOOKED AT, and there is no reason they should be the same length. Blank walks each chunk shape&#39;s own span and nothing else. This is the ONLY box for them: a reading measures whatever is in here, and the walk walks whatever the records carry of it.">look-backs, hours (blank = each shape&#39;s own)<input${off} id="wBacks" value="${esc((cBacksNow.value || []).join(','))}" style="width:36.4rem"></label>
-      <label class="c" title="also walk the band the reading above searched out for each unit. It is marked searched in the table because it was chosen across the whole history and the others were not."><input${off} id="wSpot" type="checkbox"${cState.wSpot ? ' checked' : ''}> also each unit's sweet spot band</label>
+    </div>
+    <div class="row" style="align-items:flex-end">
+      <label class="f" title="the lowest sit-out band this walk starts from. Filling these three in and pressing Apply writes a list into the box below; that list is what is walked.">lowest sit-out band<input${off} id="wBandFrom" type="number" min="0" step="1" value="${esc(String(cState.wBandFrom))}" style="width:9rem"></label>
+      <label class="f" title="the highest sit-out band this walk reaches.">highest sit-out band<input${off} id="wBandTo" type="number" min="1" step="1" value="${esc(String(cState.wBandTo))}" style="width:9rem"></label>
+      <label class="f" title="how far apart the bands are. Every band in the list below is walked on every coin, every chunk shape and every look-back, so halving this doubles the walk.">step<input${off} id="wBandStep" type="number" min="1" step="1" value="${esc(String(cState.wBandStep))}" style="width:6rem"></label>
     </div>
     <div class="row">
-      <button id="wBacksAll"${off}${(cBacksNow.inRecords || []).length ? '' : ' disabled'} title="sets the box above to exactly what the records already carry, so nothing left in it needs a reading before it can be walked.">Take the ${(cBacksNow.inRecords || []).length} the records carry</button>
+      <button id="wBandApply"${off}>Apply</button>
+      <span id="wBandOut" class="muted">puts the three boxes above into the list below.</span>
+    </div>
+    <div class="row" style="align-items:flex-end">
+      <label class="f" title="the sit-out bands this walk tries, comma separated, and the only thing that decides them. Apply fills it from the three boxes above; after that it is yours to edit — leave gaps, add one band on its own, take one out. Every one of them is walked and every one is reported, never only the best.">sit-out bands to try<input${off} id="wBands" value="${esc(String(cState.wBands))}" style="width:56rem"></label>
+      <span class="muted">${String(cState.wBands || '').split(',').filter((x) => x.trim() !== '').length} band(s)</span>
+    </div>
+    <div class="row" style="align-items:flex-end">
+      <label class="c" title="also walk the band the reading above searched out for each unit. It is marked searched in the table because it was chosen across the whole history and the others were not."><input${off} id="wSpot" type="checkbox"${cState.wSpot ? ' checked' : ''}> also each unit's sweet spot band</label>
+    </div>
+    <div class="row" style="align-items:flex-end">
+      <label class="f" title="the look-backs, in hours, comma separated. The chunk shape decides the TRADE &mdash; when it opens and how long it is held; a look-back decides what is LOOKED AT, and there is no reason they should be the same length. Blank walks each chunk shape&#39;s own span and nothing else. This is the ONLY box for them, and every one in it is walked: a look-back the records do not carry is worked out from the candles when the walk starts and kept, so it costs a slower start once and nothing after that.">look-backs, hours (blank = each shape&#39;s own)<input${off} id="wBacks" value="${esc((cBacksNow.value || []).join(','))}" style="width:36.4rem"></label>
+    </div>
+    <div class="row">
+      <button id="wBacksAll"${off}${(cBacksNow.inRecords || []).length ? '' : ' disabled'} title="sets the look-backs box to exactly what the records already carry, so the walk has nothing to work out before it starts.">Take the ${(cBacksNow.inRecords || []).length} the records carry</button>
       <span class="note">${(cBacksNow.value || []).length ? '' : '<b>The box is empty, so the walk reads each chunk shape&rsquo;s own span and nothing else.</b> '}the records carry <b>${(cBacksNow.inRecords || []).length ? esc((cBacksNow.inRecords || []).join(', ')) : 'none but each shape&rsquo;s own span'}</b>.
-        A look-back not among them is left out of the walk rather than guessed.${(cBacksNow.notStored || []).length ? `
-        <b class="warn">${(cBacksNow.notStored || []).length} in the box are not in the records yet: ${esc((cBacksNow.notStored || []).join(', '))}.</b>
-        They are measured from the candles, so press <b>Read these coins</b> above to add them.` : ''}</span>
+        ${(cBacksNow.notStored || []).length
+          ? `<b>${(cBacksNow.notStored || []).length} of the ones in the box are not among them: ${esc((cBacksNow.notStored || []).join(', '))}.</b>
+             The walk works those out from the candles when it starts and keeps them, so it is a slower start once and never again.`
+          : 'Every look-back in the box is already there, so the walk starts straight away.'}</span>
     </div>
     <div class="row">
       <label class="f" title="trailing: worked out from everything before each window, which is what a run would have had in hand. whole history: one figure over the whole span, which is what the reading above uses.">the coin's usual move<select id="wUsual"${off}>
@@ -9504,6 +9522,26 @@ function cWalkBind() {
   keep('#wWindow', 'wWindow', true);
   keep('#wWarm', 'wWarm', true);
   keep('#wBands', 'wBands', false);
+  keep('#wBandFrom', 'wBandFrom', true);
+  keep('#wBandTo', 'wBandTo', true);
+  keep('#wBandStep', 'wBandStep', true);
+  // APPLY FILLS THE LIST AND NOTHING ELSE. The list is what the walk reads, so
+  // the owner may edit what Apply produced before pressing the walk.
+  if ($('#wBandApply')) {
+    $('#wBandApply').onclick = async () => {
+      let got = null;
+      try {
+        got = await post('api/coins/sweep-bands', {
+          from: Number($('#wBandFrom').value), to: Number($('#wBandTo').value), step: Number($('#wBandStep').value),
+        });
+      } catch (err) { $('#wBandOut').innerHTML = `<span class="warn">${esc(err.message)}</span>`; return; }
+      $('#wBands').value = got.bands.join(',');
+      cState.wBands = $('#wBands').value;
+      cRemember();
+      $('#wBandOut').innerHTML = esc(`${got.bands.length} band(s) put in the box below — edit them if you like, then walk`);
+      cWalkRepaint();
+    };
+  }
   // THE LOOK-BACKS ARE A SETTING ON THE BOX, not something this browser
   // remembers: the reading measures them and the walk walks them, so both
   // presses have to see the same list. Its own door, the moment it changes.
@@ -9766,10 +9804,9 @@ function cPassersBox(pass) {
   const rows = pass.rows || [];
   const head = `<p class="note"><b>coins and shapes that pass</b> — the check with the link cut found a plateau at least this strong in at most
       <input id="cPassBar" type="number" min="0" max="${pass.trials}" step="1" value="${esc(String(pass.bar))}" style="width:4rem" title="the bar: a coin and shape passes when, of the deals with the link cut, at most this many produced a plateau at least as strong as the real one. 0 is the strictest; the default is ${pass.default}. It has one home, beside the band."> of ${pass.trials} deals.</p>
-    ${(pass.behindGrid || []).length ? `<p class="note warn"><b>${pass.behindGrid.length} coin and shape reading(s) are not listed here because their check was taken on a different band grid.</b>
-      The grid the plateau is searched on now reaches 500, because that is what <b>bands to try</b> on Walk it forward can reach. A plateau found over the
-      new grid, graded against deals checked over the old one, is two measurements read as one &mdash; so they are left out rather than counted.
-      Press <b>Read these coins</b> to take the check again: ${pass.behindGrid.slice(0, 12).map((x) => `<b>${esc(x.coin)}</b> ${esc(x.shape)}`).join(', ')}${pass.behindGrid.length > 12 ? ` and ${pass.behindGrid.length - 12} more` : ''}.</p>` : ''}`;
+    ${(pass.behindGrid || []).length ? `<p class="note warn"><b>${pass.behindGrid.length} coin and shape reading(s) are not listed here because they were swept over different sit-out bands.</b>
+      A plateau found over one set of bands, graded against deals checked over another, is two measurements read as one &mdash; so they are left out rather
+      than counted. Press <b>Read these coins</b> to take the check again on the bands in <b>sit-out bands to sweep</b>: ${pass.behindGrid.slice(0, 12).map((x) => `<b>${esc(x.coin)}</b> ${esc(x.shape)}`).join(', ')}${pass.behindGrid.length > 12 ? ` and ${pass.behindGrid.length - 12} more` : ''}.</p>` : ''}`;
   const box = (inner) => `<div class="passbox">
     <div class="passname">from <b>Read these coins</b></div>
     ${head}${inner}</div>`;
@@ -9823,6 +9860,27 @@ function cCandidatesPanel(pass, sets) {
     ${cPassersBox(pass)}
     ${cPromotedBoxes(groups)}
   </div>`;
+}
+
+// WHAT SWEEP THE BEST SIT-OUT BAND CAME OUT OF (owner, 2026-09-19: "why not
+// add something like ' (from sit-out band sweep x to y step z)' -- if that's
+// stored, why not be clear and let the user know?").
+//
+// It IS stored, on every reading, so it is read off the RECORDS rather than off
+// the setting: the bars are drawn from answers already taken, and the setting
+// is only what the NEXT reading would use. Where the readings on the box were
+// taken on more than one sweep the label says so instead of picking one, and
+// where the bands are evenly spaced it says the step, because that is what the
+// owner asked to see.
+function cSweepSaid() {
+  const found = (cSweepNow && cSweepNow.inRecords) || [];
+  if (!found.length) return '';
+  if (found.length > 1) return ' <span class="muted">(the coins were read on more than one sit-out band sweep — read them again to settle it)</span>';
+  const b = found[0];
+  if (!Array.isArray(b) || !b.length) return '';
+  const steps = b.slice(1).map((v, i) => v - b[i]);
+  const even = steps.length && steps.every((x) => Math.abs(x - steps[0]) < 1e-9);
+  return ` <span class="muted">(from a sit-out band sweep of ${b.length}: ${b[0]} to ${b[b.length - 1]}${even ? ` step ${steps[0]}` : ', unevenly spaced'})</span>`;
 }
 
 // ONE BAR: its heading, the division above, the bar itself, the division below,
@@ -9897,7 +9955,7 @@ async function drawCoins() {
   if (d && Array.isArray(d.shapes)) cShapesNow = d.shapes;
   cBusyNow = (d && d.busy) || null;
   if (d && d.fee) cFeeNow = d.fee;
-  if (d && d.grid) cGridNow = d.grid;
+  if (d && d.sweep) cSweepNow = d.sweep;
   const running = !!(st && st.running);
   cLastDone = running ? st.done : null;
   const off = running ? ' disabled' : '';
@@ -9918,10 +9976,17 @@ async function drawCoins() {
       <label class="f" title="which coins to read, comma separated. Blank reads every coin whose prices are downloaded on this box, the same as a blank box on Sweep.">coins (blank = all ${d && d.downloaded != null ? d.downloaded : '—'} downloaded)<input id="cCoins" placeholder="LTCUSDT,XRPUSDT" value="${esc(cState.coins || '')}" style="width:16rem"${off}></label>
     </div>
     <div class="row" style="align-items:flex-end">
-      <label class="f" title="the lowest band the plateau is searched from. The plateau is the run of bands that beat chance together; sweet spot band is picked inside it, so these three boxes set the whole range that column can take. Measured at read time, like the look-backs, so a change only reaches the readings when the coins are read again.">lowest band<input id="cGridFrom" type="number" min="0" step="1" value="${esc(String(cGridNow.value.from))}" style="width:6rem"${off}></label>
-      <label class="f" title="the highest band the plateau is searched to. A band above this one can never be the sweet spot band, however well it would have read &mdash; so it wants to reach at least as high as bands to try on Walk it forward.">highest band<input id="cGridTo" type="number" min="1" step="1" value="${esc(String(cGridNow.value.to))}" style="width:6rem"${off}></label>
-      <label class="f" title="how far apart the bands are. A smaller step finds a narrower plateau and costs proportionally more, because every band is scored on every coin and every chunk shape on every reading.">step<input id="cGridStep" type="number" min="1" step="1" value="${esc(String(cGridNow.value.step))}" style="width:6rem"${off}></label>
-      <span id="cGridOut" class="muted">the bands the plateau is searched over &mdash; <b>${cGridNow.points}</b> of them, at most ${cGridNow.most} &middot; built in: ${cGridNow.default.from} to ${cGridNow.default.to} in steps of ${cGridNow.default.step}</span>
+      <label class="f" title="the lowest sit-out band the sweep starts from. Filling these three in and pressing Apply writes a list into the box below; that list is what is swept.">lowest sit-out band<input id="cSweepFrom" type="number" min="0" step="1" value="${esc(String(cSweepNow.builtIn.from))}" style="width:9rem"${off}></label>
+      <label class="f" title="the highest sit-out band the sweep reaches. A band above the ones in the list below can never come out as a shape's best sit-out band, however well it would have read.">highest sit-out band<input id="cSweepTo" type="number" min="1" step="1" value="${esc(String(cSweepNow.builtIn.to))}" style="width:9rem"${off}></label>
+      <label class="f" title="how far apart the bands are. Halving it doubles what a reading costs, because every band in the list below is scored on every coin and every chunk shape.">step<input id="cSweepStep" type="number" min="1" step="1" value="${esc(String(cSweepNow.builtIn.step))}" style="width:6rem"${off}></label>
+    </div>
+    <div class="row">
+      <button id="cSweepApply"${off}>Apply</button>
+      <span id="cSweepOut" class="muted">puts the three boxes above into the list below. Nothing is swept until the coins are read.</span>
+    </div>
+    <div class="row" style="align-items:flex-end">
+      <label class="f" title="the sit-out bands this reading sweeps, comma separated, and the only thing that decides it. Apply fills it from the three boxes above; after that it is yours to edit &mdash; leave gaps in it, add one band on its own, take one out. At most ${cSweepNow.most} of them. The best sit-out band a shape comes out with is one of these and can be no other.">sit-out bands to sweep<input id="cSweepBands" value="${esc((cSweepNow.bands || []).join(','))}" style="width:56rem"${off}></label>
+      <span class="muted"><b>${cSweepNow.count}</b> band(s)</span>
     </div>
     <div class="row">
       <button id="cRun" class="pri"${off || (cBusyNow ? ' disabled' : '')}${cBusyNow && !running ? ` title="${esc(String(cBusyNow))} — one heavy job at a time. The button wakes when it lands."` : ''}>Read these coins</button>
@@ -9946,10 +10011,10 @@ async function drawCoins() {
     <p class="note"><b>The sit-out band is one number for every coin, read on each coin's own scale.</b> It is a share
       of that coin's median window move for the shape: at 50, a decision sits out when it moved less than half what
       the coin typically moves over that window. Change it and every bar recolours; nothing is read again and nothing
-      else on the box changes. Sweep has its own band % (or auto); Walk it forward has bands to try.</p>
+      else on the box changes. Sweep has its own band % (or auto); Walk it forward has sit-out bands to try.</p>
     <div class="row" style="align-items:flex-end">
-      <label class="f" title="how small a window move counts as sit out, as a percentage of the coin's median window move for that shape. One number for every coin, read on each coin's own scale. It recolours the bars below and does nothing else: nothing is read again, no record changes, and neither Sweep nor Walk it forward reads it. Sweep has its own band % (or auto); Walk it forward has bands to try.">sit-out band, % of the median window move<input id="cBand" type="number" min="0" step="1" value="${esc(String(band.value))}" style="width:6rem"></label>
-      <label class="c" title="ticked, every coin and chunk shape is drawn at the sit-out band that suits it rather than the one typed beside this: the band inside its plateau that keeps the most edge per decision. Where no band beats chance for three steps together the typed band applies, and the bar's heading says which. Unticked, the typed band applies everywhere. This only changes which band the bars below are drawn at: nothing is read again either way, and nothing outside this section reads it."><input id="cAuto" type="checkbox"${band.auto ? ' checked' : ''}> each shape at its own best sit-out band</label>
+      <label class="f" title="how small a window move counts as sit out, as a percentage of the coin's median window move for that shape. One number for every coin, read on each coin's own scale. It recolours the bars below and does nothing else: nothing is read again, no record changes, and neither Sweep nor Walk it forward reads it. Sweep has its own band % (or auto); Walk it forward has sit-out bands to try.">sit-out band, % of the median window move<input id="cBand" type="number" min="0" step="1" value="${esc(String(band.value))}" style="width:6rem"></label>
+      <label class="c" title="ticked, every coin and chunk shape is drawn at the sit-out band that suits it rather than the one typed beside this: the band inside its plateau that keeps the most edge per decision. Where no band beats chance for three steps together the typed band applies, and the bar's heading says which. Unticked, the typed band applies everywhere. This only changes which band the bars below are drawn at: nothing is read again either way, and nothing outside this section reads it."><input id="cAuto" type="checkbox"${band.auto ? ' checked' : ''}> each shape at its own best sit-out band${cSweepSaid()}</label>
     </div>
   </div>
   <div class="cbarwrap">
@@ -9981,18 +10046,28 @@ async function drawCoins() {
   // screen and adding one for three numbers would be a second convention. A
   // refusal is SHOWN beside the boxes and the old figures are put back, because
   // a box left holding a number the box refused is a box that lies.
-  for (const id of ['cGridFrom', 'cGridTo', 'cGridStep']) {
-    const el = $(`#${id}`);
-    if (!el) continue;
-    el.onchange = async () => {
-      const grid = {
-        from: Number($('#cGridFrom').value), to: Number($('#cGridTo').value), step: Number($('#cGridStep').value),
-      };
-      try { await post('api/coins/grid', { grid }); } catch (err) {
-        $('#cGridOut').innerHTML = `<span class="warn">${esc(err.message)}</span>`;
-        $('#cGridFrom').value = cGridNow.value.from;
-        $('#cGridTo').value = cGridNow.value.to;
-        $('#cGridStep').value = cGridNow.value.step;
+  // APPLY FILLS THE LIST; IT DOES NOT STORE IT. The owner may want to edit what
+  // it produced before it counts, so the press hands back the bands and puts
+  // them in the box, and the box's own change is what stores them.
+  if ($('#cSweepApply')) {
+    $('#cSweepApply').onclick = async () => {
+      let got = null;
+      try {
+        got = await post('api/coins/sweep-bands', {
+          from: Number($('#cSweepFrom').value), to: Number($('#cSweepTo').value), step: Number($('#cSweepStep').value),
+        });
+      } catch (err) { $('#cSweepOut').innerHTML = `<span class="warn">${esc(err.message)}</span>`; return; }
+      $('#cSweepBands').value = got.bands.join(',');
+      $('#cSweepOut').innerHTML = esc(`${got.bands.length} band(s) put in the box below — edit them if you like, then read the coins`);
+      $('#cSweepBands').onchange();
+    };
+  }
+  // THE LIST IS THE TRUTH OF THE MATTER, so the list is what is stored.
+  if ($('#cSweepBands')) {
+    $('#cSweepBands').onchange = async () => {
+      try { await post('api/coins/sweep-bands', { bands: $('#cSweepBands').value }); } catch (err) {
+        $('#cSweepOut').innerHTML = `<span class="warn">${esc(err.message)}</span>`;
+        $('#cSweepBands').value = (cSweepNow.bands || []).join(',');
         return;
       }
       draw();
