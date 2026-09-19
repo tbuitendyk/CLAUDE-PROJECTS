@@ -621,9 +621,14 @@ the one above it, and a rung is skipped only upward, never down:
    board, or the owner asks.
 
 **Guards never gate a deploy** (owner order, 2026-09-02: "the cure is almost
-as bad as the disease"). A green suite deploys. The guards run AFTER the
-deploy, in the background, and a guard that misses is a test-only follow-up
-commit — it changes nothing on the box, so it never holds the box.
+as bad as the disease"). The guards run AFTER the deploy, in the background,
+and a guard that misses is a test-only follow-up commit — it changes nothing on
+the box, so it never holds the box.
+
+**AND NEITHER DOES THE SUITE — see RULE TWELVE** (owner order, 2026-09-19).
+This paragraph used to read "a green suite deploys", and rung 4 is now a rung
+climbed AFTER the box has the code, not before. Rungs 1 to 3 still go first,
+because they cost seconds. Read RULE TWELVE before ordering any of this.
 
 **Reading a failure is rung 2, never rung 4.** Re-running `npm test` to see one
 assertion message again is the commonest way this is broken.
@@ -798,6 +803,60 @@ would be worse than leaving them out: the check would pass and the screen would
 still be wrong. What they get instead is a rendering — the screen is drawn in a
 browser and READ before it ships, which is how every one of these was actually
 caught, including two that reading the source could not have found.
+
+## RULE TWELVE — the deploy goes FIRST, the checking goes after (owner order, 2026-09-19)
+
+**The moment a change is believed finished and its narrow checks are green, it
+ships. Everything else — the whole suite, the guards, the word list, the served
+record, the write-up — happens after the box has it.**
+
+The owner's words: "deploy already ... you can do that other stuff without
+making me wait", and then, as a standing rule: **"as a rule: DEPLOY AS SOON AS
+POSSIBLE...do your tests AFTER so you don't WASTE MORE OF MY TIME"**.
+
+Said after a bulk press they had asked for sat finished on my disk while I ran
+a suite, wrote tests and captured a fingerprint — none of which could change
+what the box would serve. The owner was at the screen the whole time, waiting
+for a button.
+
+**Why it is not reckless.** The suite does not make the code correct; it
+reports whether it is. A red found four minutes after the deploy is fixed by
+the same edit as a red found four minutes before it, and in the meantime the
+owner has the button. What WOULD be reckless is shipping something that has not
+been looked at at all — which is why the floor below is a floor and not a
+suggestion.
+
+**THE FLOOR, and it is never skipped.** RULE EIGHT's ladder, rungs 1 to 3:
+
+1. `node --check` on every file touched.
+2. The one test that covers the change.
+3. That test's file alone.
+
+Seconds, all three. A change that cannot clear them is not finished, and
+"finished" is what starts this rule.
+
+**WHAT GOES AFTER, always, and is never dropped:** the whole suite, the
+mutation guards, new tests for the new behaviour, the served fingerprint, the
+regenerated word list, and the reply. AFTER is not INSTEAD. A red found after
+the deploy is worked the moment it is seen and the owner is told in the same
+breath — silence about a red is the one way this rule turns into the disaster
+it is accused of being.
+
+**IT NEVER MOVES A GATE THAT IS NOT ABOUT SPEED.** Four things still come
+before the deploy, every time, and this rule does not touch any of them:
+
+- **`GO NOW!`** (RULE THREE) and per-task permission (RULE ZERO). Deploy-first
+  is about the ORDER of work already authorised, never about starting it.
+- **The release number** (RULE ONE-C), in the same commit as the code.
+- **Real money.** Nothing that arms funds or changes what is already trading
+  ships on a fast path (RULE SIX).
+- **Anything that cannot be undone.** A migration that rewrites records is
+  verified BEFORE it runs, not after (RULE NINE: migrate beside, verify, swap).
+
+**And the word list still comes from what the box SERVES** (RULE ONE-A). That
+now happens after the deploy instead of before it, which is where it always
+belonged — a label cannot be named to the owner until the box is serving it,
+and deploying first is what makes that true sooner.
 
 ## Working style (all sessions)
 
