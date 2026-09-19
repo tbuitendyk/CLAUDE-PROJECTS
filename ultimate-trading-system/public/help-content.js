@@ -1044,6 +1044,8 @@ window.HELP = {
       wfClear: 'empties every filter box at once, so the whole table is shown again. The same control, and the same words, as Clear filters on Boards.',
       wfClear2: 'the same as Clear filters above it. It appears where the table would be when the filters have hidden every row, because a table that has gone empty should carry the way back to it rather than make you scroll up looking for one.',
       wsClear: 'drops every column out of the sort. The table falls back to the order the walks landed in.',
+      wTickAll: 'ticks every row the filter boxes are leaving — all of them, not the hundred on the page you are looking at. The count beside it says how many that is. Nothing is promoted by this: the ticks are still a list you can edit, and Promote the ticked rows is still its own press. The way to use it is to narrow the boxes until the table holds what you want, press this, then untick the few you do not.',
+      wTickNone: 'unticks every row the filter boxes are leaving. It reaches the same rows Tick every row shown does, so a narrow set of boxes unticks a narrow set of rows and leaves any tick outside them alone.',
       ssClear: 'drops every column out of the sort on this table.',
       // CHOOSE EARLY, READ LATE'S OWN FILTER BOXES (3.178.0). Same grid, same
       // button words and the same blank-hides-nothing rule as the boxes above.

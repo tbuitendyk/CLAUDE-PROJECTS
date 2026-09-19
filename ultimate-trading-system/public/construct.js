@@ -8465,6 +8465,12 @@ const cWalkOpen = new Set();
 // it a reference rather than a copy.
 const cWalkPick = new Set();
 let cSplit = null;   // the answer to choosing on the early windows, kept here so a repaint costs nothing
+// THE TWO ROWS A JUMP MARKS, and what it had to say (3.178.0). Held as state
+// rather than written into the page, because a repaint rebuilds the page and a
+// message written into it loses that race every time -- the fault that made
+// the look-backs press look as though it had done nothing.
+const cWalkMark = new Set();
+let cSplitSaid = '';
 let cLastDone = null;
 let cLastRecs = [];
 let cBandNow = '';      // the band the box is set to, for the signal line under each bar
@@ -8706,6 +8712,32 @@ function cLeanWord(v) {
 // comparison the owner asked for. The searched band sits beside bands that were
 // never searched for, and says so, because side by side in one table they would
 // otherwise read as a fair race.
+// ONE TICK LIST, TWO PLACES TO TOUCH IT (3.178.0, owner order 2026-09-19).
+// Choose early, read late's ticks do not keep a list of their own -- they tick
+// the row up on Walk it forward, which is where a promotion has always been
+// read from. This puts every tick box in the page back in step with that one
+// list and rewrites the three lines that count it, WITHOUT a repaint: a tick
+// that redraws the table throws away the owner's place on every press.
+function cPickEcho() {
+  for (const el of document.querySelectorAll('input.cwpick, input.cspick')) {
+    if (el.disabled) continue;
+    el.checked = cWalkPick.has(el.getAttribute('data-key'));
+  }
+  const saved = cWalkSt && cWalkSt.saved && cWalkSt.saved.id;
+  const b = $('#wPromote');
+  if (b) b.disabled = !(cWalkPick.size && saved);
+  const out = $('#wPromoteOut');
+  if (out && saved) {
+    out.innerHTML = cWalkPick.size
+      ? `${cWalkPick.size} ticked · they will appear at the top under <b>${esc(cWalkSt.saved.name || cWalkSt.saved.id)}</b>`
+      : 'tick the rows worth carrying, in the leftmost column';
+  }
+  const echo = $('#sPickOut');
+  if (echo) echo.textContent = cPickWords();
+}
+const cPickWords = () => (cWalkPick.size
+  ? `${cWalkPick.size} row(s) ticked on Walk it forward above — promote them with the button up there`
+  : 'nothing ticked on Walk it forward above yet');
 function cWalkRow(r, shapes) {
   const key = `${r.coin}|${r.geometry}|${r.lookback}|${r.band}`;
   const open = cWalkOpen.has(key);
@@ -8731,10 +8763,10 @@ function cWalkRow(r, shapes) {
     const col = dead ? 'muted' : (v > 0 ? 'cr' : 'cf');
     return `<span class="cwwin" title="the window starting ${esc(cDay(w.ts))} · ${w.n} trade(s)${dead ? ' · too few to count' : ` · ${v > 0 ? '+' : ''}${Number(v).toFixed(3)}% a trade`}"><i>${esc(cDay(w.ts)).slice(0, 7)}</i><b class="${col}">${dead ? '—' : `${v > 0 ? '+' : ''}${Number(v).toFixed(2)}`}</b></span>`;
   }).join('')}</div></td></tr>`;
-  return `<tr>
+  return `<tr${cWalkMark.has(key) ? ' class="selected"' : ''}>
     <td><input type="checkbox" class="cwpick" data-key="${esc(key)}"${cWalkPick.has(key) ? ' checked' : ''} title="tick to promote this row into the list at the top of Coins, then press Promote the ticked rows below"></td>
     <td><button class="cwopen" data-key="${esc(key)}" title="show or hide this row's windows, one after another in time">${open ? '▾' : '▸'}</button></td>
-    <td>${esc(r.coin)}</td><td>${esc(shape)}</td>
+    <td>${esc(r.coin)}</td><td class="cshape">${esc(shape)}</td>
     <td>${r.lookback === 'own' ? 'own' : `${r.lookback}h`}</td>
     <td>${r.band}${r.searched ? ' <span class="warn" title="this band was SEARCHED FOR across the whole history, so it is not comparable with the bands beside it, which were not">searched</span>' : ''}</td>
     <td>${r.trades}</td><td>${pt}</td>
@@ -9413,7 +9445,7 @@ function cSplitPanel() {
     </div>
     <div class="row">
       <button id="sRun" class="pri">Choose early, read late</button>
-      <span id="sOut" class="muted">${s && s.none ? esc(String(s.why || '')) : ''}</span>
+      <span id="sOut" class="muted">${s && s.none ? esc(String(s.why || '')) : esc(cSplitSaid)}</span>
     </div>
     ${!s || s.none || !s.pairs ? '' : `
     <p class="note"><b class="${s.verdict === 'PASS' ? 'pos' : (s.verdict === 'FAIL' ? 'neg' : 'warn')}">${esc(s.verdict)}</b>
@@ -9436,7 +9468,9 @@ function cSplitPanel() {
       Nothing is wrong with the reading &mdash; the table is there. Empty a box to widen it, or clear them all:</p>
       <div class="row" style="margin-bottom:.6rem"><button id="sfClear2" class="pri">Clear filters</button></div>`}
     ${!sShown.length ? '' : `
-    <div class="cwbox"><table class="cgap"><thead><tr>
+    <div class="cwbox cwtall"><table class="cgap"><thead><tr>
+      <th></th>
+      <th></th>
       <th title="the coin">coin${cSortBtn('sSorts', 'ssort', 'coin', 'asc')}</th><th title="the chunk shape">chunk shape${cSortBtn('sSorts', 'ssort', 'geometry', 'asc')}</th>
       <th title="the look-back the early windows chose">look-back${cSortBtn('sSorts', 'ssort', 'lookback', 'asc')}</th>
       <th title="the band the early windows chose">band${cSortBtn('sSorts', 'ssort', 'band', 'asc')}</th>
@@ -9455,7 +9489,11 @@ function cSplitPanel() {
       <th title="whether the whole history picked the same look-back and band as the early windows did. They need not agree: the early half has less to go on.">same pick${cSortBtn('sSorts', 'ssort', 'sameAsEarly', 'desc')}</th>
     </tr></thead><tbody>
     ${cSplitSorted(sShown).map((p) => `<tr>
-      <td>${esc(p.coin)}</td><td>${esc(shapeOf(p.geometry))}</td>
+      <td>${p.wholeLookback == null
+    ? '<span class="muted" title="this pair has no whole-history row at the fewest trades each half must have, so there is no row here to tick. Lower that box and press Choose early, read late again.">&mdash;</span>'
+    : `<input type="checkbox" class="cspick" data-key="${esc(`${p.coin}|${p.geometry}|${p.wholeLookback}|${p.wholeBand}`)}"${cWalkPick.has(`${p.coin}|${p.geometry}|${p.wholeLookback}|${p.wholeBand}`) ? ' checked' : ''} title="tick to promote this pair's WHOLE-HISTORY row &mdash; the one at whole look-back and whole band, which is the setting to tune with. It is the same tick as the one on that row up on Walk it forward, and the same list: promote them with Promote the ticked rows up there.">`}</td>
+      <td><button class="cwjump" data-jump="${esc(`${p.coin}|${p.geometry}`)}" title="puts this coin and chunk shape into the coins and chunk shapes boxes on Walk it forward above, empties its look-backs and bands boxes, and takes you there. Its whole-history row and the row this reading picked are both marked, so you can see where they sit among the rest &mdash; they are different rows on most pairs. Every other filter box up there is left exactly as you set it.">&#9666; its rows above</button></td>
+      <td>${esc(p.coin)}</td><td class="cshape">${esc(shapeOf(p.geometry))}</td>
       <td>${p.lookback === 'own' ? 'own' : `${esc(String(p.lookback))}h`}</td><td>${p.band}</td>
       <td class="${cls(p.earlyPerTrade)}">${pc(p.earlyPerTrade)}</td>
       <td class="${cls(p.latePerTrade)}">${pc(p.latePerTrade)}</td>
@@ -9478,7 +9516,8 @@ function cSplitPanel() {
     : `<b>${sShown.length} of ${sAll.length} pair(s) shown</b> &mdash; ${sAll.length - sShown.length} hidden by the filter boxes above`},
       each picked on its first ${esc(String(sAll[0] ? sAll[0].cut : '?'))} window(s) or thereabouts &mdash; a coin with fewer windows is cut in its own half.
       ${(cState.sSorts || []).length ? `Sorted by ${cSortWords(cState.sSorts, C_SPLIT_NAME)}.` : 'Unsorted.'}
-      Every heading sorts: click to add it, again to flip it, once more to drop it.</p>`}`}
+      Every heading sorts: click to add it, again to flip it, once more to drop it.
+      <span id="sPickOut">${esc(cPickWords())}</span>.</p>`}`}
   </div>`;
 }
 async function cSplitAsk() {
@@ -9642,6 +9681,12 @@ function cWalkPanel() {
       ${(cState.wSorts || []).length ? ` · sorted by ${cSortWords(cState.wSorts, C_WALK_NAME)}` : ' · unsorted'}.
       The headings stay put while the rows scroll under them, and every one of them sorts the whole walk, not this page.
       A row ticked on one page stays ticked when you move to another.</p>
+    <div class="row">
+      <button id="wTickAll"${wSorted.length ? '' : ' disabled'}>Tick every row shown</button>
+      <button id="wTickNone"${wSorted.length ? '' : ' disabled'}>Untick every row shown</button>
+      <span class="note">${wSorted.length.toLocaleString()} row(s) are shown &mdash; these two reach all of them, not just this page.
+        Narrow the boxes above first, then tick, then untick the few you do not want.</span>
+    </div>
     <div class="row">
       <button id="wPromote" class="pri"${cWalkPick.size && st && st.saved && st.saved.id ? '' : ' disabled'}>Promote the ticked rows</button>
       <span id="wPromoteOut" class="note">${!(st && st.saved && st.saved.id)
@@ -9819,6 +9864,64 @@ function cWalkBind() {
   const clearSF = () => { cState.sF = {}; cSplitSeq++; cShownFor = null; cState.wFrom = 0; cRemember(); cWalkRepaint(true); };
   if ($('#sfClear')) $('#sfClear').onclick = clearSF;
   if ($('#sfClear2')) $('#sfClear2').onclick = clearSF;
+  // AND THE JUMP (3.178.0, owner order 2026-09-19: "we should be able to hit
+  // buttons on those particular rows which open and or select the
+  // corresponding rows on the upper table ... that doesn't require trying to
+  // look things up in one table from another").
+  //
+  // It sets the two boxes that name the pair and empties the two that name one
+  // row of it, and LEAVES EVERY OTHER BOX ALONE -- those are the owner's screen
+  // and wiping them to make a jump land would be the software deciding what
+  // they may look at. If a box up there still hides the row, the line beside
+  // Choose early, read late says so rather than the jump quietly doing nothing.
+  for (const b of document.querySelectorAll('button.cwjump')) {
+    b.onclick = () => {
+      const [coin, geometry] = String(b.dataset.jump || '').split('|');
+      const p = ((cSplit && cSplit.pairs) || []).find((x) => x.coin === coin && x.geometry === geometry);
+      if (!p) return;
+      const shapes = (cWalkRows && cWalkRows.shapes) || [];
+      const label = (k) => (shapes.find((x) => x.key === k) || {}).label || k;
+      cState.wF = { ...(cState.wF || {}), coin, shape: label(geometry), back: '', band: '' };
+      const whole = p.wholeLookback == null ? null : `${coin}|${geometry}|${p.wholeLookback}|${p.wholeBand}`;
+      const pick = `${coin}|${geometry}|${p.lookback}|${p.band}`;
+      cWalkMark.clear();
+      if (whole) cWalkMark.add(whole);
+      cWalkMark.add(pick);
+      cShownFor = null;
+      // WHAT LANDED, counted rather than assumed. A jump that says it marked
+      // two rows and marked none is worse than one that says nothing.
+      //
+      // AND IT LANDS ON THE PAGE THAT HOLDS THEM. A pair runs to hundreds of
+      // rows and a page holds a hundred, so a jump that always went to page one
+      // showed the owner a marked row about a third of the time -- which is the
+      // whole of what the button is for. Found by pressing it and counting the
+      // marks on screen, which came back nought.
+      const rows = (cWalkRows && cWalkRows.rows) || [];
+      const sorted = cWalkSorted(cWalkList({ rows, shapes }));
+      const order = sorted.map((r) => `${r.coin}|${r.geometry}|${r.lookback}|${r.band}`);
+      const shown = new Set(order);
+      const at = order.indexOf(whole && shown.has(whole) ? whole : pick);
+      cState.wFrom = at >= 0 ? Math.floor(at / C_WALK_PER) * C_WALK_PER : 0;
+      cRemember();
+      // AND IT SAYS WHERE THE OTHER ONE IS. Two rows of one pair can sit
+      // hundreds apart, so landing on the page that holds one of them leaves
+      // the other off screen -- and a button whose hover says both are marked
+      // has to say so when only one of them is in front of you.
+      const page = (k) => { const i = order.indexOf(k); return i < 0 ? null : Math.floor(i / C_WALK_PER) + 1; };
+      const here = Math.floor(cState.wFrom / C_WALK_PER) + 1;
+      const pWhole = whole ? page(whole) : null;
+      const pPick = page(pick);
+      const where = (what, n) => (n == null ? `${what} is hidden by the other filter boxes up there`
+        : n === here ? `${what} is marked on this page` : `${what} is on page ${n}`);
+      cSplitSaid = `${coin} ${label(geometry)} is above · `
+        + (!whole ? `this pair has no whole-history row at the fewest trades each half must have, so only ${where('the row this reading picked', pPick)}`
+          : whole === pick ? `${where('its whole-history row', pWhole)}, and this reading picked the same row`
+            : `${where('its whole-history row', pWhole)} · ${where('the row this reading picked', pPick)}`);
+      cWalkRepaint(true);
+      const wrap = $('#cWalkWrap');
+      if (wrap) wrap.scrollIntoView({ block: 'start' });
+    };
+  }
   // A CLICK CYCLES: off, this way, the other way, off (3.164.0). Columns sort
   // in the order they were clicked, and dropping one leaves the rest alone.
   for (const b of document.querySelectorAll('[data-wsort]')) {
@@ -9855,22 +9958,29 @@ function cWalkBind() {
     el.onchange = jump;
     el.onblur = jump;
   }
-  for (const el of document.querySelectorAll('input.cwpick')) {
+  for (const el of document.querySelectorAll('input.cwpick, input.cspick')) {
     el.onchange = () => {
       const k = el.getAttribute('data-key');
       if (el.checked) cWalkPick.add(k); else cWalkPick.delete(k);
-      // only the press line and the press itself move; repainting the table
-      // here would throw the owner's place away on every tick
-      const b = $('#wPromote'); const out = $('#wPromoteOut');
-      const saved = cWalkSt && cWalkSt.saved && cWalkSt.saved.id;
-      if (b) b.disabled = !(cWalkPick.size && saved);
-      if (out && saved) {
-        out.innerHTML = cWalkPick.size
-          ? `${cWalkPick.size} ticked · they will appear at the top under <b>${esc(cWalkSt.saved.name || cWalkSt.saved.id)}</b>`
-          : 'tick the rows worth carrying, in the leftmost column';
-      }
+      cPickEcho();
     };
   }
+  // TICK EVERY ROW SHOWN (3.178.0). Every row the filters leave, not the
+  // hundred on this page -- so the boxes above decide what a press reaches and
+  // the press itself has no opinion. Nothing is promoted here: the list stays
+  // editable and Promote the ticked rows is still its own press.
+  const tickShown = (on) => {
+    const rows = (cWalkRows && cWalkRows.rows) || null;
+    if (!rows) return;
+    const shapes = (cWalkRows && cWalkRows.shapes) || [];
+    for (const r of cWalkShown(rows, shapes)) {
+      const k = `${r.coin}|${r.geometry}|${r.lookback}|${r.band}`;
+      if (on) cWalkPick.add(k); else cWalkPick.delete(k);
+    }
+    cWalkRepaint();
+  };
+  if ($('#wTickAll')) $('#wTickAll').onclick = () => tickShown(true);
+  if ($('#wTickNone')) $('#wTickNone').onclick = () => tickShown(false);
   if ($('#wPromote')) {
     $('#wPromote').onclick = async () => {
       const b = $('#wPromote'); const out = $('#wPromoteOut');
@@ -9880,7 +9990,7 @@ function cWalkBind() {
       out.textContent = 'promoting…';
       const keys = [...cWalkPick];
       try {
-        for (const key of keys) await post(`api/coins/walks/${encodeURIComponent(id)}/pick`, { key, picked: true });
+        await post(`api/coins/walks/${encodeURIComponent(id)}/pick`, { keys, picked: true });
       } catch (err) {
         out.innerHTML = `<span class="warn">${esc(err.message)}</span>`;
         b.disabled = false;

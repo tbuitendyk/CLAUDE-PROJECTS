@@ -749,8 +749,10 @@ function theChooseEarlyPanelIsOnScreenWithItsDoorAndItsWords() {
   // RULE FOUR: the button sits in a row of its own, and the table styles
   // against a class the stylesheet actually defines
   assert(/<div class="row">\s*<button id="sRun"/.test(src), 'the button has its own row, like every other button here');
-  const mine = /<div class="cwbox"><table class="cgap"><thead><tr>\s*<th title="the coin">coin\$\{cSortBtn\('sSorts', 'ssort', 'coin', 'asc'\)\}<\/th>/.test(src);
-  assert(mine, 'the new table styles against cgap, which the stylesheet defines');
+  // 3.178.0: it leads with the same two control columns Walk it forward does --
+  // a tick, then a button -- so the two tables read the same way across.
+  const mine = /<div class="cwbox cwtall"><table class="cgap"><thead><tr>\s*<th><\/th>\s*<th><\/th>\s*<th title="the coin">coin\$\{cSortBtn\('sSorts', 'ssort', 'coin', 'asc'\)\}<\/th>/.test(src);
+  assert(mine, 'the new table styles against cgap, which the stylesheet defines, and leads with its two control columns');
   // 3.162.0: the whole-history tuning rides beside the confirmation, and the
   // page says which of the two to tune with rather than leaving it to be guessed
   for (const [head, key] of [['whole look-back', 'wholeLookback'], ['whole band', 'wholeBand'],
@@ -896,7 +898,7 @@ function theWalkTableHeadingsSitOverTheirOwnFigures() {
   const head = [...panel[0].matchAll(/cWalkSortBtn\('(\w+)'/g)].map((m) => m[1]);
   const rowFn = /function cWalkRow\(r, shapes\) \{[\s\S]*?\n\}/.exec(src);
   assert(rowFn, 'and so is the row');
-  const cells = rowFn[0].slice(rowFn[0].indexOf('return `<tr>'));
+  const cells = rowFn[0].slice(rowFn[0].indexOf('return `<tr'));
   const seq = [
     ['coin', 'esc(r.coin)'],
     ['geometry', 'esc(shape)'],

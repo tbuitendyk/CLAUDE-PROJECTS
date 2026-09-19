@@ -360,7 +360,8 @@ app.post('/api/coins/walks/:id/name', (req, res) => {
 app.post('/api/coins/walks/:id/pick', (req, res) => {
   try {
     const b = req.body || {};
-    return res.json(require('./lib/walkset').setPicked(req.params.id, b.key, b.picked === true));
+    const keys = Array.isArray(b.keys) ? b.keys : [b.key];
+    return res.json(require('./lib/walkset').setPickedMany(req.params.id, keys, b.picked === true));
   } catch (err) { return res.status(400).json({ error: err.message }); }
 });
 // PROMOTED AND TICKED ARE TWO DIFFERENT THINGS (3.170.0). `pick` above puts a

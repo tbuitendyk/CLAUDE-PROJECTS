@@ -131,8 +131,21 @@
      the wrong one. Hover rather than stripes because an opened row puts its
      window strip in between, and stripes would then alternate wrongly. */
   table.cgap tbody tr:hover td { background:var(--tile); }
+  /* THE JUMP BUTTON STAYS ON ONE LINE (3.178.0). Left to wrap it broke into
+     three, which made every row of the table three lines tall for the sake of
+     one control. Its own rule rather than a width, so the label decides how
+     wide it is and nobody has to keep a number in step with the words. */
+  button.cwjump { white-space:nowrap; }
+  /* AND A CHUNK SHAPE IS NOT BROKEN AT ITS HYPHEN. "weekly-8d" split over two
+     lines in some rows and not others, which makes a column of shapes read as
+     ragged for the sake of four characters. */
+  table.cgap td.cshape { white-space:nowrap; }
   tr.dim td { color:var(--muted); }
-  tr.selected td { background:var(--tile); box-shadow: inset 3px 0 0 var(--accent); }
+  /* A MARKED ROW CARRIES ONE ACCENT BAR, NOT TWENTY (3.178.0). The bar was on
+     every cell, which on a twenty-column table drew the marked row as a row of
+     separate boxes rather than one row. */
+  tr.selected td { background:var(--tile); }
+  tr.selected td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
   .tile { background:var(--tile); border:1px solid var(--line); border-radius:8px; padding:.55rem .7rem; }
   .k { color:var(--dim); font-size:.66rem; text-transform:uppercase; letter-spacing:.04em; }
   .v { font-size:1.05rem; margin-top:.15rem; font-variant-numeric:tabular-nums; }

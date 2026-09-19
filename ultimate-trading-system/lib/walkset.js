@@ -124,18 +124,31 @@ function renameWalk(id, name) {
 // here so the set carries them from the moment it exists). A pick names a row
 // of this set and nothing else; what any other screen chooses to do with a
 // picked row is that screen's business.
-function setPicked(id, key, on) {
+// MANY ROWS IN ONE ASK (3.178.0). Tick every row shown can tick thousands, and
+// one request each would be thousands of reads and thousands of writes of a
+// file that runs to tens of megabytes. One ask reads the set once, checks every
+// key against it, and writes once. setPicked is the same thing for one row, so
+// there is one implementation and not two that can drift.
+function setPickedMany(id, keys, on) {
   const doc = readWalk(id);
   if (!doc) throw new Error(`there is no walk ${JSON.stringify(id)} on this box`);
   if (typeof on !== 'boolean') throw new Error(`a row is picked or not — not ${JSON.stringify(on)}`);
-  const k = String(key || '');
-  if (!(doc.rows || []).some((r) => rowKey(r) === k)) throw new Error(`${JSON.stringify(k)} is not a row of ${doc.id}`);
+  const want = (Array.isArray(keys) ? keys : [keys]).map((k) => String(k || ''));
+  if (!want.length) throw new Error('no row was named');
+  const mine = new Set((doc.rows || []).map(rowKey));
+  // EVERY KEY IS CHECKED BEFORE ANY IS WRITTEN. Half a list applied and the
+  // rest refused leaves the owner unable to say what happened.
+  const strangers = want.filter((k) => !mine.has(k));
+  if (strangers.length) {
+    throw new Error(`${JSON.stringify(strangers[0])} is not a row of ${doc.id}${strangers.length > 1 ? ` (and ${strangers.length - 1} other(s))` : ''}`);
+  }
   const have = new Set(doc.picked || []);
-  if (on) have.add(k); else have.delete(k);
+  for (const k of want) { if (on) have.add(k); else have.delete(k); }
   doc.picked = [...have].sort();
   writeBack(doc);
-  return { id: doc.id, picked: doc.picked.length };
+  return { id: doc.id, picked: doc.picked.length, changed: want.length };
 }
+function setPicked(id, key, on) { return setPickedMany(id, [key], on); }
 
 // EVERY PICK, AS COIN AND SHAPE, deduplicated -- which is the shape every
 // other part of the box already takes a selection in (lib/stages.js
@@ -296,5 +309,5 @@ function deleteWalk(id, confirm) {
 
 module.exports = {
   V, DIR, walkFile, rowKey, nextId, nextName, saveWalk, listWalks, readWalk, renameWalk,
-  setPicked, setRowOff, pickedUnits, promoted, promotedUnits, promotedLeans, deleteWalk,
+  setPicked, setPickedMany, setRowOff, pickedUnits, promoted, promotedUnits, promotedLeans, deleteWalk,
 };
