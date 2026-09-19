@@ -656,9 +656,30 @@ module.exports = {
     // ITS LABEL MOVED WITH THE FEATURE (3.170.0). What is ticked on Coins is no
     // longer only coins and shapes: a promoted row carries a look-back and a
     // band of its own, and a label that still said otherwise would be false.
-    assert.ok(/<input type="checkbox" id="swPassers"> only what is ticked on Coins<\/label>/.test(src), 'Sweep\'s tick, labelled for what it now runs');
-    assert.strictEqual((src.match(/passers: !!\(\$\('#swPassers'\) && \$\('#swPassers'\)\.checked\),/g) || []).length, 2, 'the tick rides both the count and the launch');
+    // RE-AIMED 3.185.0 (owner order): the tick became THREE choices, because a
+    // tick cannot say WHICH of the two boxes inside Candidates for Sweep a run
+    // is to take its units from, and the two now mean different things -- the
+    // second carries a look-back and a band that become another member.
+    assert.ok(/<span class="muted">where this run takes its units from<\/span>/.test(src), 'the three choices are introduced by what they decide');
+    for (const [id, value, label] of [['swSourceOff', 'none', 'ignore what is on Coins'],
+      ['swSourcePass', 'passers', 'what is ticked under coins and shapes that pass'],
+      ['swSourceWalk', 'walk', 'what is ticked from a walk set']]) {
+      assert.ok(src.includes(`<input type="radio" name="swSource" id="${id}" value="${value}"> ${label}</label>`),
+        `Sweep's choice ${label} is not drawn as the design has it`);
+    }
+    // the two that point at a box inside Candidates for Sweep are held up to
+    // how Coins really draws those boxes: the first carries a fixed name, the
+    // second is one box per walk set, each headed with that set's own name.
+    assert.ok(/<b>coins and shapes that pass<\/b>/.test(src), 'the first box is not drawn with that name on Coins');
+    assert.ok(/<div class="passname">from <b>\$\{esc\(g\.name\)\}<\/b>/.test(src), 'a walk set\'s own box is not headed with its name on Coins');
+    // ONE READER, so the launch, the cost line and the greying cannot disagree
+    assert.strictEqual((src.match(/coinsSource: swSourceNow\(\),/g) || []).length, 2, 'the chosen source rides both the count and the launch');
+    assert.ok(/const on = swSourceNow\(\) !== 'none';/.test(src), 'either list greys the boxes; ignore what is on Coins does not');
     assert.ok(/for \(const id of \['swUni', 'swGeom', 'swPermGeom'\]\) if \(\$\(`#\$\{id\}`\)\) \$\(`#\$\{id\}`\)\.disabled = on;/.test(src), 'with it on, trade coins, chunk shape and permute are greyed');
+    assert.ok(!/id="swPassers"/.test(src), 'the tick the three choices replaced is still on the screen');
+    // and the engine knows exactly those three names and no others
+    assert.deepStrictEqual(runner.COINS_SOURCES, ['none', 'passers', 'walk', 'both'],
+      'the engine offers a source the screen does not, or is short of one it does');
   },
 
   async anUnsetBandIsTheDefault() {

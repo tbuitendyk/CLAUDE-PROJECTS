@@ -945,12 +945,21 @@ module.exports = {
     const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8')
       .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
     const fn = UI.slice(UI.indexOf('function swProvenance() {'), UI.indexOf('\n}\n', UI.indexOf('function swProvenance() {')));
-    assert.ok(fn.includes("const tickBox = c('#swPassers');"), 'the tick is read as a box of its own');
+    // RE-AIMED 3.185.0: the tick became a choice of three, so what is compared
+    // is the NAME of the source, not on against off. A set written before this
+    // carries no source of its own and read both lists, so it reads as both --
+    // which says what happened rather than guessing.
+    assert.ok(fn.includes('const wantSource = swSourceNow();'), 'the chosen source is read as a thing of its own');
     assert.ok(fn.includes('const setPairs = Array.isArray(p.passers) && p.passers.length ? p.passers : null;'), 'and the set says whether it was launched with it');
-    // NAMED AS THE SCREENS NAME THEM (3.172.0): the tick reads "only what is
-    // ticked on Coins", and the list it reads is "Candidates for Sweep", which
-    // holds promoted rows as well as rows that passed a reading.
-    assert.ok(fn.includes("['only what is ticked on Coins', tickBox ? 'on' : 'off', setPairs ? 'on' : 'off'],"), 'the tick is compared, on against on');
+    assert.ok(fn.includes("const setSource = p.coinsSource || (setPairs ? 'both' : 'none');"), 'a set written before the choice existed reads as both');
+    assert.ok(fn.includes("const tickBox = wantSource !== 'none';"), 'either list counts as taking the units off Coins');
+    // NAMED AS THE SCREEN NAMES THEM. Every one of these three is the label on
+    // its own choice, character for character.
+    for (const w of ['ignore what is on Coins', 'what is ticked under coins and shapes that pass', 'what is ticked from a walk set']) {
+      assert.ok(fn.includes(`'${w}'`), `the comparison does not name the choice by its label: ${w}`);
+      assert.ok(UI.includes(`> ${w}</label>`), `that label is not on the screen: ${w}`);
+    }
+    assert.ok(fn.includes("['where this run takes its units from', sourceWords[wantSource] || wantSource, sourceWords[setSource] || setSource],"), 'the source is compared, name against name');
     assert.ok(fn.includes("? (tickBox && setPairs ? [['Candidates for Sweep', pairWords(swPassersNow), pairWords(setPairs)]] : [])"),
       'with both on, the pairs ticked now are held up to the pairs the set recorded');
     assert.ok(/: \[\['trade coins', wantUni\.split/.test(fn) && /\['chunk shape', shape\(c\('#swPermGeom'\), v\('#swGeom'\)\)/.test(fn),
@@ -4583,10 +4592,17 @@ module.exports = {
         '#swSingles': false, '#swDoubles': false, '#swTriples': true,
         '#swPermGeom': true, '#swByMoney': true, '#swAllData': true, ...ticksOver,
       };
+      // WHERE THIS RUN TAKES ITS UNITS FROM (3.185.0): three choices, one of
+      // which is on. Each carries the value the launch is sent, so the reader
+      // below is the page's own and not a second copy of it.
+      const SOURCE = {
+        '#swSourceOff': 'none', '#swSourcePass': 'passers', '#swSourceWalk': 'walk',
+      };
       const el = {};
       // eslint-disable-next-line no-unused-vars
       const $ = (sel) => {
         if (/^#sw(H|Why)/.test(sel)) { el[sel] = el[sel] || { style: { color: 'UNSET' }, title: '', innerHTML: '' }; return el[sel]; }
+        if (sel in SOURCE) return { checked: (ticksOver.source || 'none') === SOURCE[sel], value: SOURCE[sel] };
         if (sel in TICK) return { checked: TICK[sel], value: '' };
         return { value: BOX[sel] === undefined ? '' : BOX[sel] };
       };
@@ -4599,8 +4615,17 @@ module.exports = {
       const swDefaultCoins = DEFAULTS.slice();
       // eslint-disable-next-line no-unused-vars
       const swSetsCache = [S1, S2];
+      // eslint-disable-next-line no-unused-vars
+      const swPassersNow = [];
+      // eslint-disable-next-line no-unused-vars
+      const VOCAB = { geometry: [{ value: 'daily-4d', label: 'daily 4-day' }] };
+      // THE PAGE'S OWN READER, SLICED OUT RATHER THAN RETYPED (3.185.0). A
+      // second copy here would let the screen and this check disagree about
+      // which of the three is on, which is the one thing it is checking.
+      const srcFn = UI.slice(UI.indexOf('const swSourceNow = () => {'), UI.indexOf('\n};\n', UI.indexOf('const swSourceNow = () => {')) + 3);
+      assert.ok(srcFn.length > 60 && srcFn.length < 500, 'the page no longer reads the chosen source in one place');
       // eslint-disable-next-line no-eval
-      eval(`${body}\nswProvenance();`);
+      eval(`${srcFn}\n${body}\nswProvenance();`);
       const colour = (k) => {
         const c = (el[k] || { style: {} }).style.color;
         return c === '' ? 'black' : c === 'var(--pos)' ? 'green' : c === 'var(--neg)' ? 'red' : c;
@@ -4671,6 +4696,19 @@ module.exports = {
       }
     }
     assert.strictEqual(run().why2, '', 'a green section still prints a reason');
+
+    // WHERE THIS RUN TAKES ITS UNITS FROM IS ITSELF COMPARED (3.185.0). The
+    // owner's set above took its units from the boxes, so choosing either of
+    // the two lists disagrees with it, and the screen says which two it is
+    // holding up to each other -- by the labels the choices carry.
+    for (const [choice, label] of [['passers', 'what is ticked under coins and shapes that pass'], ['walk', 'what is ticked from a walk set']]) {
+      const r = run({}, { source: choice });
+      assert.strictEqual(r.h2, 'red', `choosing ${label} against a set that read neither list reads ${r.h2}`);
+      const said = r.why2.replace(/<[^>]+>/g, '');
+      assert.ok(said.includes('where this run takes its units from'), `the screen does not name the control that disagrees: ${said}`);
+      assert.ok(said.includes(label) && said.includes('ignore what is on Coins'), `the screen does not say both sides by their labels: ${said}`);
+    }
+    assert.strictEqual(run({}, { source: 'none' }).h2, 'green', 'the set took its units from the boxes, and so does the screen');
 
     // AND THE PICKER ALWAYS OFFERS THAT EMPTY ENTRY, whatever is on the box.
     const opts = UI.slice(UI.indexOf('function swSetOptions('), UI.indexOf('\n}\n', UI.indexOf('function swSetOptions(')));
@@ -5338,21 +5376,29 @@ module.exports = {
     const dbl = stages.unitsForPassers(pairs.slice(0, 1), { singles: false, doubles: true, triples: false }, ['LTCUSDT', 'AAAUSDT', 'BBBUSDT']);
     assert.deepStrictEqual(dbl.map((u) => `${u.trade}+${u.ctx1}@${u.geometry}`), ['LTCUSDT+AAAUSDT@daily-3d', 'LTCUSDT+BBBUSDT@daily-3d']);
     // the launch refuses with nothing ticked, before anything is written
+    // RE-AIMED 3.185.0: the tick became a choice of three, named by the screen
+    // as where this run takes its units from, so the launch is asked for a
+    // source BY NAME. Each of the two lists refuses in its own words, because
+    // with two of them the owner has to be told which one it looked in.
     const coinsrun = require('../lib/coinsrun');
     const was = coinsrun.passingUnits;
-    coinsrun.passingUnits = () => [];
+    const asked = [];
+    coinsrun.passingUnits = (src) => { asked.push(src); return []; };
     try {
-      // the refusal names the section to go and tick, and quotes the tick by
-      // the label it carries (3.172.0)
-      assert.throws(() => stages.startStage1({ passers: true, sizes, nullN: 3, fee: 0.00125, name: `p-${Date.now().toString(36)}` }), /nothing is ticked under Candidates for Sweep on Coins/);
+      assert.throws(() => stages.startStage1({ coinsSource: 'passers', sizes, nullN: 3, fee: 0.00125, name: `p-${Date.now().toString(36)}` }), /nothing is ticked under coins and shapes that pass, at the top of Coins/);
+      assert.throws(() => stages.startStage1({ coinsSource: 'walk', sizes, nullN: 3, fee: 0.00125, name: `w-${Date.now().toString(36)}` }), /no row is ticked from a walk set, at the top of Coins/);
+      assert.deepStrictEqual(asked, ['passers', 'walk'], 'the launch asks the list the owner named, and no other');
+      // a name no screen offers is refused, never coerced
+      assert.throws(() => stages.startStage1({ coinsSource: 'sometimes', sizes, nullN: 3, fee: 0.00125, name: `x-${Date.now().toString(36)}` }), /there is no unit source called "sometimes"/);
     } finally { coinsrun.passingUnits = was; }
     // and the launch's own source: pairs replace the boxes and are written on the set
     const st = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
     const launch = st.slice(st.indexOf('function startStage1(params) {'), st.indexOf('const setName = nameOrRefuse(params.name, 1);'));
-    assert.ok(/const passers = params\.passers === true\n\s+\? require\('\.\/coinsrun'\)\.passingUnits\(\)/.test(launch), 'passers: true reads the ticked pairs off Coins');
+    assert.ok(/const source = params\.coinsSource == null \? 'none' : String\(params\.coinsSource\);/.test(launch), 'the launch reads the source by name');
+    assert.ok(/&& source !== 'none'\)\n\s+\? require\('\.\/coinsrun'\)\.passingUnits\(source\)/.test(launch), 'a named source reads that list off Coins');
     assert.ok(/const units = passers \? unitsForPassers\(passers, sizes, compare\) : unitsFor\(universe, sizes, geometries, compare\);/.test(launch), 'the pairs build the units');
     assert.ok(/\? \[\.\.\.new Set\(passers\.map\(\(x\) => x\.coin\)\)\]/.test(launch) && /\? \[\.\.\.new Set\(passers\.map\(\(x\) => x\.geometry\)\)\]/.test(launch), 'the universe and the shapes are read off the pairs');
-    assert.ok(/passers: passers \|\| null, campaign:/.test(st), 'the pairs are written on the set');
+    assert.ok(/coinsSource: source, passers: passers \|\| null, campaign:/.test(st), 'the source and the pairs are written on the set');
   },
 
   // THE 80/20 LAYOUT IS GONE FROM STAGE 1 (owner order, 2026-09-08). It kept no
