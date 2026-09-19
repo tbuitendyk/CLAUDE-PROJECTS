@@ -2193,7 +2193,7 @@ function vSetBoxHtml(list, chosen, stretch) {
     ? '<option value="">- no rule stands on the held-back window yet with a layout that keeps a reserve - read a rule on Held first -</option>'
     : '<option value="">- no Stage 4 record set on this box yet - cut one on the Funnel -</option>';
   return `<div class="row"><label class="f" title="every rule on this box that can be read on the ${stretchPlain(stretch)} window, newest first, with its coin and shape, its survivors of its target, and the newest ${stretchPlain(stretch)} set read from it. A rule is a Stage 4 record set cut on the Funnel or built on History.">Stage 4 record set<select id="vSet" style="min-width:28rem">${list.length
-    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} of ${x.target == null ? 'no target' : Number(x.target).toLocaleString()}${x.derived ? ' · half-life set' : ''} · ${vNewestWords(x.judge, stretch)}${stretch === 'reserve' && x.judge && x.judge.held && x.judge.held.newest ? ` · stands on its ${vNewestWords(x.judge, 'held')}` : ''}</option>`).join('')
+    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} of ${x.target == null ? 'no target' : Number(x.target).toLocaleString()}${x.derived ? ` · half-life set from ${esc(x.derived.fromName || x.derived.from)}` : ''} · ${vNewestWords(x.judge, stretch)}${stretch === 'reserve' && x.judge && x.judge.held && x.judge.held.newest ? ` · stands on its ${vNewestWords(x.judge, 'held')}` : ''}</option>`).join('')
     : empty}</select></label></div>`;
 }
 function vFootingHtml(d) {
@@ -2885,7 +2885,7 @@ function tnRememberedWindows() {
 function tnSetBoxHtml(list, chosen) {
   return `<div class="row" style="align-items:flex-end">
     <label class="f" title="which Stage 4 record set to capture the trades of, from every set on this box, newest first">Stage 4 record set<select id="tnSet">${list.length
-    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors${x.derived ? ' · half-life set' : ''}</option>`).join('')
+    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors${x.derived ? ` · half-life set from ${esc(x.derived.fromName || x.derived.from)}` : ''}</option>`).join('')
     : '<option value="">no Stage 4 record set on this box yet</option>'}</select></label></div>`;
 }
 function tnCaptureBlockHtml(c) {
@@ -3453,7 +3453,7 @@ function glStage4PanelHtml(list, chosen, d) {
       work until the live path speaks that agreement.</p>
     <div class="row" style="align-items:flex-end">
       <label class="f" title="which held set or reserve set to take a survivor from, from every one on this box, newest first, with the verdict it carries. A rule is never greenlighted: the set a press made on Held or Reserve is.">Stage 4 record set<select id="gl4Set">${list.length
-    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors · ${x.judge && x.judge.block ? `${x.judge.block.pass ? 'PASS' : 'FAIL'} ${esc(String(x.judge.block.at || '').slice(0, 10))}` : 'no verdict'}${x.derived ? ' · half-life set' : ''}</option>`).join('')
+    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors · ${x.judge && x.judge.block ? `${x.judge.block.pass ? 'PASS' : 'FAIL'} ${esc(String(x.judge.block.at || '').slice(0, 10))}` : 'no verdict'}${x.derived ? ` · half-life set from ${esc(x.derived.fromName || x.derived.from)}` : ''}</option>`).join('')
     : '<option value="">no held set or reserve set on this box yet - read a rule on Held first</option>'}</select></label></div>
     ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${esc(d.ruleSentence || '')} · ${(d.survivors || []).length} survivors${d.from ? ` · read from <b>${esc(d.from.name)}</b>` : ''}${d.standsOn ? ` · stands on ${esc(d.standsOn.name)}` : ''}
       · verdict ${d.gate ? `<b class="pos">stood (PASS, release ${esc(d.gate.release || '?')})</b>` : `<b class="neg">does not stand</b> - ${esc(d.standing || '')}`}${d.heldAlone && d.kind === 'held' ? ` · ${esc(d.heldAlone)}` : ''}${d.members ? ` · ${d.members} members as the stage 2 set trained them` : ''}${d.refused ? ` · <b class="warn">refused:</b> ${esc(d.refused)}` : ''}</p>
@@ -9094,6 +9094,16 @@ const cSortWords = (list, names) => (list || []).map((x) => `${esc(names[x.key] 
 // which is where Chrome offers to close the page. A hundred rows is half a
 // second for the lot.
 const C_WALK_PER = 100;
+// THE TWO THINGS THIS PANEL SAYS WHEN IT HAS NO ROWS, each in a template of its
+// own. They were written inline, one on each arm of a ternary, which put
+// `') : (!rows.length ? '` between a closing tag and an opening one -- and the
+// word-list check that walks the page reads anything between two tags as
+// something the owner can see, so it reported `rows.length` as a label on the
+// Coins screen. The check is right to be strict; the markup was what needed
+// straightening (RULE ONE-A: the list is the authority, so a reader loose
+// enough to forgive this would be a reader that could miss a real label).
+const C_WALK_NONE_YET = '<p class="note">nothing walked yet — press <b>Walk it forward</b>, or open a set above</p>';
+const C_WALK_NO_HISTORY = '<p class="note">no coin and shape had enough history for a window this long</p>';
 // ONE SORTING MECHANISM, TWO TABLES (3.164.0). The walk's table and Choose
 // early, read late both sort through this; a second implementation beside it is
 // how the two end up disagreeing about where a missing figure goes.
@@ -9990,7 +10000,7 @@ function cWalkPanel() {
       <span id="wOut" class="muted">${heldBy ? esc(`${heldBy} — Walk it forward wakes when it lands`) : cWalkLine()}</span>
     </div>
     ${(st && st.error) ? `<p class="note warn">the walk stopped: ${esc(st.error)}</p>` : ''}
-    ${!rows ? (walking ? '' : '<p class="note">nothing walked yet — press <b>Walk it forward</b>, or open a set above</p>') : (!rows.length ? '<p class="note">no coin and shape had enough history for a window this long</p>' : `
+    ${!rows ? (walking ? '' : C_WALK_NONE_YET) : (!rows.length ? C_WALK_NO_HISTORY : `
     ${cWalkFilterRow()}
     ${cScreensRow()}
     ${wShown.length ? '' : `<p class="note warn" style="margin:.6rem 0"><b>All ${rows.length.toLocaleString()} row(s) of this walk are hidden by the filter boxes above.</b>

@@ -221,6 +221,60 @@ module.exports = {
   //
   // A word can be legal on one screen and forbidden on another. The list is the
   // authority; this records where each of these stands.
+  // THE TABLE IN CLAUDE.md IS HELD TO THE GENERATOR, ROW BY ROW (3.187.0,
+  // owner order: "whatever needs to be addressed for points four and five,
+  // make sure that you do address them and correct those issues").
+  //
+  // RULE ONE-A's table of proved-forbidden words says, for each one, which
+  // screens it is legal on. It has been WRONG SIX TIMES, every time because a
+  // row was typed from memory: three of them told the owner a word was one
+  // they could not see when it was on the screen in front of them, one left two
+  // words marked legal on screens deleted that morning, one named a screen that
+  // no longer exists at all, and one the file itself admitted to and left
+  // standing. The rule's own words are "a rule that depends on remembering is
+  // not a rule" -- so the table stops depending on it here.
+  //
+  // Each row is `| \`word\`, \`word\` | **Tab**, **Tab** | ... |`, or
+  // **nowhere**. This reads those two columns and holds them to what the
+  // generator finds, in both directions: a screen the row claims and the word
+  // is not on, and a screen the word is on and the row does not claim.
+  async theForbiddenWordsTableInClaudeMdMatchesTheGenerator() {
+    const md = path.join(ROOT, '..', 'CLAUDE.md');
+    if (!fs.existsSync(md)) return;            // the file is one level up; nothing to hold if it is not there
+    const text = fs.readFileSync(md, 'utf8');
+    const where = {};
+    for (const t of tabs()) {
+      for (const w of collect(t.fn).words) {
+        const k = String(w).toLowerCase();
+        (where[k] = where[k] || new Set()).add(t.label);
+      }
+    }
+    const real = new Set(tabs().map((t) => t.label));
+    const wrong = [];
+    // the rows of the one table whose first column is backticked words and
+    // whose second says where they are legal
+    for (const line of text.split('\n')) {
+      const m = line.match(/^\|\s*((?:`[^`]+`(?:,\s*)?)+)\s*\|\s*([^|]+?)\s*\|/);
+      if (!m) continue;
+      const words = [...m[1].matchAll(/`([^`]+)`/g)].map((x) => x[1].toLowerCase());
+      const col = m[2];
+      const claimed = /\*\*nowhere\*\*/i.test(col) ? [] : [...col.matchAll(/\*\*([A-Za-z][A-Za-z -]*)\*\*/g)].map((x) => x[1].trim());
+      // a screen named in the table that is not a screen any more
+      for (const c of claimed) if (!real.has(c)) wrong.push(`the row for ${words.map((w) => `\`${w}\``).join(', ')} names "${c}", which is not a tab`);
+      for (const w of words) {
+        const got = [...(where[w] || [])].sort();
+        const want = claimed.slice().sort();
+        if (got.join(',') !== want.join(',')) {
+          wrong.push(`\`${w}\` is on ${got.join(', ') || 'no screen'} and the table says ${want.join(', ') || 'nowhere'}`);
+        }
+      }
+    }
+    assert.deepStrictEqual(wrong, [],
+      'RULE ONE-A\'s table of proved-forbidden words disagrees with the screens it describes. '
+      + 'A table with a false row is the fault that rule exists to end, because the rule says the table is the authority:\n  '
+      + wrong.join('\n  '));
+  },
+
   async theInternalNamesThatBurnedUsAreOnlyWhereTheScreenPutsThem() {
     // Third correction, 2026-08-26: 'logreg' and 'boost' are on BOARDS — the
     // model column of the panel the inspect button opens shows them for every

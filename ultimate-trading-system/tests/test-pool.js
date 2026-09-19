@@ -80,14 +80,39 @@ module.exports = {
     // and it must actually reach the real work, or the test proves nothing
     assert.ok(seen.has('bracketwork.js') && seen.has('logreg.js'), 'worker should reach the training code');
   },
+  // RE-AIMED 3.187.0 AT THE RULE, not at this machine's answer. It used to call
+  // configuredSize() and judge the number that came back -- which reads
+  // data/settings.json, and that file is not in the repository, so it says
+  // something different on every box. Any box carrying a worker_threads
+  // override failed this, which is a false alarm about the product and exactly
+  // the kind of noise that hides a real failure.
   async poolSizeLeavesHeadroom() {
-    // Default must leave CPUs for the two VirtualBox guests, the host and the
-    // services already running here — four in total on the deploy box.
+    const { sizeFor, RESERVED_CPUS, MAX_WORKERS } = require('../lib/pool');
+    // THE DEFAULT leaves CPUs for the two VirtualBox guests, the host and the
+    // services already running beside this — four in total on the deploy box.
+    for (const cores of [1, 2, 4, 6, 8, 12, 16, 64]) {
+      const n = sizeFor(null, cores);
+      assert.ok(n >= 1, `the default asks for ${n} workers on ${cores} CPUs — a small box still gets one`);
+      assert.ok(n <= MAX_WORKERS, `the default asks for ${n} workers on ${cores} CPUs, past the cap of ${MAX_WORKERS}`);
+      assert.ok(n === 1 || n <= cores - RESERVED_CPUS,
+        `the default asks for ${n} workers of ${cores} CPUs and does not leave ${RESERVED_CPUS}`);
+    }
+    assert.strictEqual(sizeFor(null, 8), 4, 'on the deploy box the default is four workers of eight CPUs');
+    // AN OVERRIDE IS THE OWNER'S and is honoured — but never past the CPUs
+    // that exist, because more threads than cores is slower, not faster.
+    assert.strictEqual(sizeFor(2, 4), 2, 'an override the box can run is not honoured');
+    assert.strictEqual(sizeFor(99, 4), 4, 'an override past the CPUs that exist is not brought back to them');
+    assert.strictEqual(sizeFor(0, 8), 4, 'nought is read as a setting rather than as none');
+    for (const junk of [null, undefined, '', 'lots', NaN, -3]) {
+      assert.strictEqual(sizeFor(junk, 8), 4, `${JSON.stringify(junk)} in the settings file is read as a worker count`);
+    }
+    // and the answer on THIS machine is the rule applied to it, whatever the
+    // settings file here happens to say
     const os = require('os');
-    const n = configuredSize();
-    assert.ok(n >= 1 && n <= 4, `pool size ${n} outside expected 1..4`);
-    assert.ok(n <= Math.max(1, os.cpus().length - 4) || n === 1,
-      `pool size ${n} does not leave 4 CPUs of ${os.cpus().length}`);
+    let cfg = null;
+    try { cfg = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'data', 'settings.json'), 'utf8')).worker_threads; } catch (_) { cfg = null; }
+    assert.strictEqual(configuredSize(), sizeFor(cfg, os.cpus().length),
+      'configuredSize is not the rule applied to this box\'s settings and CPU count');
   },
   async workersRunNicedAndTheMainThreadDoesNot() {
     // A 3-worker job timed out the mail VM's SMTP sessions on the shared host.

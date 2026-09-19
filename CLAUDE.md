@@ -84,7 +84,7 @@ When unsure whether a name is real: do not write it.
 
 **`SCREEN-WORDS.md` in the ultimate-trading-system folder is the ONLY vocabulary
 permitted when talking about anything on any Construct screen.** It carries one
-list per tab: Data, Sweep, Boards, Verify, History, Tune, Greenlight. Not a guide. A closed
+list per tab, and the tab list itself is read from the code, never typed here. Not a guide. A closed
 list. If a word is not on it, it may not be used to name anything on that screen.
 
 The owner's words: "LOOK AT EVERY SINGLE WORD YOU USE ON EVERY SINGLE CONTROL OF
@@ -119,9 +119,9 @@ said to check. Checking is a judgement I kept failing, so it is now a lookup.
   line were on the owner's screen and on no list. Both directions of the check
   read through the same reader, so neither could see the hole. The walk now
   follows helpers as far as they go, and **a screen renderer is a dead end**:
-  Verify's status strip calls `draw()`, the tab dispatcher, and following that
-  put all 82 of Boards' controls on Verify's list — over-collecting is the
-  opposite failure and it authorises words the owner cannot see.
+  one screen's status strip called `draw()`, the tab dispatcher, and following
+  that put all 82 of Boards' controls on that screen's list — over-collecting is
+  the opposite failure and it authorises words the owner cannot see.
 
 **Words already proved forbidden**, with what they really are:
 
@@ -134,43 +134,48 @@ column below is either on the screen or plain English, and that is the test each
 new row has to pass.
 
 **A WORD CAN BE LEGAL ON ONE SCREEN AND FORBIDDEN ON ANOTHER**, which is why
-the lists are per tab. Checked mechanically, and the check corrected two entries
-that were written here from memory: `promoted` really is on **Verify**, and
-`committee` really is on **Boards** and **Tune**. Neither is on Sweep. Saying
-"that word is jargon" when the owner can see it on the screen in front of them
-is the same fault pointing the other way.
+the lists are per tab. Saying "that word is jargon" when the owner can see it on
+the screen in front of them is the same fault pointing the other way.
 
 | I wrote | Where it is legal | What it actually is |
 |---|---|---|
 | `logreg`, `boost` | **Sweep**, **Boards** | Two different ways of working out a forecast from the same prices; each member of the group that votes on one coin is one of them, reading one slice of the numbers. Named on purpose on both screens — Sweep says which kind each stage trains, Boards shows them per member — because the owner asked why the model in use was being kept dark. |
-| `member` | **Sweep**, **Boards** | One forecast in the group that votes on a coin. |
-| `committee` | **Boards**, **Tune** | The whole group of forecasts that vote on one coin. Not on Sweep — there it is `members`, `agree`, and the shares. |
-| `promoted` | **Verify** | The second, fuller scoring of the best rows. Legal on Verify; anywhere else, say what it does instead. |
-| `cell` | **nowhere** (2026-09-09) | One particular setting of `entry`, `gate`, `d`, `t`, `trail` and `arm` together. The generator finds it on no tab at all. Whether it was on History and Greenlight once and went, or whether this row was simply typed wrong, nobody can now say — typed rows here have been wrong before. Say `setting`, which is on **Sweep**, **Boards**, **Funnel**, **Verify**, **History** and **Greenlight**. |
+| `member` | **Boards**, **Coins**, **Sweep**, **Tune** | One forecast in the group that votes on a coin. |
+| `committee` | **Boards**, **Sweep** | The whole group of forecasts that vote on one coin. |
+| `promoted` | **Boards**, **Coins** | A row carried out of a walk set: a coin and a chunk shape together with the look-back and the band that walk found for them. Anywhere but those two screens, say what it does instead. |
+| `cell` | **nowhere** (2026-09-09) | One particular setting of `entry`, `gate`, `d`, `t`, `trail` and `arm` together. The generator finds it on no tab at all. Whether it was on History and Greenlight once and went, or whether this row was simply typed wrong, nobody can now say — typed rows here have been wrong before. Say `setting`, which is on **Boards**, **Coins**, **Funnel**, **Greenlight**, **Held**, **History**, **Reserve** and **Sweep**. |
 | `branch` | **nowhere** (2026-08-28) | Was on the deleted Sweep, in front of the four boxes it named. Those boxes are on the surviving Sweep and that word is not, so it is forbidden again: say `decision`, `band % (or auto)`, `24/5` and `chunk shape` by name. |
 | `slim` | **nowhere** (2026-08-28) | Everything scored once, cheaply, before the best of it is scored again in full. It was on the deleted Sweep's two boxes and in the deleted Boards' plan line; both went, so the word went with them. On the three stages, say "stage 1" and "stage 2". |
 | `combo` | **nowhere** | One coin on its own, or one coin alongside the others it is read against — `singles`, `doubles`, `triples` choose which. |
 | `contexts` | **nowhere** | The other coins a coin is read alongside. Say "alongside one other coin" or "alongside two others", which is what the screen says. |
 
-Every placement in that table is READ OUT OF THE GENERATOR, never typed. It has
-been wrong five times by being typed — three of them telling the owner a word
-was one they could not see when it was on the screen in front of them, the
-fourth (2026-08-28) leaving `slim` and `branch` marked legal on screens that had
-been deleted that morning, and the fifth (2026-09-09) `cell`, corrected above.
+**EVERY PLACEMENT IN THAT TABLE IS NOW CHECKED, NOT REMEMBERED** (owner order,
+2026-09-19). `tests/test-sweepwords.js ::
+theForbiddenWordsTableInClaudeMdMatchesTheGenerator` reads the two left-hand
+columns of every row and holds them to what the generator finds, in both
+directions — a screen a row claims and the word is not on, and a screen the word
+is on and the row does not claim — and it fails on a row naming a tab that no
+longer exists.
 
-**And on 2026-09-09 the whole table was checked against the generator for the
-first time, row by row, and TWO MORE ROWS ARE WRONG AND STILL STAND.** They are
-left standing because the owner authorised the `cell` fix and nothing else
-(RULE ZERO), and they are named here so nobody reads past them:
+It had to be, because the table had been wrong SIX times by being typed:
 
-- **`committee` is on Boards and SWEEP, not Boards and Tune.** Its row says "Not
-  on Sweep" and that is false; it is not on Tune at all.
-- **`promoted` is on BOARDS, not Verify.** Its row sends the reader to the wrong
-  screen entirely.
+- three of them telling the owner a word was one they could not see when it was
+  on the screen in front of them;
+- the fourth (2026-08-28) leaving `slim` and `branch` marked legal on screens
+  that had been deleted that morning;
+- the fifth (2026-09-09) `cell`;
+- and the sixth on 2026-09-09 as well, when the whole table was read against the
+  generator by hand and TWO rows were found wrong and LEFT STANDING, named in a
+  paragraph telling the reader not to trust them. That paragraph stood for ten
+  days. A table with a row it admits is false is the failure this rule was
+  written to end, and writing the falsehood down is not a substitute for fixing
+  it.
 
-Until those two rows are corrected, this table is authoritative for every row
-except those two. A table with known-false rows is the failure RULE ONE-A was
-written to end, so correcting them is the next thing to do to this file.
+When the check ran for the first time it found THREE wrong rows, not the two
+that had been written down: `committee` (Boards and Sweep, not Boards and Tune),
+`promoted` (Boards and Coins, not Verify — a tab that no longer exists), and
+`member`, which had quietly spread to Coins and Tune while nobody was reading.
+All three are corrected above, from the generator.
 
 **To check a word**: find the tab in `ultimate-trading-system/SCREEN-WORDS.md`
 and look. That is the whole procedure.
@@ -250,8 +255,9 @@ on the owner's screen.
   training slice", not "the checking part", not "the last chunk". Those four
   words are the owner's and they do not get simplified, shortened, expanded or
   prettified in any reply, at any reading level. Where a screen says something
-  longer for one of them — Verify says `held-back` — quote the screen when
-  naming the control and use the owner's word everywhere else.
+  longer for one of them — Boards, Funnel, Held, History, Reserve and Tune all
+  say `held-back` — quote the screen when naming the control and use the
+  owner's word everywhere else.
 - **The same holds for every other agreed word**, whether it came off a screen
   or out of the owner's mouth in conversation. Once a thing has a name here, it
   has one name.

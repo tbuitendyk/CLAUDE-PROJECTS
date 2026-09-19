@@ -61,6 +61,25 @@ const SETTINGS_FILE = path.join(__dirname, '..', 'data', 'settings.json');
 const RESERVED_CPUS = 4;
 const MAX_WORKERS = 4;
 
+// THE SIZING RULE ITSELF, as arithmetic on what is set and how many CPUs there
+// are (3.187.0). Split out of configuredSize because the rule is the thing
+// worth holding and configuredSize's answer is not: data/settings.json is not
+// in the repository, so it says something different on every box, and a check
+// on the answer was really a check on the machine it happened to run on. It
+// failed on any box carrying an override, which is a false alarm about the
+// product and the class of noise that hides a real failure.
+//
+// `cfg` is what data/settings.json holds under worker_threads, or nothing.
+// Set, it is the owner's and it is honoured -- clamped to the CPUs that exist,
+// because more threads than cores is slower, never faster. Unset, the default
+// leaves RESERVED_CPUS for the guests, the host and the services, and takes at
+// most MAX_WORKERS of what is left; a small box still gets one.
+function sizeFor(cfg, cores) {
+  const cpus = Math.max(1, Math.floor(Number(cores) || 1));
+  const n = Number(cfg);
+  if (Number.isFinite(n) && n >= 1) return Math.min(Math.floor(n), cpus);
+  return Math.max(1, Math.min(cpus - RESERVED_CPUS, MAX_WORKERS));
+}
 function configuredSize() {
   let cfg = null;
   try {
@@ -68,10 +87,7 @@ function configuredSize() {
   } catch {
     /* no settings yet */
   }
-  const cores = Math.max(1, os.cpus().length);
-  const n = Number(cfg);
-  if (Number.isFinite(n) && n >= 1) return Math.min(Math.floor(n), cores);
-  return Math.max(1, Math.min(cores - RESERVED_CPUS, MAX_WORKERS));
+  return sizeFor(cfg, os.cpus().length);
 }
 
 class Pool {
@@ -312,4 +328,4 @@ function createPool(size) {
   return new Pool(size == null ? configuredSize() : size);
 }
 
-module.exports = { createPool, configuredSize, Pool };
+module.exports = { createPool, configuredSize, sizeFor, Pool, RESERVED_CPUS, MAX_WORKERS };

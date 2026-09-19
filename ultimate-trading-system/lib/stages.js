@@ -1811,7 +1811,25 @@ function agreeLabel(a) {
 // families against the all bar. Against the own history bar, and for voices
 // whichever bar it uses, the bar resolves against each unit's own data at
 // pricing time, so every share stands.
-function agreementsFor(params, sizes) {
+// THE COMMITTEE SHAPES A RUN ACTUALLY HOLDS, read off its records (3.187.0).
+// A committee is its size AND how many members were added from a walk set, and
+// those two do not vary together: one unit can be a single carrying two extras
+// while the next is a triple carrying none. Read as a cross of the two lists
+// it would invent shapes the run does not hold; read as the PAIRS that occur
+// it says what is there. Same shape as `sizes` has always been read.
+const shapesOf = (records) => {
+  const seen = new Map();
+  for (const r of records || []) {
+    const size = r.size || (r.ctx1 ? (r.ctx2 ? 3 : 2) : 1);
+    const nExtras = Array.isArray(r.extras) ? r.extras.length : 0;
+    seen.set(`${size}|${nExtras}`, { size, nExtras });
+  }
+  return [...seen.values()];
+};
+// `shapes` is the list above. Left out, every committee is read as carrying no
+// member from a walk set -- which is every run that existed before they did,
+// and what `sizes` alone has always meant.
+function agreementsFor(params, sizes, shapes = null) {
   const rules = params.agreePermuteRule
     ? agreement.AGREE_RULES.slice()
     : [agreement.AGREE_RULES.includes(params.agreeRule) ? params.agreeRule : 'count'];
@@ -1825,14 +1843,19 @@ function agreementsFor(params, sizes) {
   for (const p of pcts) if (!Number.isFinite(p) || p <= 0 || p > 100) throw new Error(`agreement share must be a percent above 0, not "${p}"`);
   const boths = params.agreePermuteBoth ? [false, true] : [!!params.agreeBothModels];
   const persists = params.agreePermutePersist ? PERSISTS.slice() : [Math.max(0, Math.floor(Number(params.agreePersist) || 0))];
-  const seenSizes = (sizes && sizes.length ? sizes : [1]);
   // THE COMMITTEE IS BIGGER WHEN THE UNITS CARRY EXTRAS (3.184.0). This folds
-  // two agreement shares into one when they land on the same rung, and the
-  // rung depends on how many members there ARE. Read from the size alone, a
-  // run whose units carry an extra would fold two shares that land on
-  // DIFFERENT rungs -- two genuinely different settings collapsed into one,
-  // silently. Nought here is exactly what it was before.
-  const nx = Math.max(0, Math.floor(Number(params.nExtras) || 0));
+  // two agreement shares into one when they land on the same rung, and the rung
+  // depends on how many members there ARE. Read from the size alone, a run
+  // whose units carry an extra folds two shares that land on DIFFERENT rungs --
+  // two genuinely different settings collapsed into one, silently.
+  //
+  // 3.187.0: it is read from the RECORDS now, one pair per committee shape the
+  // run really holds, and never from a number on the block. It was a number on
+  // the block until this release and nothing ever set it, so the fold has been
+  // reading nought on every run -- correct on every set that exists, and wrong
+  // the first time a stage 3 prices a parent built from a walk set.
+  const seenShapes = (shapes && shapes.length ? shapes
+    : (sizes && sizes.length ? sizes : [1]).map((z) => ({ size: z, nExtras: 0 })));
   const out = [];
   const seen = new Set();
   for (const rule of rules) {
@@ -1856,12 +1879,14 @@ function agreementsFor(params, sizes) {
       }
       for (const bar of bars) {
         for (const pct of pcts) {
-          // the rungs this share lands on, one per committee size in the run
+          // the rungs this share lands on, one per committee SHAPE in the run
+          // -- its size and how many members it took from a walk set, because
+          // both change how many there are to count
           let key = null;
           if (bar === 'all' && (rule === 'count' || rule === 'conviction')) {
-            key = `${rule}|${seenSizes.map((z) => rungFor(pct, membersForSize(z) + 2 * nx)).join(',')}`;
+            key = `${rule}|${seenShapes.map((q) => rungFor(pct, membersForSize(q.size) + 2 * q.nExtras)).join(',')}`;
           } else if (bar === 'all' && rule === 'families') {
-            key = `${rule}|${seenSizes.map((z) => rungFor(pct, readingsForSize(z) + nx)).join(',')}`;
+            key = `${rule}|${seenShapes.map((q) => rungFor(pct, readingsForSize(q.size) + q.nExtras)).join(',')}`;
           }
           for (const bothModels of boths) {
             for (const persist of persists) {
@@ -2147,9 +2172,9 @@ function confirmLabel(confirm, kx, ux) {
   if (confirm === 'sized') return ` \u00b7 sized \u00d7${kx}/\u00d7${ux}`;
   return '';
 }
-function settingsFor(params, sizes = null) {
+function settingsFor(params, sizes = null, shapes = null) {
   const cells = shapeCellsFor(params);
-  const agrees = agreementsFor(params, sizes);
+  const agrees = agreementsFor(params, sizes, shapes);
   const { decisions, bands, weekdays, confirms, kx, ux } = blockAxesFor(params);
   const out = [];
   for (const decision of decisions) {
@@ -2506,7 +2531,9 @@ function noiseTwinOf(doc) {
 // test holds the two equal.
 function countDeclared(params, sizes, records, leans = null) {
   const cells = shapeCellsFor(params);
-  const agrees = agreementsFor(params, sizes);
+  // the committee shapes come off the records this count is about, so the cost
+  // line and the launch cannot disagree about how big the committees are
+  const agrees = agreementsFor(params, sizes, shapesOf(records));
   const { decisions, bands, weekdays, confirms } = blockAxesFor(params);
   const declared = decisions.length * bands.length * weekdays.length * cells.length * agrees.length * confirms.length;
   if (!Array.isArray(records) || !records.length) return { declared, kept: declared, folded: 0, perUnit: [], pricings: 0, weekdaysApply: true, leanUnits: 0 };
@@ -2794,7 +2821,7 @@ function startStage3(params) {
     doc.progress = 'writing the plan: building the settings';
     saveSet(doc);
     await new Promise((resolve) => { setImmediate(resolve); });
-    const declaredSettings = settingsFor(params, sizes);
+    const declaredSettings = settingsFor(params, sizes, shapesOf(parentRecords));
     const { kept: settings, folded: sameTrade, heldOn } = foldSameTradeSettings(declaredSettings, parentRecords, leans);
     if (settings.length !== counted.kept || declaredSettings.length !== counted.declared) {
       throw new Error(`the count said ${counted.kept.toLocaleString()} settings (${counted.declared.toLocaleString()} declared) and the block `
@@ -3122,7 +3149,7 @@ function continueStage3(id) {
     saveSet(doc);
     await yieldNow();
     const sizes = [...new Set(parentRecords.map((r) => r.size || (r.ctx1 ? (r.ctx2 ? 3 : 2) : 1)))];
-    const { kept: settings, heldOn } = foldSameTradeSettings(settingsFor(doc.params || {}, sizes), parentRecords, (doc.params || {}).confirmLeans || null);
+    const { kept: settings, heldOn } = foldSameTradeSettings(settingsFor(doc.params || {}, sizes, shapesOf(parentRecords)), parentRecords, (doc.params || {}).confirmLeans || null);
     const labels = (doc.plan || {}).settingLabels || [];
     if (settings.length !== (doc.plan || {}).settings || labels.length !== settings.length || settings.some((st, i) => st.label !== labels[i])) {
       throw notStarted(`the block rebuilds to ${settings.length.toLocaleString()} settings and this run declared ${Number((doc.plan || {}).settings || 0).toLocaleString()} — `
@@ -4205,7 +4232,7 @@ function relaunchShapeOf(doc) {
   const { records } = stage3UnitsFor(parent, choice.carry, choice.selected);
   if (!records.length) throw new Error(`${parent.name} holds no records — the units cannot be rebuilt`);
   const sizes = [...new Set(records.map((r) => r.size || (r.ctx1 ? (r.ctx2 ? 3 : 2) : 1)))];
-  const { kept, heldOn } = foldSameTradeSettings(settingsFor(doc.params || {}, sizes), records, (doc.params || {}).confirmLeans || null);
+  const { kept, heldOn } = foldSameTradeSettings(settingsFor(doc.params || {}, sizes, shapesOf(records)), records, (doc.params || {}).confirmLeans || null);
   // every setting carries its place in the block, and heldOn[i] lists the
   // places records[i] holds
   return { parent, records, settings: kept.map((st, si) => ({ ...st, si })), heldOn };
@@ -9880,7 +9907,7 @@ module.exports = {
   startStage1, startStage2, startStage3,
   missingUnitsOf, unitFillRefusal, fillMissingUnitsStart, fillMissingUnitsStatus, rebuildRanking,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
-  settingsFor, unitsFor, unitsForPassers, unitMembers, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, confirmWanted, confirmLeansFor, coinsSourceOf, confirmLabel, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
+  settingsFor, unitsFor, unitsForPassers, unitMembers, shapesOf, agreementsFor, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, confirmWanted, confirmLeansFor, coinsSourceOf, confirmLabel, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
   setSetPicked, pickedOf, unitsChoiceOf, stage3RecordsFor, PICK_CHOICES, PICK_LABELS, stage3UnitsFor,
   setSetNotes, setSetName, nextNames, nextFreeName, nameTaken, setSetSort, setSetFilters, recordHeldBackLook, stage2Rows, stage2Ordered, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,

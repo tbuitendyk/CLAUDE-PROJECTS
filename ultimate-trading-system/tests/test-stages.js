@@ -254,7 +254,9 @@ module.exports = {
     assert.ok(before.includes("if (!counted.kept) throw new Error('the block declared no settings');"), 'an empty block still refuses at the press');
     assert.ok(before.includes('tallyBudgetFor({ settings: counted.kept, coins: coinsN })') && before.includes('storeBudgetFor({ rows: counted.pricings })'),
       'both budget gates are the count\'s arithmetic — and the disk gate reads what the units hold between them, never settings × units');
-    assert.ok(after.includes('const declaredSettings = settingsFor(params, sizes);') && after.includes('foldSameTradeSettings(declaredSettings, parentRecords, leans)'),
+    // RE-AIMED 3.187.0: the block is built from the committee shapes its own
+    // records carry, which is how the extras reach the fold.
+    assert.ok(after.includes('const declaredSettings = settingsFor(params, sizes, shapesOf(parentRecords));') && after.includes('foldSameTradeSettings(declaredSettings, parentRecords, leans)'),
       'the block is built and folded behind the answer');
     // 3.82.0: the hand-out lives in runStage3Parts, shared with a paused run
     // started again; the launch checks the block, then calls it
@@ -643,7 +645,12 @@ module.exports = {
   // one across every unit, and a block with nothing to fold at all.
   async theStageThreeCountIsTheLaunchsFoldWithoutTheSettings() {
     const same = (b, sizes, records, why, leans = null) => {
-      const slow = stages.settingsFor(b, sizes);
+      // BOTH SIDES ARE GIVEN THE SAME COMMITTEE SHAPES (3.187.0). The fast
+      // count reads them off the records; the slow build has to be handed the
+      // same ones or this compares two different blocks. With `sizes` null and
+      // records present the two used to differ -- the count fell back to a
+      // committee of one and the records held two sizes.
+      const slow = stages.settingsFor(b, sizes, stages.shapesOf(records));
       const fold = stages.foldSameTradeSettings(slow, records, leans);
       const fast = stages.countDeclared(b, sizes, records, leans);
       assert.deepStrictEqual([fast.declared, fast.kept, fast.folded], [slow.length, fold.kept.length, fold.folded.length], why);
@@ -769,6 +776,69 @@ module.exports = {
         ['off', false, 2, 1, {}], 'the set says what it used');
       await untilEnded(got.id);
     } finally { cleanLaunchParent(pid); }
+  },
+
+  // THE FOLD READS THE COMMITTEE SHAPES THE RUN REALLY HOLDS (3.187.0, owner
+  // order: "make sure that the stage three launch includes the extras being
+  // set"). This was PARKED at 3.184.0 and is closed here.
+  //
+  // What was wrong. Two agreement shares are one setting when they land on the
+  // same rung, and the rung depends on how many members there ARE. The fold
+  // read that count off `params.nExtras` -- a number on the stage 3 block that
+  // NOTHING EVER SET. It was therefore nought on every run: correct on every
+  // set that exists, because none carries an extra, and wrong the first time a
+  // stage 3 prices a parent built from a walk set. Two genuinely different
+  // settings would have folded into one, silently.
+  //
+  // It is read off the RECORDS now, as `sizes` always has been. And as PAIRS,
+  // not as a cross of two lists: one unit can be a single carrying two extras
+  // while the next is a triple carrying none, and a cross would invent a
+  // committee shape the run does not hold.
+  //
+  // THE PRICING WAS NEVER WRONG, only the fold. At pricing time the rung comes
+  // from the member list itself (lib/committee.js denomFor), which has always
+  // had the extras in it -- so the fault was the cost line and the launch
+  // building fewer settings than the units could tell apart, never a trade
+  // placed at the wrong bar.
+  theFoldCountsTheExtrasTheRecordsActuallyCarry() {
+    const cell = { entry: 'market', tHours: 65 };
+    const B = { cell, agreeRule: 'count', agreeBar: 'all', agreePermutePct: true };
+    // the pairs, off the records, exactly as `sizes` is read
+    assert.deepStrictEqual(stages.shapesOf([{ size: 1 }, { size: 1, extras: null }]), [{ size: 1, nExtras: 0 }],
+      'two units with no extras are one committee shape');
+    assert.deepStrictEqual(stages.shapesOf([{ size: 1 }, { size: 1, extras: [{}, {}] }]),
+      [{ size: 1, nExtras: 0 }, { size: 1, nExtras: 2 }], 'a unit carrying extras is its own committee shape');
+    assert.deepStrictEqual(stages.shapesOf([{ ctx1: 'A', ctx2: 'B', extras: [{}] }]), [{ size: 3, nExtras: 1 }],
+      'a record with no size of its own is read off what it is alongside');
+    assert.deepStrictEqual(stages.shapesOf([]), [], 'no records is no shapes');
+    // AND THE FOLD SEES THEM. A committee of 8 and one of 12 land on different
+    // rungs, so shares that folded into one when both were read as 8 no longer do.
+    const plain = stages.agreementsFor(B, [1], stages.shapesOf([{ size: 1 }]));
+    const withEx = stages.agreementsFor(B, [1], stages.shapesOf([{ size: 1 }, { size: 1, extras: [{}, {}] }]));
+    assert.ok(withEx.length > plain.length,
+      `a run whose units carry extras folds to ${withEx.length} shares and one whose units do not folds to ${plain.length} — the extras are still invisible to the fold`);
+    // NOUGHT IS EXACTLY WHAT IT WAS BEFORE, on every set that exists today
+    assert.strictEqual(plain.length, stages.agreementsFor(B, [1]).length, 'a run with no extras no longer folds the way it always has');
+    assert.strictEqual(plain.length, stages.agreementsFor(B, [1], []).length, 'no records is read as something other than the sizes given');
+    // families counts KINDS of evidence, and an extra is its own kind: its
+    // slice is its own and no base member shares it (lib/committee.js reads
+    // `families` straight off the member list, which is what this mirrors)
+    const F = { cell, agreeRule: 'families', agreeBar: 'all', agreePermutePct: true };
+    assert.ok(stages.agreementsFor(F, [1], stages.shapesOf([{ size: 1, extras: [{}] }])).length
+      > stages.agreementsFor(F, [1], stages.shapesOf([{ size: 1 }])).length,
+      'a member from a walk set is not counted as a kind of evidence of its own');
+    // AND EVERY READER OF THE BLOCK IS HANDED THEM -- the cost line, the
+    // launch's plan, and both readers of a saved set. A reader left out would
+    // build a different number of settings from the one beside it, which the
+    // launch refuses on and calls a disagreement.
+    const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    assert.strictEqual((src.match(/shapesOf\(/g) || []).length, 4,
+      'a reader of the block is not handed the committee shapes, or a fifth reader was added without this test being looked at again');
+    assert.ok(/const agrees = agreementsFor\(params, sizes, shapesOf\(records\)\);/.test(src), 'the cost line does not read the shapes off its own records');
+    assert.ok(/const declaredSettings = settingsFor\(params, sizes, shapesOf\(parentRecords\)\);/.test(src), 'the launch does not build its plan from the shapes it will price');
+    assert.ok(/foldSameTradeSettings\(settingsFor\(doc\.params \|\| \{\}, sizes, shapesOf\(parentRecords\)\)/.test(src), 'a paused run started again rebuilds a different block from the one it paused with');
+    assert.ok(/foldSameTradeSettings\(settingsFor\(doc\.params \|\| \{\}, sizes, shapesOf\(records\)\)/.test(src), 'a finished set is read back with a different block from the one that priced it');
+    assert.ok(!/params\.nExtras/.test(src), 'the block still carries a member count that nothing sets');
   },
 
   // EVERY UNIT'S COMMITTEE IS ON SCREEN, MEMBER BY MEMBER (3.186.0, owner
