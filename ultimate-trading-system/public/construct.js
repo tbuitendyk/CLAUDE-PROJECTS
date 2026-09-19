@@ -8436,7 +8436,7 @@ const cState = (() => {
     wBandFrom: 200, wBandTo: 500, wBandStep: 25,
     wSort: 'asGood', wDir: 'asc',
     wSorts: [{ key: 'asGood', dir: 'asc' }], wF: {}, wFrom: 0, wAuto: false, wName: '', wSetPick: '',
-    sCut: '', sMin: 30, sSorts: [{ key: 'latePerTrade', dir: 'desc' }],
+    sCut: '', sMin: 30, sSorts: [{ key: 'latePerTrade', dir: 'desc' }], sF: {}, sAuto: false,
   };
   try { return { ...d, ...(JSON.parse(localStorage.getItem(C_KEY) || 'null') || {}) }; } catch (_) { return d; }
 })();
@@ -8801,6 +8801,27 @@ const C_WALK_OF = {
 // AND WHAT SITS BEHIND EACH OF ITS SHARES. Both of these are a count out of
 // the row's counted windows, so more windows is the tie-break for both.
 const C_WALK_DEPTH = { windowsUp: (r) => r.windows, paid: (r) => r.windows };
+// WHAT EACH SORTABLE COLUMN IS CALLED ON THE SCREEN (3.178.0). The line under
+// each table used to print the sort's internal key -- "sorted by latePerTrade
+// high to low", "sorted by asGood low to high" -- which is a name the owner
+// cannot see on any heading, in a sentence telling them what the table is
+// doing. RULE ONE. tests/test-coinscan.js checks every key here against the
+// heading that actually carries its button, in both directions.
+const C_WALK_NAME = {
+  coin: 'coin', geometry: 'chunk shape', lookback: 'look-back', band: 'band',
+  trades: 'trades', perTrade: 'per trade', windows: 'windows', windowsUp: 'windows up',
+  paid: 'windows paid', best: 'best window', worst: 'worst window', spread: 'spread',
+  perSpread: 'per trade per spread', asGood: 'scrambles as good', asGoodSlid: 'slides as good',
+  late: 'late', lead: 'lead', both: 'best on both halves',
+};
+const C_SPLIT_NAME = {
+  coin: 'coin', geometry: 'chunk shape', lookback: 'look-back', band: 'band',
+  earlyPerTrade: 'early', latePerTrade: 'late', blind: 'picking blind', lead: 'lead',
+  lateWindowsUp: 'late windows up', latePaid: 'late windows paid', lateWorst: 'worst late window',
+  percentile: 'percentile', wholeLookback: 'whole look-back', wholeBand: 'whole band',
+  wholePerTrade: 'whole per trade', both: 'best on both halves', sameAsEarly: 'same pick',
+};
+const cSortWords = (list, names) => (list || []).map((x) => `${esc(names[x.key] || x.key)} ${x.dir === 'desc' ? 'high to low' : 'low to high'}`).join(', then ');
 // HOW MANY ROWS A PAGE HOLDS (owner order, 2026-09-19). A hundred, which is
 // what every table on Boards pages at. Drawing all of a big walk at once is
 // what made a press of a sorting heading freeze the browser: measured at
@@ -8916,7 +8937,16 @@ function cWalkList(matches) {
   const atLeast = (v, min) => (min === '' || min == null || !Number.isFinite(Number(min)) ? true : (v != null && Number(v) >= Number(min)));
   const atMost = (v, max) => (max === '' || max == null || !Number.isFinite(Number(max)) ? true : (v != null && Number(v) <= Number(max)));
   const label = (k) => String((matches.shapes.find((x) => x.key === k) || {}).label || k).toLowerCase();
+  // THE PAIRS CHOOSE EARLY, READ LATE IS SHOWING (3.178.0, owner order
+  // 2026-09-19). Screen the coin-and-shape pairs below, screen the rows here,
+  // and the two compose -- which is what removes the looking-up of one table
+  // in the other. Worked out ONCE: a Set built inside the row loop is one Set
+  // per row. With no reading taken it hides nothing, the same rule the tick
+  // beside it follows and for the same reason.
+  const pairsOn = f.shownPairsOnly === 'yes' && cSplit && !cSplit.none && (cSplit.pairs || []).length;
+  const shownPairs = pairsOn ? cSplitShownPairs() : null;
   return matches.rows.filter((r) => {
+    if (shownPairs && !shownPairs.has(`${r.coin}|${r.geometry}`)) return false;
     if (coins.length && !coins.some((c) => String(r.coin).toLowerCase().includes(c))) return false;
     if (shapes.length && !shapes.some((g) => label(r.geometry).includes(g) || String(r.geometry).toLowerCase().includes(g))) return false;
     if (backs.length && !backs.includes(String(r.lookback).toLowerCase())) return false;
@@ -9126,7 +9156,7 @@ const cMark = (r) => cSplitMarks().get(`${r.coin}|${r.geometry}|${r.lookback}|${
 let cShownFor = null;
 let cShownWas = null;
 function cWalkShown(rows, shapes) {
-  const key = `${rows.length}|${JSON.stringify(cState.wF || {})}|${rows.length ? rows[0].coin : ''}`;
+  const key = `${rows.length}|${JSON.stringify(cState.wF || {})}|${rows.length ? rows[0].coin : ''}|${cSplitSeq}`;
   if (cShownFor === key && cShownWas) return cShownWas;
   cShownWas = cWalkList({ rows, shapes });
   cShownFor = key;
@@ -9153,7 +9183,7 @@ function cWalkShown(rows, shapes) {
 // this file for `id="..."` and a control whose id is assembled from a variable
 // is one it cannot see -- so it would be described on Help and found nowhere,
 // which is the opposite fault to the one it guards.
-const C_WALK_F_KEYS = ['bothOnly', 'coin', 'shape', 'back', 'band', 'minTrades', 'minPer', 'minWindows', 'minUp', 'minPaid',
+const C_WALK_F_KEYS = ['bothOnly', 'shownPairsOnly', 'coin', 'shape', 'back', 'band', 'minTrades', 'minPer', 'minWindows', 'minUp', 'minPaid',
   'minBest', 'minWorst', 'maxSpread', 'minPerSpread', 'maxGood', 'maxSlid'];
 function cFilterBoxesNow() {
   const out = {};
@@ -9198,7 +9228,7 @@ function cWalkFilterRow() {
   // No widths here either: .filters .fbox input is 8rem, once, in the
   // stylesheet.
   const v = (k) => esc(String(f[k] == null ? '' : f[k]));
-  return `<div class="filters">
+  return `<div class="filters three">
     <label title="show only rows whose coin contains one of these, comma separated. Blank shows every coin."><span class="fname">coins</span><span class="fbox"><input id="wf_coin" value="${v('coin')}"></span></label>
     <label title="show only rows whose chunk shape contains one of these, comma separated &mdash; daily, weekly, 3-day all work. Blank shows every shape."><span class="fname">chunk shapes</span><span class="fbox"><input id="wf_shape" value="${v('shape')}"></span></label>
     <label title="show only these look-backs, comma separated, in hours &mdash; or own. Blank shows every one."><span class="fname">look-backs</span><span class="fbox"><input id="wf_back" value="${v('back')}"></span></label>
@@ -9214,6 +9244,7 @@ function cWalkFilterRow() {
     <label title="hide rows that pay less than this for every point of scatter between their best half-year and their worst. This is the one box that asks for high money AND tight windows at once."><span class="fname">least per trade per spread</span><span class="fbox"><input id="wf_minPerSpread" type="number" step="any" value="${v('minPerSpread')}"></span></label>
     <label title="hide rows that more than this many scrambled copies matched."><span class="fname">most scrambles as good</span><span class="fbox"><input id="wf_maxGood" type="number" step="any" value="${v('maxGood')}"></span></label>
     <label title="hide rows that more than this many sliding copies matched."><span class="fname">most slides as good</span><span class="fbox"><input id="wf_maxSlid" type="number" step="any" value="${v('maxSlid')}"></span></label>
+    <label class="c frow" title="keep only the rows belonging to a coin and chunk shape that Choose early, read late is showing below. Screen the pairs down there, screen the rows up here, and the two work together. With no reading taken yet it hides nothing, the same as an empty box."><input id="wf_shownPairsOnly" type="checkbox"${cState.wF && cState.wF.shownPairsOnly ? ' checked' : ''}> only rows from the pairs shown below</label>
     <label class="c frow" title="keep only the rows Choose early, read late picked AND that also topped the LATE half — one setting winning both halves of the history. With no reading taken yet it hides nothing, the same as an empty box."><input id="wf_bothOnly" type="checkbox"${cState.wF && cState.wF.bothOnly ? ' checked' : ''}> only rows best on both halves</label>
     <span class="frow"><button id="wfApply" class="pri" disabled title="puts every box above on at once. Greyed out until a box says something different from what the table is already showing, and greyed out again if you type it back. Not needed while auto-apply settings is ticked.">Apply settings</button>
     <label class="c" title="ticked, each box goes on the moment you leave it. Unticked, nothing goes on until you press Apply settings &mdash; one wait for the whole set of boxes rather than one wait per box. The same control, and the same words, as the filters on Boards."><input type="checkbox" id="wfAuto"${cState.wAuto ? ' checked' : ''}> auto-apply settings</label>
@@ -9241,6 +9272,116 @@ function cWalkLine() {
     + ` · leaning ${a.signsMode === 'fixed' ? 'learned once on train' : 'learned before each window'}`
     + ` · ${a.scrambles == null ? 10 : a.scrambles} scrambled and ${a.scrambles == null ? 10 : a.scrambles} sliding copies`;
 }
+// ---- CHOOSE EARLY, READ LATE'S OWN FILTERS (3.178.0, owner order 2026-09-19:
+// "have filters that we can apply to the choose early read late view") --------
+//
+// It had sorting and nothing else, and a session then wrote the owner a set of
+// steps that said to screen it -- steps the software could not carry out. The
+// owner: "how do you propose i duplicate these using the software seeing
+// there's no filter settings available on this view?"
+//
+// THE SAME `div.filters` GRID Walk it forward and Boards already use, the same
+// button words, the same blank-hides-nothing rule. RULE ELEVEN clause 5: two
+// screens that do the same job do it the same way, and a second convention
+// beside the first is the drift RULE TWO exists to stop.
+//
+// EVERY ID IS WRITTEN OUT, not built in a loop -- the Help tab's own check
+// reads this file for `id="..."` and cannot see one assembled from a variable.
+const C_SPLIT_F_KEYS = ['coin', 'shape', 'minEarly', 'minLate', 'minLead', 'minPct',
+  'minLateWindows', 'minLateUp', 'minLatePaid', 'minLateWorst', 'minWhole', 'bothOnly', 'sameOnly'];
+function cSplitBoxesNow() {
+  const out = {};
+  for (const k of C_SPLIT_F_KEYS) {
+    const el = $(`#sf_${k}`);
+    if (el) out[k] = el.type === 'checkbox' ? (el.checked ? 'yes' : '') : el.value;
+  }
+  return out;
+}
+const cSplitFilterSame = (a, b) => C_SPLIT_F_KEYS.every((k) => String((a || {})[k] || '').trim() === String((b || {})[k] || '').trim());
+function cSplitFilterBtnState() {
+  const btn = $('#sfApply');
+  if (btn) btn.disabled = cSplitFilterSame(cSplitBoxesNow(), cState.sF);
+}
+function cApplySplitFilters() {
+  cState.sF = cSplitBoxesNow();
+  cSplitSeq++;                          // what Walk it forward shows can move with it
+  cShownFor = null;
+  cState.wFrom = 0;
+  cRemember();
+  cWalkRepaint(true);
+}
+// WHICH PAIRS SURVIVE THE BOXES. Shares the shape of cWalkList exactly: blanks
+// are dropped before anything is converted, because Number('') is 0 and 0 is
+// finite -- the fault that once hid all 4,896 rows of a walk behind a box
+// nobody had typed in.
+function cSplitList(pairs) {
+  const f = cState.sF || {};
+  const words = (v) => String(v || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+  const atLeast = (v, min) => (min === '' || min == null || !Number.isFinite(Number(min)) ? true : (v != null && Number(v) >= Number(min)));
+  const coins = words(f.coin);
+  const shapes = words(f.shape);
+  const shapeList = (cWalkRows && cWalkRows.shapes) || (cSplit && cSplit.shapes) || [];
+  const label = (k) => String((shapeList.find((x) => x.key === k) || {}).label || k).toLowerCase();
+  const share = (n, of) => (of ? (n / of) * 100 : null);
+  return (pairs || []).filter((p) => {
+    if (coins.length && !coins.some((c) => String(p.coin).toLowerCase().includes(c))) return false;
+    if (shapes.length && !shapes.some((g) => label(p.geometry).includes(g) || String(p.geometry).toLowerCase().includes(g))) return false;
+    if (!atLeast(p.earlyPerTrade, f.minEarly)) return false;
+    if (!atLeast(p.latePerTrade, f.minLate)) return false;
+    if (!atLeast(p.lead, f.minLead)) return false;
+    if (!atLeast(p.percentile, f.minPct)) return false;
+    if (!atLeast(p.lateWindows, f.minLateWindows)) return false;
+    if (!atLeast(share(p.lateWindowsUp, p.lateWindows), f.minLateUp)) return false;
+    if (!atLeast(share(p.lateWindowsPaid, p.lateWindows), f.minLatePaid)) return false;
+    if (!atLeast(p.lateWorst, f.minLateWorst)) return false;
+    if (!atLeast(p.wholePerTrade, f.minWhole)) return false;
+    if (f.bothOnly === 'yes' && !p.sameBothHalves) return false;
+    if (f.sameOnly === 'yes' && !p.sameAsEarly) return false;
+    return true;
+  });
+}
+// ONE FILTER PASS PER DRAW, the same reason cWalkShown has one: the count line,
+// the empty notice and the rows all want the same answer.
+let cSplitShownFor = null;
+let cSplitShownWas = null;
+let cSplitSeq = 0;                      // bumped whenever the reading or its boxes move
+function cSplitShown(pairs) {
+  const key = `${cSplitSeq}|${(pairs || []).length}`;
+  if (cSplitShownFor === key && cSplitShownWas) return cSplitShownWas;
+  cSplitShownWas = cSplitList(pairs);
+  cSplitShownFor = key;
+  return cSplitShownWas;
+}
+// AND WHICH COIN-AND-SHAPE PAIRS THOSE ARE, for the tick on Walk it forward
+// that keeps only the rows belonging to them.
+function cSplitShownPairs() {
+  const out = new Set();
+  for (const p of cSplitShown((cSplit && cSplit.pairs) || [])) out.add(`${p.coin}|${p.geometry}`);
+  return out;
+}
+function cSplitFilterRow() {
+  const f = cState.sF || {};
+  const v = (k) => esc(String(f[k] == null ? '' : f[k]));
+  return `<div class="filters three">
+    <label title="show only rows whose coin contains one of these, comma separated. Blank shows every coin."><span class="fname">coins</span><span class="fbox"><input id="sf_coin" value="${v('coin')}"></span></label>
+    <label title="show only rows whose chunk shape contains one of these, comma separated &mdash; daily, weekly, 3-day all work. Blank shows every shape."><span class="fname">chunk shapes</span><span class="fbox"><input id="sf_shape" value="${v('shape')}"></span></label>
+    <label title="hide rows whose pick made less than this a trade on the early windows &mdash; the half it was picked on."><span class="fname">least early, %</span><span class="fbox"><input id="sf_minEarly" type="number" step="any" value="${v('minEarly')}"></span></label>
+    <label title="hide rows whose pick made less than this a trade on the late windows, which the choosing never saw. Set it at the ${cTripPc()} round trip to keep only the picks that actually pay."><span class="fname">least late, %</span><span class="fbox"><input id="sf_minLate" type="number" step="any" value="${v('minLate')}"></span></label>
+    <label title="hide rows whose pick is less than this far ahead of picking blind. At nought it keeps only the rows where the choosing carried something."><span class="fname">least lead, %</span><span class="fbox"><input id="sf_minLead" type="number" step="any" value="${v('minLead')}"></span></label>
+    <label title="hide rows whose pick ranked below this among its own coin and shape's rows on the late windows. 50 is the middle, which is where no skill lands."><span class="fname">least percentile</span><span class="fbox"><input id="sf_minPct" type="number" step="any" value="${v('minPct')}"></span></label>
+    <label title="hide rows read on fewer late windows than this. A short window leaves some pairs resting on two or three, and two or three is not a reading."><span class="fname">fewest late windows</span><span class="fbox"><input id="sf_minLateWindows" type="number" step="any" value="${v('minLateWindows')}"></span></label>
+    <label title="hide rows where fewer than this share of their late windows made money."><span class="fname">least late windows up, %</span><span class="fbox"><input id="sf_minLateUp" type="number" step="any" value="${v('minLateUp')}"></span></label>
+    <label title="hide rows where fewer than this share of their late windows cleared the ${cTripPc()} round trip. Made money and paid are not the same thing, and this is the one that matters."><span class="fname">least late windows paid, %</span><span class="fbox"><input id="sf_minLatePaid" type="number" step="any" value="${v('minLatePaid')}"></span></label>
+    <label title="hide rows whose worst single late window made less than this. Set it at nought to keep only the picks that never had a losing late window."><span class="fname">least worst late window, %</span><span class="fbox"><input id="sf_minLateWorst" type="number" step="any" value="${v('minLateWorst')}"></span></label>
+    <label title="hide rows whose WHOLE-history row makes less than this a trade. That row is the setting to tune with, so this is the box that screens what you would actually promote."><span class="fname">least whole per trade, %</span><span class="fbox"><input id="sf_minWhole" type="number" step="any" value="${v('minWhole')}"></span></label>
+    <label class="c frow" title="keep only the rows whose pick ALSO topped the late half &mdash; one setting winning both halves of the history, two stretches that share nothing."><input id="sf_bothOnly" type="checkbox"${f.bothOnly === 'yes' ? ' checked' : ''}> only rows best on both halves</label>
+    <label class="c frow" title="keep only the rows where the whole history chose the same look-back and band as the early windows did. They need not agree &mdash; the early half has less to go on &mdash; so this is a strictness you turn on, not a fault when it is off."><input id="sf_sameOnly" type="checkbox"${f.sameOnly === 'yes' ? ' checked' : ''}> only rows same pick</label>
+    <span class="frow"><button id="sfApply" class="pri" disabled title="puts every box above on at once. Greyed out until a box says something different from what the table is already showing, and greyed out again if you type it back. Not needed while auto-apply settings is ticked.">Apply settings</button>
+    <label class="c" title="ticked, each box goes on the moment you leave it. Unticked, nothing goes on until you press Apply settings &mdash; one wait for the whole set of boxes rather than one wait per box. The same control, and the same words, as the filters above."><input type="checkbox" id="sfAuto"${cState.sAuto ? ' checked' : ''}> auto-apply settings</label>
+    <button id="sfClear" title="empties every filter above and shows every pair again">Clear filters</button>
+    <button id="ssClear" title="drops every column out of the sort">Clear the sort</button></span>
+  </div>`;
+}
 // CHOOSE ON THE EARLY WINDOWS, READ THE LATE ONES (3.161.0, owner's order).
 // Every figure in the table above was priced knowing only what sat behind it,
 // so the money was never the doubt -- the CHOICE was. The look-back and band
@@ -9251,6 +9392,10 @@ function cWalkLine() {
 function cSplitPanel() {
   const s = cSplit;
   const shapes = (cWalkRows && cWalkRows.shapes) || [];
+  // FILTERED ONCE (3.178.0). The count line, the empty notice and the rows all
+  // want the same answer.
+  const sAll = (s && !s.none && s.pairs) || [];
+  const sShown = sAll.length ? cSplitShown(sAll) : [];
   const shapeOf = (k) => (shapes.find((x) => x.key === k) || {}).label || k;
   const pc = (v, d = 3) => (v == null ? '&mdash;' : `${v > 0 ? '+' : ''}${Number(v).toFixed(d)}%`);
   const cls = (v) => (v == null ? 'muted' : (v > 0 ? 'pos' : 'neg'));
@@ -9268,7 +9413,6 @@ function cSplitPanel() {
     </div>
     <div class="row">
       <button id="sRun" class="pri">Choose early, read late</button>
-      <button id="ssClear">Clear the sort</button>
       <span id="sOut" class="muted">${s && s.none ? esc(String(s.why || '')) : ''}</span>
     </div>
     ${!s || s.none || !s.pairs ? '' : `
@@ -9287,6 +9431,11 @@ function cSplitPanel() {
       The whole history chose the same look-back and band as the early windows on
       <b>${s.sameChoice} of ${s.of}</b>, and its pooled money is <span class="${cls(s.wholePooled)}">${pc(s.wholePooled)}</span> a trade
       &mdash; higher than the late figure because it is the best of everything, chosen with everything in view.</p>
+    ${cSplitFilterRow()}
+    ${sShown.length ? '' : `<p class="note warn" style="margin:.6rem 0"><b>All ${sAll.length.toLocaleString()} row(s) of this reading are hidden by the filter boxes above.</b>
+      Nothing is wrong with the reading &mdash; the table is there. Empty a box to widen it, or clear them all:</p>
+      <div class="row" style="margin-bottom:.6rem"><button id="sfClear2" class="pri">Clear filters</button></div>`}
+    ${!sShown.length ? '' : `
     <div class="cwbox"><table class="cgap"><thead><tr>
       <th title="the coin">coin${cSortBtn('sSorts', 'ssort', 'coin', 'asc')}</th><th title="the chunk shape">chunk shape${cSortBtn('sSorts', 'ssort', 'geometry', 'asc')}</th>
       <th title="the look-back the early windows chose">look-back${cSortBtn('sSorts', 'ssort', 'lookback', 'asc')}</th>
@@ -9305,7 +9454,7 @@ function cSplitPanel() {
       <th title="whether THIS pick was also the best of its coin and shape on the LATE half — one setting winning both halves. Where it was not, the cell names what did win late. This compares two stretches that share nothing; same pick beside it compares the early half against the WHOLE history, which contains it.">best on both halves${cSortBtn('sSorts', 'ssort', 'both', 'desc')}</th>
       <th title="whether the whole history picked the same look-back and band as the early windows did. They need not agree: the early half has less to go on.">same pick${cSortBtn('sSorts', 'ssort', 'sameAsEarly', 'desc')}</th>
     </tr></thead><tbody>
-    ${cSplitSorted(s.pairs).map((p) => `<tr>
+    ${cSplitSorted(sShown).map((p) => `<tr>
       <td>${esc(p.coin)}</td><td>${esc(shapeOf(p.geometry))}</td>
       <td>${p.lookback === 'own' ? 'own' : `${esc(String(p.lookback))}h`}</td><td>${p.band}</td>
       <td class="${cls(p.earlyPerTrade)}">${pc(p.earlyPerTrade)}</td>
@@ -9324,9 +9473,12 @@ function cSplitPanel() {
       <td>${p.sameAsEarly ? 'yes' : 'no'}</td>
     </tr>`).join('')}
     </tbody></table></div>
-    <p class="note">${s.pairs.length} pair(s), each picked on its first ${esc(String(s.pairs[0] ? s.pairs[0].cut : '?'))} window(s) or thereabouts &mdash; a coin with fewer windows is cut in its own half.
-      ${(cState.sSorts || []).length ? `Sorted by ${(cState.sSorts || []).map((x) => `${esc(x.key)} ${x.dir === 'desc' ? 'high to low' : 'low to high'}`).join(', then ')}.` : 'Unsorted.'}
-      Every heading sorts: click to add it, again to flip it, once more to drop it.</p>`}
+    <p class="note">${sShown.length === sAll.length
+    ? `${sAll.length} pair(s), nothing hidden by the filter boxes above`
+    : `<b>${sShown.length} of ${sAll.length} pair(s) shown</b> &mdash; ${sAll.length - sShown.length} hidden by the filter boxes above`},
+      each picked on its first ${esc(String(sAll[0] ? sAll[0].cut : '?'))} window(s) or thereabouts &mdash; a coin with fewer windows is cut in its own half.
+      ${(cState.sSorts || []).length ? `Sorted by ${cSortWords(cState.sSorts, C_SPLIT_NAME)}.` : 'Unsorted.'}
+      Every heading sorts: click to add it, again to flip it, once more to drop it.</p>`}`}
   </div>`;
 }
 async function cSplitAsk() {
@@ -9341,6 +9493,8 @@ async function cSplitAsk() {
   } catch (err) {
     cSplit = { none: true, why: String(err && err.message ? err.message : err) };
   }
+  cSplitSeq++;                          // a new reading is new pairs: drop both memos
+  cShownFor = null;
   cWalkRepaint();
 }
 // WHICH SHAPES A FIXED LOOK-BACK WALKS, said on the page rather than done
@@ -9485,7 +9639,7 @@ function cWalkPanel() {
     <p class="note">${wShown.length === rows.length
     ? 'nothing is hidden by the filter boxes above'
     : `<b>${(rows.length - wShown.length).toLocaleString()} of ${rows.length.toLocaleString()} row(s) hidden by the filter boxes above</b>`}
-      ${(cState.wSorts || []).length ? ` · sorted by ${(cState.wSorts || []).map((x) => `${esc(x.key)} ${x.dir === 'desc' ? 'high to low' : 'low to high'}`).join(', then ')}` : ' · unsorted'}.
+      ${(cState.wSorts || []).length ? ` · sorted by ${cSortWords(cState.wSorts, C_WALK_NAME)}` : ' · unsorted'}.
       The headings stay put while the rows scroll under them, and every one of them sorts the whole walk, not this page.
       A row ticked on one page stays ticked when you move to another.</p>
     <div class="row">
@@ -9646,6 +9800,25 @@ function cWalkBind() {
     };
   }
   if ($('#ssClear')) $('#ssClear').onclick = () => { cState.sSorts = []; cRemember(); cWalkRepaint(); };
+  // CHOOSE EARLY, READ LATE'S FILTERS, wired exactly as Walk it forward's are
+  // above: on input the button wakes, on change it applies if auto-apply
+  // settings is ticked. Typing must never redraw -- that replaces the box being
+  // typed into and only the first character can ever be entered (3.164.2).
+  for (const k of C_SPLIT_F_KEYS) {
+    const el = $(`#sf_${k}`);
+    if (!el) continue;
+    el.oninput = cSplitFilterBtnState;
+    el.onchange = () => { if (cState.sAuto) cApplySplitFilters(); else cSplitFilterBtnState(); };
+  }
+  if ($('#sfApply')) $('#sfApply').onclick = () => { if (!$('#sfApply').disabled) cApplySplitFilters(); };
+  if ($('#sfAuto')) $('#sfAuto').onchange = () => {
+    cState.sAuto = $('#sfAuto').checked;
+    cRemember();
+    if (cState.sAuto && !cSplitFilterSame(cSplitBoxesNow(), cState.sF)) cApplySplitFilters(); else cSplitFilterBtnState();
+  };
+  const clearSF = () => { cState.sF = {}; cSplitSeq++; cShownFor = null; cState.wFrom = 0; cRemember(); cWalkRepaint(true); };
+  if ($('#sfClear')) $('#sfClear').onclick = clearSF;
+  if ($('#sfClear2')) $('#sfClear2').onclick = clearSF;
   // A CLICK CYCLES: off, this way, the other way, off (3.164.0). Columns sort
   // in the order they were clicked, and dropping one leaves the rest alone.
   for (const b of document.querySelectorAll('[data-wsort]')) {

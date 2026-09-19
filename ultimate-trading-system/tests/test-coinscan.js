@@ -408,6 +408,51 @@ function theWalkTableIsDrawnAPageAtATime() {
     'every press that changes which hundred rows are shown asks for that');
 }
 
+// A SORT IS NAMED THE WAY THE SCREEN NAMES ITS COLUMN (3.178.0). The line under
+// each table says what it is sorted by, and it printed the internal key:
+// "sorted by latePerTrade high to low", "sorted by asGood low to high". Neither
+// word is on any heading, so the sentence telling the owner what the table is
+// doing was itself written in names they cannot see. RULE ONE.
+//
+// Read BOTH WAYS out of the source, because a map checked only from itself
+// towards the page cannot see a column the map has never heard of -- the hole
+// that RULE ONE-A's own word list had.
+function everySortNamesItsColumnTheWayTheScreenDoes() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const mapOf = (name) => {
+    const at = src.indexOf(`const ${name} = {`);
+    assert(at > 0, `${name} is in the file`);
+    const body = src.slice(at, src.indexOf('};', at));
+    const out = {};
+    for (const m of body.matchAll(/(\w+):\s*'([^']*)'/g)) out[m[1]] = m[2];
+    return out;
+  };
+  const headings = (re) => {
+    const out = {};
+    for (const m of src.matchAll(re)) out[m[2]] = m[1].trim();
+    return out;
+  };
+  const pairs = [
+    ['C_WALK_NAME', headings(/>([^<>$]+)\$\{cWalkSortBtn\('(\w+)'/g)],
+    ['C_SPLIT_NAME', headings(/>([^<>$]+)\$\{cSortBtn\('sSorts', 'ssort', '(\w+)'/g)],
+  ];
+  for (const [name, onScreen] of pairs) {
+    const map = mapOf(name);
+    const keys = Object.keys(onScreen);
+    assert(keys.length > 10, `${name}: the headings were found (got ${keys.length})`);
+    for (const k of keys) {
+      assert(map[k], `${name} has no name for the sortable column "${onScreen[k]}" (key ${k}) — the line under the table would print the key at the owner`);
+      assert(map[k] === onScreen[k], `${name}.${k} says ${JSON.stringify(map[k])}, the heading says ${JSON.stringify(onScreen[k])}`);
+    }
+    for (const k of Object.keys(map)) {
+      assert(onScreen[k], `${name}.${k} names a column that no heading on that table sorts by`);
+    }
+  }
+  // and nothing prints a bare key any more
+  assert(!/sorted by \$\{\(cState\.\w+ \|\| \[\]\)\.map\(\(x\) => `\$\{esc\(x\.key\)\}/.test(src),
+    'neither line builds its wording out of the sort key');
+}
+
 // THE STRIP IS STYLED AGAINST CLASSES THAT EXIST, AND SAYS HOW MANY WINDOWS
 // WERE EMPTY (owner, 2026-09-17: "+2.062020-01+1.182020-07..."). The first
 // version used .cwstrip and .cwwin and defined neither, so every date and
@@ -1099,16 +1144,26 @@ function theSpreadAndWhatARowPaysForItAreOnTheTableAndCannotBeGamedByOneWindow()
 function theCoinsFiltersUseBoardsOwnWordsAndBoardsOwnLayout() {
   const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
   const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.html'), 'utf8');
-  const fn = src.slice(src.indexOf('function cWalkFilterRow() {'), src.indexOf('\n}\n', src.indexOf('function cWalkFilterRow() {')));
-  // the layout, and every class it leans on is one the stylesheet defines
-  assert(/<div class="filters">/.test(fn), 'the filters are the grid Boards uses, not rows of stacked labels');
-  assert(/<span class="fname">/.test(fn) && /<span class="fbox">/.test(fn), 'a name against its box, the way that grid is built');
-  assert(/<span class="frow">/.test(fn), 'and the buttons cross both columns in an frow');
-  for (const cls of ['filters', 'fname', 'fbox', 'frow']) {
+  // BOTH FILTER ROWS, not just Walk it forward's (3.178.0). Choose early, read
+  // late gained one, and RULE ELEVEN clause 5 says two screens doing the same
+  // job do it the same way -- so the check reads them both or it only ever
+  // held half of what it is named for.
+  const slice = (name) => src.slice(src.indexOf(`function ${name}() {`), src.indexOf('\n}\n', src.indexOf(`function ${name}() {`)));
+  const fn = slice('cWalkFilterRow');
+  for (const [name, f] of [['cWalkFilterRow', fn], ['cSplitFilterRow', slice('cSplitFilterRow')]]) {
+    assert(f.length > 500, `${name} is in hand`);
+    // the layout, and every class it leans on is one the stylesheet defines
+    assert(/<div class="filters three">/.test(f), `${name}: the filters are the grid Boards uses, three pairs to a line, not rows of stacked labels`);
+    assert(/<span class="fname">/.test(f) && /<span class="fbox">/.test(f), `${name}: a name against its box, the way that grid is built`);
+    assert(/<span class="frow">/.test(f), `${name}: and the buttons cross both columns in an frow`);
+    assert(!/label class="f"/.test(f), `${name}: and none of the old caption-above-box labels is left in it`);
+    assert(!/style="width:/.test(f), `${name}: no widths typed here either: .filters .fbox input is 8rem, once, in the stylesheet`);
+    assert(/>Apply settings</.test(f) && /auto-apply settings/.test(f) && />Clear filters</.test(f) && />Clear the sort</.test(f),
+      `${name}: the same four button words in the same row`);
+  }
+  for (const cls of ['filters', 'fname', 'fbox', 'frow', 'filters\\.three']) {
     assert(new RegExp(`\\.${cls}\\b`).test(css), `RULE FOUR: .${cls} is defined in the stylesheet`);
   }
-  assert(!/label class="f"/.test(fn), 'and none of the old caption-above-box labels is left in it');
-  assert(!/style="width:/.test(fn), 'no widths typed here either: .filters .fbox input is 8rem, once, in the stylesheet');
   // the three words, and they are the ones Boards says
   for (const word of ['auto-apply settings', '>Apply settings<', '>Clear filters<']) {
     assert(src.split(word).length - 1 >= 2,
@@ -1584,7 +1639,15 @@ function noCoinsTableIsStyledSoWideItNeedsASidewaysBar() {
   assert(cells, 'and so are its cells');
   assert(/width:\s*100%/.test(rule), `the table fills its panel, got: ${rule}`);
   assert(/white-space:\s*normal/.test(cells), `headings and figures may wrap, got: ${cells}`);
-  assert(/overflow-wrap:\s*anywhere/.test(cells), `and a long word cannot force it wider, got: ${cells}`);
+  // 3.178.0: `break-word`, not `anywhere`. `anywhere` shrinks a column's
+  // smallest possible width to ONE CHARACTER, so at seventeen columns the
+  // table drew "+10.72 0%" and "PERCENTIL E" -- and a figure broken between
+  // its digits is not a figure. `break-word` holds a column to its longest
+  // word and breaks inside one only when the word alone will not fit. The
+  // longest word on any of these tables is ten characters, which cannot force
+  // a table past its panel. What forced the bar was nowrap, and that is still
+  // refused on the line below.
+  assert(/overflow-wrap:\s*break-word/.test(cells), `a long word may break, but only when it must, got: ${cells}`);
   assert(!/white-space:\s*nowrap/.test(cells), `nowrap is what forced the bar, got: ${cells}`);
   // and every Coins table is one of these -- a table added outside the class
   // would not be covered, so count them
@@ -1680,6 +1743,7 @@ module.exports = {
   windowsUpOrdersByShareAndMoreWindowsWinsATie,
   openingARowLeavesBothScrollBarsWhereTheyWere,
   theWalkTableIsDrawnAPageAtATime,
+  everySortNamesItsColumnTheWayTheScreenDoes,
   theWindowStripIsReadableAndSaysWhatIsMissing,
   theLookBackIsItsOwnAxisAndOnlyWhatTheRecordCarries,
   theLookBacksHaveOneBoxAndItIsOnTheWalk,

@@ -126,6 +126,11 @@
   p.cwsays { margin:.1rem 0 .1rem 1.6rem; font-size:.68rem; color:var(--dim); }
   div.cwbox table thead th { position:sticky; top:0; background:var(--panel); z-index:2;
                              vertical-align:bottom; box-shadow:inset 0 -1px 0 var(--line); }
+  /* THE ROW UNDER THE CURSOR LIGHTS UP (3.178.0). Twenty columns is further
+     than an eye carries a row unaided, and it is exactly where a tick lands on
+     the wrong one. Hover rather than stripes because an opened row puts its
+     window strip in between, and stripes would then alternate wrongly. */
+  table.cgap tbody tr:hover td { background:var(--tile); }
   tr.dim td { color:var(--muted); }
   tr.selected td { background:var(--tile); box-shadow: inset 3px 0 0 var(--accent); }
   .tile { background:var(--tile); border:1px solid var(--line); border-radius:8px; padding:.55rem .7rem; }
@@ -182,8 +187,15 @@
      960 on all five. Wrapping is the right trade -- a heading on two lines is
      readable, a bar that hides four columns is not. */
   table.cgap { margin-top:.3rem; font-size:.72rem; width:100%; }
+  /* A FIGURE NEVER BREAKS BETWEEN ITS DIGITS (3.178.0). `anywhere` lets the
+     table make any column one character wide, so at seventeen columns it
+     rendered "+10.72 0%", "WINDOW S" and "PERCENTIL E" -- a broken number is
+     not a number. `break-word` breaks inside a word only when the word alone
+     will not fit, so a column is never narrower than its longest word. The
+     longest word on any of these tables is ten characters, which cannot force
+     a table wider than its panel; nowrap, which could, stays forbidden. */
   table.cgap td, table.cgap th { padding:.12rem .35rem; text-align:right;
-                                 white-space:normal; overflow-wrap:anywhere; }
+                                 white-space:normal; overflow-wrap:break-word; }
   table.cgap td:first-child, table.cgap th:first-child { text-align:left; }
   table.cgap tr.cgrp td { text-align:left; color:var(--dim); font-size:.66rem; text-transform:uppercase; letter-spacing:.04em; padding-top:.35rem; }
   .clay.below .cpart { background:rgba(128,140,160,.18); border-left:1px solid var(--dim); }
@@ -217,6 +229,17 @@
      cells sit on the same centre line as the box they belong to because the
      grid already says align-items:center */
   .filters.withspread { grid-template-columns:max-content max-content repeat(4, max-content); }
+  /* COINS' TWO FILTER ROWS RUN THREE PAIRS TO A LINE (3.178.0, owner order:
+     "RATIONAL and CONSISTENT screens with UGLY FACTOR = 0"). Fifteen boxes in
+     a single column is fifteen lines of form standing against a thousand
+     pixels of empty panel, and the two rows on this screen now hold eleven and
+     fifteen. Three name-and-box pairs a line makes that four and five, and
+     both rows carry the same class because they do the same job -- RULE ELEVEN
+     clause 5. Narrow enough and it falls back to one pair, because two columns
+     of boxes running off the side is worse than a long form. */
+  .filters.three { grid-template-columns:repeat(3, max-content max-content); column-gap:1.5rem; }
+  @media (max-width:1180px) { .filters.three { grid-template-columns:repeat(2, max-content max-content); } }
+  @media (max-width:820px)  { .filters.three { grid-template-columns:max-content max-content; } }
   .filters .fhead { text-align:right; font-size:.7rem; color:var(--dim); white-space:nowrap; padding-bottom:.1rem; }
   /* the one record, out of a coin's eight, that IS the row of Table 3.A whose
      show in 3.B was pressed. A left bar and a lift off the background, so it
