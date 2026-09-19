@@ -76,9 +76,116 @@ function listWalks() {
 // with, so a pick made on one screen is the row the other screen means.
 const rowKey = (r) => `${r.coin}|${r.geometry}|${r.lookback == null ? 'own' : r.lookback}|${r.band}`;
 
-function saveWalk({ asked, shapes, collapse, rows, startedAt, finishedAt, name }) {
+// ---- A WALK KEEPS WHAT IT HAS DONE (3.189.0, owner order, after a walk was
+// ---- lost to a restart three hours in) -------------------------------------
+//
+// A walk used to live entirely in memory and write itself down once, at the
+// end. Anything that stopped the service -- a deploy, a crash, a wedge, the
+// owner pressing restart -- threw away every hour of it, and there was nothing
+// on disk to say it had ever run. That happened on 2026-09-19 and cost an
+// evening.
+//
+// So each row is appended to a PART file the moment it lands. A part is
+// JSON-per-line because that is the only shape that can be appended without
+// rewriting what is already there; a set is one JSON object and cannot be.
+//
+// IT LIVES IN ITS OWN DIRECTORY, not beside the sets. `idsOnDisk` lists
+// `<id>.json` in DIR, so a part named `W-3.part.json` there would be listed as
+// a walk called `W-3.part` -- which is precisely the fault that cost the
+// evening this was written in (lib/stages.js isSetDocument). A separate
+// directory cannot make that mistake.
+//
+// A PART IS NOT A SET, and is never read as one. A walk that has not finished
+// is a table missing the coins it never got to, and reading that as a
+// comparison is the thing Stop has always refused to allow. It becomes a set
+// only when it is sealed, which happens only when every task has landed.
+const PARTS = path.join(DIR, 'parts');
+const partFile = (id) => path.join(PARTS, `${String(id).replace(/[^\w.-]/g, '')}.jsonl`);
+function ensureParts() { try { fs.mkdirSync(PARTS, { recursive: true }); } catch (_) { /* already there */ } }
+
+// the first line is what the walk was asked for; every line after it is a row
+function startPart(id, head) {
+  ensureParts();
+  fs.writeFileSync(partFile(id), `${JSON.stringify({ part: 1, ...head })}\n`);
+  return id;
+}
+// APPENDED, NEVER REWRITTEN. The cost of keeping a walk safe is one append per
+// row, not a re-serialising of everything it has done so far.
+function appendPart(id, rows) {
+  if (!rows || !rows.length) return 0;
+  ensureParts();
+  fs.appendFileSync(partFile(id), `${rows.map((r) => JSON.stringify(r)).join('\n')}\n`);
+  return rows.length;
+}
+// A TORN LAST LINE IS DROPPED, not guessed at. A service killed mid-append
+// leaves half a row; that row is simply one the walk has not done yet, and it
+// will be done again on the next press.
+function readPart(id) {
+  let raw = '';
+  try { raw = fs.readFileSync(partFile(id), 'utf8'); } catch (_) { return null; }
+  const lines = raw.split('\n').filter(Boolean);
+  if (!lines.length) return null;
+  let head = null;
+  try { head = JSON.parse(lines[0]); } catch (_) { return null; }
+  if (!head || head.part !== 1) return null;
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    try { rows.push(JSON.parse(lines[i])); } catch (_) { /* a torn last line is a row not yet done */ }
+  }
+  return { head, rows };
+}
+function removePart(id) { try { fs.rmSync(partFile(id), { force: true }); } catch (_) { /* gone */ } }
+
+// EVERY WALK THAT STARTED AND DID NOT FINISH. A part whose set exists was
+// sealed and the part simply outlived it; that is not unfinished.
+function unfinishedWalks() {
+  let files = [];
+  try { files = fs.readdirSync(PARTS).filter((f) => f.endsWith('.jsonl')); } catch (_) { return []; }
+  const out = [];
+  for (const f of files) {
+    const id = f.replace(/\.jsonl$/, '');
+    if (readWalk(id)) continue;
+    const got = readPart(id);
+    if (!got) continue;
+    let bytes = 0;
+    try { bytes = fs.statSync(partFile(id)).size; } catch (_) { bytes = 0; }
+    out.push({
+      id, name: got.head.name || id, startedAt: got.head.startedAt || null,
+      rows: got.rows.length, of: got.head.of ?? null, bytes, asked: got.head.asked || null,
+      release: got.head.release || null,
+    });
+  }
+  out.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+  return out;
+}
+
+// THE ROWS ALREADY DONE, by the key the walk identifies a row with. This is
+// what lets a carried-on walk run only what is missing.
+function partKeys(id) {
+  const got = readPart(id);
+  if (!got) return new Set();
+  return new Set(got.rows.map(rowKey));
+}
+
+// AND THE PART BECOMES A SET. Only here, and only when the caller says every
+// task has landed -- a walk that is short of rows is not a comparison.
+function sealPart(id, { finishedAt, name } = {}) {
+  const got = readPart(id);
+  if (!got) throw new Error(`walk ${JSON.stringify(String(id))} has nothing saved to seal`);
+  const out = saveWalkAs(id, {
+    asked: got.head.asked, shapes: got.head.shapes, collapse: got.head.collapse,
+    rows: got.rows, startedAt: got.head.startedAt, finishedAt: finishedAt || Date.now(),
+    name: name || got.head.name,
+  });
+  removePart(id);
+  return out;
+}
+
+function saveWalk(args) { return saveWalkAs(nextId(), args); }
+// THE SAME WRITE, UNDER AN ID ALREADY CLAIMED. A walk claims its id when it
+// STARTS now, so the part it appends to and the set it becomes are one name.
+function saveWalkAs(id, { asked, shapes, collapse, rows, startedAt, finishedAt, name }) {
   ensureDir();
-  const id = nextId();
   const doc = {
     v: V,
     id,
@@ -325,6 +432,8 @@ function deleteWalk(id, confirm) {
 }
 
 module.exports = {
-  V, DIR, walkFile, rowKey, nextId, nextName, saveWalk, listWalks, readWalk, renameWalk,
+  V, DIR, walkFile, rowKey, nextId, nextName, saveWalk, saveWalkAs, listWalks, readWalk, renameWalk,
+  // a walk keeps what it has done, and can be carried on (3.189.0)
+  PARTS, partFile, startPart, appendPart, readPart, removePart, unfinishedWalks, partKeys, sealPart,
   setPicked, setPickedMany, setRowOff, pickedUnits, promoted, promotedUnits, promotedLeans, deleteWalk,
 };

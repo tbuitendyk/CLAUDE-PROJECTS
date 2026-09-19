@@ -1508,6 +1508,15 @@ const GUARDS = [
     'theBasketOpensTheCoinsScreenAsOneSectionWithOneCount', 'the one count leaves the promoted rows out, so "4 of 11 ticked" undercounts'],
   [path.join(ROOT, 'public', 'construct.js'), "      passers: !!($('#swPassers') && $('#swPassers').checked),\n      windowLayout: $('#swLayout').value, allLoaded: $('#swAllData').checked,", "      windowLayout: $('#swLayout').value, allLoaded: $('#swAllData').checked,",
     'theScreensDrawThePassersAndSweepsTick', 'Sweep\'s tick is drawn but the launch ignores it'],
+  // ---- A SET LISTING READS SET DOCUMENTS ONLY, AND A WALK KEEPS ITS ROWS (3.189.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "const isSetDocument = (f) => f.endsWith('.json') && !f.slice(0, -'.json'.length).includes('.');", "const isSetDocument = (f) => f.endsWith('.json');",
+    'theSetListingReadsSetDocumentsAndNotTheSidecarsBesideThem', 'every listing parses the Funnel\'s sidecar as a set again -- the wedge that timed out every page for hours'],
+  [path.join(ROOT, 'lib', 'coinsrun.js'), "          try { wset.appendPart(id, [row]); } catch (err) { run.saveError = String(err && err.message ? err.message : err); }", "",
+    'aStoppedWalkIsNotAsetButIsNotThrownAwayEither', 'a walk keeps nothing as it goes, so a restart loses all of it again'],
+  [path.join(ROOT, 'lib', 'coinsrun.js'), "      if (!run.stop && !run.error && run.done >= run.of && run.of > 0) {", "      if (!run.stop && !run.error) {",
+    'aStoppedWalkIsNotAsetButIsNotThrownAwayEither', 'a walk short of rows is sealed into a set, so a partial table reads as a comparison'],
+  [path.join(ROOT, 'lib', 'walkset.js'), "    try { rows.push(JSON.parse(lines[i])); } catch (_) { /* a torn last line is a row not yet done */ }", "    rows.push(JSON.parse(lines[i]));",
+    'aWalkKeepsItsRowsAsTheyLandAndCanBeCarriedOn', 'half a row left by a killed service throws the whole part away'],
   // ---- AN EXTRA'S BAND IS A MULTIPLE, NOT A PERCENT (3.188.0) ----
   // Each names the test that READS THE LINE IT BREAKS (RULE EIGHT).
   [path.join(ROOT, 'lib', 'bracketwork.js'), "  return multiples.map((m) => usual * (m / 100));", "  return multiples.map((m) => m);",

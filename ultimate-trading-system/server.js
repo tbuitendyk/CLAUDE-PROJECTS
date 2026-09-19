@@ -303,6 +303,16 @@ app.post('/api/coins/band', (req, res) => {
 app.post('/api/coins/walk', (req, res) => {
   try {
     const b = req.body || {};
+    // CARRYING ON RUNS THE WALK THE PART RECORDS, not whatever the boxes hold
+    // now (3.189.0). A carry-on that read the boxes could finish a walk with
+    // half its rows made under one set of choices and half under another, and
+    // the table would read as one comparison. What it was asked for is on the
+    // part; only its name is taken from here.
+    if (b.carryOn) {
+      const part = require('./lib/walkset').readPart(String(b.carryOn));
+      if (!part) return res.status(400).json({ error: `there is nothing saved under ${JSON.stringify(String(b.carryOn))} to carry on from` });
+      return res.json(coinsrun.coinsWalkStart({ ...(part.head.asked || {}), carryOn: String(b.carryOn) }));
+    }
     return res.json(coinsrun.coinsWalkStart({
       windowMonths: Number(b.windowMonths) || 6,
       warmUpMonths: Number(b.warmUpMonths) || 12,
@@ -392,6 +402,21 @@ app.post('/api/coins/walks/:id/tick', (req, res) => {
 app.post('/api/coins/walks/:id/delete', (req, res) => {
   try { return res.json(require('./lib/walkset').deleteWalk(req.params.id, (req.body || {}).confirm)); }
   catch (err) { return res.status(400).json({ error: err.message }); }
+});
+// THROWING AWAY WHAT AN UNFINISHED WALK SAVED (3.189.0). Its own door, so the
+// press that carries one on and the press that discards it cannot be confused
+// for each other -- and it refuses to touch a part whose walk is running.
+app.post('/api/coins/walks/:id/drop-part', (req, res) => {
+  try {
+    const w = require('./lib/walkset');
+    const st = coinsrun.coinsWalkStatus();
+    if (st && st.running && st.keeping === String(req.params.id)) {
+      return res.status(400).json({ error: 'that walk is running right now — stop it first' });
+    }
+    if (!w.readPart(req.params.id)) return res.status(400).json({ error: `there is nothing saved under ${JSON.stringify(String(req.params.id))}` });
+    w.removePart(req.params.id);
+    return res.json({ dropped: String(req.params.id) });
+  } catch (err) { return res.status(400).json({ error: err.message }); }
 });
 app.post('/api/coins/walk/stop', (req, res) => {
   try { return res.json(coinsrun.coinsWalkStop()); }

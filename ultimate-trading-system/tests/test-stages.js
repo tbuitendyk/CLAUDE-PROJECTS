@@ -778,6 +778,60 @@ module.exports = {
     } finally { cleanLaunchParent(pid); }
   },
 
+  // A SET LISTING READS SET DOCUMENTS AND NOTHING ELSE (3.189.0, owner order,
+  // after an outage).
+  //
+  // WHAT HAPPENED. listSets accepted any file ending in .json and parsed each
+  // one in full. The Funnel writes its own numbers beside the sets as
+  // `<id>.funnelrich.json`, so every listing parsed that file as though it were
+  // a set. The screens POLL the listing; once the file grew, calls arrived
+  // faster than they finished, the main thread never came free, and every page
+  // and route timed out at the gateway for hours. A walk running at the time
+  // was starved to a halt and lost. The listing also carried a row with no id
+  // for each sidecar, which is what the `None None None` lines in the set
+  // reports were.
+  //
+  // Measured on this box: one listing went from 0.8ms to 97ms with a 10MB
+  // sidecar present, and back to 1.3ms with the rule below.
+  theSetListingReadsSetDocumentsAndNotTheSidecarsBesideThem() {
+    // THE RULE ITSELF, on names alone -- no files, no parsing. A set is
+    // `<id>.json` and an id carries no dot; every sidecar is `<id>.<kind>.json`
+    // or `.json.gz`. Stated this way a sidecar added tomorrow is excluded
+    // without anybody remembering to come back here.
+    for (const f of ['s1-abc-1.json', 's3-mtqf7tp2-2.json', 's4-mu3l1eg6-15.json', 's1-test-mu8nb1sc-memold.json']) {
+      assert.ok(stages.isSetDocument(f), `${f} is a set document and the listing would skip it`);
+    }
+    for (const f of ['s3-mtqf7tp2-2.funnelrich.json', 's3-abc-1-tally.json.gz', 's3-abc-1-agreed.json.gz',
+      's3-abc-1-capture.json.gz', 's3-abc-1-halflife-r1.json.gz', 's3-abc-1-reserve-LTCUSDT.json.gz',
+      's3-abc-1.funnelrich.json.v4', 'checkpoints', 's3-abc-1__keptfigs', 'notes.txt']) {
+      assert.ok(!stages.isSetDocument(f), `${f} is not a set document and the listing would parse it as one`);
+    }
+    // AND THE LISTING USES IT, so the rule is not a spare part
+    const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    assert.ok(/fs\.readdirSync\(SETS_DIR\)\.filter\(isSetDocument\)/.test(src),
+      'the listing is back to accepting every file that ends in .json');
+    // THROUGH THE REAL LISTING, with a real sidecar on disk: it is not listed,
+    // and no row comes back without an id. A row with no id is the shape the
+    // screens were being handed for three hours.
+    fs.mkdirSync(SETS_DIR, { recursive: true });
+    const id = `s1-test-${Date.now().toString(36)}-list`;
+    const side = path.join(SETS_DIR, `${id}.funnelrich.json`);
+    try {
+      fs.writeFileSync(path.join(SETS_DIR, `${id}.json`), JSON.stringify({
+        id, stage: 1, seq: 999978, name: 'S1 #list', status: 'done', createdAt: new Date().toISOString(), params: {}, plan: { units: 1 },
+      }));
+      // valid JSON, and NOT a set -- which is exactly why it used to get through
+      fs.writeFileSync(side, JSON.stringify({ v: 4, settings: { a: { units: { u0: { x: 1 } } } } }));
+      const rows = stages.listSets();
+      assert.ok(rows.some((r) => r.id === id), 'the set itself is no longer listed');
+      assert.deepStrictEqual(rows.filter((r) => r.id == null), [], 'a sidecar is still being listed as a set with no id');
+      assert.deepStrictEqual(rows.filter((r) => String(r.id || '').includes('funnelrich')), [], 'a sidecar is listed under its own name');
+    } finally {
+      try { fs.rmSync(side, { force: true }); } catch (_) { /* fixture */ }
+      rmSet(id);
+    }
+  },
+
   // THE FOLD READS THE COMMITTEE SHAPES THE RUN REALLY HOLDS (3.187.0, owner
   // order: "make sure that the stage three launch includes the extras being
   // set"). This was PARKED at 3.184.0 and is closed here.

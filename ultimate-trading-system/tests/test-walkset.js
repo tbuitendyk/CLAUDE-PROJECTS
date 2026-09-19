@@ -248,15 +248,77 @@ module.exports = {
 
   // A STOPPED WALK IS NOT SAVED, and a finished one is. This reads the runner's
   // own line rather than trusting it: the condition is the whole rule.
-  aStoppedWalkIsNotWrittenDownAndTheScreenSaysWhatWasWritten() {
+  // RE-AIMED 3.189.0 (owner order, after a walk was lost to a restart three
+  // hours in). A stopped walk is STILL not a set -- a table missing the coins
+  // it never reached would read as a comparison and is not one. What changed is
+  // that it is no longer thrown away either: every row is written down as it
+  // lands, and what is left can be carried on. Refusing to READ a partial walk
+  // and refusing to KEEP one were never the same requirement; they only looked
+  // like one while nothing could resume.
+  aStoppedWalkIsNotAsetButIsNotThrownAwayEither() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'coinsrun.js'), 'utf8');
-    assert(/if \(!run\.stop && !run\.error && run\.rows\.length\) \{/.test(src),
-      'only a walk that finished, without error, with rows, is written down');
-    assert(/run\.saved = require\('\.\/walkset'\)\.saveWalk\(\{/.test(src), 'and that is what writes it');
+    assert(/if \(!run\.stop && !run\.error && run\.done >= run\.of && run\.of > 0\) \{/.test(src),
+      'a walk short of rows, stopped, or in error is sealed into a set anyway');
+    assert(/run\.saved = require\('\.\/walkset'\)\.sealPart\(id, \{/.test(src), 'and the seal is what writes it');
+    assert(/\} else if \(run\.rows\.length\) \{\n\s+run\.unfinished = \{ id, rows: run\.rows\.length, of: run\.of \};/.test(src),
+      'a walk that did not finish leaves nothing behind to carry on from');
     assert(/catch \(err\) \{ run\.saveError = String/.test(src),
       'a disk that says no is SAID, not thrown -- the table in hand is still good');
     assert(/saved: r\.saved \|\| null, saveError: r\.saveError \|\| null,/.test(src), 'and the screen is told both');
+    // EVERY ROW ON DISK BEFORE IT IS COUNTED. A row counted and not saved is a
+    // row the owner is told they have and would lose.
+    assert(/try \{ wset\.appendPart\(id, \[row\]\); \}/.test(src), 'rows are no longer written down as they land');
+    // inside the walk's OWN lane -- `run.done++` appears in the coin reading too,
+    // and comparing against the first one in the file would prove nothing
+    const lane = src.slice(src.indexOf('const lane = async () => {'), src.indexOf('await Promise.all(Array.from('));
+    assert(lane.indexOf('wset.appendPart(id, [row]);') >= 0 && lane.indexOf('wset.appendPart(id, [row]);') < lane.indexOf('run.done++;'),
+      'a row is counted before it is saved, so the count can promise a row the disk does not hold');
     const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     assert(/could not be written down/.test(ui), 'and it says so on the page rather than only in a log');
+    assert(/data-wcarry=/.test(ui) && /Carry on with it/.test(ui), 'the screen offers no way to carry on with an unfinished walk');
+    assert(/data-wdropcarry=/.test(ui) && /Throw it away/.test(ui), 'and no way to be rid of one');
+  },
+
+  // A WALK KEEPS WHAT IT HAS DONE, AND ONLY WHAT IT HAS DONE (3.189.0).
+  aWalkKeepsItsRowsAsTheyLandAndCanBeCarriedOn() {
+    const w = require('../lib/walkset');
+    const id = `W-test-${Date.now().toString(36)}`;
+    try {
+      w.startPart(id, { name: 'a walk', startedAt: Date.now(), of: 4, asked: { windowMonths: 6 }, shapes: [], collapse: null });
+      w.appendPart(id, [{ coin: 'AAAUSDT', geometry: 'daily-1d', lookback: 'own', band: 10 }]);
+      w.appendPart(id, [{ coin: 'AAAUSDT', geometry: 'daily-1d', lookback: '720', band: 20 }]);
+      assert.strictEqual(w.readPart(id).rows.length, 2, 'the rows are not being kept as they land');
+      // THE KEY IS THE ONE THE WALK IDENTIFIES A ROW BY EVERYWHERE ELSE, so a
+      // row done under one press is the same row the next press would make
+      assert.deepStrictEqual([...w.partKeys(id)].sort(), ['AAAUSDT|daily-1d|720|20', 'AAAUSDT|daily-1d|own|10']);
+      // IT IS NOT A SET UNTIL IT IS SEALED
+      assert.strictEqual(w.readWalk(id), null, 'an unfinished walk reads as a set');
+      assert.ok(w.unfinishedWalks().some((u) => u.id === id && u.rows === 2 && u.of === 4), 'an unfinished walk is not reported as one');
+      assert.ok(!w.listWalks().some((x) => x.id === id), 'an unfinished walk is listed among the sets');
+      // A TORN LAST LINE IS A ROW NOT YET DONE, never a guess
+      fs.appendFileSync(w.partFile(id), '{"coin":"AAAUSDT","geom');
+      assert.strictEqual(w.readPart(id).rows.length, 2, 'half a row written by a killed service is read as a whole one');
+      // AND THE SEAL MAKES IT A SET, under the same name it was keeping
+      const out = w.sealPart(id, { finishedAt: Date.now() });
+      assert.strictEqual(out.id, id, 'the set does not carry the name the walk was keeping');
+      assert.strictEqual(out.rows, 2);
+      assert.strictEqual(w.readPart(id), null, 'the part outlives the set it became');
+      assert.ok(w.readWalk(id), 'the sealed walk is not readable as a set');
+      assert.ok(!w.unfinishedWalks().some((u) => u.id === id), 'a sealed walk still reports as unfinished');
+    } finally {
+      w.removePart(id);
+      try { fs.rmSync(w.walkFile(id), { force: true }); } catch (_) { /* fixture */ }
+    }
+  },
+
+  // THE PARTS LIVE IN THEIR OWN DIRECTORY (3.189.0), because a part named
+  // `<id>.part.json` beside the sets would be listed as a walk called
+  // `<id>.part` -- which is exactly the fault that cost the evening this was
+  // written in (lib/stages.js isSetDocument).
+  aPartIsNeverMistakenForAset() {
+    const w = require('../lib/walkset');
+    assert.ok(w.PARTS.startsWith(w.DIR + path.sep), 'the parts are not kept under the walks directory');
+    assert.notStrictEqual(path.dirname(w.partFile('W-9')), w.DIR, 'a part sits beside the sets, where a listing will find it');
+    assert.ok(w.partFile('W-9').endsWith('.jsonl'), 'a part is named so a listing of .json files would pick it up');
   },
 };

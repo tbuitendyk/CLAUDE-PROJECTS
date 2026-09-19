@@ -202,9 +202,28 @@ function saveSet(doc) { atomicWrite(setFile(doc.id), JSON.stringify(doc)); }
 function getSet(id) {
   try { return JSON.parse(fs.readFileSync(setFile(id), 'utf8')); } catch (_) { return null; }
 }
+// A SET DOCUMENT, NOT EVERY FILE THAT ENDS IN .json (3.189.0, owner order).
+//
+// WHAT THIS COST. listSets reads and JSON.parses every file it accepts, and it
+// accepted anything ending in .json -- which includes the Funnel's own sidecar,
+// written beside the sets as `<id>.funnelrich.json`. So every listing parsed
+// that file in full as though it were a set document. Measured: a 10MB sidecar
+// takes one listing from 0.8ms to 97ms. On the box the file is far bigger, the
+// screens POLL this listing, calls arrived faster than they finished, and the
+// main thread never came free again -- every page and every route timed out at
+// the gateway for hours, and a walk running at the time was starved to a halt
+// and lost. It also pushed a row with no id into every listing, which is what
+// the `None None None` lines in the set reports have been all along.
+//
+// Every other sidecar is written .json.gz and was never caught by this; the
+// rich file is the only one that ends in a bare .json. So the rule is the one
+// that names what a set document IS, rather than listing the sidecars to skip:
+// a set is `<id>.json`, and an id carries no dot. A sidecar added tomorrow as
+// `<id>.whatever.json` is excluded without anybody remembering to come here.
+const isSetDocument = (f) => f.endsWith('.json') && !f.slice(0, -'.json'.length).includes('.');
 function listSets() {
   let files = [];
-  try { files = fs.readdirSync(SETS_DIR).filter((f) => f.endsWith('.json')); } catch (_) { files = []; }
+  try { files = fs.readdirSync(SETS_DIR).filter(isSetDocument); } catch (_) { files = []; }
   const out = [];
   for (const f of files) {
     try {
@@ -9924,7 +9943,7 @@ module.exports = {
   startStage1, startStage2, startStage3,
   missingUnitsOf, unitFillRefusal, fillMissingUnitsStart, fillMissingUnitsStatus, rebuildRanking,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
-  settingsFor, unitsFor, unitsForPassers, unitMembers, shapesOf, agreementsFor, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, confirmWanted, confirmLeansFor, coinsSourceOf, confirmLabel, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
+  settingsFor, unitsFor, unitsForPassers, unitMembers, isSetDocument, shapesOf, agreementsFor, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, confirmWanted, confirmLeansFor, coinsSourceOf, confirmLabel, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
   setSetPicked, pickedOf, unitsChoiceOf, stage3RecordsFor, PICK_CHOICES, PICK_LABELS, stage3UnitsFor,
   setSetNotes, setSetName, nextNames, nextFreeName, nameTaken, setSetSort, setSetFilters, recordHeldBackLook, stage2Rows, stage2Ordered, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,

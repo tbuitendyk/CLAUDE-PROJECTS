@@ -9281,6 +9281,27 @@ function cWalkSetPicked() {
     || (open ? ws.find((w) => w.id === open.id) : null)
     || ws[0];
 }
+// A WALK THAT STARTED AND DID NOT FINISH (3.189.0, owner order, after one was
+// lost to a restart three hours in). Every row a walk makes is written down the
+// moment it lands, so a deploy, a crash or a restart costs the rows still in
+// flight and nothing else. What is left is not a set -- a table missing the
+// coins it never reached would read as a comparison and is not one -- but it is
+// not thrown away either: carry on and only the rows it never got to are run.
+function cWalkUnfinishedRow(st, busy) {
+  const left = (st && st.unfinishedWalks) || [];
+  if (!left.length) return '';
+  return left.map((u) => {
+    const got = Number(u.rows || 0);
+    const of = Number(u.of || 0);
+    const pct = of ? Math.round((got / of) * 100) : null;
+    return `<div class="row" style="margin-top:.4rem">
+      <span class="warn"><b>${esc(u.name || u.id)}</b> did not finish — ${got.toLocaleString()}${of ? ` of ${of.toLocaleString()}` : ''} row(s) kept${pct == null ? '' : `, ${pct}%`}. It is not a set until it is finished.</span>
+      <button data-wcarry="${esc(u.id)}"${busy ? ' disabled' : ''} title="runs only the rows this walk never got to, and writes the set when they all land. Everything it already did is kept and is not read again.">Carry on with it</button>
+      <button data-wdropcarry="${esc(u.id)}" class="danger"${busy ? ' disabled' : ''} title="throws away what this walk saved. There is no undo.">Throw it away</button>
+    </div>`;
+  }).join('');
+}
+
 function cWalkSetsRow() {
   const ws = cWalksNow || [];
   const open = (cWalkSt && cWalkSt.saved) || null;
@@ -10011,6 +10032,7 @@ function cWalkPanel() {
       ${walking ? '<button id="wStop">Stop</button>' : ''}
       <span id="wOut" class="muted">${heldBy ? esc(`${heldBy} — Walk it forward wakes when it lands`) : cWalkLine()}</span>
     </div>
+    ${cWalkUnfinishedRow(st, walking || !!heldBy)}
     ${(st && st.error) ? `<p class="note warn">the walk stopped: ${esc(st.error)}</p>` : ''}
     ${!rows ? (walking ? '' : C_WALK_NONE_YET) : (!rows.length ? C_WALK_NO_HISTORY : `
     ${cWalkFilterRow()}
@@ -10382,6 +10404,35 @@ function cWalkBind() {
     stop.onclick = async () => {
       stop.disabled = true;
       try { await post('api/coins/walk/stop', {}); } catch (_) { /* it may have just landed */ }
+      cWalkTick();
+    };
+  }
+  // CARRY ON WITH ONE THAT DID NOT FINISH, or throw it away (3.189.0). The
+  // press sends the same walk the first press sent, plus the name of the part
+  // to carry on from; the service runs only the rows that part does not hold.
+  for (const b of document.querySelectorAll('[data-wcarry]')) {
+    b.onclick = async () => {
+      b.disabled = true;
+      try {
+        const ans = await post('api/coins/walk', { carryOn: b.dataset.wcarry });
+        if (ans && ans.started === false) { b.disabled = false; if ($('#wOut')) $('#wOut').innerHTML = `<span class="warn">${esc(ans.why || 'it did not start')}</span>`; return; }
+      } catch (err) { b.disabled = false; if ($('#wOut')) $('#wOut').innerHTML = `<span class="warn">${esc(err.message)}</span>`; return; }
+      cWalkRows = null;
+      cWalkOpen.clear();
+      cState.wFrom = 0;
+      cWalkSt = { running: true, done: 0, of: 0, workers: null, cpu: null, asked: null, rows: null, finishedAt: null, error: null, stopping: false };
+      cWalkRepaint();
+      cWalkTick();
+    };
+  }
+  for (const b of document.querySelectorAll('[data-wdropcarry]')) {
+    b.onclick = async () => {
+      const id = b.dataset.wdropcarry;
+      if (!confirm(`Throw away what "${id}" saved?\n\nThe rows it already worked out go with it and cannot be got back except by running the walk again.`)) return;
+      b.disabled = true;
+      try { await post(`api/coins/walks/${encodeURIComponent(id)}/drop-part`, {}); } catch (err) {
+        b.disabled = false; if ($('#wOut')) $('#wOut').innerHTML = `<span class="warn">${esc(err.message)}</span>`; return;
+      }
       cWalkTick();
     };
   }

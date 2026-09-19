@@ -905,8 +905,12 @@ function coinsWalkStatus() {
       finishedAt: null, stopping: false, shapes: null, workers: null,
       collapse: require('./coinscan').oneShapePerForwardTime(require('./dataset').GEOMETRIES),
       fee: (() => { try { return require('./account').systemFee(); } catch (_) { return null; } })(),
-      saved: null, saveError: null,
+      saved: null, saveError: null, unfinished: null,
       walks: (() => { try { return require('./walkset').listWalks(); } catch (_) { return []; } })(),
+      // EVERY WALK THAT STARTED AND DID NOT FINISH (3.189.0). Read on every
+      // ask, because the one that matters most is the one left by a service
+      // that is no longer running -- there is no run object to carry it.
+      unfinishedWalks: (() => { try { return require('./walkset').unfinishedWalks(); } catch (_) { return []; } })(),
       nextName: (() => { try { return require('./walkset').nextName(); } catch (_) { return ''; } })(),
     };
   }
@@ -923,7 +927,10 @@ function coinsWalkStatus() {
     fee: (() => { try { return require('./account').systemFee(); } catch (_) { return null; } })(),
     // what this run wrote down, why it could not, and every set on the box
     saved: r.saved || null, saveError: r.saveError || null,
+    // what this run is keeping as it goes, and what it left if it did not finish
+    keeping: r.id || null, carriedOn: r.carriedOn || 0, unfinished: r.unfinished || null,
     walks: (() => { try { return require('./walkset').listWalks(); } catch (_) { return []; } })(),
+    unfinishedWalks: (() => { try { return require('./walkset').unfinishedWalks(); } catch (_) { return []; } })(),
     nextName: (() => { try { return require('./walkset').nextName(); } catch (_) { return ''; } })(),
   };
 }
@@ -1006,10 +1013,23 @@ function coinsWalkStart(opts = {}) {
   // needs one -- seconds, sometimes -- and the press may not wait for it. So
   // the run exists from this moment with nothing counted yet, the filling says
   // what it is doing, and `of` is filled in when the tasks are built.
+  // A WALK CLAIMS ITS NAME WHEN IT STARTS, NOT WHEN IT FINISHES (3.189.0,
+  // owner order, after one was lost to a restart three hours in). The id is
+  // taken now, a part file is opened under it, and every row is appended the
+  // moment it lands -- so a deploy, a crash or a restart costs the rows still
+  // in flight and nothing else. `carryOn` is a part left by an earlier press:
+  // its rows are already done and only what is missing is run.
+  const wset = require('./walkset');
+  const carryOn = opts && opts.carryOn ? String(opts.carryOn) : null;
+  const already = carryOn ? wset.partKeys(carryOn) : new Set();
+  if (carryOn && !already.size && !wset.readPart(carryOn)) {
+    return { started: false, why: `there is nothing saved under ${JSON.stringify(carryOn)} to carry on from` };
+  }
+  const id = carryOn || wset.nextId();
   walkRun = {
-    running: true, done: 0, of: 0, rows: [], error: null, asked: opts,
+    running: true, done: already.size, of: 0, rows: carryOn ? (wset.readPart(carryOn) || { rows: [] }).rows : [], error: null, asked: opts,
     startedAt: Date.now(), finishedAt: null, stop: false, shapes, collapse,
-    workers: size, pool: null,
+    workers: size, pool: null, id, carriedOn: carryOn ? already.size : 0,
     filling: 'working out any look-back the records do not carry', couldNotFill: [],
   };
   const run = walkRun;
@@ -1024,9 +1044,28 @@ function coinsWalkStart(opts = {}) {
       run.filling = null;
       if (run.stop) return;
       const { records, sweetSpots, fixedUpTo } = walkPieces(opts);
-      tasks = scan.walkTasksFor(records, GEOMETRIES, { ...opts, sweetSpots, fixedUpTo });
-      run.of = tasks.length;
-      if (!tasks.length) return;
+      const allTasks = scan.walkTasksFor(records, GEOMETRIES, { ...opts, sweetSpots, fixedUpTo });
+      // `of` IS EVERY ROW THE WALK WILL HOLD, carried-on rows included, so the
+      // line on screen means the same thing on a first press and a second one.
+      run.of = allTasks.length;
+      // WHAT IS ALREADY SAVED IS NOT RUN AGAIN. The key is the one the walk
+      // identifies a row by everywhere else, so a row done under the first
+      // press is the same row this press would have produced.
+      tasks = already.size
+        ? allTasks.filter((t) => !already.has(`${t.coin}|${t.geometry}|${t.lookback == null ? 'own' : t.lookback}|${t.band}`))
+        : allTasks;
+      if (!carryOn) {
+        wset.startPart(id, {
+          name: (opts && opts.name) || null, startedAt: run.startedAt, of: allTasks.length,
+          asked: opts, shapes, collapse, release: require('../package.json').version,
+        });
+      }
+      if (!tasks.length) {
+        // everything was already done -- seal it rather than leave a part that
+        // looks unfinished for ever
+        if (carryOn) { run.saved = wset.sealPart(id, { finishedAt: Date.now(), name: opts && opts.name }); }
+        return;
+      }
       pool = createPool();
       run.pool = pool;
       // AS MANY IN FLIGHT AS THERE ARE WORKERS, and the next one starts the
@@ -1040,7 +1079,11 @@ function coinsWalkStart(opts = {}) {
           if (i >= tasks.length) return;
           const t = tasks[i];
           const got = await pool.run('coinWalk', t.payload);
-          run.rows.push(scan.rowOf(t, got));
+          const row = scan.rowOf(t, got);
+          run.rows.push(row);
+          // ON DISK BEFORE IT IS COUNTED. A row counted and not saved is a row
+          // the owner is told they have and would lose.
+          try { wset.appendPart(id, [row]); } catch (err) { run.saveError = String(err && err.message ? err.message : err); }
           run.done++;
         }
       };
@@ -1058,14 +1101,25 @@ function coinsWalkStart(opts = {}) {
       // had and the reason it had it: a table missing the coins it never got to
       // would read as a comparison and is not one. A disk that says no is said
       // on the screen, never thrown -- the table in hand is still good.
-      if (!run.stop && !run.error && run.rows.length) {
+      // 3.189.0: THE ROWS ARE ALREADY ON DISK -- every one was appended the
+      // moment it landed. What happens here is the SEAL: the part becomes a
+      // set, and only when every task landed.
+      //
+      // A STOPPED OR BROKEN WALK IS STILL NOT A SET, which is the behaviour
+      // Stop always had and the reason it had it: a table missing the coins it
+      // never got to would read as a comparison and is not one. What is new is
+      // that it is no longer THROWN AWAY either -- the part stays, the screen
+      // says a walk is unfinished, and pressing again runs only what is
+      // missing. Refusing to read it and refusing to keep it were never the
+      // same requirement; they only looked like one while nothing could resume.
+      if (!run.stop && !run.error && run.done >= run.of && run.of > 0) {
         try {
-          run.saved = require('./walkset').saveWalk({
-            asked: run.asked, shapes: run.shapes, collapse: run.collapse,
-            rows: run.rows, startedAt: run.startedAt, finishedAt: run.finishedAt,
-            name: run.asked && run.asked.name,
+          run.saved = require('./walkset').sealPart(id, {
+            finishedAt: run.finishedAt, name: run.asked && run.asked.name,
           });
         } catch (err) { run.saveError = String(err && err.message ? err.message : err); }
+      } else if (run.rows.length) {
+        run.unfinished = { id, rows: run.rows.length, of: run.of };
       }
     }
   })();
