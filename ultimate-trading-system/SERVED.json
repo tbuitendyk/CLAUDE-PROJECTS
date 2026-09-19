@@ -1,16 +1,16 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html \u2014 so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "8ed4a4a595cf84b474ec61e3ba6b23118c127ab1",
-  "subject": "3.192.0 -- a promotion can be read back, row by row, on Walk it forward",
-  "capturedAt": "2026-09-19T23:24:00Z",
+  "commit": "e82a6934907287c40963cff8a1d68dce254755b1",
+  "subject": "3.193.0 -- one row per pair on the table, not every row those pairs have",
+  "capturedAt": "2026-09-19T23:31:00Z",
   "files": {
     "public/construct.js": {
-      "sha256": "d3af6aa335715b992bc1c93e3cb601baf5eec5297b60a408ad4626a5d7289a5c",
-      "bytes": 805186
+      "sha256": "ca49f73e7cdb6696b84fb2025d216f351c8ccf238b28bdc4dfbcd437aabe57f9",
+      "bytes": 805053
     },
     "public/help-content.js": {
-      "sha256": "c73077e9082081f27ad2e0e8ca38a1a97871985c2fb94b3660cade2dbbecf398",
-      "bytes": 151802
+      "sha256": "4df2661e5beb915bd2c4b1afbaae559960f44982486ae3c1bfa5c63cf77d3709",
+      "bytes": 151682
     }
   },
   "htmlNotVerified": "public/construct.html, public/trade.html and public/setup.html are served with the release stamped into the head (3.137.0) and, for construct.html, the cache markers rewritten to the content hash of each script, so their served bytes never equal their stored bytes. Nothing is generated from them."
