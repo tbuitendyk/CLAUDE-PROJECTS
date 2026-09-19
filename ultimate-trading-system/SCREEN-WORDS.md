@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **13010dc14f8c — what the box is serving**, not from the working tree.
+Generated from **2b864755ff8b — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -439,7 +439,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 # Sweep
 
-## What the controls are called (97)
+## What the controls are called (98)
 
 - `— each says why:`
 - `— none —`
@@ -485,6 +485,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `greenlight(s),`
 - `greenlights:`
 - `hold`
+- `ignore what is on Coins`
 - `is going:`
 - `lands`
 - `lands about`
@@ -498,7 +499,6 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `of the`
 - `on this box —`
 - `one voice at`
-- `only what is ticked on Coins`
 - `or a new name`
 - `permute`
 - `Quorum`
@@ -537,6 +537,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `UTC`
 - `View tree`
 - `was run with`
+- `what is ticked from a walk set`
 - `window layout`
 
 ## What the dropdowns offer (58)
@@ -600,7 +601,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `voices`
 - `Weekly 8-day`
 
-## Sentences the page prints (42)
+## Sentences the page prints (44)
 
 - Each stage writes a record set the next one reads, and every set names its parent. What is
 - running, and everything finished, is on Boards.
@@ -609,6 +610,8 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - argmax fit. No trade shape and no decision exist here; those are priced later, at stage 3, from the votes this stage keeps.
 - The fee prices only the tuning-slice $ on Boards: each unit's own votes on the last quarter of its training window,
 - one buy or sell per chunk in the direction they lean, read against the same null set.
+- where this run takes its units from
+- what is ticked under coins and shapes that pass
 - weigh each trade by the money it was worth
 - One chunk of history is one decision and one trade - a week on the weekly shape, a day on the
 - daily ones. Off, a trade where the price moved 0.6% and one where it moved 14% are the same single lesson, so a
@@ -645,10 +648,10 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - units; on the rest its values are one setting)
 - of them hold fewer than the block: a setting that places the same orders on a unit as another is priced there once)
 
-## Every word, flat (384)
+## Every word, flat (389)
 
 ```
-1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 60h 65h 8-day 89h about above above. act. active add after again against agree all alongside already and another any are argmax arm as at attaches auto band band. bar be because been being belonging beside best biggest blank block Boards Boards. BOOST both box boxes breakout but buy by call came Campaign campaign campaigns cannot carried carries carry chain changes. check checked chunk coin coins Coins committee compare confirm Confirmation confirmed conviction count cover crumbs Currently cut daily Daily data day decide decision declared Delete deleted deleted. Deleting deployed. description different direction directional doubles downloaded Each each end ends enough entry estimate every Every everything exam exist existing falling families fee fees fewer files filters finished first fit. folded for forecast forward four freak from gate go going gone good greenlight greenlights Greyed has here history hold holds how in into is it it. its itself judged keep keeps. kept kind kinds known lands landslide last later launched layout lean learning. leave lesson limit live Load loaded locked LOGREG make many market may member members members. minted models money more. most moved name named names never new next nine No no none not nothing now null number of Off off off. on On once one One one. ones. only or orders ordinary others out own parent parent. pass passes passes. paused per permanently permute places plain price priced prices prices. Progress progress quarter Quorum quorum rank read reads record records refuse remove removed Removed rest Retire retrained reused right rising rounds run running runs same saved says scans sealed second Selected sell set Set set. sets sets. setting settings setup setups. shape share side side. single singles size sized small so spot stage Stage stages start Start started starts static stayed staying still Sweep sweeps sweet tab table taking teaches than that the The their them them. there These they this This those three ticked times to too trade Trade trades trail train trained training trains travels tree triples tuning tuning-slice turns unconfirmed undone. unit units units. until up UTC values View voice voices vote votes voting wake was wastes way way. week weekly Weekly weigh weightless were What what when where while whole whose why will window with working worth writes wrong yet
+1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 60h 65h 8-day 89h about above above. act. active add after again against agree all alongside already and another any are argmax arm as at attaches auto band band. bar be because been being belonging beside best biggest blank block Boards Boards. BOOST both box boxes breakout but buy by call came Campaign campaign campaigns cannot carried carries carry chain changes. check checked chunk coin coins Coins committee compare confirm Confirmation confirmed conviction count cover crumbs Currently cut daily Daily data day decide decision declared Delete deleted deleted. Deleting deployed. description different direction directional doubles downloaded Each each end ends enough entry estimate every Every everything exam exist existing falling families fee fees fewer files filters finished first fit. folded for forecast forward four freak from gate go going gone good greenlight greenlights Greyed has here history hold holds how ignore in into is it it. its itself judged keep keeps. kept kind kinds known lands landslide last later launched layout lean learning. leave lesson limit live Load loaded locked LOGREG make many market may member members members. minted models money more. most moved name named names never new next nine No no none not nothing now null number of Off off off. on On once one One one. ones. only or orders ordinary others out own parent parent. pass passes passes. paused per permanently permute places plain price priced prices prices. Progress progress quarter Quorum quorum rank read reads record records refuse remove removed Removed rest Retire retrained reused right rising rounds run running runs same saved says scans sealed second Selected sell set Set set. sets sets. setting settings setup setups. shape shapes share side side. single singles size sized small so spot stage Stage stages start Start started starts static stayed staying still Sweep sweeps sweet tab table takes taking teaches than that the The their them them. there These they this This those three ticked times to too trade Trade trades trail train trained training trains travels tree triples tuning tuning-slice turns unconfirmed under undone. unit units units. until up UTC values View voice voices vote votes voting wake walk was wastes way way. week weekly Weekly weigh weightless were What what when where while whole whose why will window with working worth writes wrong yet
 ```
 
 ---
