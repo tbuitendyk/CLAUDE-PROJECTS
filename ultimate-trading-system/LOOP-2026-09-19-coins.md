@@ -99,3 +99,28 @@ Nothing yet.
 
 No box on the Coins screen needs a sideways bar, the page does not scroll
 sideways, and every row of both tables is the same height (32px).
+
+## Guards, run after the deploy
+
+Six, one per part plus the two structural fixes. Each names the test that reads
+the line it breaks, and each was checked by breaking it:
+
+| broken | caught by |
+|---|---|
+| `C_WALK_PER = 100` → 100000 | theWalkTableIsDrawnAPageAtATime |
+| `filters three` → `filters` on Choose early, read late | theCoinsFiltersUseBoardsOwnWordsAndBoardsOwnLayout |
+| `break-word` → `anywhere` | noCoinsTableIsStyledSoWideItNeedsASidewaysBar |
+| `C_SPLIT_NAME.latePerTrade` → its key | everySortNamesItsColumnTheWayTheScreenDoes |
+| `setPickedMany`'s stranger check | manyRowsArePickedInOneAskAndABadKeyStopsTheWholeAsk |
+| saving over a name stops replacing | savingOverANameReplacesItRatherThanMakingASecondOfThatName |
+
+The fourth was aimed at a line written differently from how I typed it and the
+harness said SKIP rather than passing — re-aimed and it catches.
+
+## What is NOT done
+
+- **`rows.length` on the Coins word list** is still a reader false positive on
+  `theWordListSeesEveryVisibleLabel`, present since at least 3.169.0. Not this
+  loop's work and not fixed.
+- **test-halflife.js :: theHalfLifeTravelsIntoTheCaptureTheGreenlightAndTheLivePath**
+  fails on a clean tree and still does.

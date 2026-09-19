@@ -220,6 +220,24 @@ const GUARDS = [
     'apageAlwaysStatesTheTrueTotalOnScreen', 'every table stops at its first hundred rows with nothing on screen saying there are more'],
   [path.join(ROOT, 'public', 'construct.js'), "${bPager((coins && coins.total) || 0, coinsQ.offset || 0, 100, 'S3C')}", '',
     'everyTableThatCanGrowHasAPagingBar', 'the every-coin table — the longest one on the screen — loses its paging bar and stops at its first hundred rows'],
+  // THE COINS SELECTION, BUILT 2026-09-19. Six guards, each aimed at the test
+  // that reads the line it breaks -- a guard on a line in lib/ belongs to the
+  // test that exercises the behaviour, a guard on a string in public/ to the
+  // test that SCANS the source for that string.
+  [path.join(ROOT, 'public', 'construct.js'), 'const C_WALK_PER = 100;', 'const C_WALK_PER = 100000;',
+    'theWalkTableIsDrawnAPageAtATime', 'Walk it forward goes back to putting every row of the walk in the page at once, and a sorting heading freezes the browser for six to fifteen seconds'],
+  [path.join(ROOT, 'public', 'construct.js'),
+    "  const v = (k) => esc(String(f[k] == null ? '' : f[k]));\n  return `<div class=\"filters three\">\n    <label title=\"show only rows whose coin contains one of these, comma separated. Blank shows every coin.\"><span class=\"fname\">coins</span><span class=\"fbox\"><input id=\"sf_coin\"",
+    "  const v = (k) => esc(String(f[k] == null ? '' : f[k]));\n  return `<div class=\"filters\">\n    <label title=\"show only rows whose coin contains one of these, comma separated. Blank shows every coin.\"><span class=\"fname\">coins</span><span class=\"fbox\"><input id=\"sf_coin\"",
+    'theCoinsFiltersUseBoardsOwnWordsAndBoardsOwnLayout', "Choose early, read late's eleven boxes go back to one tall column against a thousand pixels of empty panel, and the two filter rows on one screen stop matching"],
+  [path.join(ROOT, 'public', 'construct.html'), 'white-space:normal; overflow-wrap:break-word; }', 'white-space:normal; overflow-wrap:anywhere; }',
+    'noCoinsTableIsStyledSoWideItNeedsASidewaysBar', 'every column may shrink to one character again, so the tables draw "+10.72 0%" and "PERCENTIL E" — a figure broken between its digits'],
+  [path.join(ROOT, 'public', 'construct.js'), "latePerTrade: 'late', blind:", "latePerTrade: 'latePerTrade', blind:",
+    'everySortNamesItsColumnTheWayTheScreenDoes', 'the line under Choose early, read late goes back to telling the owner it is "sorted by latePerTrade" — a word on no heading of theirs'],
+  [path.join(ROOT, 'lib', 'walkset.js'), '  if (strangers.length) {', '  if (false) {',
+    'manyRowsArePickedInOneAskAndABadKeyStopsTheWholeAsk', 'a list holding one key the set does not have is applied anyway, so half of it lands and nobody can say which half'],
+  [path.join(ROOT, 'lib', 'coinsscreens.js'), '      replaced = true;\n      return false;', '      replaced = true;\n      return true;',
+    'savingOverANameReplacesItRatherThanMakingASecondOfThatName', 'saving a screen under a name already on the box makes a second of that name — two selection rules wearing one name'],
   // THE WORD LIST'S OWN READER, both ways. Too shallow and words on the
   // owner's screen are on no list, which under RULE ONE-A forbids saying them;
   // too deep and one screen's words are authorised on another.
