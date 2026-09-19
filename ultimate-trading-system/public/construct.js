@@ -1191,6 +1191,13 @@ function swProvenance() {
       // holds promoted rows as well, so calling it "coins and shapes that pass"
       // named one of its two boxes and left the other out of the sentence.
       ['where this run takes its units from', sourceWords[wantSource] || wantSource, sourceWords[setSource] || setSource],
+      // THE CONTROL ARM IS A BOX OF ITS OWN (3.194.0). Two sets over the same
+      // coins and shapes, one with the extra members and one without, are
+      // DIFFERENT runs and the screen has to say so -- that difference is the
+      // whole reason the second one was run.
+      ...(tickBox || p.plainUnits
+        ? [['leave the extra members out', (c('#swPlainUnits') && tickBox) ? 'yes' : 'no', p.plainUnits ? 'yes' : 'no']]
+        : []),
       ...(tickBox || setPairs
         ? (tickBox && setPairs ? [['Candidates for Sweep', pairWords(swPassersNow), pairWords(setPairs)]] : [])
         : [['trade coins', wantUni.split(',').join(', '), setUni.split(',').join(', ')],
@@ -1398,6 +1405,8 @@ async function swCounts() {
       sizes: { singles: $('#swSingles').checked, doubles: $('#swDoubles').checked, triples: $('#swTriples').checked },
       geometry: $('#swGeom').value, permuteGeometry: $('#swPermGeom').checked,
       coinsSource: swSourceNow(),
+      // the control arm: the same units, without the extra members (3.194.0)
+      plainUnits: !!($('#swPlainUnits') && $('#swPlainUnits').checked && swSourceNow() !== 'none'),
     };
     if (!body.universe.length) delete body.universe;
     if (!body.compare.length) delete body.compare;
@@ -3582,6 +3591,9 @@ async function drawSweep() {
     <div class="row">
       <label class="c" title="run only the rows ticked from a walk set, at the top of Coins. A promoted row carries a look-back and a band of its own, and THAT is what this option is for: each one becomes one more member on its unit, trained on the coin's numbers over that look-back and marked at that band. Everything the unit already trains is untouched. Trade coins, chunk shape and permute are greyed."><input type="radio" name="swSource" id="swSourceWalk" value="walk"> what is ticked from a walk set</label>
     </div>
+    <div class="row">
+      <label class="c" title="run EXACTLY the same coins and chunk shapes that choice gives, and leave the extra members out — so this run and the one without this tick differ in one thing only, the extra members, and can be read one against the other. Without it the only way to run those units without their extra members is to ignore what is on Coins, which builds a different list of coins and shapes altogether: two runs differing in what was traded AND in how many members voted, where neither difference can be told from the other. Greyed unless one of the two Coins choices is on, because with neither of them there are no extra members to leave out."><input type="checkbox" id="swPlainUnits"> leave the extra members out</label>
+    </div>
     <!-- EVERY OTHER BOX OF THE RUN IN ONE ROW, UNDER THE THREE CHOICES (owner
          order, 2026-09-19). Two faults, one cause. The third choice shared its
          row with start and end, which are a caption stacked over a box and so
@@ -3761,6 +3773,8 @@ async function drawSweep() {
       sizes: { singles: $('#swSingles').checked, doubles: $('#swDoubles').checked, triples: $('#swTriples').checked },
       geometry: $('#swGeom').value, permuteGeometry: $('#swPermGeom').checked,
       coinsSource: swSourceNow(),
+      // the control arm: the same units, without the extra members (3.194.0)
+      plainUnits: !!($('#swPlainUnits') && $('#swPlainUnits').checked && swSourceNow() !== 'none'),
       windowLayout: $('#swLayout').value, allLoaded: $('#swAllData').checked,
       startMonth: $('#swStart').value || undefined, endMonth: $('#swEnd').value || undefined,
       nullN: Number($('#swNull1').value) || 0, fee: Number($('#swFee1').value) / 100, desc: $('#swDesc1').value,
@@ -3898,6 +3912,10 @@ async function drawSweep() {
     // chunk shape, so the boxes that would name other ones cannot apply.
     const on = swSourceNow() !== 'none';
     for (const id of ['swUni', 'swGeom', 'swPermGeom']) if ($(`#${id}`)) $(`#${id}`).disabled = on;
+    // AND THE CONTROL ARM IS THE OTHER WAY ROUND (3.194.0): it means something
+    // only when the units come from Coins, because that is the only time there
+    // are extra members to leave out.
+    if ($('#swPlainUnits')) $('#swPlainUnits').disabled = !on;
   };
   for (const el of sweepControls()) {
     const onChange = () => {
@@ -10661,6 +10679,8 @@ function cPromotedBoxes(sets) {
   return `${groups.map((g) => `<div class="passbox">
       <div class="passname">from <b>${esc(g.name)}</b> &mdash; ${g.rows.length} promoted - selections may feed units into STAGE 1 and 2 ADDITIONAL MEMBER TRAINING
         <span class="muted">${esc(g.id)} · release ${esc(String(g.release || '—'))}</span></div>
+      <div class="row"><button class="cunpromall" data-set="${esc(g.id)}" title="takes every row here back off the list in one press, instead of one press per row. The walk set keeps all of them &mdash; only the promotions go, and the set itself is untouched. It asks first.">Remove them all</button>
+        <span class="muted">${g.rows.length} row(s) &mdash; the walk set is not deleted</span></div>
       <div class="cwbox"><table class="cgap cpassers"><thead><tr>
         <th></th><th title="the coin">coin</th><th title="the chunk shape">chunk shape</th>
         <th title="how far back the move was measured from, ending at the decision">look-back</th>
@@ -10748,9 +10768,16 @@ function cCandidatesPanel(pass, sets) {
   const n = rows.length + groups.reduce((a, g) => a + g.rows.length, 0);
   const on = rows.filter((r) => r.ticked).length
     + groups.reduce((a, g) => a + g.rows.filter((r) => r.ticked).length, 0);
-  if (!pass && !groups.length) return '';
+  // AND IF A SET'S PROMOTIONS COULD NOT BE READ, SAY SO (3.194.0). They moved
+  // into a file beside each set; a set the move has not reached shows no rows
+  // here, and a list that is quietly short is worse than one that says why.
+  const unread = (cWalksNow || []).filter((w) => w && w.picksUnread);
+  if (!pass && !groups.length && !unread.length) return '';
   return `<div class="panel">
     <h3 style="margin-top:0">Candidates for Sweep</h3>
+    ${unread.length ? `<p class="note warn"><b>${unread.length} walk set(s) are not listed below because their promotions have not been read:
+      ${unread.map((w) => esc(String(w.name || w.id))).join(', ')}.</b> Nothing has been lost &mdash; the rows are in the set and the
+      promotions are still recorded. Restart the service and it moves them; if this line comes back after a restart, the service log says why.</p>` : ''}
     <p class="note"><b>${on} of ${n}</b> ticked. Sweep runs the ticked rows when <b>only what is ticked on Coins</b> is on over there,
       and nothing else does. A row that passed a reading carries a coin, a chunk shape and its own sweet spot band; a row promoted off a
       walk carries a look-back as well.${groups.length ? ` Each promoted row belongs to the walk set it came from &mdash; <b>delete that set and its rows here go with it</b>.` : ''}</p>
@@ -10996,6 +11023,25 @@ async function drawCoins() {
       try {
         await post(`api/coins/walks/${encodeURIComponent(b.dataset.set)}/pick`, { key: b.dataset.key, picked: false });
       } catch (err) { $('#cOut').innerHTML = `<span class="warn">${esc(err.message)}</span>`; b.disabled = false; return; }
+      draw();
+    };
+  }
+  // EVERY PROMOTION OFF ONE SET IN ONE PRESS (3.194.0). It asks first, because
+  // a press that empties a list the owner built row by row is not one to make
+  // by mis-click, and it says how many went.
+  for (const b of document.querySelectorAll('#view button.cunpromall')) {
+    b.onclick = async () => {
+      const id = b.dataset.set;
+      const n = Number(b.parentElement && b.parentElement.querySelector('span.muted')
+        ? String(b.parentElement.querySelector('span.muted').textContent).replace(/\D.*$/, '') : 0) || 0;
+      if (!confirm(`Take all ${n} promoted row(s) of ${id} back off the list?\n\n`
+        + 'The walk set keeps every one of them — only the promotions go, and the set itself is not deleted.')) return;
+      b.disabled = true;
+      let ans = null;
+      try {
+        ans = await post(`api/coins/walks/${encodeURIComponent(id)}/clear-picks`, {});
+      } catch (err) { $('#cOut').innerHTML = `<span class="warn">${esc(err.message)}</span>`; b.disabled = false; return; }
+      $('#cOut').innerHTML = `<span class="pos">${(ans && ans.removed) || 0} row(s) taken off the list — ${esc(id)} itself is untouched</span>`;
       draw();
     };
   }

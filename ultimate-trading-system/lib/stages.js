@@ -289,6 +289,11 @@ function publicParams(d) {
     // or the screen cannot hold a set up against the boxes, and every set drawn
     // after the change would read as not matching.
     coinsSource: p.coinsSource || null,
+    // AND WHETHER IT WAS THE CONTROL ARM (3.194.0): same units, extra members
+    // left out. Served for the same reason coinsSource is -- a set that cannot
+    // say this reads as the other run, and comparing the two is the whole point
+    // of it existing.
+    plainUnits: p.plainUnits === true,
     trainOn: p.trainOn || null,
     allLoaded: p.allLoaded !== false, startMonth: p.startMonth || null, endMonth: p.endMonth || null,
   };
@@ -674,7 +679,24 @@ function startStage1(params) {
   if (!Array.isArray(params.passers) && !require('./coinsrun').COINS_SOURCES.includes(source)) {
     throw new Error(`there is no unit source called ${JSON.stringify(source)} — it is one of ${require('./coinsrun').COINS_SOURCES.join(', ')}`);
   }
-  const passers = (!Array.isArray(params.passers) && source !== 'none')
+  // THE SAME UNITS, WITHOUT THE EXTRA MEMBERS (3.194.0, owner order: "how do
+  // you propose I do a 1 to 1 comparison without having a tool / interface
+  // mechanism to select EXACTLY those units BUT without the walked history
+  // members? ... that's the only way I can get a matching set of units").
+  //
+  // It is the control arm, and without it there was none. Choosing `ignore what
+  // is on Coins` instead builds units from the boxes on the screen, which is a
+  // different list of coins and shapes -- so the two runs differ in WHAT was
+  // traded as well as in how many members voted, and neither difference can be
+  // read off the other. Ticked, the unit list is identical, coin for coin and
+  // shape for shape, and the extra members are the only thing that changed.
+  const plain = params.plainUnits === true;
+  const dropExtras = (list) => (plain && Array.isArray(list) ? list.map((u) => ({ ...u, extras: [] })) : list);
+  // ONE PLACE, so what is RUN and what is RECORDED are the same list. The
+  // record is what a relaunch and every child stage rebuild from, and a record
+  // that carried extras a run did not use would grow members on the relaunch --
+  // the set saying one thing and the run being another (RULE NINE).
+  const passers = dropExtras((!Array.isArray(params.passers) && source !== 'none')
     ? require('./coinsrun').passingUnits(source)
     : Array.isArray(params.passers)
       // A RELAUNCH KEEPS THE EXTRAS (3.184.0). Rebuilding the pairs and keeping
@@ -686,7 +708,7 @@ function startStage1(params) {
         geometry: (x || {}).geometry,
         extras: Array.isArray((x || {}).extras) ? (x || {}).extras : [],
       })).filter((x) => x.coin && GEOMETRIES[x.geometry])
-      : null;
+      : null);
   // THE REFUSAL QUOTES THE TICK BY ITS LABEL, so it has to be the label the
   // tick carries: "only what is ticked on Coins" (3.172.0). It also names where
   // to go and tick: Candidates for Sweep, at the top of Coins.
@@ -805,7 +827,7 @@ function startStage1(params) {
     boardNull: { ...BOARD_NULL_NONE },
     // The owner's current campaign name rides on every launch, exactly as it
     // does on the sweeps (owner order, 2026-08-04; carried here 2026-08-27).
-    params: { universe, compare: compareUsed, sizes, geometries, windowLayout, nullN, fee, ...p, coinsSource: source, passers: passers || null, campaign: require('./campaign').getCampaign() || null },
+    params: { universe, compare: compareUsed, sizes, geometries, windowLayout, nullN, fee, ...p, coinsSource: source, plainUnits: plain, passers: passers || null, campaign: require('./campaign').getCampaign() || null },
     seed: seedOf(id),
     plan: { units: units.length, unitList: units },
     perf: {

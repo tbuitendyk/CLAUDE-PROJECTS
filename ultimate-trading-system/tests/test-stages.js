@@ -5801,7 +5801,16 @@ module.exports = {
     assert.ok(/&& source !== 'none'\)\n\s+\? require\('\.\/coinsrun'\)\.passingUnits\(source\)/.test(launch), 'a named source reads that list off Coins');
     assert.ok(/const units = passers \? unitsForPassers\(passers, sizes, compare\) : unitsFor\(universe, sizes, geometries, compare\);/.test(launch), 'the pairs build the units');
     assert.ok(/\? \[\.\.\.new Set\(passers\.map\(\(x\) => x\.coin\)\)\]/.test(launch) && /\? \[\.\.\.new Set\(passers\.map\(\(x\) => x\.geometry\)\)\]/.test(launch), 'the universe and the shapes are read off the pairs');
-    assert.ok(/coinsSource: source, passers: passers \|\| null, campaign:/.test(st), 'the source and the pairs are written on the set');
+    assert.ok(/coinsSource: source, plainUnits: plain, passers: passers \|\| null, campaign:/.test(st), 'the source and the pairs are written on the set');
+    // THE CONTROL ARM IS ONE LIST, NOT TWO (3.194.0, owner order: "how do you
+    // propose I do a 1 to 1 comparison ... that's the only way I can get a
+    // matching set of units"). Same units, extra members left out -- and the
+    // extras are dropped in ONE place, wrapping both branches, so what the run
+    // uses and what the set records are the same list. Recording units with
+    // extras a run did not use would grow members on a relaunch (RULE NINE).
+    assert.ok(/const plain = params\.plainUnits === true;/.test(launch), 'the launch reads the control arm by name');
+    assert.ok(/const passers = dropExtras\(/.test(launch), 'and drops the extras once, around both branches');
+    assert.ok(!/passersUsed/.test(launch), 'never as a second list beside the first');
   },
 
   // THE 80/20 LAYOUT IS GONE FROM STAGE 1 (owner order, 2026-09-08). It kept no

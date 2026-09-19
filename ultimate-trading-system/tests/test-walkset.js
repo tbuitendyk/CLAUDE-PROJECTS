@@ -20,7 +20,76 @@ const aRow = (over = {}) => ({
   ...over,
 });
 
+// A SET'S PROMOTIONS MOVE INTO A FILE BESIDE IT (3.194.0, RULE NINE). Until
+// then they were inside the set document, so flipping one key rewrote 146MB.
+// This test goes out with the repair it guards (RULE TEN).
+function aSetWrittenWithItsPicksInsideIsBroughtUpToDate() {
+  const ws = require('../lib/walkset');
+  const fs = require('fs');
+  {
+    const rows = [
+      { coin: 'LTCUSDT', geometry: 'daily-1d', lookback: 312, band: 200, trades: 9, perTrade: 0.1, windows: 4, windowsUp: 3, scan: [] },
+      { coin: 'XLMUSDT', geometry: 'daily-1d', lookback: null, band: 250, trades: 7, perTrade: 0.2, windows: 4, windowsUp: 2, scan: [] },
+    ];
+    const got = ws.saveWalk({ asked: {}, shapes: [], collapse: [], rows, startedAt: 1, finishedAt: 2, name: 'old shape' });
+    const keys = rows.map(ws.rowKey);
+    // put it back into the shape a set written before 3.194.0 has
+    fs.rmSync(ws.picksFile(got.id), { force: true });
+    const doc = ws.readWalk(got.id);
+    doc.picked = keys.slice().sort();
+    doc.off = [keys[1]];
+    fs.writeFileSync(ws.walkFile(got.id), `${JSON.stringify(doc)}\n`);
+    ws.forgetBrief(got.id);
+
+    // AND IT REFUSES TO GUESS UNTIL IT HAS BEEN MOVED. Reading an unmoved set
+    // as "nothing promoted" would hide the owner's work behind a number.
+    assert.strictEqual(ws.readPicks(got.id), null, 'no picks file yet');
+    assert.strictEqual(ws.listWalks()[0].picked, null, 'the list says it does not know rather than saying nought');
+    assert.strictEqual(ws.listWalks()[0].picksUnread, true, 'and it says so by name, so the screen can');
+    assert.deepStrictEqual(ws.promoted(), [], 'and nothing is promoted from a set that has not been moved');
+
+    const done = ws.repairPicksIntoTheirOwnFile();
+    assert.strictEqual(done.moved, 1, 'the one set is moved');
+    assert.deepStrictEqual(done.failed, [], 'and nothing failed');
+
+    assert.deepStrictEqual(ws.readPicks(got.id).picked, keys.slice().sort(), 'every pick came across');
+    assert.deepStrictEqual(ws.readPicks(got.id).off, [keys[1]], 'and so did which of them are unticked');
+    const after = ws.readWalk(got.id);
+    assert(!('picked' in after) && !('off' in after), 'and the set document no longer carries them');
+    assert.strictEqual(after.rows.length, 2, 'with every row still there');
+    const g = ws.promoted();
+    assert.strictEqual(g[0].rows.length, 2);
+    assert.strictEqual(g[0].rows.filter((r) => r.ticked).length, 1, 'the unticked one is still unticked');
+
+    try {
+      // and a second pass finds nothing to do, so a restart cannot double it
+      assert.strictEqual(ws.repairPicksIntoTheirOwnFile().moved, 0, 'it is done once');
+    } finally { try { ws.deleteWalk(got.id, got.id); } catch (_) { /* already gone */ } }
+  }
+}
+
+// A SET IS `W-4.json` AND `W-4.picks.json` IS NOT ONE (3.194.0). The folder now
+// holds two kinds of file, and a reader that took any .json for a set would
+// invent `W-4.picks` and parse it on every draw -- the 2026-09-19 outage again.
+function aPicksFileIsNeverMistakenForASet() {
+  const ws = require('../lib/walkset');
+  {
+    const rows = [{ coin: 'LTCUSDT', geometry: 'daily-1d', lookback: 312, band: 200, trades: 9, perTrade: 0.1, windows: 4, windowsUp: 3, scan: [] }];
+    const got = ws.saveWalk({ asked: {}, shapes: [], collapse: [], rows, startedAt: 1, finishedAt: 2, name: 'one set' });
+    ws.setPickedMany(got.id, [ws.rowKey(rows[0])], true);
+    const list = ws.listWalks();
+    assert.strictEqual(list.length, 1, 'one set on disk is one set in the list');
+    assert.strictEqual(list[0].id, got.id, 'and it is the set, not the picks file');
+    try {
+      assert.ok(ws.isSetFile(`${got.id}.json`), 'the set file is a set');
+      assert.ok(!ws.isSetFile(`${got.id}.picks.json`), 'and the picks file beside it is not');
+    } finally { try { ws.deleteWalk(got.id, got.id); } catch (_) { /* already gone */ } }
+  }
+}
+
 module.exports = {
+  aSetWrittenWithItsPicksInsideIsBroughtUpToDate,
+  aPicksFileIsNeverMistakenForASet,
   // PROMOTED IS A REFERENCE, NOT A COPY (owner decision, 2026-09-18: "reference
   // the walk set, not copy"). Every row in the list at the top of Coins is read
   // back off its own walk set, so deleting the set takes them with it and
@@ -164,22 +233,38 @@ module.exports = {
       const out = ws.setPickedMany(got.id, keys, true);
       assert.strictEqual(out.picked, 3, 'all three went in on one ask');
       assert.strictEqual(out.changed, 3, 'and it says how many it was handed');
-      assert.deepStrictEqual(ws.readWalk(got.id).picked, keys.slice().sort());
+      assert.deepStrictEqual(ws.readPicks(got.id).picked, keys.slice().sort());
 
-      // a stranger among them stops the whole ask, and names itself
-      assert.throws(() => ws.setPickedMany(got.id, [keys[0], 'NOPEUSDT|daily-1d|24|200'], false),
+      // a stranger among them stops the whole ask, and names itself -- and the
+      // reason it gives is the true one for the direction asked (3.194.0).
+      // Promoting asks "is this a row of the walk", which is a question about
+      // the set document; removing asks "is this promoted", which is a question
+      // about a file of a few hundred bytes. That is why Remove is instant.
+      assert.throws(() => ws.setPickedMany(got.id, [keys[0], 'NOPEUSDT|daily-1d|24|200'], true),
         /NOPEUSDT\|daily-1d\|24\|200.*is not a row of/);
-      assert.strictEqual(ws.readWalk(got.id).picked.length, 3, 'and nothing was unpicked on the way to refusing');
+      assert.throws(() => ws.setPickedMany(got.id, [keys[0], 'NOPEUSDT|daily-1d|24|200'], false),
+        /NOPEUSDT\|daily-1d\|24\|200.*is not promoted from/);
+      assert.strictEqual(ws.readPicks(got.id).picked.length, 3, 'and nothing was unpicked on the way to refusing');
 
       // unticking a list is the same door
       assert.strictEqual(ws.setPickedMany(got.id, [keys[0], keys[2]], false).picked, 1);
-      assert.deepStrictEqual(ws.readWalk(got.id).picked, [keys[1]]);
+      assert.deepStrictEqual(ws.readPicks(got.id).picked, [keys[1]]);
 
       // and one row still goes through the door it always did
       ws.setPicked(got.id, keys[0], true);
-      assert.strictEqual(ws.readWalk(got.id).picked.length, 2, 'setPicked is setPickedMany with one row, not a second implementation');
+      assert.strictEqual(ws.readPicks(got.id).picked.length, 2, 'setPicked is setPickedMany with one row, not a second implementation');
 
       assert.throws(() => ws.setPickedMany(got.id, [], true), /no row was named/);
+
+      // EVERY PROMOTION OFF ONE SET IN ONE PRESS (3.194.0, owner order). It is
+      // setPickedMany with every key, so there is one implementation, and it
+      // says how many went because a press that empties a list has to.
+      const gone = ws.clearPicks(got.id);
+      assert.strictEqual(gone.removed, 2, 'it says how many it took off');
+      assert.strictEqual(gone.picked, 0, 'and none are left');
+      assert.deepStrictEqual(ws.readPicks(got.id).picked, [], 'the picks file is empty, not missing');
+      assert.strictEqual(ws.clearPicks(got.id).removed, 0, 'pressing it again takes nothing off and does not throw');
+      assert.strictEqual(ws.readWalk(got.id).rows.length, 3, 'and the walk set still has every row it ever had');
       assert.throws(() => ws.setPickedMany(got.id, keys, 'yes'), /picked or not/);
     } finally { ws.deleteWalk(got.id, got.id); }
   },
@@ -204,7 +289,11 @@ module.exports = {
       ], 'the picks come back as coin and shape, once each, in the order the rows sit in');
       ws.setPicked(got.id, ws.rowKey(rows[2]), false);
       assert.deepStrictEqual(ws.pickedUnits(got.id), [{ coin: 'LTCUSDT', geometry: 'daily-1d' }], 'and un-picking takes it out');
-      assert(ws.readWalk(got.id).picked.length === 2, 'the picks live ON the set, so they survive a restart');
+      assert(ws.readPicks(got.id).picked.length === 2, 'the picks belong to the set, so they survive a restart');
+      // AND THEY ARE NOT IN THE SET DOCUMENT (3.194.0). Keeping them there
+      // meant rewriting 146MB to flip one key, which is what made Remove slow.
+      const doc = ws.readWalk(got.id);
+      assert(!('picked' in doc) && !('off' in doc), 'the set document carries the walk, never what the owner pressed');
     } finally { try { ws.deleteWalk(got.id, got.id); } catch (_) { /* already gone */ } }
   },
 

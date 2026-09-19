@@ -386,6 +386,13 @@ app.post('/api/coins/walks/:id/name', (req, res) => {
   try { return res.json(require('./lib/walkset').renameWalk(req.params.id, (req.body || {}).name)); }
   catch (err) { return res.status(400).json({ error: err.message }); }
 });
+// EVERY PROMOTION OFF ONE SET IN ONE PRESS (3.194.0, owner order). One read
+// and one write of a few hundred bytes, where thirty-one presses used to be
+// thirty-one of each.
+app.post('/api/coins/walks/:id/clear-picks', (req, res) => {
+  try { return res.json(require('./lib/walkset').clearPicks(req.params.id)); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
 app.post('/api/coins/walks/:id/pick', (req, res) => {
   try {
     const b = req.body || {};
@@ -1764,6 +1771,16 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`ultimate-trading-system listening on 127.0.0.1:${PORT}`);
+  // A WALK SET'S PROMOTIONS LIVE BESIDE IT (3.194.0, RULE NINE). Run here, in
+  // the listen callback, so not one request is served against a set whose
+  // promotions have not been moved yet -- the socket is already bound, so a
+  // health check connects and simply waits rather than being refused. On a
+  // 146MB set it is about ten seconds, once, and nothing after that.
+  try {
+    const done = require('./lib/walkset').repairPicksIntoTheirOwnFile();
+    if (done.moved) console.log(`walk sets: ${done.moved} of ${done.sets} had their promotions moved beside them (${done.named.join(', ')})`);
+    if (done.failed.length) console.log(`walk sets: ${done.failed.length} could NOT be moved — ${done.failed.join('; ')}`);
+  } catch (err) { console.log(`walk sets could not be checked: ${err.message}`); }
   // A SAVED SCREEN SPEAKS TODAY'S VOCABULARY (3.193.0, RULE NINE). One pass,
   // announced, once -- and the block it calls is written to be deleted the day
   // every screen on the box has been through it (lib/coinsscreens.js).

@@ -25,9 +25,17 @@ const V = 1;
 function ensureDir() { try { fs.mkdirSync(DIR, { recursive: true }); } catch (_) { /* already there */ } }
 const walkFile = (id) => path.join(DIR, `${String(id).replace(/[^\w.-]/g, '')}.json`);
 
+// A SET IS `W-4.json` AND NOTHING ELSE (3.194.0). The picks now live in
+// `W-4.picks.json` beside it, and a reader that took any `.json` in this folder
+// for a set would invent one called `W-4.picks` and then parse it on every draw
+// -- which is exactly the fault that took the service down on 2026-09-19, where
+// `<id>.funnelrich.json` was read as a record set. One dot in the name, no
+// second extension: that is the whole rule, and it is written here rather than
+// remembered because this folder now holds two kinds of file.
+const isSetFile = (f) => f.endsWith('.json') && !f.slice(0, -'.json'.length).includes('.');
 function idsOnDisk() {
   try {
-    return fs.readdirSync(DIR).filter((f) => f.endsWith('.json')).map((f) => f.replace(/\.json$/, ''));
+    return fs.readdirSync(DIR).filter(isSetFile).map((f) => f.replace(/\.json$/, ''));
   } catch (_) { return []; }
 }
 
@@ -70,6 +78,71 @@ function readWalk(id) {
 // owner ticked out of tens of thousands. The rows themselves are NOT kept.
 // Change detection is the file's own modification time and size, so a set
 // written by anything at all -- this process or a future one -- is re-read.
+// ---- THE PICKS LIVE BESIDE THE SET, NOT INSIDE IT (3.194.0, owner order:
+// ---- "the remove buttons are still very slow") ------------------------------
+//
+// 3.191.0 made the DRAW free and left the press at 6.7 seconds, because the
+// press still read and rewrote the whole set document to flip one key. On the
+// owner's set that is 3.2s to parse 146MB and 3.5s to write it back, to change
+// a string in a list of thirty-one. Nothing about the rows changed either time.
+//
+// So the picks are their own file: `W-4.picks.json`, a few hundred bytes, read
+// and written in under a millisecond. The set document holds the walk -- the
+// rows, and what it was asked for -- and nothing that the owner can change by
+// pressing something. A press now costs one small write.
+//
+// THE SET IS STILL WHAT OWNS THEM. Delete the set and its picks file goes too,
+// which is the behaviour the owner chose (2026-09-18: "reference the walk set,
+// not copy") and the reason a promoted row can never go stale against a
+// re-walk.
+const PICKS_V = 1;
+const picksFile = (id) => path.join(DIR, `${String(id).replace(/[^\w.-]/g, '')}.picks.json`);
+function readPicks(id) {
+  try {
+    const p = JSON.parse(fs.readFileSync(picksFile(id), 'utf8'));
+    if (!p || p.v !== PICKS_V) return null;
+    return { picked: Array.isArray(p.picked) ? p.picked : [], off: Array.isArray(p.off) ? p.off : [] };
+  } catch (_) { return null; }
+}
+function writePicks(id, picked, off) {
+  ensureDir();
+  const doc = {
+    v: PICKS_V, id: String(id),
+    picked: [...new Set(picked || [])].sort(),
+    off: [...new Set(off || [])].sort(),
+  };
+  const tmp = `${picksFile(id)}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify(doc)}\n`);
+  fs.renameSync(tmp, picksFile(id));
+  return doc;
+}
+// A SET WITH NO PICKS FILE HAS NOT BEEN THROUGH THE REPAIR BELOW. It is not
+// read as "nothing picked", because that would quietly hide the owner's
+// promotions; every caller asks readPicks and decides for itself.
+const picksOrNone = (id) => readPicks(id);
+
+// ---- ONE PARSE PER FILE, AND ONLY WHEN THE FILE CHANGES (3.191.0, owner
+// ---- order: "each 'Remove' button ... takes about 30 seconds ... FIX THAT") --
+//
+// The list said it was cheap and it was not. It called readWalk, which parses
+// the WHOLE set -- every window of every reading -- and then kept the header
+// and threw the rows away. On the owner's 141MB set that is three seconds, and
+// nothing asked for it once: promoted() called listWalks and then parsed every
+// file a SECOND time; the status the screen polls called listWalks and then
+// nextName, which calls listWalks again.
+//
+// This is the same defect as the one that took the service down on 2026-09-19,
+// wearing different clothes: a full parse on a path that runs on every draw.
+//
+// WHAT IS KEPT, AND WHY IT IS SMALL. The header, and a map from row key to the
+// shaped row -- filled ONLY for keys something has asked for, which in practice
+// is the handful the owner has promoted out of tens of thousands. Keeping every
+// row would be keeping the file, which is the thing being avoided.
+//
+// AND IT IS WHAT MAKES Remove INSTANT. Taking a promotion off only ever REMOVES
+// a key, so every key still wanted is already in the map and the set document
+// is not read at all. Promoting asks for keys the map has not seen, which costs
+// one parse -- and promoting is a deliberate bulk press, not a repeated click.
 const brief = new Map();
 function statOf(id) { try { return fs.statSync(walkFile(id)); } catch (_) { return null; } }
 
@@ -78,45 +151,35 @@ function headOf(doc, bytes) {
     id: doc.id, name: doc.name, release: doc.release, bytes,
     startedAt: doc.startedAt, finishedAt: doc.finishedAt,
     rows: Array.isArray(doc.rows) ? doc.rows.length : 0,
-    picked: Array.isArray(doc.picked) ? doc.picked.length : 0,
+    picked: 0,                          // filled from the picks file by listWalks
     asked: doc.asked || null,
   };
 }
 
 // WHAT A PROMOTED ROW IS, worked out at the one parse. It carries what the row
 // IS, never what a reading said about it -- see promoted(), which this serves.
-function promotedRowsOf(doc) {
-  const want = new Set(doc.picked || []);
-  if (!want.size) return [];
-  const off = new Set(doc.off || []);
-  const rows = [];
-  for (const r of doc.rows || []) {
-    const k = rowKey(r);
-    if (!want.has(k)) continue;
-    rows.push({
-      key: k,
-      coin: r.coin,
-      geometry: r.geometry,
-      lookback: r.lookback == null ? 'own' : r.lookback,
-      band: r.band,
-      trades: r.trades,
-      perTrade: r.perTrade,
-      windows: r.windows,
-      windowsUp: r.windowsUp,
-      best: r.best,
-      worst: r.worst,
-      copies: r.copies,
-      asGood: r.asGood,
-      asGoodSlid: r.asGoodSlid,
-      // the two signs this row's whole history gives, at its own look-back
-      // and band -- null on a set walked before 3.171.0 kept them
-      lean: r.lean || null,
-      scan: r.scan || [],
-      ticked: !off.has(k),
-    });
-  }
-  return rows;
-}
+// `ticked` is NOT here: it comes off the picks file, which changes without the
+// set changing, so baking it in would cache an answer that had moved.
+const shapeRow = (r, k) => ({
+  key: k,
+  coin: r.coin,
+  geometry: r.geometry,
+  lookback: r.lookback == null ? 'own' : r.lookback,
+  band: r.band,
+  trades: r.trades,
+  perTrade: r.perTrade,
+  windows: r.windows,
+  windowsUp: r.windowsUp,
+  best: r.best,
+  worst: r.worst,
+  copies: r.copies,
+  asGood: r.asGood,
+  asGoodSlid: r.asGoodSlid,
+  // the two signs this row's whole history gives, at its own look-back
+  // and band -- null on a set walked before 3.171.0 kept them
+  lean: r.lean || null,
+  scan: r.scan || [],
+});
 
 function briefOf(id) {
   const st = statOf(id);
@@ -124,20 +187,61 @@ function briefOf(id) {
   const had = brief.get(id);
   if (had && had.mtimeMs === st.mtimeMs && had.size === st.size) return had;
   const doc = readWalk(id);
-  const made = doc
-    ? { mtimeMs: st.mtimeMs, size: st.size, head: headOf(doc, st.size), rows: promotedRowsOf(doc) }
-    : { mtimeMs: st.mtimeMs, size: st.size, head: { id, name: id, broken: true, bytes: st.size }, rows: [] };
+  if (!doc) {
+    const bad = { mtimeMs: st.mtimeMs, size: st.size, head: { id, name: id, broken: true, bytes: st.size }, rowsByKey: new Map(), allKeys: new Set() };
+    brief.set(id, bad);
+    return bad;
+  }
+  // THE KEYS COME FREE HERE. The rows are in memory at this moment to count
+  // them for the header, so collecting their keys costs one loop and saves the
+  // whole file being parsed a second time the next time something asks whether
+  // a key is a row of this set.
+  const all = new Set();
+  for (const r of doc.rows || []) all.add(rowKey(r));
+  const made = { mtimeMs: st.mtimeMs, size: st.size, head: headOf(doc, st.size), rowsByKey: new Map(), allKeys: all };
   brief.set(id, made);
   return made;
 }
 
+// THE ONE PARSE THAT FILLS THE MAP, taken only when a key is asked for that is
+// not in it. It fills EVERY key of the set's rows into `allKeys` at the same
+// time, so the next "is this a row of this set" costs nothing either.
+function fillRows(id, b, want) {
+  const doc = readWalk(id);
+  if (!doc) { b.allKeys = new Set(); return; }
+  const need = new Set(want || []);
+  const all = new Set();
+  for (const r of doc.rows || []) {
+    const k = rowKey(r);
+    all.add(k);
+    if (!need.size || need.has(k)) b.rowsByKey.set(k, shapeRow(r, k));
+  }
+  b.allKeys = all;
+}
+// and the two questions the callers actually ask
+function rowsFor(id, keys) {
+  const b = briefOf(id);
+  if (!b || b.head.broken) return null;
+  const missing = (keys || []).filter((k) => !b.rowsByKey.has(k));
+  if (missing.length) fillRows(id, b, keys);
+  return b;
+}
+function keysOf(id) {
+  const b = briefOf(id);
+  if (!b || b.head.broken) return null;
+  if (!b.allKeys) fillRows(id, b, null);
+  return b.allKeys;
+}
+
 // AND A WRITER HANDS OVER WHAT IT ALREADY HAS. Every write path here has the
-// whole document in memory at the moment it writes it, so re-reading 141MB off
+// whole document in memory at the moment it writes it, so re-reading 146MB off
 // the disk to learn what we just put there is the same waste one layer down.
 function keepBrief(doc) {
   const st = statOf(doc.id);
   if (!st) { brief.delete(doc.id); return; }
-  brief.set(doc.id, { mtimeMs: st.mtimeMs, size: st.size, head: headOf(doc, st.size), rows: promotedRowsOf(doc) });
+  const b = { mtimeMs: st.mtimeMs, size: st.size, head: headOf(doc, st.size), rowsByKey: new Map(), allKeys: new Set() };
+  for (const r of doc.rows || []) { const k = rowKey(r); b.allKeys.add(k); }
+  brief.set(doc.id, b);
 }
 function forgetBrief(id) { brief.delete(id); }
 
@@ -147,7 +251,14 @@ function listWalks() {
   const out = [];
   for (const id of idsOnDisk()) {
     const b = briefOf(id);
-    if (b) out.push(b.head);
+    if (!b) continue;
+    if (b.head.broken) { out.push(b.head); continue; }
+    const p = picksOrNone(id);
+    // A SET WITH NO PICKS FILE SAYS SO rather than reading as none picked
+    // (3.194.0). Its promotions are still in the set document and the repair
+    // has not lifted them out yet; calling that nought would hide the owner's
+    // work behind a number.
+    out.push({ ...b.head, picked: p ? p.picked.length : null, picksUnread: !p });
   }
   out.sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
   return out;
@@ -280,12 +391,16 @@ function saveWalkAs(id, { asked, shapes, collapse, rows, startedAt, finishedAt, 
     asked: asked || null,
     shapes: shapes || null,
     collapse: collapse || null,
-    picked: [],
+    // THE PICKS ARE NOT IN HERE (3.194.0). They live in `<id>.picks.json`, so
+    // taking a promotion off costs a few hundred bytes and not 146 megabytes.
     rows: rows || [],
   };
   const tmp = `${walkFile(id)}.tmp`;
   fs.writeFileSync(tmp, `${JSON.stringify(doc)}\n`);
   fs.renameSync(tmp, walkFile(id));
+  // and it is born with an empty picks file, so it is never mistaken for a set
+  // the repair below has not reached
+  if (!readPicks(id)) writePicks(id, [], []);
   keepBrief(doc);
   let bytes = 0;
   try { bytes = fs.statSync(walkFile(id)).size; } catch (_) { bytes = 0; }
@@ -323,23 +438,49 @@ function renameWalk(id, name) {
 // key against it, and writes once. setPicked is the same thing for one row, so
 // there is one implementation and not two that can drift.
 function setPickedMany(id, keys, on) {
-  const doc = readWalk(id);
-  if (!doc) throw new Error(`there is no walk ${JSON.stringify(id)} on this box`);
+  const b = briefOf(id);
+  if (!b || b.head.broken) throw new Error(`there is no walk ${JSON.stringify(id)} on this box`);
   if (typeof on !== 'boolean') throw new Error(`a row is picked or not — not ${JSON.stringify(on)}`);
+  const p = picksOrNone(id);
+  if (!p) throw new Error(`${id} is still being brought up to date — its promotions have not been moved into their own file yet`);
   const want = (Array.isArray(keys) ? keys : [keys]).map((k) => String(k || ''));
   if (!want.length) throw new Error('no row was named');
-  const mine = new Set((doc.rows || []).map(rowKey));
   // EVERY KEY IS CHECKED BEFORE ANY IS WRITTEN. Half a list applied and the
   // rest refused leaves the owner unable to say what happened.
+  //
+  // AND ONLY PROMOTING NEEDS THE SET READ (3.194.0). "Is this a row of the
+  // walk" is a question about the 146MB document; "is this already promoted"
+  // is a question about a file of a few hundred bytes, and taking a promotion
+  // off is the second question. That is why Remove is now instant and Promote
+  // still costs the one parse it has always needed.
+  const mine = on ? keysOf(id) : new Set(p.picked);
+  if (!mine) throw new Error(`${id} could not be read`);
   const strangers = want.filter((k) => !mine.has(k));
   if (strangers.length) {
-    throw new Error(`${JSON.stringify(strangers[0])} is not a row of ${doc.id}${strangers.length > 1 ? ` (and ${strangers.length - 1} other(s))` : ''}`);
+    const why = on ? `is not a row of ${id}` : `is not promoted from ${id}`;
+    throw new Error(`${JSON.stringify(strangers[0])} ${why}${strangers.length > 1 ? ` (and ${strangers.length - 1} other(s))` : ''}`);
   }
-  const have = new Set(doc.picked || []);
+  const have = new Set(p.picked);
   for (const k of want) { if (on) have.add(k); else have.delete(k); }
-  doc.picked = [...have].sort();
-  writeBack(doc);
-  return { id: doc.id, picked: doc.picked.length, changed: want.length };
+  // A ROW THAT IS NO LONGER PROMOTED CANNOT BE UNTICKED. Leaving its key in
+  // `off` would bring it back unticked if it were ever promoted again, which
+  // is a decision the owner never made.
+  const off = [...p.off].filter((k) => have.has(k));
+  const wrote = writePicks(id, [...have], off);
+  return { id, picked: wrote.picked.length, changed: want.length };
+}
+// EVERY PROMOTION OFF ONE SET, IN ONE PRESS (3.194.0, owner order: "at least
+// provide an option to delete the entire set with one button"). It is
+// setPickedMany with every key the set holds, so there is one implementation
+// and not two that can drift -- and it answers with what went, because a press
+// that empties a list has to say how much it emptied.
+function clearPicks(id) {
+  const p = picksOrNone(id);
+  if (!p) throw new Error(`${id} is still being brought up to date — its promotions have not been moved into their own file yet`);
+  if (!p.picked.length) return { id, removed: 0, picked: 0 };
+  const removed = p.picked.length;
+  setPickedMany(id, p.picked, false);
+  return { id, removed, picked: 0 };
 }
 function setPicked(id, key, on) { return setPickedMany(id, [key], on); }
 
@@ -347,16 +488,18 @@ function setPicked(id, key, on) { return setPickedMany(id, [key], on); }
 // other part of the box already takes a selection in (lib/stages.js
 // unitsForPassers), so a walk's picks need no new machinery downstream.
 function pickedUnits(id) {
-  const doc = readWalk(id);
-  if (!doc) return [];
-  const want = new Set(doc.picked || []);
+  const p = picksOrNone(id);
+  if (!p || !p.picked.length) return [];
+  const b = rowsFor(id, p.picked);
+  if (!b) return [];
   const seen = new Set();
   const out = [];
-  for (const r of doc.rows || []) {
-    if (!want.has(rowKey(r))) continue;
-    const k = `${r.coin}|${r.geometry}`;
-    if (seen.has(k)) continue;
-    seen.add(k);
+  for (const k of p.picked) {
+    const r = b.rowsByKey.get(k);
+    if (!r) continue;
+    const pair = `${r.coin}|${r.geometry}`;
+    if (seen.has(pair)) continue;
+    seen.add(pair);
     out.push({ coin: r.coin, geometry: r.geometry });
   }
   return out;
@@ -371,16 +514,15 @@ function pickedUnits(id) {
 // unticked, the same way a passer is, so promoting something does not then
 // require a second press to use it.
 function setRowOff(id, key, off) {
-  const doc = readWalk(id);
-  if (!doc) throw new Error(`there is no walk ${JSON.stringify(id)} on this box`);
+  const p = picksOrNone(id);
+  if (!p) throw new Error(`there is no walk ${JSON.stringify(id)} on this box, or it is still being brought up to date`);
   if (typeof off !== 'boolean') throw new Error(`a row is ticked or not — not ${JSON.stringify(off)}`);
   const k = String(key || '');
-  if (!(doc.picked || []).includes(k)) throw new Error(`${JSON.stringify(k)} is not promoted from ${doc.id}`);
-  const have = new Set(doc.off || []);
+  if (!p.picked.includes(k)) throw new Error(`${JSON.stringify(k)} is not promoted from ${id}`);
+  const have = new Set(p.off);
   if (off) have.add(k); else have.delete(k);
-  doc.off = [...have].sort();
-  writeBack(doc);
-  return { id: doc.id, off: doc.off.length };
+  const wrote = writePicks(id, p.picked, [...have]);
+  return { id, off: wrote.off.length };
 }
 
 // EVERY PROMOTED ROW ON THE BOX, one group per walk set, for the list at the
@@ -399,16 +541,23 @@ function setRowOff(id, key, off) {
 function promoted() {
   const out = [];
   for (const head of listWalks()) {
-    const b = brief.get(head.id);
-    if (!b || !b.rows.length) continue;
-    // A FRESH OBJECT PER ROW, so a caller that writes on what it is handed
-    // cannot write on the kept copy. It is a handful of rows and it costs
-    // nothing; sharing them would be a fault that showed up as a wrong number
-    // on some other screen an hour later.
-    out.push({
-      id: head.id, name: head.name, release: head.release, finishedAt: head.finishedAt,
-      rows: b.rows.map((r) => ({ ...r })),
-    });
+    if (head.broken) continue;
+    const p = picksOrNone(head.id);
+    if (!p || !p.picked.length) continue;
+    const b = rowsFor(head.id, p.picked);
+    if (!b) continue;
+    const off = new Set(p.off);
+    const rows = [];
+    for (const k of p.picked) {
+      const r = b.rowsByKey.get(k);
+      if (!r) continue;                 // a key naming no row of this set
+      // A FRESH OBJECT PER ROW, so a caller that writes on what it is handed
+      // cannot write on the kept copy. It is a handful of rows and it costs
+      // nothing; sharing them would be a fault that showed up as a wrong
+      // number on some other screen an hour later.
+      rows.push({ ...r, ticked: !off.has(k) });
+    }
+    if (rows.length) out.push({ id: head.id, name: head.name, release: head.release, finishedAt: head.finishedAt, rows });
   }
   return out;
 }
@@ -488,20 +637,83 @@ function deleteWalk(id, confirm) {
   let bytes = 0;
   try { bytes = fs.statSync(walkFile(id)).size; } catch (_) { bytes = 0; }
   const rows = (doc.rows || []).length;
-  const picked = (doc.picked || []).length;
+  const picked = (picksOrNone(id) || { picked: [] }).picked.length;
   if (String(confirm || '') !== doc.id) {
     return { preview: true, id: doc.id, name: doc.name, rows, bytes, picked, confirmWith: doc.id };
   }
   try { fs.unlinkSync(walkFile(id)); } catch (err) { throw new Error(`${doc.id} could not be removed: ${err.message}`); }
+  try { fs.rmSync(picksFile(id), { force: true }); } catch (_) { /* gone with it */ }
   forgetBrief(id);
   return { deleted: true, id: doc.id, name: doc.name, rows, bytes, picked };
 }
+
+// ---- A REPAIR, WRITTEN TO BE DELETED (3.194.0, RULE NINE and RULE TEN) -----
+//
+// Until 3.194.0 a set document carried `picked` and `off` inside it. They live
+// in `<id>.picks.json` now, and a record in a vocabulary no reader speaks is
+// what RULE NINE forbids -- so the records move rather than the readers
+// learning two eras.
+//
+// BESIDE, VERIFY, THEN SWAP. The picks file is written first and read back; the
+// document is then written to a temporary name WITHOUT those two fields, parsed
+// back and checked for the same row count, and only then renamed over. A crash
+// at any point leaves the original document in place with its fields still in
+// it, which is the state this reads as "not done yet" -- so it simply runs
+// again. The owner's sets are hours of compute and cannot be re-derived.
+//
+// IT DIES WHEN EVERY SET ON THE BOX HAS BEEN THROUGH IT. Run it, see it report
+// 0 of N on a box that has sets, and delete this block, its call in server.js,
+// its export, its test and its guard. It calls writePicks and readWalk, which
+// are not its own, and nothing calls it but the one line at startup -- so that
+// is one cut.
+function repairPicksIntoTheirOwnFile() {
+  const done = { sets: 0, moved: 0, named: [], failed: [] };
+  for (const id of idsOnDisk()) {
+    done.sets++;
+    if (readPicks(id)) continue;                 // already has one: nothing to do
+    let doc = null;
+    try { doc = readWalk(id); } catch (_) { doc = null; }
+    if (!doc) { done.failed.push(id); continue; }
+    const picked = Array.isArray(doc.picked) ? doc.picked : [];
+    const off = Array.isArray(doc.off) ? doc.off : [];
+    try {
+      // 1. beside
+      writePicks(id, picked, off);
+      const back = readPicks(id);
+      if (!back || back.picked.length !== new Set(picked).size) throw new Error('the picks file did not read back as it was written');
+      // 2. the document without them, verified before it is swapped in
+      const lean = { ...doc };
+      delete lean.picked;
+      delete lean.off;
+      const tmp = `${walkFile(id)}.moving`;
+      fs.writeFileSync(tmp, `${JSON.stringify(lean)}\n`);
+      const check = JSON.parse(fs.readFileSync(tmp, 'utf8'));
+      if (!check || check.v !== V || check.id !== doc.id
+        || (check.rows || []).length !== (doc.rows || []).length
+        || 'picked' in check || 'off' in check) {
+        try { fs.rmSync(tmp, { force: true }); } catch (_) { /* nothing to clear */ }
+        throw new Error('the rewritten set did not read back with the same rows');
+      }
+      // 3. swap
+      fs.renameSync(tmp, walkFile(id));
+      forgetBrief(id);
+      done.moved++;
+      done.named.push(`${id} (${picked.length} promoted)`);
+    } catch (err) {
+      done.failed.push(`${id}: ${err.message}`);
+    }
+  }
+  return done;
+}
+// ---- end of the repair ------------------------------------------------------
 
 module.exports = {
   V, DIR, walkFile, rowKey, nextId, nextName, saveWalk, saveWalkAs, listWalks, readWalk, renameWalk,
   // a walk keeps what it has done, and can be carried on (3.189.0)
   PARTS, partFile, startPart, appendPart, readPart, removePart, unfinishedWalks, partKeys, sealPart,
-  setPicked, setPickedMany, setRowOff, pickedUnits, promoted, promotedUnits, promotedLeans, deleteWalk,
+  setPicked, setPickedMany, setRowOff, clearPicks, pickedUnits, promoted, promotedUnits, promotedLeans, deleteWalk,
   // one parse per file, and only when the file changes (3.191.0)
   briefOf, forgetBrief,
+  // the picks beside the set, not inside it (3.194.0)
+  PICKS_V, picksFile, readPicks, writePicks, isSetFile, repairPicksIntoTheirOwnFile,
 };
