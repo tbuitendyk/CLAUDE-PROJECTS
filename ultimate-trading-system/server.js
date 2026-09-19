@@ -343,6 +343,22 @@ app.post('/api/coins/walk/split', (req, res) => {
 });
 // WALK IT FORWARD'S SETS ON DISK (3.164.0). The list is cheap -- headers only,
 // never the rows -- so the screen can offer them beside the button.
+// A NAMED SET OF FILTER BOXES, KEPT ON THE BOX (3.180.0). The selection rule
+// is the thing that should be fixed before the numbers are looked at, so it
+// lives here and not in one browser. The owner makes them; none ship built in.
+app.get('/api/coins/screens', (req, res) => {
+  try { return res.json({ screens: require('./lib/coinsscreens').listScreens() }); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.post('/api/coins/screens', (req, res) => {
+  try {
+    const b = req.body || {};
+    const S = require('./lib/coinsscreens');
+    if (b.deleteName != null) return res.json(S.deleteScreen(b.deleteName));
+    if (b.renameFrom != null) return res.json(S.renameScreen(b.renameFrom, b.name));
+    return res.json(S.saveScreen(b.name, b.walk, b.split));
+  } catch (err) { return res.status(400).json({ error: err.message }); }
+});
 app.get('/api/coins/walks', (req, res) => {
   try { return res.json({ walks: require('./lib/walkset').listWalks(), nextName: require('./lib/walkset').nextName() }); }
   catch (err) { return res.status(400).json({ error: err.message }); }

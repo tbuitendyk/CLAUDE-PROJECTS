@@ -140,6 +140,14 @@
      lines in some rows and not others, which makes a column of shapes read as
      ragged for the sake of four characters. */
   table.cgap td.cshape { white-space:nowrap; }
+  /* AND A BAND KEEPS ITS MARKER ON THE SAME LINE. "550 highest tried" wrapped,
+     which made the rows carrying a marker taller than the rows beside them --
+     a table of uneven rows for the sake of two words. */
+  table.cgap td.cband { white-space:nowrap; }
+  /* AND SO DOES "no — 216h / 350". It broke over two lines on some rows and
+     three on others, which is what made the rows of this table plainly uneven
+     — 33 pixels beside 47. It is one fact and it goes on one line. */
+  table.cgap td.cboth { white-space:nowrap; }
   tr.dim td { color:var(--muted); }
   /* A MARKED ROW CARRIES ONE ACCENT BAR, NOT TWENTY (3.178.0). The bar was on
      every cell, which on a twenty-column table drew the marked row as a row of

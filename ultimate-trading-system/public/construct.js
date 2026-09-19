@@ -8471,6 +8471,8 @@ let cSplit = null;   // the answer to choosing on the early windows, kept here s
 // the look-backs press look as though it had done nothing.
 const cWalkMark = new Set();
 let cSplitSaid = '';
+let cScreensNow = [];            // the named filter boxes kept on the box
+let cScreenPick = '';            // which one the dropdown is showing
 let cLastDone = null;
 let cLastRecs = [];
 let cBandNow = '';      // the band the box is set to, for the signal line under each bar
@@ -8738,6 +8740,22 @@ function cPickEcho() {
 const cPickWords = () => (cWalkPick.size
   ? `${cWalkPick.size} row(s) ticked on Walk it forward above — promote them with the button up there`
   : 'nothing ticked on Walk it forward above yet');
+// A BAND ON THE EDGE OF WHAT WAS SWEPT SAYS SO (3.180.0). Reading the owner's
+// own test-walk-3 found 18 of 29 shortlisted pairs choosing 475 or 500 and 9
+// of them choosing 500 exactly -- the top of that walk's sit-out bands to try.
+// A setting pinned to the end of the list is a setting whose real best may lie
+// past it, and the walk never looked. The list is stored on the set already,
+// so this is RULE ELEVEN clause 3: if it is stored, show it.
+function cBandEdge(band) {
+  const list = ((cWalkSt && cWalkSt.asked && cWalkSt.asked.bands) || []).map(Number).filter((n) => Number.isFinite(n));
+  if (list.length < 2 || band == null) return '';
+  const b = Number(band);
+  const lo = Math.min(...list);
+  const hi = Math.max(...list);
+  const which = b === hi ? 'highest' : (b === lo ? 'lowest' : null);
+  if (!which) return '';
+  return ` <span class="warn" title="this is the ${which} band in this walk&#39;s sit-out bands to try, so a better one may lie ${which === 'highest' ? 'above' : 'below'} it and this walk never looked. Walk it again with the list extended if you want to know.">${which} tried</span>`;
+}
 function cWalkRow(r, shapes) {
   const key = `${r.coin}|${r.geometry}|${r.lookback}|${r.band}`;
   const open = cWalkOpen.has(key);
@@ -8768,7 +8786,7 @@ function cWalkRow(r, shapes) {
     <td><button class="cwopen" data-key="${esc(key)}" title="show or hide this row's windows, one after another in time">${open ? '▾' : '▸'}</button></td>
     <td>${esc(r.coin)}</td><td class="cshape">${esc(shape)}</td>
     <td>${r.lookback === 'own' ? 'own' : `${r.lookback}h`}</td>
-    <td>${r.band}${r.searched ? ' <span class="warn" title="this band was SEARCHED FOR across the whole history, so it is not comparable with the bands beside it, which were not">searched</span>' : ''}</td>
+    <td class="cband">${r.band}${r.searched ? ' <span class="warn" title="this band was SEARCHED FOR across the whole history, so it is not comparable with the bands beside it, which were not">searched</span>' : ''}${cBandEdge(r.band)}</td>
     <td>${r.trades}</td><td>${pt}</td>
     <td>${r.windows}</td><td>${r.windowsUp} of ${r.windows}</td>
     <td>${cPaid(r) == null ? '—' : `${cPaid(r)} of ${r.windows}`}</td>
@@ -8779,12 +8797,12 @@ function cWalkRow(r, shapes) {
     <td>${scr}</td><td>${sld}</td>
     <td>${(() => { const p = cMark(r); return p == null ? '—' : `${p.latePerTrade > 0 ? '+' : ''}${Number(p.latePerTrade).toFixed(3)}%`; })()}</td>
     <td>${(() => { const p = cMark(r); return p == null ? '—' : `${p.lead > 0 ? '+' : ''}${Number(p.lead).toFixed(3)}%`; })()}</td>
-    <td>${(() => {
+    <td class="cboth">${(() => {
     const p = cMark(r);
     if (p == null) return '—';
     if (p.sameBothHalves) return '<b class="cr">yes</b>';
     const lb = p.lateBestLookback === 'own' ? 'own' : `${esc(String(p.lateBestLookback))}h`;
-    return `<span class="muted">no — ${lb} / ${esc(String(p.lateBestBand))}</span>`;
+    return `<span class="muted">no — ${lb}/${esc(String(p.lateBestBand))}</span>`;
   })()}</td>
   </tr>${strip}`;
 }
@@ -9052,6 +9070,74 @@ function cWalkSetsRow() {
       ${sel.asked ? `Its window was ${esc(String(sel.asked.windowMonths))} month(s) with ${esc(String(sel.asked.warmUpMonths))} behind the first one, at band(s) ${esc(String((sel.asked.bands || []).join(', ')))}, ${esc(String(sel.asked.scrambles == null ? 10 : sel.asked.scrambles))} copies each way, and a floor of ${esc(String(sel.asked.floor))} trade(s) a window.` : ''}</p>`}
     ${(cWalkSt && cWalkSt.saveError) ? `<p class="note warn">the last walk finished but could not be written down: ${esc(String(cWalkSt.saveError))} &mdash; the table above is still good, and it goes when the service restarts.</p>` : ''}`;
 }
+// THE NAMED SCREENS (3.180.0). Every press answers with the whole list, so the
+// dropdown is rebuilt from what the box now holds rather than from what this
+// browser thought it held a moment ago.
+function cScreensBind() {
+  const say = (t, warn) => { const el = $('#wScreenMsg'); if (el) el.innerHTML = warn ? `<b class="warn">${esc(t)}</b>` : esc(t); };
+  const sel = $('#wScreen');
+  if (sel) sel.onchange = () => { cScreenPick = sel.value; cWalkRepaint(); };
+  const picked = () => (cScreensNow || []).find((x) => x.name === (sel ? sel.value : cScreenPick)) || null;
+  const send = async (body, done) => {
+    let got = null;
+    try { got = await post('api/coins/screens', body); } catch (err) { say(String(err && err.message ? err.message : err), true); return; }
+    cScreensNow = got.screens || [];
+    done(got);
+    cRemember();
+    cWalkRepaint();
+  };
+  if ($('#wScreenOpen')) {
+    $('#wScreenOpen').onclick = () => {
+      const one = picked();
+      if (!one) return;
+      // BOTH SETS, TOGETHER. A screen that loaded one table's boxes and left
+      // the other's alone would be two rules wearing one name.
+      cState.wF = { ...(one.walk || {}) };
+      cState.sF = { ...(one.split || {}) };
+      cScreenPick = one.name;
+      cShownFor = null;
+      cSplitSeq++;
+      cState.wFrom = 0;
+      cRemember();
+      cSplitSaid = '';
+      cWalkRepaint(true);
+      const el = $('#wScreenMsg');
+      if (el) el.textContent = `${one.name} is on — both sets of filter boxes now say what it holds`;
+    };
+  }
+  if ($('#wScreenSave')) {
+    $('#wScreenSave').onclick = async () => {
+      const one = picked();
+      const typed = prompt('A name for this screen:', one ? one.name : '');
+      if (typed === null) return;
+      await send({ name: typed, walk: cState.wF || {}, split: cState.sF || {} }, (got) => {
+        cScreenPick = got.saved.name;
+        cSplitSaid = cSplitSaid;
+      });
+      const el = $('#wScreenMsg');
+      if (el) el.textContent = `${cScreenPick} is kept on this box`;
+    };
+  }
+  if ($('#wScreenName')) {
+    $('#wScreenName').onclick = async () => {
+      const one = picked();
+      if (!one) return;
+      const typed = prompt(`A new name for ${one.name}:`, one.name);
+      if (typed === null) return;
+      await send({ renameFrom: one.name, name: typed }, (got) => { cScreenPick = got.renamed; });
+    };
+  }
+  if ($('#wScreenDel')) {
+    $('#wScreenDel').onclick = async () => {
+      const one = picked();
+      if (!one) return;
+      // A SCREEN IS BOXES, NOT HOURS OF COMPUTE, so one confirm is enough --
+      // unlike a walk set, which takes its own id typed back.
+      if (!confirm(`Delete the screen ${one.name}? The filter boxes on both tables are left exactly as they are.`)) return;
+      await send({ deleteName: one.name }, () => { cScreenPick = ''; });
+    };
+  }
+}
 function cWalkSetsBind() {
   const pick = () => { const el = $('#wSet'); return el ? el.value : ''; };
   const sel = $('#wSet');
@@ -9288,6 +9374,41 @@ function cWalkFilterRow() {
 // across how many workers, and how busy the box is -- the owner went to look at
 // the processor and came back to a screen that said nothing at all (2026-09-17:
 // "there's no indication it's working, and it looks like it's not working").
+// A NAMED SET OF FILTER BOXES, BOTH ROWS AT ONCE (3.180.0). Shaped like the
+// walk sets row above it, because choosing a stored thing by name and then
+// opening, renaming or deleting it is the same job and RULE ELEVEN clause 5
+// says the same job gets the same shape.
+//
+// IT SITS UNDER WALK IT FORWARD'S BOXES and holds BOTH rows, which the label
+// says. One row of controls for two rows of boxes beats two half-screens that
+// can disagree about which rule is loaded.
+function cScreensRow() {
+  const list = cScreensNow || [];
+  const sel = list.find((x) => x.name === cScreenPick) || list[0] || null;
+  return `${!list.length ? '' : `<div class="row">
+      <label class="f" title="every screen kept on this box. A screen is the filter boxes on BOTH tables &mdash; this one and Choose early, read late's below &mdash; saved under a name, so the rule you select on can be the same rule next walk instead of whatever this morning's table happened to look like. Kept on the box, not in this browser, because a rule read one way here and another way on another machine is two rules.">screens on this box<select id="wScreen" style="width:18rem">
+        ${list.map((x) => `<option value="${esc(x.name)}"${sel && sel.name === x.name ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}
+      </select></label>
+    </div>`}
+    <div class="row">
+      ${list.length ? '<button id="wScreenOpen">Open this screen</button>' : ''}
+      <button id="wScreenSave">Save as&hellip;</button>
+      ${list.length ? '<button id="wScreenName">Rename it</button><button id="wScreenDel" class="danger">Delete it</button>' : ''}
+      <span id="wScreenMsg" class="muted">${list.length
+    ? esc(sel ? `${cScreenBoxes(sel).join(' · ') || 'this screen holds no boxes at all, so opening it empties both sets'}` : '')
+    : 'no screen is kept on this box yet — set the filter boxes above and on Choose early, read late below the way you want them, then Save as… keeps both sets under a name'}</span>
+    </div>`;
+}
+// WHAT A SCREEN ACTUALLY HOLDS, said before it is opened. Opening one replaces
+// every box on both tables, and a control that replaces the owner's work
+// without first saying what it will put there is a control that surprises.
+function cScreenBoxes(one) {
+  const n = (o) => Object.keys(o || {}).length;
+  const w = n(one.walk);
+  const s = n(one.split);
+  if (!w && !s) return [];
+  return [`${w} box(es) for Walk it forward`, `${s} for Choose early, read late`];
+}
 function cWalkLine() {
   const st = cWalkSt;
   if (!st) return '';
@@ -9504,10 +9625,10 @@ function cSplitPanel() {
       <td class="${cls(p.lateWorst)}">${pc(p.lateWorst)}</td>
       <td>${p.percentile.toFixed(0)}</td>
       <td>${p.wholeLookback == null ? '&mdash;' : (p.wholeLookback === 'own' ? 'own' : `${esc(String(p.wholeLookback))}h`)}</td>
-      <td>${p.wholeBand == null ? '&mdash;' : p.wholeBand}</td>
+      <td class="cband">${p.wholeBand == null ? '&mdash;' : `${p.wholeBand}${cBandEdge(p.wholeBand)}`}</td>
       <td class="${cls(p.wholePerTrade)}">${pc(p.wholePerTrade)}</td>
-      <td>${p.sameBothHalves ? '<b class="cr">yes</b>'
-    : `<span class="muted">no — ${p.lateBestLookback === 'own' ? 'own' : `${esc(String(p.lateBestLookback))}h`} / ${esc(String(p.lateBestBand))}</span>`}</td>
+      <td class="cboth">${p.sameBothHalves ? '<b class="cr">yes</b>'
+    : `<span class="muted">no — ${p.lateBestLookback === 'own' ? 'own' : `${esc(String(p.lateBestLookback))}h`}/${esc(String(p.lateBestBand))}</span>`}</td>
       <td>${p.sameAsEarly ? 'yes' : 'no'}</td>
     </tr>`).join('')}
     </tbody></table></div>
@@ -9647,6 +9768,7 @@ function cWalkPanel() {
     ${(st && st.error) ? `<p class="note warn">the walk stopped: ${esc(st.error)}</p>` : ''}
     ${!rows ? (walking ? '' : '<p class="note">nothing walked yet — press <b>Walk it forward</b>, or open a set above</p>') : (!rows.length ? '<p class="note">no coin and shape had enough history for a window this long</p>' : `
     ${cWalkFilterRow()}
+    ${cScreensRow()}
     ${wShown.length ? '' : `<p class="note warn" style="margin:.6rem 0"><b>All ${rows.length.toLocaleString()} row(s) of this walk are hidden by the filter boxes above.</b>
       Nothing is wrong with the walk &mdash; the table is there. Empty a box to widen it, or clear them all:</p>
       <div class="row" style="margin-bottom:.6rem"><button id="wfClear2" class="pri">Clear filters</button></div>`}
@@ -9838,6 +9960,7 @@ function cWalkBind() {
   if ($('#wfClear2')) $('#wfClear2').onclick = clearF;
   if ($('#wsClear')) $('#wsClear').onclick = () => { cState.wSorts = []; cState.wFrom = 0; cRemember(); cWalkRepaint(true); };
   cWalkSetsBind();
+  cScreensBind();
   for (const b of document.querySelectorAll('[data-ssort]')) {
     b.onclick = () => {
       cCycleSort('sSorts', b.dataset.ssort, b.dataset.sdir === 'desc' ? 'desc' : 'asc');
@@ -10279,6 +10402,7 @@ function cPaintBars(recs) {
 
 async function drawCoins() {
   const d = await apiOr('api/coins/records', null);
+  cScreensNow = ((await apiOr('api/coins/screens', null)) || {}).screens || [];
   const st = await apiOr('api/coins/run', null);
   // WHAT IS CACHED NOW, so a reading taken before more history arrived can be
   // said to be behind it.

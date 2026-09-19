@@ -331,7 +331,15 @@ module.exports = {
       // hold and every door refuses by name. tests/test-walkset.js
       // (aSetIsOpenedRenamedPickedAndDeletedOnlyByAnIdTheBoxHolds) holds it
       // to exactly that.
-      'wSet']);
+      'wSet',
+      // AND ITS NAMED SCREENS (3.180.0). Its values are the names of screens
+      // the box itself listed, so lib/coinsscreens.js IS the allow-list: every
+      // door there refuses a name the box does not hold, by name, and every
+      // press answers with the whole list so the box rebuilds the dropdown
+      // from what is actually stored. tests/test-coinsscreens.js
+      // (renamingOntoANameAlreadyOnTheBoxIsRefusedRatherThanSilentlyMerging and
+      // deletingOneLeavesTheRestAndSaysSoWhenThereIsNothingToDelete) hold it.
+      'wScreen']);
     const withValues = [...SWEEP.matchAll(/<select id="([\w-]+)"[^>]*>((?:(?!<\/select>)[\s\S])*?)<\/select>/g)]
       .filter((m) => /<option value="/.test(m[2])).map((m) => m[1]);
     const unlisted = withValues.filter((id) => !known.has(id));

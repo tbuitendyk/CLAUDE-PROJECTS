@@ -125,6 +125,44 @@ module.exports = {
   // A PICK NAMES A ROW OF THIS SET AND NOTHING ELSE, and the picks come back as
   // coin and shape -- the shape every other part of the box already takes a
   // selection in, so a walk's picks need no new machinery downstream.
+  // MANY ROWS IN ONE ASK (3.180.0). Tick every row shown can tick thousands,
+  // and one request each would be thousands of reads and thousands of writes
+  // of a file that runs to tens of megabytes. And every key is checked BEFORE
+  // any is written: half a list applied and the rest refused leaves the owner
+  // unable to say what happened.
+  manyRowsArePickedInOneAskAndABadKeyStopsTheWholeAsk() {
+    const ws = require('../lib/walkset');
+    const rows = [
+      aRow(),
+      aRow({ coin: 'XLMUSDT', lookback: 'own', band: 250 }),
+      aRow({ coin: 'LTCUSDT', lookback: '504', band: 300 }),
+    ];
+    const got = ws.saveWalk({ asked: {}, shapes: [], collapse: [], rows, startedAt: 1, finishedAt: 2, name: 'bulk set' });
+    try {
+      const keys = rows.map(ws.rowKey);
+      const out = ws.setPickedMany(got.id, keys, true);
+      assert.strictEqual(out.picked, 3, 'all three went in on one ask');
+      assert.strictEqual(out.changed, 3, 'and it says how many it was handed');
+      assert.deepStrictEqual(ws.readWalk(got.id).picked, keys.slice().sort());
+
+      // a stranger among them stops the whole ask, and names itself
+      assert.throws(() => ws.setPickedMany(got.id, [keys[0], 'NOPEUSDT|daily-1d|24|200'], false),
+        /NOPEUSDT\|daily-1d\|24\|200.*is not a row of/);
+      assert.strictEqual(ws.readWalk(got.id).picked.length, 3, 'and nothing was unpicked on the way to refusing');
+
+      // unticking a list is the same door
+      assert.strictEqual(ws.setPickedMany(got.id, [keys[0], keys[2]], false).picked, 1);
+      assert.deepStrictEqual(ws.readWalk(got.id).picked, [keys[1]]);
+
+      // and one row still goes through the door it always did
+      ws.setPicked(got.id, keys[0], true);
+      assert.strictEqual(ws.readWalk(got.id).picked.length, 2, 'setPicked is setPickedMany with one row, not a second implementation');
+
+      assert.throws(() => ws.setPickedMany(got.id, [], true), /no row was named/);
+      assert.throws(() => ws.setPickedMany(got.id, keys, 'yes'), /picked or not/);
+    } finally { ws.deleteWalk(got.id, got.id); }
+  },
+
   thePicksAreRowsOfTheSetAndTheyComeBackAsCoinAndShape() {
     const ws = require('../lib/walkset');
     const rows = [aRow(), aRow({ lookback: '336' }), aRow({ coin: 'XLMUSDT', geometry: 'daily-3d', lookback: '48', band: 300 })];

@@ -66,3 +66,36 @@ Nothing yet.
   three lines and made every row three lines tall (now one line, `nowrap`); a
   chunk shape broke at its hyphen in some rows and not others; a marked row
   drew its accent bar on all twenty cells instead of one.
+
+## Decisions — part 6, and the band on the edge
+
+- **A named screen holds BOTH filter rows, and it lives on the box.** Walk it
+  forward's boxes are remembered per browser because they are a place you are
+  standing; a screen is a decision, and a decision read one way on the laptop
+  and another on the desktop is two decisions. `data/settings.json`, one key,
+  atomic write, nothing built in.
+- **Why it is worth a file at all**: the selection rule is what should be fixed
+  BEFORE the numbers are looked at. Typing eleven boxes again on the next walk
+  is how a rule quietly becomes whatever this morning's table happened to look
+  like.
+- **The row sits under Walk it forward's filter buttons** and says in its label
+  that it covers both tables. One row of controls for two rows of boxes beats
+  two half-screens that can disagree about which rule is loaded.
+- **Saving under an existing name replaces it and says so**; renaming onto a
+  name in use is refused by name. Two screens of one name is two rules wearing
+  one name.
+- **Delete takes one confirm, not the id typed back** — a screen is a set of
+  boxes, not the hours of compute a walk set is.
+- **A band on the edge of what was swept says so.** `highest tried` /
+  `lowest tried`, on Walk it forward's `band` and on Choose early, read late's
+  `whole band` — the one band that is a setting rather than evidence. It came
+  out of reading the owner's own test-walk-3: 18 of 29 shortlisted pairs chose
+  475 or 500 and 9 chose 500 exactly, the top of that walk's list.
+- Ugly-factor: `no — 216h / 350` in `best on both halves` wrapped to two lines
+  on some rows and three on others, which is what made the rows 33 pixels
+  beside 47. One fact, one line, and the spaces round the slash went.
+
+## Measured after every part
+
+No box on the Coins screen needs a sideways bar, the page does not scroll
+sideways, and every row of both tables is the same height (32px).
