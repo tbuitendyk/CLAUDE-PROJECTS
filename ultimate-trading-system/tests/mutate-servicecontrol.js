@@ -238,6 +238,8 @@ const GUARDS = [
     'manyRowsArePickedInOneAskAndABadKeyStopsTheWholeAsk', 'a list holding one key the set does not have is applied anyway, so half of it lands and nobody can say which half'],
   [path.join(ROOT, 'lib', 'coinsscreens.js'), '      replaced = true;\n      return false;', '      replaced = true;\n      return true;',
     'savingOverANameReplacesItRatherThanMakingASecondOfThatName', 'saving a screen under a name already on the box makes a second of that name — two selection rules wearing one name'],
+  [path.join(ROOT, 'public', 'construct.js'), 'if (!atMost(p.wholeAsGood, f.maxWholeGood)) return false;', '',
+    'theChooseEarlyPanelIsOnScreenWithItsDoorAndItsWords', 'most whole scrambles as good stops screening, so the one box that says whether the row a tick promotes was already matched by copies does nothing'],
   // THE WORD LIST'S OWN READER, both ways. Too shallow and words on the
   // owner's screen are on no list, which under RULE ONE-A forbids saying them;
   // too deep and one screen's words are authorised on another.

@@ -8807,7 +8807,7 @@ function cWalkRow(r, shapes) {
     if (p == null) return '—';
     if (p.sameBothHalves) return '<b class="cr">yes</b>';
     const lb = p.lateBestLookback === 'own' ? 'own' : `${esc(String(p.lateBestLookback))}h`;
-    return `<span class="muted">no — ${lb}/${esc(String(p.lateBestBand))}</span>`;
+    return `<span class="muted">no ${lb}/${esc(String(p.lateBestBand))}</span>`;
   })()}</td>
   </tr>${strip}`;
 }
@@ -8874,7 +8874,8 @@ const C_SPLIT_NAME = {
   earlyPerTrade: 'early', latePerTrade: 'late', blind: 'picking blind', lead: 'lead',
   lateWindowsUp: 'late windows up', latePaid: 'late windows paid', lateWorst: 'worst late window',
   percentile: 'percentile', wholeLookback: 'whole look-back', wholeBand: 'whole band',
-  wholePerTrade: 'whole per trade', both: 'best on both halves', sameAsEarly: 'same pick',
+  wholePerTrade: 'whole per trade', wholeAsGood: 'whole scrambles as good',
+  wholeAsGoodSlid: 'whole slides as good', both: 'best on both halves', sameAsEarly: 'same pick',
 };
 const cSortWords = (list, names) => (list || []).map((x) => `${esc(names[x.key] || x.key)} ${x.dir === 'desc' ? 'high to low' : 'low to high'}`).join(', then ');
 // HOW MANY ROWS A PAGE HOLDS (owner order, 2026-09-19). A hundred, which is
@@ -8961,6 +8962,8 @@ const C_SPLIT_OF = {
   wholeLookback: (p) => (p.wholeLookback == null ? null : (p.wholeLookback === 'own' ? 0 : Number(p.wholeLookback))),
   wholeBand: (p) => p.wholeBand,
   wholePerTrade: (p) => p.wholePerTrade,
+  wholeAsGood: (p) => p.wholeAsGood,
+  wholeAsGoodSlid: (p) => p.wholeAsGoodSlid,
   sameAsEarly: (p) => (p.sameAsEarly ? 1 : 0),
   both: (p) => (p.sameBothHalves ? 1 : 0),
 };
@@ -9446,7 +9449,8 @@ function cWalkLine() {
 // EVERY ID IS WRITTEN OUT, not built in a loop -- the Help tab's own check
 // reads this file for `id="..."` and cannot see one assembled from a variable.
 const C_SPLIT_F_KEYS = ['coin', 'shape', 'minEarly', 'minLate', 'minLead', 'minPct',
-  'minLateWindows', 'minLateUp', 'minLatePaid', 'minLateWorst', 'minWhole', 'bothOnly', 'sameOnly'];
+  'minLateWindows', 'minLateUp', 'minLatePaid', 'minLateWorst', 'minWhole',
+  'maxWholeGood', 'maxWholeSlid', 'bothOnly', 'sameOnly'];
 function cSplitBoxesNow() {
   const out = {};
   for (const k of C_SPLIT_F_KEYS) {
@@ -9476,6 +9480,7 @@ function cSplitList(pairs) {
   const f = cState.sF || {};
   const words = (v) => String(v || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
   const atLeast = (v, min) => (min === '' || min == null || !Number.isFinite(Number(min)) ? true : (v != null && Number(v) >= Number(min)));
+  const atMost = (v, max) => (max === '' || max == null || !Number.isFinite(Number(max)) ? true : (v != null && Number(v) <= Number(max)));
   const coins = words(f.coin);
   const shapes = words(f.shape);
   const shapeList = (cWalkRows && cWalkRows.shapes) || (cSplit && cSplit.shapes) || [];
@@ -9493,6 +9498,8 @@ function cSplitList(pairs) {
     if (!atLeast(share(p.lateWindowsPaid, p.lateWindows), f.minLatePaid)) return false;
     if (!atLeast(p.lateWorst, f.minLateWorst)) return false;
     if (!atLeast(p.wholePerTrade, f.minWhole)) return false;
+    if (!atMost(p.wholeAsGood, f.maxWholeGood)) return false;
+    if (!atMost(p.wholeAsGoodSlid, f.maxWholeSlid)) return false;
     if (f.bothOnly === 'yes' && !p.sameBothHalves) return false;
     if (f.sameOnly === 'yes' && !p.sameAsEarly) return false;
     return true;
@@ -9532,6 +9539,8 @@ function cSplitFilterRow() {
     <label title="hide rows where fewer than this share of their late windows cleared the ${cTripPc()} round trip. Made money and paid are not the same thing, and this is the one that matters."><span class="fname">least late windows paid, %</span><span class="fbox"><input id="sf_minLatePaid" type="number" step="any" value="${v('minLatePaid')}"></span></label>
     <label title="hide rows whose worst single late window made less than this. Set it at nought to keep only the picks that never had a losing late window."><span class="fname">least worst late window, %</span><span class="fbox"><input id="sf_minLateWorst" type="number" step="any" value="${v('minLateWorst')}"></span></label>
     <label title="hide rows whose WHOLE-history row makes less than this a trade. That row is the setting to tune with, so this is the box that screens what you would actually promote."><span class="fname">least whole per trade, %</span><span class="fbox"><input id="sf_minWhole" type="number" step="any" value="${v('minWhole')}"></span></label>
+    <label title="hide rows whose WHOLE-history row more than this many scrambled copies matched. That is the row a tick here promotes, so this is the box that screens what you would actually carry forward. The pick the early windows made has no copy count of its own on this table."><span class="fname">most whole scrambles as good</span><span class="fbox"><input id="sf_maxWholeGood" type="number" step="any" value="${v('maxWholeGood')}"></span></label>
+    <label title="hide rows whose WHOLE-history row more than this many SLIDING copies matched. A sliding copy keeps every outcome beside the ones it happened next to, so where the two counts disagree this is the one to trust."><span class="fname">most whole slides as good</span><span class="fbox"><input id="sf_maxWholeSlid" type="number" step="any" value="${v('maxWholeSlid')}"></span></label>
     <label class="c frow" title="keep only the rows whose pick ALSO topped the late half &mdash; one setting winning both halves of the history, two stretches that share nothing."><input id="sf_bothOnly" type="checkbox"${f.bothOnly === 'yes' ? ' checked' : ''}> only rows best on both halves</label>
     <label class="c frow" title="keep only the rows where the whole history chose the same look-back and band as the early windows did. They need not agree &mdash; the early half has less to go on &mdash; so this is a strictness you turn on, not a fault when it is off."><input id="sf_sameOnly" type="checkbox"${f.sameOnly === 'yes' ? ' checked' : ''}> only rows same pick</label>
     <span class="frow"><button id="sfApply" class="pri" disabled title="puts every box above on at once. Greyed out until a box says something different from what the table is already showing, and greyed out again if you type it back. Not needed while auto-apply settings is ticked.">Apply settings</button>
@@ -9611,6 +9620,8 @@ function cSplitPanel() {
       <th title="the look-back the WHOLE history chooses for this coin and shape &mdash; which is the one to tune with. The early/late columns to the left only say whether the choosing is worth anything; they are not the setting to trade, because they throw away half the history to stay honest.">whole look-back${cSortBtn('sSorts', 'ssort', 'wholeLookback', 'asc')}</th>
       <th title="the band the whole history chooses">whole band${cSortBtn('sSorts', 'ssort', 'wholeBand', 'asc')}</th>
       <th title="what that whole-history row made a trade over all of its windows">whole per trade${cSortBtn('sSorts', 'ssort', 'wholePerTrade', 'desc')}</th>
+      <th title="how many scrambled copies of this coin did AT LEAST AS WELL as that whole-history row. Low is the result. It is the row a tick here promotes, so this is the copy count that matters for carrying it forward &mdash; the early half's pick has none of its own on this table.">whole scrambles as good${cSortBtn('sSorts', 'ssort', 'wholeAsGood', 'asc')}</th>
+      <th title="the same count against SLIDING copies of that whole-history row. A sliding copy moves every outcome along by the same amount and wraps the tail round to the front, so each outcome keeps the outcomes it actually happened next to and the only thing cut is which reading it sat under. Where the two disagree, trust this one.">whole slides as good${cSortBtn('sSorts', 'ssort', 'wholeAsGoodSlid', 'asc')}</th>
       <th title="whether THIS pick was also the best of its coin and shape on the LATE half — one setting winning both halves. Where it was not, the cell names what did win late. This compares two stretches that share nothing; same pick beside it compares the early half against the WHOLE history, which contains it.">best on both halves${cSortBtn('sSorts', 'ssort', 'both', 'desc')}</th>
       <th title="whether the whole history picked the same look-back and band as the early windows did. They need not agree: the early half has less to go on.">same pick${cSortBtn('sSorts', 'ssort', 'sameAsEarly', 'desc')}</th>
     </tr></thead><tbody>
@@ -9618,7 +9629,7 @@ function cSplitPanel() {
       <td>${p.wholeLookback == null
     ? '<span class="muted" title="this pair has no whole-history row at the fewest trades each half must have, so there is no row here to tick. Lower that box and press Choose early, read late again.">&mdash;</span>'
     : `<input type="checkbox" class="cspick" data-key="${esc(`${p.coin}|${p.geometry}|${p.wholeLookback}|${p.wholeBand}`)}"${cWalkPick.has(`${p.coin}|${p.geometry}|${p.wholeLookback}|${p.wholeBand}`) ? ' checked' : ''} title="tick to promote this pair's WHOLE-HISTORY row &mdash; the one at whole look-back and whole band, which is the setting to tune with. It is the same tick as the one on that row up on Walk it forward, and the same list: promote them with Promote the ticked rows up there.">`}</td>
-      <td><button class="cwjump" data-jump="${esc(`${p.coin}|${p.geometry}`)}" title="puts this coin and chunk shape into the coins and chunk shapes boxes on Walk it forward above, empties its look-backs and bands boxes, and takes you there. Its whole-history row and the row this reading picked are both marked, so you can see where they sit among the rest &mdash; they are different rows on most pairs. Every other filter box up there is left exactly as you set it.">&#9666; its rows above</button></td>
+      <td><button class="cwjump" data-jump="${esc(`${p.coin}|${p.geometry}`)}" title="puts this coin and chunk shape into the coins and chunk shapes boxes on Walk it forward above, empties its look-backs and bands boxes, and takes you there. Its whole-history row and the row this reading picked are both marked, so you can see where they sit among the rest &mdash; they are different rows on most pairs. Every other filter box up there is left exactly as you set it.">&#9666; its rows</button></td>
       <td>${esc(p.coin)}</td><td class="cshape">${esc(shapeOf(p.geometry))}</td>
       <td>${p.lookback === 'own' ? 'own' : `${esc(String(p.lookback))}h`}</td><td>${p.band}</td>
       <td class="${cls(p.earlyPerTrade)}">${pc(p.earlyPerTrade)}</td>
@@ -9632,8 +9643,10 @@ function cSplitPanel() {
       <td>${p.wholeLookback == null ? '&mdash;' : (p.wholeLookback === 'own' ? 'own' : `${esc(String(p.wholeLookback))}h`)}</td>
       <td class="cband">${p.wholeBand == null ? '&mdash;' : `${p.wholeBand}${cBandEdge(p.wholeBand)}`}</td>
       <td class="${cls(p.wholePerTrade)}">${pc(p.wholePerTrade)}</td>
+      <td>${p.wholeAsGood == null ? '&mdash;' : p.wholeAsGood}</td>
+      <td>${p.wholeAsGoodSlid == null ? '&mdash;' : p.wholeAsGoodSlid}</td>
       <td class="cboth">${p.sameBothHalves ? '<b class="cr">yes</b>'
-    : `<span class="muted">no — ${p.lateBestLookback === 'own' ? 'own' : `${esc(String(p.lateBestLookback))}h`}/${esc(String(p.lateBestBand))}</span>`}</td>
+    : `<span class="muted">no ${p.lateBestLookback === 'own' ? 'own' : `${esc(String(p.lateBestLookback))}h`}/${esc(String(p.lateBestBand))}</span>`}</td>
       <td>${p.sameAsEarly ? 'yes' : 'no'}</td>
     </tr>`).join('')}
     </tbody></table></div>

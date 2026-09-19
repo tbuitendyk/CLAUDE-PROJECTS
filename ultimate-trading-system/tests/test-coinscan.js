@@ -753,6 +753,30 @@ function theChooseEarlyPanelIsOnScreenWithItsDoorAndItsWords() {
   // a tick, then a button -- so the two tables read the same way across.
   const mine = /<div class="cwbox cwtall"><table class="cgap"><thead><tr>\s*<th><\/th>\s*<th><\/th>\s*<th title="the coin">coin\$\{cSortBtn\('sSorts', 'ssort', 'coin', 'asc'\)\}<\/th>/.test(src);
   assert(mine, 'the new table styles against cgap, which the stylesheet defines, and leads with its two control columns');
+  // 3.181.0: THE COPY COUNTS OF THE ROW A TICK PROMOTES. The reading has
+  // carried them all along and showed neither, so the one screen that decides
+  // what is carried forward could not see whether scrambled or sliding copies
+  // had already matched it. Prefixed `whole` like every other column on this
+  // table that describes that row, because the table holds facts about two
+  // different rows and a bare "scrambles as good" would say which one only by
+  // luck (RULE ELEVEN clause 1).
+  for (const [head, key] of [['whole scrambles as good', 'wholeAsGood'], ['whole slides as good', 'wholeAsGoodSlid']]) {
+    assert(new RegExp(`>${head}\\$\\{cSortBtn\\('sSorts', 'ssort', '${key}', 'asc'\\)`).test(src),
+      `the ${head} column is on the table and it sorts, low first`);
+  }
+  assert(/<td>\$\{p\.wholeAsGood == null \? '&mdash;' : p\.wholeAsGood\}<\/td>/.test(src), 'a walk that kept no copies reads a dash, not a nought');
+  // AND THEY ARE MAXIMUMS. Every other box on this table is a floor; these two
+  // are ceilings, and a ceiling written as a floor keeps exactly the rows it
+  // was meant to drop.
+  for (const [box, field] of [['maxWholeGood', 'wholeAsGood'], ['maxWholeSlid', 'wholeAsGoodSlid']]) {
+    assert(new RegExp(`if \\(!atMost\\(p\\.${field}, f\\.${box}\\)\\) return false;`).test(src),
+      `${box} is applied as a ceiling to ${field}`);
+    assert(new RegExp(`id="sf_${box}"`).test(src), `${box} has a box on the screen`);
+  }
+  assert(/<span class="fname">most whole scrambles as good<\/span>/.test(src)
+    && /<span class="fname">most whole slides as good<\/span>/.test(src),
+  'and both are named for the row they screen, not for the bare category');
+
   // 3.162.0: the whole-history tuning rides beside the confirmation, and the
   // page says which of the two to tune with rather than leaving it to be guessed
   for (const [head, key] of [['whole look-back', 'wholeLookback'], ['whole band', 'wholeBand'],
