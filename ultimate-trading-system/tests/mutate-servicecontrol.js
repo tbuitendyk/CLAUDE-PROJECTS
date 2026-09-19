@@ -1508,6 +1508,21 @@ const GUARDS = [
     'theBasketOpensTheCoinsScreenAsOneSectionWithOneCount', 'the one count leaves the promoted rows out, so "4 of 11 ticked" undercounts'],
   [path.join(ROOT, 'public', 'construct.js'), "      passers: !!($('#swPassers') && $('#swPassers').checked),\n      windowLayout: $('#swLayout').value, allLoaded: $('#swAllData').checked,", "      windowLayout: $('#swLayout').value, allLoaded: $('#swAllData').checked,",
     'theScreensDrawThePassersAndSweepsTick', 'Sweep\'s tick is drawn but the launch ignores it'],
+  // ---- AN EXTRA'S BAND IS A MULTIPLE, NOT A PERCENT (3.188.0) ----
+  // Each names the test that READS THE LINE IT BREAKS (RULE EIGHT).
+  [path.join(ROOT, 'lib', 'bracketwork.js'), "  return multiples.map((m) => usual * (m / 100));", "  return multiples.map((m) => m);",
+    'anExtrasBandIsAMultipleOfTheUsualOutcomeMove', 'the walk\'s multiple is read as a percent of price again, so every chunk comes out as sit out and the extra member trains on one constant answer'],
+  [path.join(ROOT, 'lib', 'bracketwork.js'), "  const usual = medianAbsMove((trainChunks || []).map((c) => c.diffPct));", "  const usual = 1;",
+    'anExtrasBandIsAMultipleOfTheUsualOutcomeMove', 'the multiple is scaled by nothing, so a band means the same on every coin however much it moves'],
+  [path.join(ROOT, 'lib', 'bracketwork.js'), "  const extraBandPcts = extraBandPctsFor(trainChunks, extraBands);\n  if (extraBandPcts.length) {\n    for (const c of chunks) c.altLabels = extraBandPcts.map((b) => scoreDiff(c.diffPct / 100, b / 100));\n  }\n  return { trainChunks, testChunks, holdChunks, bandPct, extraBandPcts };\n}\n\n// THE SAME LABELLING AGAIN", "  const extraBandPcts = extraBandPctsFor(chunks, extraBands);\n  if (extraBandPcts.length) {\n    for (const c of chunks) c.altLabels = extraBandPcts.map((b) => scoreDiff(c.diffPct / 100, b / 100));\n  }\n  return { trainChunks, testChunks, holdChunks, bandPct, extraBandPcts };\n}\n\n// THE SAME LABELLING AGAIN",
+    'theExtrasScaleIsMeasuredOnTheTrainStretchAlone', 'the extra\'s band is scaled on every chunk, so a later window helps choose the threshold it is then judged at'],
+  // ---- AND THE LIVE PATH CAN REBUILD IT (3.188.0) ----
+  [path.join(ROOT, 'lib', 'live', 'stagesignal.js'), "  const labelOf = at == null ? null : (c) => (c.altLabels || [])[at];", "  const labelOf = null;",
+    'theLivePathBuildsMarksAndTrainsTheExtraMember', 'every live member is marked against the unit\'s own band, so a member added from a walk set loses the one thing that walk found'],
+  [path.join(ROOT, 'lib', 'live', 'signal.js'), "  const views = bracketLib.comboViews(cfg.combo.size, geo.featureHours / 24, extras.length).views;", "  const views = bracketLib.comboViews(cfg.combo.size, geo.featureHours / 24).views;",
+    'theLivePathBuildsMarksAndTrainsTheExtraMember', 'the live slices are built with no extras, so a member added from a walk set has nothing to read'],
+  [path.join(ROOT, 'lib', 'live', 'greenlight.js'), "    extras: ((src.unit || {}).extras || []).map((e) => ({ lookbackHours: Number(e.lookbackHours), bandPct: Number(e.bandPct) })),", "    extras: [],",
+    'theLivePathBuildsMarksAndTrainsTheExtraMember', 'a greenlight drops what the unit took from a walk set, so live rebuilds a smaller committee than the one that was priced'],
   // ---- THE READING COMES FROM THE CHAIN'S OWN LIST (3.186.0) ----
   // Each names the test that READS THE LINE IT BREAKS (RULE EIGHT).
   [path.join(ROOT, 'lib', 'coinsrun.js'), "  if (source === 'walk') return { ...(fromWalks || {}) };", "  if (source === 'walk') return { ...(fromPassers || {}) };",

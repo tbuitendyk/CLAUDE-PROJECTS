@@ -56,15 +56,30 @@ function trainingWeightsFor(training, trainChunks, fee) {
   return sw.weightsFor(training, trainChunks, fee);
 }
 async function trainStageCommittee(cfg, closed, moments, views, fee) {
-  const split = splitAndLabel(closed, { ...cfg.branch, band: cfg.branch.band }, true);
+  // EACH EXTRA'S OWN ANSWERS, BESIDE THE UNIT'S (3.188.0). The splitter works
+  // the extras' bands out here from the training stretch, exactly as stage 1
+  // does -- the walk's number is a MULTIPLE of what the coin usually moves, and
+  // the scale it multiplies is measured on the same stretch both sides. Give
+  // live the percent stage 1 arrived at instead and the two would be marking
+  // against different thresholds the moment the training window differed.
+  const extras = Array.isArray(cfg.extras) ? cfg.extras : [];
+  const split = splitAndLabel(closed, { ...cfg.branch, band: cfg.branch.band }, true, extras.map((e) => e.bandPct));
   const { trainChunks, testChunks } = split;
   const training = cfg.training || {};
   const weights = trainingWeightsFor(training, trainChunks, fee);
   const predictChunks = [...testChunks, ...moments];
   const members = [];
   for (const spec of cfg.members) {
+    // AND EACH MEMBER IS MARKED ON THE QUESTION IT WAS ASKED. A member added
+    // from a walk set is marked against that walk's band; every other member
+    // against the unit's own, which is what `c.label` already holds. Marking
+    // them all alike would throw away the one thing the walk found.
+    const at = spec.at == null ? null : Number(spec.at);
+    const viewIdx = views[spec.view];
+    if (!viewIdx) throw new Error(`live signal: this unit has no slice called '${spec.view}' for a member to read`);
+    const labelOf = at == null ? null : (c) => (c.altLabels || [])[at];
     // eslint-disable-next-line no-await-in-loop
-    const m = await sw.trainProbMember({ model: spec.model, viewIdx: views[spec.view], trainChunks, predictChunks, weights });
+    const m = await sw.trainProbMember({ model: spec.model, viewIdx, trainChunks, predictChunks, weights, labelOf });
     members.push({ spec, ...m });
   }
   const nTest = testChunks.length;

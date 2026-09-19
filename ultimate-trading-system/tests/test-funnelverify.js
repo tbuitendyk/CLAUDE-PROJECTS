@@ -1016,7 +1016,11 @@ module.exports = {
       assert.deepStrictEqual({ id: gate.id, set: gate.set, kind: gate.kind, look: gate.look }, { id: held.block.id, set: held.id, kind: 'held', look: 1 });
       const src = await stages.stage4GreenlightSource(held.id, {});
       assert.deepStrictEqual({ set: src.set.id, kind: src.set.kind, from: src.set.from.id, stage: src.set.stage, gate: src.gate.id, parent: src.set.parent.id, stage2: src.set.stage2.id }, { set: held.id, kind: 'held', from: doc.id, stage: 4, gate: held.block.id, parent: f.id, stage2: f.parentId });
-      assert.deepStrictEqual(src.unit, { trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-1d' });
+      // RE-AIMED 3.188.0: the unit now also says what it took from a walk set,
+    // because the live path rebuilds the whole committee from the configuration
+    // alone and cannot train such a member without its look-back and its band.
+    // Empty is a unit that took nothing, which is what this fixture is.
+    assert.deepStrictEqual(src.unit, { trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-1d', extras: [] });
       assert.strictEqual(src.survivors.length, 2, 'every survivor, with its depth');
       assert.ok(src.survivors.every((x) => x.worst === 0), 'a rule of word dials puts every survivor at the middle');
       assert.deepStrictEqual({ by: src.pick.by, index: src.pick.index, label: src.pick.label, of: src.pick.of }, { by: 'depth', index: 0, label: src.survivors[0].label, of: 2 }, 'equal in depth: the first in the set\'s own order');

@@ -69,6 +69,19 @@ function stage4Refusal(src) {
   // words until the live path can read the lean.
   if (sv.confirm && sv.confirm !== 'off') return `the survivor was priced with confirm set to ${sv.confirm}, and the live path has no reading of the coin's own lean yet — it cannot trade what was priced`;
   if (!Array.isArray(src.members) || !src.members.length) return 'the stage 2 set names no members for this unit, so nothing could be trained the same way';
+  // A MEMBER ADDED FROM A WALK SET NEEDS THE WALK'S TWO NUMBERS (3.188.0). The
+  // live path builds the extra's block of numbers from the look-back and marks
+  // it at the band, both off this configuration; a member naming an extra the
+  // unit does not carry could not be rebuilt, so it is refused here in words
+  // rather than at the schema, where the message would be about a field name.
+  {
+    const extras = ((src.unit || {}).extras) || [];
+    const short = src.members.filter((m) => m && m.at != null && !extras[Number(m.at)]);
+    if (short.length) {
+      return `${short.length} member(s) of this unit were added from a walk set and the record does not carry the look-back and band they were built with, `
+        + 'so the live path could not train them the same way';
+    }
+  }
   if (!Number.isFinite(sv.bandPct) || sv.bandPct <= 0) return 'the band this survivor was priced at is not on the record, so it cannot be frozen';
   return null;
 }
@@ -82,7 +95,13 @@ function configFromStage4(src) {
     combo: { trade: u.trade, ctx1: u.ctx1 ?? null, ctx2: u.ctx2 ?? null, size: u.size },
     branch: { geometry: u.geometry, decision: sv.decision, band: Number(sv.bandPct), weekdaysOnly: !!sv.weekdaysOnly },
     stage: 'stages',
-    members: src.members.map((m) => ({ model: m.model, view: m.view })),
+    // WHAT THIS UNIT TOOK FROM A WALK SET (3.188.0). The live path rebuilds the
+    // whole committee from this object alone, so a member added from a walk set
+    // can only be traded if the configuration says what it reads and what it is
+    // marked at. The MULTIPLE travels, never the percent stage 1 worked it out
+    // to -- live resolves it against its own training stretch, the same way.
+    extras: ((src.unit || {}).extras || []).map((e) => ({ lookbackHours: Number(e.lookbackHours), bandPct: Number(e.bandPct) })),
+    members: src.members.map((m) => ({ model: m.model, view: m.view, at: m.at ?? null })),
     cell: {
       quorum: null, entry: sv.entry, gate: sv.gate,
       dMult: sv.dMult ?? null, tHours: sv.tHours,

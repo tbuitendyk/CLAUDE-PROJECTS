@@ -61,14 +61,23 @@ async function prepare(setup) {
   // profile's own, because two profiles on the same rule at two venues do not
   // pay the same.
   const fee = setupFee(setup);
-  const params = { allLoaded: true, feePerLeg: fee, includeUnlabeled: true };
+  // WHAT THIS UNIT TOOK FROM A WALK SET (3.188.0). The extras add columns to
+  // every chunk -- one block of numbers per extra, measured back over its own
+  // look-back -- so they have to be built HERE, before anything reads a
+  // feature vector. Empty is a unit that took nothing, which is every
+  // configuration written before this, and the chunk builder then does exactly
+  // what it always did.
+  const extras = Array.isArray(cfg.extras) ? cfg.extras : [];
+  const params = { allLoaded: true, feePerLeg: fee, includeUnlabeled: true, extras };
   const { geo, maps, chunks } = await buildCombo(cfg.combo, cfg.branch, params);
   const bandPct = Math.abs(cfg.branch.band);
   for (const c of chunks) c.label = c.diffPct == null ? null : scoreDiff(c.diffPct / 100, bandPct / 100);
   const outcomeMs = (geo.exitOffsetH || 0) * 3600000;
   const { trainChunks } = splitFrozen(chunks, freeze.throughMs, undefined, outcomeMs);
   if (!trainChunks.length) throw new Error('live signal: no training chunks at/before the freeze');
-  const views = bracketLib.comboViews(cfg.combo.size, geo.featureHours / 24).views;
+  // AND THE VIEWS KNOW HOW MANY THERE ARE, or a member added from a walk set
+  // has no slice to read and the committee cannot be rebuilt at all
+  const views = bracketLib.comboViews(cfg.combo.size, geo.featureHours / 24, extras.length).views;
   return { cfg, freeze, geo, maps, chunks, bandPct, trainChunks, views, fee };
 }
 

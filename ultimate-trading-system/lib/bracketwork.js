@@ -20,6 +20,8 @@ const { toHourlyMap, forwardFill, scoreDiff, balancedBandPct, GEOMETRIES } = req
 const { loadSymbol, loadSymbolAll, loadSymbolPinned, monthList, MIN_CHUNKS } = require('./pipeline');
 const bracketLib = require('./bracket');
 const { feeFracOf } = require('./paper');
+// the ONE definition of "what this coin usually moves", shared with the walk
+const { medianAbsMove } = require('./windowmove');
 
 // Per-thread symbol cache. Each worker keeps its own; hourly data is small
 // (~7 years of one symbol is on the order of 60k candles, tens of MB), so a
@@ -73,6 +75,42 @@ function extraBandsOrRefuse(bands) {
     }
     return v;
   });
+}
+
+// AN EXTRA'S BAND IS A MULTIPLE OF THE USUAL MOVE, NOT A PERCENT OF PRICE
+// (3.188.0, owner's choice: "do b"). This is the conversion that was missing.
+//
+// THE TWO NUMBERS ARE NOT THE SAME KIND OF THING. A unit's own band is a
+// percent of price: 2.5 means a move of 2.5%. The number a walk carries is a
+// MULTIPLE of what that coin usually moves: 90 means nine tenths of its usual
+// move. They were being substituted for one another, so a walk's 90 was read
+// as a 90% price move and EVERY chunk came out as sit out -- the extra member
+// trained on one constant answer, which is the exact failure the design's
+// section F was written to prevent, arriving as a unit mix-up rather than
+// through the arithmetic. Nothing had run through it; no money was affected.
+//
+// WHICH USUAL MOVE. The walk measured its own over the look-back -- the move
+// BEFORE the decision, which is what its band thresholds. What is thresholded
+// here is the move AFTER: the answer this member is trained to forecast. A
+// threshold sized for a 720-hour look-back applied to a 41-hour outcome is
+// several times too wide, so the walk's own yardstick is the wrong scale even
+// once the units are right. The multiple is what carries over; the scale is
+// measured here, on the thing actually being thresholded.
+//
+// AND ON THE TRAIN STRETCH ONLY, so test, held and reserve are marked with a
+// number none of them had any part in choosing. That is the same discipline
+// `auto` already uses for a unit's own band (balancedBandPct, training chunks
+// only) -- the multiple is declared in advance by the walk and only the scale
+// is measured, so this is not a fitted band.
+function extraBandPctsFor(trainChunks, extraBands) {
+  const multiples = extraBandsOrRefuse(extraBands);
+  if (!multiples.length) return [];
+  const usual = medianAbsMove((trainChunks || []).map((c) => c.diffPct));
+  if (!(usual > 0)) {
+    throw new Error('this unit\'s training chunks show no typical move at all, so a band given as a multiple of it cannot be worked out — '
+      + 'an extra member cannot be marked here');
+  }
+  return multiples.map((m) => usual * (m / 100));
 }
 
 // THE COMMITTEE, AS A LIST THE UNIT CARRIES (3.183.0, owner order 2026-09-19:
@@ -254,7 +292,7 @@ function splitAndLabel(chunks, branch, holdout, extraBands = []) {
   // be fitted from train because it is the engine choosing for itself; an
   // extra's band arrives from the walk, fixed in advance and held across train,
   // test and held alike, which is what the typed band % has always been.
-  const extraBandPcts = extraBandsOrRefuse(extraBands);
+  const extraBandPcts = extraBandPctsFor(trainChunks, extraBands);
   if (extraBandPcts.length) {
     for (const c of chunks) c.altLabels = extraBandPcts.map((b) => scoreDiff(c.diffPct / 100, b / 100));
   }
@@ -296,7 +334,7 @@ function splitAndLabelPass(chunks, branch, nTrain, nJudge, extraBands = []) {
   // be fitted from train because it is the engine choosing for itself; an
   // extra's band arrives from the walk, fixed in advance and held across train,
   // test and held alike, which is what the typed band % has always been.
-  const extraBandPcts = extraBandsOrRefuse(extraBands);
+  const extraBandPcts = extraBandPctsFor(trainChunks, extraBands);
   if (extraBandPcts.length) {
     for (const c of chunks) c.altLabels = extraBandPcts.map((b) => scoreDiff(c.diffPct / 100, b / 100));
   }
@@ -308,4 +346,4 @@ function splitAndLabelPass(chunks, branch, nTrain, nJudge, extraBands = []) {
 // test. Nothing can run them; lib/rng.js keeps the one function that outlived
 // their module.)
 
-module.exports = { quorumCall, declaredQuorumFor, slimViewsFor, memberSpecs, extraBandsOrRefuse, buildCombo, splitAndLabel, splitAndLabelPass, splitBounds, reserveChunks, RESERVE_SHARE };
+module.exports = { quorumCall, declaredQuorumFor, slimViewsFor, memberSpecs, extraBandsOrRefuse, extraBandPctsFor, buildCombo, splitAndLabel, splitAndLabelPass, splitBounds, reserveChunks, RESERVE_SHARE };

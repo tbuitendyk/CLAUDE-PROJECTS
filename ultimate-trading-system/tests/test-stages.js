@@ -880,8 +880,20 @@ module.exports = {
       assert.deepStrictEqual([ex.lookbackHours, ex.bandPct, ex.fromSet], [720, 4.2, 'test-walk-4'],
         'the look-back, the band and the walk set a member came from are not all on screen');
       // THE BAND IS THE ONE IT WAS MARKED AT, which for an extra is the band
-      // the unit RESOLVED, not the percent the walk row carried
-      assert.notStrictEqual(ex.bandPct, 90, 'the extra shows the walk row\'s own percent instead of the band the unit resolved');
+      // the unit RESOLVED, not the number the walk row carried
+      assert.notStrictEqual(ex.bandPct, 90, 'the extra shows the walk row\'s own number instead of the band the unit resolved');
+      // AND BOTH ARE ON SCREEN (3.188.0), because they are not the same thing:
+      // 4.2 is the percent of price it was marked at, and 0.90 is the walk's
+      // own number -- a MULTIPLE of what the coin usually moves over the window
+      // being forecast, which is what the owner ticked. Showing one and not the
+      // other hides either what they chose or what it came to, and substituting
+      // one for the other is the defect 3.188.0 closes.
+      assert.strictEqual(ex.bandTimesUsual, 0.9, 'the walk\'s own number is not on screen beside the percent it worked out to');
+      assert.deepStrictEqual(d.rows.slice(0, 2).map((m) => m.bandTimesUsual), [null, null],
+        'a member the unit always had is given a multiple it never read');
+      const page = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+      assert.ok(/\$\{Number\(m\.bandTimesUsual\)\.toFixed\(2\)\}\\u00d7 usual/.test(page) || page.includes('× usual'),
+        'the members table shows the percent and not the multiple the walk found');
       assert.deepStrictEqual(d.rows.slice(0, 2).map((m) => m.bandPct), [2.5, 2.5], 'a member the unit always had is marked at the unit\'s own band');
       // EACH MEMBER READ ON ITS OWN, which is what stops a quiet member hiding
       // inside the pooled number (design section E, and therefore F2)

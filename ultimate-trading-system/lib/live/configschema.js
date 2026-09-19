@@ -98,12 +98,56 @@ function validateConfig(cfg) {
       + `and this system reads shape ${CONFIG_SCHEMA_VERSION} — what its fields mean may have changed`);
   }
 
+  // WHAT THIS UNIT TOOK FROM A WALK SET (3.188.0). Absent or empty is a unit
+  // that took nothing, which is every configuration written before this and
+  // every unit built from the boxes on Sweep -- so nothing here asks which era
+  // a configuration is from, only what its unit holds.
+  //
+  // THE BAND HERE IS NOT branch.band AND IS NOT BOUNDED BY 50. A unit's own
+  // band is a percent of price and (0, 50) is the right guard for it. An
+  // extra's is a MULTIPLE of what the coin usually moves over the outcome
+  // window -- 90 means nine tenths of it, 300 means three times it -- and the
+  // walk sweeps them well past 50. Guarding the two with one rule is how the
+  // multiple came to be read as a percent in the first place.
+  const extras = cfg.extras == null ? [] : cfg.extras;
+  if (!Array.isArray(extras)) {
+    fail(errors, 'extras: must be an array of {lookbackHours, bandPct}, or absent when the unit took nothing from a walk set');
+  } else {
+    extras.forEach((e, i) => {
+      if (!e || !Number.isFinite(e.lookbackHours) || e.lookbackHours <= 0) {
+        fail(errors, `extras[${i}].lookbackHours: must be a positive number of hours to measure back over`);
+      }
+      if (!e || !Number.isFinite(e.bandPct) || e.bandPct <= 0) {
+        fail(errors, `extras[${i}].bandPct: must be a positive multiple of what the coin usually moves — not a percent of price`);
+      }
+    });
+  }
+  const nExtras = Array.isArray(extras) ? extras.length : 0;
+  // a member reads one of the base slices, or one particular extra of THIS
+  // unit. `extra2` on a unit carrying two extras names one that is not there.
+  const viewOk = (v) => {
+    if (VIEWS.has(v)) return true;
+    const m = /^extra(\d+)$/.exec(String(v || ''));
+    return !!m && Number(m[1]) < nExtras;
+  };
   if (!Array.isArray(cfg.members) || cfg.members.length === 0) {
     fail(errors, 'members: must be a non-empty array of {model, view}');
   } else {
     cfg.members.forEach((m, i) => {
       if (!m || !MODELS.has(m.model)) fail(errors, `members[${i}].model: must be one of ${[...MODELS]}`);
-      if (!m || !VIEWS.has(m.view)) fail(errors, `members[${i}].view: must be one of ${[...VIEWS]}`);
+      if (!m || !viewOk(m.view)) {
+        fail(errors, `members[${i}].view: must be one of ${[...VIEWS]}`
+          + (nExtras ? `, or extra0 to extra${nExtras - 1} for the ${nExtras} this unit took from a walk set` : ''));
+      }
+      // AND A MEMBER SAYS WHICH EXTRA IT READS, or says it reads none. Left to
+      // be parsed back out of the view name it would be one more place for the
+      // two to disagree about which band a member is marked at.
+      const at = m && m.at == null ? null : Number((m || {}).at);
+      const wantAt = /^extra(\d+)$/.exec(String((m || {}).view || ''));
+      const should = wantAt ? Number(wantAt[1]) : null;
+      if (at !== should) {
+        fail(errors, `members[${i}].at: must be ${should === null ? 'null for a member that reads no extra' : should} to match its view '${(m || {}).view}'`);
+      }
     });
   }
 

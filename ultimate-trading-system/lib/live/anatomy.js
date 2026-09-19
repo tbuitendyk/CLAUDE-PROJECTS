@@ -28,6 +28,13 @@ function describeConfig(cfg, opts = {}) {
     decision: cfg.branch.decision,
     dormantBandPct: Math.abs(cfg.branch.band),
     committeeSize: (cfg.members || []).length,
+    // WHAT THIS UNIT TOOK FROM A WALK SET (3.188.0): each is one more member,
+    // reading its own look-back and marked at its own band. The band is a
+    // MULTIPLE of what this coin usually moves over the outcome window, never
+    // a percent of price, and it is named for what it is.
+    extras: (Array.isArray(cfg.extras) ? cfg.extras : []).map((e) => ({
+      lookbackHours: e.lookbackHours, bandTimesUsualMove: e.bandPct / 100,
+    })),
     committeeStage: cfg.stage,
     quorum: cfg.cell.quorum,
     // a stage-engine configuration agrees by its own rule, not a quorum (3.91.0)
@@ -51,7 +58,11 @@ function describeAnatomy(cfg, opts = {}) {
   if (!geo) return null;
   const nDays = geo.featureHours / 24;
   const names = feats.featureNamesFor(nDays);
-  const cv = bracketLib.comboViews(cfg.combo.size, nDays);
+  // WHAT THIS UNIT TOOK FROM A WALK SET (3.188.0): each one adds a block of
+  // numbers to the vector and one more member reading only that block, so the
+  // count below is wrong without it.
+  const extras = Array.isArray(cfg.extras) ? cfg.extras : [];
+  const cv = bracketLib.comboViews(cfg.combo.size, nDays, extras.length);
   const bandPct = Math.abs(cfg.branch.band);
   const members = cfg.members || [];
   const entryH = geo.entryOffsetH || 0;
@@ -84,7 +95,7 @@ function describeAnatomy(cfg, opts = {}) {
     pipeline: [
       `1. INPUTS — each decision window opens with the last ${geo.featureHours}h of hourly candles for ${cfg.combo.trade} (the traded pair)${ctx.length ? ` and the comparison asset${ctx.length > 1 ? 's' : ''} ${ctx.join(' and ')}` : ''}.`,
       `2. FEATURES — each asset's ${geo.featureHours}h window is compressed to ${nDays + 12} numbers (daily returns, total return, hourly volatility, volume shift, trend slope/acceleration, max drawdown/run-up, range, last-24h and last-6h returns, day-volume dispersion).${ctx.length ? ` The comparison assets then enter a SECOND way: ${crossNames.length} cross features per pair — relative total return, relative last-24h return, relative volume (log ratio), and the hour-by-hour return correlation with ${cfg.combo.trade}.` : ''} Total vector: ${cv.featureCount} numbers. The comparison assets are never traded — they exist only inside this vector.`,
-      `3. MEMBERS VOTE — ${members.length} independent models (committee below), each seeing a different SLICE of those ${cv.featureCount} numbers, each trained through ${trained}${halfLifeWords} and frozen. Each classifies the window as UP / DOWN / ASIDE, where ASIDE means "the coming move looks smaller than the ${bandPct}% dormant band". Decision rule '${cfg.branch.decision}': the member votes whichever class has the highest probability.`,
+      `3. MEMBERS VOTE — ${members.length} independent models (committee below), each seeing a different SLICE of those ${cv.featureCount} numbers, each trained through ${trained}${halfLifeWords} and frozen. Each classifies the window as UP / DOWN / ASIDE, where ASIDE means "the coming move looks smaller than the ${bandPct}% dormant band"${extras.length ? ` — except the ${extras.length} member${extras.length > 1 ? 's' : ''} added from a walk set, which read their own longer look-back and sit out below their own band instead (committee below)` : ''}. Decision rule '${cfg.branch.decision}': the member votes whichever class has the highest probability.`,
       `4. COMMITTEE — the votes are weighed the way the stage engine weighs them: ${agreeWords()}. The committee's own shape and each member's threshold are read from its test slice, never from a later window. Short of enough, stand aside.`,
       `5. ENTRY — '${cfg.cell.entry}' algorithm with a '${cfg.cell.gate}' gate: a market order in the called direction at the hourly OPEN of window start +${entryH}h (${String(entryH % 24).padStart(2, '0')}:00 UTC). Long = buy; short = borrow-and-sell on isolated margin.`,
       `6. EXIT — a market order exactly ${cfg.cell.tHours}h after entry (${(cfg.cell.tHours / 24).toFixed(1)} days later)${opts.stopPct ? `, or sooner if the ${(opts.stopPct * 100).toFixed(2)}% protective stop is hit` : '. No stop, no trail, no target: the tested cell is a pure time exit, so the hold length is the only exit knob'}.`,
@@ -98,7 +109,16 @@ function describeAnatomy(cfg, opts = {}) {
         prices: 'price action only — volume features removed',
         volume: 'volume behaviour only',
         cross: 'only the comparisons against the context assets',
-      }[m.view] || m.view,
+      }[m.view] || (m.at != null && extras[m.at]
+        ? `everything, measured back over ${extras[m.at].lookbackHours}h — a member added from a walk set`
+        : m.view),
+      // AND WHAT IT IS MARKED AT, when it is not the unit's own band. The
+      // number is a MULTIPLE of what this coin usually moves over the outcome
+      // window, not a percent of price, and saying which would be wrong.
+      ...(m.at != null && extras[m.at] ? {
+        lookbackHours: extras[m.at].lookbackHours,
+        bandTimesUsualMove: extras[m.at].bandPct / 100,
+      } : {}),
     })),
     features: {
       totalVector: cv.featureCount,
@@ -117,7 +137,9 @@ function describeAnatomy(cfg, opts = {}) {
       agreement: a,
       rule: agreeWords(),
       dormantBandPct: bandPct,
-      labelRule: `a training window is labelled UP/DOWN only when the following move exceeds +/-${bandPct}%; smaller moves are ASIDE — that is what teaches members to sit out`,
+      extras: extras.map((e) => ({ lookbackHours: e.lookbackHours, bandTimesUsualMove: e.bandPct / 100 })),
+      labelRule: `a training window is labelled UP/DOWN only when the following move exceeds +/-${bandPct}%; smaller moves are ASIDE — that is what teaches members to sit out`
+        + (extras.length ? `. A member added from a walk set is marked on its own: UP/DOWN only when the following move exceeds its own band, which is ${extras.map((e) => (e.bandPct / 100).toFixed(2)).join(' and ')} times what this coin usually moves over that window, worked out on the training stretch alone` : ''),
     },
   };
 }

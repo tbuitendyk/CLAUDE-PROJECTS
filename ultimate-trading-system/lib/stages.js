@@ -5020,7 +5020,15 @@ function unitMembers(id, u) {
       at,
       // what an extra reads, and where the walk found it
       lookbackHours: ex ? (ex.lookbackHours ?? null) : null,
-      bandPct: at != null ? (bands[at] ?? (ex ? ex.bandPct ?? null : null)) : (rec.bandPct ?? null),
+      // BOTH NUMBERS, BECAUSE THEY ARE NOT THE SAME THING (3.188.0). bandPct is
+      // the percent of price this member was actually marked at. bandTimesUsual
+      // is the walk's own number, which is a MULTIPLE of what this coin usually
+      // moves over the outcome window -- the number the owner ticked. Showing
+      // only the first hides what they chose; showing only the second hides
+      // what it came to. Substituting one for the other is the defect this
+      // release closes, so the screen carries both.
+      bandPct: at != null ? (bands[at] ?? null) : (rec.bandPct ?? null),
+      bandTimesUsual: at != null && ex && ex.bandPct != null ? Number(ex.bandPct) / 100 : null,
       fromSet: ex && ex.from ? (ex.from.name || ex.from.set || null) : null,
       // its own reading, against its own answers
       score: r ? r.score : null,
@@ -8075,13 +8083,22 @@ async function stage4GreenlightSource(setId, asked = {}) {
       derived: doc.derived || null,
     },
     gate,
-    unit: { trade: rec.trade, ctx1: rec.ctx1 || null, ctx2: rec.ctx2 || null, size, geometry: rec.geometry },
+    unit: { trade: rec.trade, ctx1: rec.ctx1 || null, ctx2: rec.ctx2 || null, size, geometry: rec.geometry,
+      // WHAT THIS UNIT TOOK FROM A WALK SET (3.188.0). The live path rebuilds
+      // the whole committee from the configuration alone, so a unit carrying a
+      // member added from a walk set can only be traded if the configuration
+      // says what that member reads and what it is marked at. The MULTIPLE
+      // travels, not the percent it worked out to here -- live resolves it
+      // against its own training stretch, exactly as stage 1 did against its.
+      extras: (rec.extras || []).map((e) => ({ lookbackHours: e.lookbackHours, bandPct: e.bandPct })) },
     survivor: { ...survivor, bandPct: survivor.bandMode === 'auto' || survivor.bandMode == null ? rec.bandPct : Math.abs(Number(survivor.bandMode)), halfLife: hl ? hl.halfLife : null },
     // THE STOP AND THE LADDER AS THE SET FROZE THEM AT ITS PRESS (3.149.0): the survivor's own choice on record, or none
     stop: ((doc.stopChoices || {})[survivor.label]) ? JSON.parse(JSON.stringify(doc.stopChoices[survivor.label])) : null,
     pick,
     survivors: rows.map((r, i) => { const d = S4.depthOf(r, rule); const h = heldOf(r.label); const x = reserveRowOf(r.label); const y = hlOf(r.label); return { index: i, label: r.label, worst: d.worst, mean: d.mean, held: h ? h.money : null, trades: h ? h.trades : null, reserve: x ? x.money : null, halfLife: y ? y.halfLife : null, retrained: y && y.money ? y.money.judge : null }; }),
-    members: (rec.specs || []).map((sp) => ({ model: sp.model, view: sp.view })),
+    // `at` says WHICH extra a member reads, so the live path marks it against
+    // that extra's band and not against the unit's own (3.188.0)
+    members: (rec.specs || []).map((sp) => ({ model: sp.model, view: sp.view, at: sp.at ?? null })),
     // how the members were trained, so the live path can train the same way -- with the record's half-life when it carries one
     training: { trainOn: p1.trainOn ?? null, weightCap: p1.weightCap ?? null, windowLayout: p1.windowLayout ?? null, startMonth: p1.startMonth ?? null, endMonth: p1.endMonth ?? null, allLoaded: !!p1.allLoaded, nullN: p1.nullN ?? null,
       halfLife: hl ? HL.daysOfMonths(hl.halfLife) : null, halfLifeMonths: hl ? hl.halfLife : null },

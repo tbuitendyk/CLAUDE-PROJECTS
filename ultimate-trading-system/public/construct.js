@@ -4958,7 +4958,7 @@ function bMembersPanel(stage, d) {
       <th ${th} title="which of the two ways of working out a forecast this member uses. Both read the same prices; they disagree about how to turn them into a lean, which is why a committee holds some of each.">kind</th>
       <th ${th} title="which slice of the numbers this member reads. The name the record stores is in brackets — it is on no other screen, and it is here so nothing about the member is hidden.">reads</th>
       <th ${th} title="how far back this member measures the move it is marked against. Blank on a member that reads its chunk shape's own span, which is every member except one added from a walk set.">look-back</th>
-      <th ${th} title="how big a move has to be before this member counts it as up or down rather than sitting out. A member added from a walk set is marked at the band that walk found; every other member is marked at the unit's own.">band</th>
+      <th ${th} title="how big a move has to be before this member counts it as up or down rather than sitting out, as a percent of price. A member added from a walk set shows a second figure in brackets: the number that walk found, which is a MULTIPLE of what this coin usually moves over the window being forecast — 0.90 means nine tenths of it. The percent is that multiple worked out against the training stretch, and it is what the member was really marked at. Every other member is marked at the unit's own band.">band</th>
       <th ${th} title="the walk set a member was added from. Blank on a member the unit was always going to have.">from</th>
       <th ${th} title="this member's OWN forecast score, read against the answers IT was marked on — not the committee's pooled score. This is what stops a member that never speaks hiding inside the pooled number.">forecast score</th>
       <th ${th} title="of this member's own null set — the same forecasts against the same answers with only the pairing between them destroyed — how many it beat. A member that always says the same thing scores the same shuffled as unshuffled and beats none of them, so silence earns nothing here.">beat its own null set</th>
@@ -4970,7 +4970,7 @@ function bMembersPanel(stage, d) {
       <td ${td}>${esc(String(m.model || '—').toUpperCase())}</td>
       <td ${td}>${esc(bMemberReads(m))}${m.at == null ? ` <span class="muted">(${esc(String(m.view || ''))})</span>` : ''}</td>
       <td ${td}>${m.lookbackHours == null ? '<span class="muted">—</span>' : `${Number(m.lookbackHours).toLocaleString()} h`}</td>
-      <td ${td}>${m.bandPct == null ? '<span class="muted">—</span>' : `${Number(m.bandPct).toFixed(2)}%`}</td>
+      <td ${td}>${m.bandPct == null ? '<span class="muted">—</span>' : `${Number(m.bandPct).toFixed(2)}%`}${m.bandTimesUsual == null ? '' : ` <span class="muted">(${Number(m.bandTimesUsual).toFixed(2)}× usual)</span>`}</td>
       <td ${td}>${m.fromSet ? esc(m.fromSet) : '<span class="muted">—</span>'}</td>
       <td ${td}>${n2(m.score)}</td>
       <td ${td}>${bShare(m.deals ? m.beat / m.deals : null, m.beat, m.deals)}</td>
