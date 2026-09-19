@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **87b9236b8a88 — what the box is serving**, not from the working tree.
+Generated from **13010dc14f8c — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -90,7 +90,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 # Coins
 
-## What the controls are called (223)
+## What the controls are called (227)
 
 - `-hour window · one decision a`
 - `— press`
@@ -108,7 +108,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `(chance is`
 - `(from a sit-out band sweep of`
 - `(its own sweet spot)`
-- `&#9666; its rows above`
+- `&#9666; its rows`
 - `&mdash;`
 - `&middot;`
 - `&middot; pooled late money`
@@ -212,11 +212,13 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `most scrambles as good`
 - `most slides as good`
 - `most spread, %`
+- `most whole scrambles as good`
+- `most whole slides as good`
 - `move after falling`
 - `move after rising`
 - `name for the set this walk writes`
 - `Next`
-- `no —`
+- `no`
 - `no coin has been read`
 - `no ratio`
 - `nothing walked yet — press`
@@ -306,6 +308,8 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `whole history`
 - `whole look-back`
 - `whole per trade`
+- `whole scrambles as good`
+- `whole slides as good`
 - `window moves from`
 - `window, months`
 - `windows`
