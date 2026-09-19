@@ -64,6 +64,59 @@ function backendLayouts() {
 }
 
 module.exports = {
+  // THE STAGE 1 SECTION'S SHAPE (owner order, 2026-09-19: "equalize the space
+  // between the last two to that of the first two", and move the rest
+  // "COMBINED, IN-FRONT OF, AND PROPERLY VERTICALLY SPACED WITH" the chunk
+  // shape boxes).
+  //
+  // WHY THE SPACING WAS UNEVEN, so it cannot come back. The three choices are
+  // one-line ticks. The third shared its row with `start` and `end`, which are
+  // a caption stacked over a box and so twice the height -- and `.row` centres,
+  // so that radio floated in the middle of a taller row and sat further from
+  // the one above it than that one sat from the first. Nothing about the
+  // spacing was written anywhere; it came out of what shared the row. So what
+  // is checked is exactly that: the three choices hold ticks and nothing else.
+  //
+  // MEASURED IN A BROWSER BEFORE IT SHIPPED, which is the only way the fault
+  // was visible at all (RULE ELEVEN): the three sat 16px apart afterwards, the
+  // eleven controls came to 1323px against 1339px of panel and wrapped one
+  // control onto a second line, and `start` and `end` were sized to 8.6rem to
+  // bring the row back onto one. Reading the source could not have found any
+  // of that.
+  theStageOneChoicesAreEvenlySpacedAndTheBoxesAreOneGroup() {
+    const panel = SWEEP.slice(SWEEP.indexOf('<h3 id="swH1"'), SWEEP.indexOf('<div id="swOut1">'));
+    const rows = [...panel.matchAll(/<div class="row"[^>]*>([\s\S]*?)<\/div>/g)].map((m) => m[0]);
+    // EACH CHOICE ALONE IN ITS ROW. A field beside one makes its row taller
+    // than the others and the three stop being evenly spaced.
+    const choiceRows = rows.filter((r) => /type="radio" name="swSource"/.test(r));
+    assert.strictEqual(choiceRows.length, 3, `the three choices are drawn across ${choiceRows.length} rows`);
+    for (const r of choiceRows) {
+      const id = (/id="(swSource\w+)"/.exec(r) || [])[1];
+      assert.strictEqual((r.match(/<label/g) || []).length, 1, `the choice ${id} shares its row, so the three are no longer the same height`);
+      assert.ok(!/class="f"/.test(r), `the choice ${id} shares its row with a field, which is what made the spacing uneven`);
+      assert.ok(!/margin-top/.test(r), `the choice ${id} carries a margin of its own, so the three are spaced by hand rather than alike`);
+    }
+    // AND EVERY OTHER BOX OF THE RUN IN ONE ROW, the ticks and the dates in
+    // front of the chunk shape boxes, in the order the owner asked for
+    const combined = rows.find((r) => /id="swSingles"/.test(r));
+    assert.ok(combined, 'singles is no longer drawn');
+    const order = ['swSingles', 'swDoubles', 'swTriples', 'swAllData', 'swStart', 'swEnd', 'swGeom', 'swPermGeom', 'swLayout', 'swNull1', 'swFee1'];
+    const at = order.map((id) => combined.indexOf(`id="${id}"`));
+    assert.ok(at.every((i) => i >= 0), `these are not all in one row: ${order.filter((_, i) => at[i] < 0).join(', ')}`);
+    assert.deepStrictEqual(at.slice().sort((a, b) => a - b), at,
+      `the row draws them as ${order.map((id, i) => [id, at[i]]).sort((a, b) => a[1] - b[1]).map((x) => x[0]).join(', ')}`);
+    // A TICK BESIDE A FIELD BOTTOM-ALIGNS, ALWAYS (RULE FOUR-A)
+    assert.ok(/align-items:flex-end/.test(combined), 'the row holds ticks beside fields and does not bottom-align them');
+    // and it is spaced off the choices above it rather than butting against them
+    assert.ok(/margin-top:\.5rem/.test(combined), 'the row sits flush against the three choices above it');
+    // THE TWO MONTH BOXES ARE SIZED. Left at the browser's own width they are
+    // 151px each, the eleven controls come to more than the panel holds, and
+    // fee % each way wraps onto a second line on its own.
+    assert.ok(/id="swStart" type="month" style="width:8\.6rem"/.test(combined)
+      && /id="swEnd" type="month" style="width:8\.6rem"/.test(combined),
+      'start and end are back at the browser\'s own width, so the row wraps and leaves one control stranded');
+  },
+
   // THE defect: a form value the backend refuses means the tab cannot launch.
   sweepLayoutOptionsAreAllAcceptedByTheBackend() {
     const accepted = backendLayouts();

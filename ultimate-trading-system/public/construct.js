@@ -3581,14 +3581,26 @@ async function drawSweep() {
     </div>
     <div class="row">
       <label class="c" title="run only the rows ticked from a walk set, at the top of Coins. A promoted row carries a look-back and a band of its own, and THAT is what this option is for: each one becomes one more member on its unit, trained on the coin's numbers over that look-back and marked at that band. Everything the unit already trains is untouched. Trade coins, chunk shape and permute are greyed."><input type="radio" name="swSource" id="swSourceWalk" value="walk"> what is ticked from a walk set</label>
+    </div>
+    <!-- EVERY OTHER BOX OF THE RUN IN ONE ROW, UNDER THE THREE CHOICES (owner
+         order, 2026-09-19). Two faults, one cause. The third choice shared its
+         row with start and end, which are a caption stacked over a box and so
+         twice the height of a tick: `.row` centres, so that radio floated in
+         the middle of a taller row and sat further from the one above it than
+         that one sat from the first. The three now hold ticks alone, are the
+         same height, and are evenly spaced.
+         And what came out of it is not stranded: it joins the boxes it belongs
+         with rather than making a row of its own (RULE ELEVEN clause 4), in
+         front of them and bottom-aligned, because a tick beside a field always
+         is (RULE FOUR-A). `.row` wraps, so the eleven controls fold onto a
+         second line on a narrow screen rather than pushing a scroll bar out. -->
+    <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <label class="c"><input type="checkbox" id="swSingles" checked> singles</label>
       <label class="c"><input type="checkbox" id="swDoubles"> doubles</label>
       <label class="c"><input type="checkbox" id="swTriples"> triples</label>
       <label class="c"><input type="checkbox" id="swAllData" checked> all loaded data</label>
-      <label class="f">start<input id="swStart" type="month"></label>
-      <label class="f">end<input id="swEnd" type="month"></label>
-    </div>
-    <div class="row" style="margin-top:.5rem;align-items:flex-end">
+      <label class="f">start<input id="swStart" type="month" style="width:8.6rem"></label>
+      <label class="f">end<input id="swEnd" type="month" style="width:8.6rem"></label>
       <label class="f">chunk shape<select id="swGeom">${vocabOptions('geometry', 'daily-4d')}</select></label>
       <label class="c"><input type="checkbox" id="swPermGeom"> permute</label>
       <label class="f">window layout<select id="swLayout">${vocabOptions('windowLayout', 'reserve61')}</select></label>
