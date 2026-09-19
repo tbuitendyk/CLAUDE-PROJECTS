@@ -1508,6 +1508,13 @@ const GUARDS = [
     'theBasketOpensTheCoinsScreenAsOneSectionWithOneCount', 'the one count leaves the promoted rows out, so "4 of 11 ticked" undercounts'],
   [path.join(ROOT, 'public', 'construct.js'), "      passers: !!($('#swPassers') && $('#swPassers').checked),\n      windowLayout: $('#swLayout').value, allLoaded: $('#swAllData').checked,", "      windowLayout: $('#swLayout').value, allLoaded: $('#swAllData').checked,",
     'theScreensDrawThePassersAndSweepsTick', 'Sweep\'s tick is drawn but the launch ignores it'],
+  // ---- PROMOTING THE WHOLE-HISTORY PICK IN BULK (3.190.0) ----
+  [path.join(ROOT, 'public', 'construct.js'), "const cSplitPromotable = (shown) => (shown || []).filter((p) => p.wholeBand != null);", "const cSplitPromotable = (shown) => (shown || []);",
+    'theSplitReadingPromotesTheWholeHistoryPickOfEveryRowShown', 'a pair the whole history could not choose for is promoted as a row that does not exist'],
+  [path.join(ROOT, 'public', 'construct.js'), "const cSplitAddsMember = (p) => p.wholeLookback != null && String(p.wholeLookback) !== 'own';", "const cSplitAddsMember = (p) => true;",
+    'theSplitReadingPromotesTheWholeHistoryPickOfEveryRowShown', 'every row is counted as adding a member, so the owner is told a walk finding travels when it does not'],
+  [path.join(ROOT, 'public', 'construct.js'), "  if (!cSplit || !cSplit.setId) return '';", "",
+    'theSplitReadingPromotesTheWholeHistoryPickOfEveryRowShown', 'the press is drawn on a reading of the walk in hand, where it can only fail'],
   // ---- A SET LISTING READS SET DOCUMENTS ONLY, AND A WALK KEEPS ITS ROWS (3.189.0) ----
   [path.join(ROOT, 'lib', 'stages.js'), "const isSetDocument = (f) => f.endsWith('.json') && !f.slice(0, -'.json'.length).includes('.');", "const isSetDocument = (f) => f.endsWith('.json');",
     'theSetListingReadsSetDocumentsAndNotTheSidecarsBesideThem', 'every listing parses the Funnel\'s sidecar as a set again -- the wedge that timed out every page for hours'],

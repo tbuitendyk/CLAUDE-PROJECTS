@@ -1750,7 +1750,58 @@ function theCoinsScreenIsDesignedAndNotAccumulated() {
   }
 }
 
+// PROMOTING THE WHOLE-HISTORY PICK FOR EVERY ROW SHOWN (3.190.0, owner
+// order). Choose early, read late already knows each pair's whole-history
+// look-back and band -- they are the four columns on the right, and they are
+// what a unit that has passed there should be set to. Promotion happens on
+// the table above, and nothing bridged the two: narrowing the reading to
+// thirty-one pairs meant thirty-one round trips to tick by hand what the
+// software had already worked out (RULE FIVE).
+function theSplitReadingPromotesTheWholeHistoryPickOfEveryRowShown() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  // THE KEY IT SENDS IS THE ONE THE WALK SET IDENTIFIES A ROW BY. Built any
+  // other way it would promote nothing, or the wrong row, and silently.
+  assert.ok(/const cSplitWholeKey = \(p\) => `\$\{p\.coin\}\|\$\{p\.geometry\}\|\$\{p\.wholeLookback == null \? 'own' : p\.wholeLookback\}\|\$\{p\.wholeBand\}`;/.test(src),
+    'the press builds its own idea of a row key');
+  const wk = require('../lib/walkset').rowKey;
+  const key = (p) => `${p.coin}|${p.geometry}|${p.wholeLookback == null ? 'own' : p.wholeLookback}|${p.wholeBand}`;
+  for (const p of [{ coin: 'LTCUSDT', geometry: 'daily-3d', wholeLookback: '720', wholeBand: 90 },
+    { coin: 'XRPUSDT', geometry: 'daily-1d', wholeLookback: 'own', wholeBand: 50 },
+    { coin: 'AAAUSDT', geometry: 'weekly-8d', wholeLookback: null, wholeBand: 0 }]) {
+    assert.strictEqual(key(p), wk({ coin: p.coin, geometry: p.geometry, lookback: p.wholeLookback, band: p.wholeBand }),
+      `the key for ${p.coin} is not the key the walk set stores that row under`);
+  }
+  // THE WHOLE-HISTORY ROW, NEVER THE EARLY PICK. The early pick is the test;
+  // the row to run is the one the entire swath chose.
+  assert.ok(!/cSplitWholeKey[\s\S]{0,200}p\.lookback/.test(src), 'the press sends the early pick\'s look-back');
+  // A PAIR THE WHOLE HISTORY COULD NOT CHOOSE FOR HAS NO ROW TO PROMOTE
+  assert.ok(/const cSplitPromotable = \(shown\) => \(shown \|\| \[\]\)\.filter\(\(p\) => p\.wholeBand != null\);/.test(src),
+    'a pair with no whole-history choice is promoted as a row that does not exist');
+  // IT SAYS WHAT IT WILL DO, including the part easily missed: a row reading
+  // the chunk shape's own span adds no member at all (RULE ELEVEN clause 6)
+  assert.ok(/const cSplitAddsMember = \(p\) => p\.wholeLookback != null && String\(p\.wholeLookback\) !== 'own';/.test(src),
+    'nothing works out which rows actually add a member');
+  assert.ok(/carry a look-back in hours and add a member to their unit/.test(src),
+    'the line beside the press does not say how many add a member');
+  assert.ok(/read the chunk shape's own span and add none/.test(src),
+    'the rows that add no member are not counted on screen');
+  assert.ok(/add none — their unit runs as a plain one/.test(src), 'the question asked before promoting does not say it');
+  // NOT DRAWN WHERE IT COULD ONLY FAIL: promotion is written on a walk set,
+  // so a reading of the walk in hand has nothing to write to
+  assert.ok(/if \(!cSplit \|\| !cSplit\.setId\) return '';/.test(src), 'the press is drawn on a reading that has no set to promote onto');
+  // THE SAME DOOR a row ticked by hand goes through, so the two promotions
+  // are one promotion
+  const wire = src.slice(src.indexOf("const b = $('#sPromote');"), src.indexOf("for (const b of document.querySelectorAll('.cwopen'))"));
+  assert.ok(/post\(`api\/coins\/walks\/\$\{encodeURIComponent\(id\)\}\/pick`, \{ keys, picked: true \}\)/.test(wire),
+    'the press promotes through a door of its own rather than the one the ticks use');
+  // A BUTTON GOES IN A ROW OF ITS OWN (RULE FOUR-A)
+  const row = src.slice(src.indexOf('function cSplitPromoteRow('), src.indexOf('function cSplitShownPairs('));
+  assert.ok(/<div class="row" style="margin-top:\.5rem">/.test(row) && !/label class="f"/.test(row),
+    'the press shares its row with a field');
+}
+
 module.exports = {
+  theSplitReadingPromotesTheWholeHistoryPickOfEveryRowShown,
   theWindowsStartAfterTheWarmUpAndTheShortTailIsDropped,
   theUsualMoveTrailingSeesOnlyWhatIsBehindIt,
   theSignsAreLearnedFromBeforeTheWindowAndNothingElse,

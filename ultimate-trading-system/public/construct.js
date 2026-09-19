@@ -9768,6 +9768,46 @@ function cSplitShown(pairs) {
 }
 // AND WHICH COIN-AND-SHAPE PAIRS THOSE ARE, for the tick on Walk it forward
 // that keeps only the rows belonging to them.
+// PROMOTE THE WHOLE-HISTORY PICK FOR EVERY ROW SHOWN (3.190.0, owner order).
+//
+// WHY IT EXISTS. This screen already knows each pair's whole-history look-back
+// and band -- they are the four columns on the right, and they are what a unit
+// that has passed here should actually be set to. Promotion happens on the
+// table above. Nothing bridged the two, so narrowing this reading to thirty-one
+// pairs meant thirty-one round trips through the jump button to tick by hand
+// what the software had already worked out (RULE FIVE: what the system knows,
+// the owner can reach).
+//
+// IT PROMOTES THE WHOLE-HISTORY ROW, NEVER THE EARLY PICK. The early pick is
+// the test -- it spends half the history to answer whether the choosing is
+// worth anything. The row to run is the one the entire swath chose, which is
+// what the jump button marks and what this sends.
+//
+// AND IT SAYS WHAT IT WILL DO BEFORE IT DOES IT, including the part the owner
+// would not want silently decided: a row whose look-back is the chunk shape's
+// own span adds NO member to its unit -- the unit runs as a plain one. Those
+// rows are still promoted, because dropping them would be the software making
+// that call, but the count is on screen either way (RULE ELEVEN clause 6).
+const cSplitWholeKey = (p) => `${p.coin}|${p.geometry}|${p.wholeLookback == null ? 'own' : p.wholeLookback}|${p.wholeBand}`;
+// a pair the whole history could not choose for has no row to promote
+const cSplitPromotable = (shown) => (shown || []).filter((p) => p.wholeBand != null);
+const cSplitAddsMember = (p) => p.wholeLookback != null && String(p.wholeLookback) !== 'own';
+function cSplitPromoteRow(shown) {
+  const able = cSplitPromotable(shown);
+  if (!able.length) return '';
+  // PROMOTION IS WRITTEN ON A WALK SET, so a reading taken on the walk in hand
+  // has nothing to write to. Drawing the press there would be a control that
+  // could only ever fail (RULE ELEVEN clause 6); it is not drawn at all, and
+  // the way to get one is to let the walk finish, which writes its set.
+  if (!cSplit || !cSplit.setId) return '';
+  const withMember = able.filter(cSplitAddsMember).length;
+  const plain = able.length - withMember;
+  return `<div class="row" style="margin-top:.5rem">
+    <button id="sPromote" class="pri" title="promotes the whole-history pick of every row this reading is showing — the look-back and band in the four columns on the right, not the early pick. They go to Candidates for Sweep at the top of Coins, and nothing already promoted is promoted twice.">Promote every row shown</button>
+    <span id="sPromoteSaid" class="note">${able.length.toLocaleString()} row(s) — ${withMember.toLocaleString()} carry a look-back in hours and add a member to their unit${plain ? `, ${plain.toLocaleString()} read the chunk shape's own span and add none` : ''}</span>
+  </div>`;
+}
+
 function cSplitShownPairs() {
   const out = new Set();
   for (const p of cSplitShown((cSplit && cSplit.pairs) || [])) out.add(`${p.coin}|${p.geometry}`);
@@ -9848,6 +9888,7 @@ function cSplitPanel() {
       <b>${s.sameChoice} of ${s.of}</b>, and its pooled money is <span class="${cls(s.wholePooled)}">${pc(s.wholePooled)}</span> a trade
       &mdash; higher than the late figure because it is the best of everything, chosen with everything in view.</p>
     ${cSplitFilterRow()}
+    ${cSplitPromoteRow(sShown)}
     ${sShown.length ? '' : `<p class="note warn" style="margin:.6rem 0"><b>All ${sAll.length.toLocaleString()} row(s) of this reading are hidden by the filter boxes above.</b>
       Nothing is wrong with the reading &mdash; the table is there. Empty a box to widen it, or clear them all:</p>
       <div class="row" style="margin-bottom:.6rem"><button id="sfClear2" class="pri">Clear filters</button></div>`}
@@ -10391,6 +10432,41 @@ function cWalkBind() {
       out.innerHTML = `<span class="pos">${keys.length} row(s) promoted — they are in the list at the top</span>`;
       draw();
     };
+  }
+  // PROMOTE THE WHOLE-HISTORY PICK FOR EVERY ROW SHOWN (3.190.0). It sends the
+  // same keys, through the same door, as ticking them one at a time would --
+  // so a row promoted here and a row promoted by hand are the same promotion.
+  {
+    const b = $('#sPromote');
+    const said = $('#sPromoteSaid');
+    const id = (cSplit && cSplit.setId) || null;
+    if (b && said) {
+      b.onclick = async () => {
+        const able = cSplitPromotable(cSplitShown((cSplit && cSplit.pairs) || []));
+        if (!able.length) return;
+        const withMember = able.filter(cSplitAddsMember).length;
+        const plain = able.length - withMember;
+        // IT ASKS FIRST, and the question says the part that is easy to miss:
+        // a row reading the chunk shape's own span adds no member at all.
+        if (!confirm(`Promote the whole-history pick of ${able.length} row(s)?\n\n`
+          + `${withMember} carry a look-back in hours and add a member to their unit.\n`
+          + `${plain} read the chunk shape's own span and add none — their unit runs as a plain one.\n\n`
+          + 'This is the look-back and band the WHOLE history chose, not the early pick.')) return;
+        if (!id) { said.innerHTML = '<span class="warn">this reading does not say which walk set it is of</span>'; return; }
+        b.disabled = true;
+        said.textContent = 'promoting…';
+        const keys = able.map(cSplitWholeKey);
+        try {
+          await post(`api/coins/walks/${encodeURIComponent(id)}/pick`, { keys, picked: true });
+        } catch (err) {
+          said.innerHTML = `<span class="warn">${esc(err.message)}</span>`;
+          b.disabled = false;
+          return;
+        }
+        said.innerHTML = `<span class="pos">${keys.length} row(s) promoted — they are in the list at the top</span>`;
+        draw();
+      };
+    }
   }
   for (const b of document.querySelectorAll('.cwopen')) {
     b.onclick = () => {
