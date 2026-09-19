@@ -389,35 +389,58 @@ function theLookBackIsItsOwnAxisAndOnlyWhatTheRecordCarries() {
 // is measured when the coins are read and a change to it means nothing until
 // they are read again. The one that decides what gets WALKED sits on Walk it
 // forward, because it costs nothing and can be changed between walks.
-function bothLookBackBoxesAreOnScreenWhereTheyBelong() {
+// ONE BOX FOR THE LOOK-BACKS, AND IT IS ON WALK IT FORWARD (owner order,
+// 2026-09-19: "we shouldn't have two separate boxes confusing everything").
+//
+// There were two -- `look-backs to store, hours` on the reading and
+// `look-backs to try, hours` on the walk -- and the owner had to type the same
+// numbers into both. What settled where the one box goes: the stored moves are
+// read in exactly two places, the walk itself (lib/coinscan.js) and the helper
+// that tells the screen which are stored. Nothing else in the system reads
+// them, so the only reason the box existed was the walk.
+//
+// The candles are still only loaded by a reading, which no move of a control
+// changes. So the screen NAMES that gap instead of hiding it in hover text.
+function theLookBacksHaveOneBoxAndItIsOnTheWalk() {
   const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
   const help = fs.readFileSync(path.join(__dirname, '..', 'public', 'help-content.js'), 'utf8');
   const run = fs.readFileSync(path.join(__dirname, '..', 'lib', 'coinsrun.js'), 'utf8');
   const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-  assert(/id="cBacks"/.test(src), 'the store box is on Coins');
-  assert(/id="wBacks"/.test(src), 'the walk box is on Walk it forward');
-  assert(/look-backs to store, hours/.test(src), 'and it says what it does');
-  assert(/look-backs to try, hours/.test(src), 'and so does the other');
-  assert(/cBacks: /.test(help) && /wBacks: /.test(help), 'both are described on Help');
-  assert(/app\.post\('\/api\/coins\/lookbacks'/.test(srv), 'the store box has a door');
+
+  assert(!/id="cBacks"/.test(src), 'the reading has no look-back box of its own any more');
+  assert(!/look-backs to store, hours/.test(src), 'and its label is gone with it');
+  assert(!/cBacks: /.test(help), 'and so is its Help entry, or Help describes a control nobody can press');
+  assert(/id="wBacks"/.test(src), 'the one box is on Walk it forward');
+  assert(/>look-backs, hours \(blank = each shape&#39;s own\)</.test(src),
+    'and it is named for what it is, not for one of the two things it used to be');
+  assert(/wBacks: /.test(help) && /wBacksAll: /.test(help), 'the box and its fill press are described on Help');
+
+  // IT IS THE SETTING ON THE BOX, not something this browser remembers: the
+  // reading measures it and the walk walks it, so both presses see one list.
+  assert(/app\.post\('\/api\/coins\/lookbacks'/.test(srv), 'the box has a door');
+  assert(/id="wBacks" value="\$\{esc\(\(cBacksNow\.value \|\| \[\]\)\.join\(','\)\)\}"/.test(src),
+    'the box shows what the service holds, never a copy this browser kept');
+  assert(!/cState\.wBacks/.test(src), 'and nothing keeps such a copy');
+  assert(/post\('api\/coins\/lookbacks', \{ lookbacks: \$\('#wBacks'\)\.value \}\)/.test(src),
+    'and a change goes through that door the moment it is made');
+
+  // THE GAP IS ON THE SCREEN. A look-back typed here is not in the records
+  // until the coins are read, and that is the whole reason two presses exist.
+  assert(/lookbacksNotStored/.test(run), 'the service works out which set look-backs the records lack');
+  assert(/notStored: lookbacksNotStored\(records\)/.test(run), 'and serves it with the answer');
+  assert(/in the box are not in the records yet/.test(src), 'and the screen says so beside the box');
   assert(/read the coins again for this to reach the records/.test(run),
     'and setting them SAYS a read is needed, rather than looking as though it took effect');
   assert(/const RECORD_V = 9;/.test(run), 'the record shape moved, so a record written under the old reading is refused rather than mixed in');
   assert(/look-back\$\{cWalkSortBtn\('lookback', 'asc'\)\}/.test(src), 'the table has a look-back column and it sorts');
+
   // OWNER, 2026-09-17: "make them both wider so that I can get a longer range
-  // of hours in and see the whole string." Both hold the same kind of string,
-  // so both are the same width, and a width that fits about a dozen entries.
-  // A WIDTH NEED NOT BE A WHOLE NUMBER. 3.166.1 widened both by 40% on the
-  // owner's word, which took 26rem to 36.4rem, and a guard that could only
-  // read whole rems would have read those as missing.
-  const widthOf = (id) => {
-    const m = new RegExp(`id="${id}"[^>]*?style="width:([\\d.]+)rem"`).exec(src);
-    return m ? Number(m[1]) : null;
-  };
-  const a = widthOf('cBacks'); const b = widthOf('wBacks');
-  assert(a != null && b != null, `both look-back boxes state a width, got ${a} and ${b}`);
-  assert(a === b, `the two look-back boxes hold the same kind of string, so they are the same width: ${a}rem against ${b}rem`);
-  assert(a >= 36.4, `a long range of hours has to be readable in the box, and ${a}rem is not enough (the owner widened these by 40% on 2026-09-18, from 26rem)`);
+  // of hours in and see the whole string." A WIDTH NEED NOT BE A WHOLE NUMBER:
+  // 3.166.1 widened it by 40%, 26rem to 36.4rem, and a guard that could only
+  // read whole rems would have read that as missing.
+  const m = /id="wBacks"[^>]*?style="width:([\d.]+)rem"/.exec(src);
+  assert(m, 'the box states a width');
+  assert(Number(m[1]) >= 36.4, `a long range of hours has to be readable in the box, and ${m[1]}rem is not enough`);
 }
 
 // ONE OUTCOME'S NEIGHBOURS ARE THE ONES IT ACTUALLY HAD. A slid copy is the
@@ -1251,7 +1274,7 @@ function theSplitsVerdictIsMarkedOnTheRowItChoseAndNowhereElse() {
 // sections that don't apply properly").
 //
 // TRACED, NOT GUESSED, before this moved anything:
-//   * `sit-out band` and `each shape at its own sweet spot` are read by
+//   * `sit-out band` and `each shape at its own best sit-out band` are read by
 //     coinsRecords() and used ONLY on the per-coin bars. The passers take
 //     their band and their lean from the sweet spot unconditionally, and
 //     walkPieces() never reads the tick at all. So both belong with the bars.
@@ -1276,7 +1299,7 @@ function everyCoinsControlSitsBesideTheThingItChanges() {
 
   // the two that only change a picture are with the picture
   assert(at('cBand') > bars, 'sit-out band moved to the bars, which is the only thing it changes');
-  assert(at('cAuto') > bars, 'and so did each shape at its own sweet spot');
+  assert(at('cAuto') > bars, 'and so did each shape at its own best sit-out band');
   assert(!/id="cBand"/.test(walkFn) && !/id="cAuto"/.test(walkFn), 'neither drifted into Walk it forward');
   assert(!/id="cBacks"/.test(walkFn), 'and look-backs to store did not either — the walk has its own look-back box');
 
@@ -1396,7 +1419,7 @@ function everyDivACoinsPanelOpensItAlsoCloses() {
 
   // AND THE ROW THE FAULT WAS IN, named, so a revert reads plainly
   const walk = src.slice(src.indexOf('function cWalkPanel()'), src.indexOf('function cWalkRepaint()'));
-  assert(/A look-back not among them is left out of the walk rather than guessed\.<\/span>\s*\n\s*<\/div>/.test(walk),
+  assert(/They are measured from the candles, so press <b>Read these coins<\/b> above to add them\.` : ''\}<\/span>\s*\n\s*<\/div>/.test(walk),
     "the press's own row is closed before the next one opens — this is the row 3.168.0 left hanging");
 }
 
@@ -1504,7 +1527,7 @@ module.exports = {
   openingARowLeavesBothScrollBarsWhereTheyWere,
   theWindowStripIsReadableAndSaysWhatIsMissing,
   theLookBackIsItsOwnAxisAndOnlyWhatTheRecordCarries,
-  bothLookBackBoxesAreOnScreenWhereTheyBelong,
+  theLookBacksHaveOneBoxAndItIsOnTheWalk,
   aSlidCopyKeepsEveryOutcomeBesideTheOnesItHappenedBeside,
   aPlantedRelationshipBeatsItsSlidCopiesToo,
   theDealtCopiesAreUnfairOnADriftingCoinAndTheSlidOnesAreNot,

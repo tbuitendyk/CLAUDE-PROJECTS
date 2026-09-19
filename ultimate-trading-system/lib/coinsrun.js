@@ -47,12 +47,21 @@ const AUTO_KEY = 'coins_band_auto';
 // reads the ticked passers as the units of a launch.
 const PASS_BAR_KEY = 'coins_pass_bar';
 const PASS_OFF_KEY = 'coins_passers_off';
-// THE LOOK-BACKS A READING STORES, in hours, the owner's to change (RULE
-// FIVE). Stored at read time because they are measured from candles, so
-// changing them means reading the coins again -- which is why they live beside
-// the band rather than on Walk it forward, where a change would silently mean
-// nothing until the next read. One day, two, three, four, a week, two weeks,
-// three weeks.
+// THE LOOK-BACKS, in hours, the owner's to change (RULE FIVE). One day, two,
+// three, four, a week, two weeks, three weeks.
+//
+// ONE BOX, AND IT IS ON WALK IT FORWARD (owner order, 2026-09-19: "we shouldn't
+// have two separate boxes confusing everything"). There were two -- one on the
+// reading saying which to STORE, one on the walk saying which to TRY -- and the
+// owner had to type the same numbers in both. What settled it: the stored moves
+// are read in exactly two places, the walk itself and the helper that tells the
+// screen which are stored. Nothing else in the system reads them, so the only
+// reason the box existed was the walk, and that is where it belongs.
+//
+// They are still MEASURED FROM CANDLES when the coins are read, which no move
+// of a control can change. So the screen names the gap instead of hiding it:
+// lookbacksNotStored() says which of the set ones the records do not carry yet,
+// and Walk it forward prints them beside the box.
 const LOOKBACKS_KEY = 'coins_lookbacks';
 
 // THE RECORD SHAPE. It moves whenever what is written changes, so a reading
@@ -135,13 +144,24 @@ function setPassBar(value) {
 }
 function lookbacks() {
   const a = readSettings()[LOOKBACKS_KEY];
-  const list = Array.isArray(a) ? a.map(Number).filter((h) => Number.isFinite(h) && h > 0 && h <= 8760) : null;
-  return list && list.length ? [...new Set(list)].sort((x, y) => x - y) : DEFAULTS.lookbacks.slice();
+  // AN EMPTY LIST IS A CHOICE, NOT AN ABSENCE (3.175.0). The one box that sets
+  // these lives on Walk it forward, and blank there has always meant "walk each
+  // chunk shape's own span and nothing else"; falling back to the built-in list
+  // when the owner had deliberately cleared it would store twenty-one look-backs
+  // they had just said they did not want. Absent key -> the built-in; a stored
+  // array -> exactly that array, empty or not.
+  if (!Array.isArray(a)) return DEFAULTS.lookbacks.slice();
+  const list = a.map(Number).filter((h) => Number.isFinite(h) && h > 0 && h <= 8760);
+  return [...new Set(list)].sort((x, y) => x - y);
 }
 function setLookbacks(value) {
+  // BLANK IS AN EMPTY LIST, not a nonsense zero. Splitting '' on a comma gives
+  // one empty string, Number('') is 0, and 0 is finite -- so the old reading of
+  // a cleared box was "one look-back of zero hours", which the check below then
+  // refused. The empties go before anything is converted.
   const list = (Array.isArray(value) ? value : String(value == null ? '' : value).split(','))
-    .map((x) => Number(String(x).trim())).filter((h) => Number.isFinite(h));
-  if (!list.length) throw new Error('give at least one look-back, in hours');
+    .map((x) => String(x).trim()).filter((x) => x !== '')
+    .map(Number).filter((h) => Number.isFinite(h));
   for (const h of list) {
     if (!Number.isInteger(h) || h <= 0 || h > 8760) throw new Error(`a look-back is a whole number of hours from 1 to 8760 — not ${JSON.stringify(h)}`);
   }
@@ -149,6 +169,14 @@ function setLookbacks(value) {
   settings[LOOKBACKS_KEY] = [...new Set(list)].sort((x, y) => x - y);
   writeSettings(settings);
   return { lookbacks: settings[LOOKBACKS_KEY], note: 'read the coins again for this to reach the records' };
+}
+// WHICH OF THE LOOK-BACKS SET ARE NOT IN THE RECORDS YET (3.175.0). The one box
+// holds what the owner wants; the records hold what the last reading measured.
+// The gap between them is the whole reason the reading and the walk are two
+// presses, so the screen says it out loud rather than leaving it in hover text.
+function lookbacksNotStored(records) {
+  const have = new Set(lookbacksInRecords(records));
+  return lookbacks().filter((h) => !have.has(h));
 }
 function passersOff() {
   const a = readSettings()[PASS_OFF_KEY];
@@ -637,7 +665,7 @@ function coinsRecords() {
     // WHAT IS SET AGAINST WHAT THE RECORDS ACTUALLY CARRY. A look-back changed
     // since the last read is in `value` and not in `inRecords`, and the screen
     // says so rather than offering a walk that would silently find nothing.
-    lookbacks: { value: lookbacks(), default: DEFAULTS.lookbacks, inRecords: lookbacksInRecords(records) },
+    lookbacks: { value: lookbacks(), default: DEFAULTS.lookbacks, inRecords: lookbacksInRecords(records), notStored: lookbacksNotStored(records) },
     // WHICH SHAPES A FIXED LOOK-BACK ACTUALLY WALKS, and which ones stand down
     // because they are the same trade held for the same time. Read off
     // GEOMETRIES so a shape added or changed tomorrow reads correctly with

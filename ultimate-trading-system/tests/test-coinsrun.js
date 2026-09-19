@@ -605,7 +605,7 @@ module.exports = {
   theScreenDrawsTheTickTheGreenLineAndTheBandInUse() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.html'), 'utf8');
-    assert.ok(/<input id="cAuto" type="checkbox"\$\{band\.auto \? ' checked' : ''\}> each shape at its own sweet spot<\/label>/.test(src), 'the tick, labelled, showing what the service holds');
+    assert.ok(/<input id="cAuto" type="checkbox"\$\{band\.auto \? ' checked' : ''\}> each shape at its own best sit-out band<\/label>/.test(src), 'the tick, labelled, showing what the service holds');
     assert.ok(/post\('api\/coins\/band', \{ auto: \$\('#cAuto'\)\.checked \}\)/.test(src), 'the tick is set through the band\'s one door');
     assert.ok(/const on = sig\.sweetSpot && sig\.sweetSpot\.ratio > 1;/.test(src), 'green means the sweet spot\'s edge is above 1.0× chance');
     assert.ok(/<div class="csig\$\{on \? ' on' : ''\}">/.test(src), 'and the whole line carries it');

@@ -187,7 +187,7 @@ function requirePlaywright() {
     `the table sits in a named box inside Candidates for Sweep, got ${passers.heading} / ${passers.boxname}`);
   expect(passers.beforeFirstCoin && passers.beforeTheReading, 'the basket is above the reading and above the first coin');
   expect(await page.inputValue('#cPassBar') === '2', 'the bar box shows the number the service holds');
-  expect(/each shape at its own sweet spot/.test(body), 'the tick is labelled');
+  expect(/each shape at its own best sit-out band/.test(body), 'the tick is labelled for the thing it picks');
   expect(await page.isChecked('#cAuto') === false, 'the tick shows what the service holds: off');
   for (const gone of ['cTarget', 'cFrom', 'cTo', 'cStep', 'cCap', 'cDrift', 'cShuf', 'cLayout', 'cOrder', 'cGeom', 'cWk']) {
     expect(await page.locator(`#${gone}`).count() === 0, `${gone} is gone from the screen`);
