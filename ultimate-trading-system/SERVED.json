@@ -1,12 +1,12 @@
 {
-  "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html — so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "8f3c5607666a6f35a49813240f8758aec72d25b1",
-  "subject": "3.190.0: Promote every row shown, on Choose early, read late",
-  "capturedAt": "2026-09-19T22:19:50Z",
+  "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html \u2014 so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
+  "commit": "eceac0a5d6c3b19707527cd419847e1478336617",
+  "subject": "3.191.0 -- leave out the chunk shape's own span, and one parse per walk set",
+  "capturedAt": "2026-09-19T23:15:00Z",
   "files": {
     "public/construct.js": {
-      "sha256": "ba4ad91d4295a04472ccbbeb382b26918da1056d1ccaa1c8dd6d8bdfd77fefa7",
-      "bytes": 800188
+      "sha256": "37d3484226888e15c2c8de2fa82f3db9115e8409ad81975debad66c0874381ca",
+      "bytes": 802118
     },
     "public/help-content.js": {
       "sha256": "4216448f6075e85af2fdd43924c13cbd0f8aa39f2e56463a7c3ffce8c0684d16",
