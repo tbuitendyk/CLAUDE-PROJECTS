@@ -749,6 +749,9 @@ module.exports = {
   // block three times the size that says nothing. The count says the same
   // thing before the press, so the screen can grey the dial.
   async aLaunchAskingForConfirmRefusesWhenNoUnitPasses() {
+    // and anything an earlier run left behind goes first, so a leftover cannot
+    // make this run refuse for a reason that has nothing to do with confirm
+    for (const x of stages.listSets()) if (/^confirm off /.test(String(x.name || ''))) rmSet(x.id);
     const pid = writeLaunchParent('confirm');
     try {
       const d = stages.stage3Declared({ ...LAUNCH_BLOCK, from: pid, confirm: 'sized' });
@@ -770,7 +773,16 @@ module.exports = {
       try { stages.startStage3({ ...LAUNCH_BLOCK, from: pid, permuteConfirm: true }); } catch (err) { refused = err.message; }
       assert.ok(refused && /confirm would change nothing/.test(refused), `permute asks for the lean too: ${refused || 'a launch'}`);
       // and a launch at off writes its (empty) leans and the dial's value on the set
-      const got = stages.startStage3({ ...LAUNCH_BLOCK, from: pid, name: `confirm off ${pid.slice(-6)}` });
+      //
+      // THE NAME IS UNIQUE PER RUN (3.189.0). It used to be `confirm off ` plus
+      // the last six characters of the parent's id -- which are always
+      // `onfirm`, from the tag -- so every run asked for the same name. A set
+      // left behind by the previous run then made this one refuse with "a
+      // record set called that already exists", and the suite failed on
+      // alternate runs. The leftover happens because the launch's own
+      // background finish can write the set again after the clean-up has
+      // deleted it; a unique name makes that harmless instead of poisonous.
+      const got = stages.startStage3({ ...LAUNCH_BLOCK, from: pid, name: `confirm off ${pid.slice(8, 22)}` });
       const doc = stages.getSet(got.id);
       assert.deepStrictEqual([doc.params.confirm, doc.params.permuteConfirm, doc.params.confirmedX, doc.params.unconfirmedX, doc.params.confirmLeans],
         ['off', false, 2, 1, {}], 'the set says what it used');
