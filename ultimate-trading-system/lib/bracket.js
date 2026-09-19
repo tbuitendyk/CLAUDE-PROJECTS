@@ -18,7 +18,7 @@ const { HOUR_MS } = require('./binance');
 // again further down for directionalCall; require caches, and pulling this
 // one up keeps it above its first use rather than relying on load order.)
 const { pnlAt, NOTIONAL, feeRate } = require('./paper');
-const { buildChunks, GEOMETRIES } = require('./dataset');
+const { buildChunks, candleRun, GEOMETRIES } = require('./dataset');
 const feats = require('./features');
 const { viewIndices } = feats;
 
@@ -32,7 +32,23 @@ const CROSS = feats.CROSS;
 
 // View index arrays for each combo size over the composite layouts above.
 // Singles have no cross view (nothing to cross) — callers get null there.
-function comboViews(size, nDays) {
+// AND THE EXTRA BLOCKS GET THEIR OWN SLICES (3.182.0). One per extra, named
+// extra0, extra1 ... in the order the unit carries them. They are NOT in
+// slimViewsFor, so no existing member can see them and no existing member's
+// column positions move -- an extra member is added alongside, never in place
+// of one.
+function comboViews(size, nDays, nExtras = 0) {
+  const base = comboViewsBase(size, nDays);
+  const n = Math.max(0, Math.floor(Number(nExtras) || 0));
+  if (!n) return base;
+  const views = { ...base.views };
+  for (let i = 0; i < n; i++) {
+    const from = base.featureCount + i * PER_ASSET_N;
+    views[`extra${i}`] = Array.from({ length: PER_ASSET_N }, (_, k) => from + k);
+  }
+  return { featureCount: base.featureCount + n * PER_ASSET_N, views };
+}
+function comboViewsBase(size, nDays) {
   const P = PER_ASSET(nDays);
   const two = (view) => viewIndices(view, nDays); // over [P][P][4]
   if (size === 1) {
@@ -53,7 +69,50 @@ function comboViews(size, nDays) {
 // Assemble one combo's chunks. maps = { trade, ctx1?, ctx2? } (forward-filled
 // hourly maps). Returns { chunks, featureCount } with diffPct/label fields
 // from the trade asset (labels assigned by the caller once the band is set).
-function buildComboChunks(maps, geometry, weekdaysOnly, includeUnlabeled = false) {
+// ONE OR MORE EXTRA BLOCKS, EACH OVER A LONGER LOOK-BACK (3.182.0,
+// ADDITIONAL-MEMBER-DESIGN.md sections B and D).
+//
+// THE BASE VECTOR IS NOT TOUCHED. `extras` empty returns exactly what this
+// function returned before, byte for byte -- which is what keeps the
+// measurement block at 3 and every stage 1 set on the box usable as a parent.
+// tests/test-extramember.js proves it by building both and comparing.
+//
+// APPENDED, NEVER WOVEN IN. A triple's vector is assembled by splicing the
+// second context block into the middle of the first; anything added inside
+// buildChunks would land in that seam and be duplicated. So the extras go on
+// here, after the whole base vector is assembled, and only here.
+//
+// THE SPAN ENDS WHERE THE CHUNK'S OWN FEATURES END, so both describe the run-up
+// to the same decision. A 432-hour look-back on a Daily 1-day chunk therefore
+// starts 408 hours BEFORE the chunk does.
+//
+// A CHUNK THAT CANNOT REACH BACK THAT FAR IS DROPPED, not filled with noughts.
+// assetCompressed writes 0 for anything it cannot compute, so a fabricated
+// block would be invisible and would teach the member that a 432-hour move of
+// exactly nought happened. The count that went is returned and the screen says
+// it (RULE ELEVEN clause 3).
+function buildComboChunks(maps, geometry, weekdaysOnly, includeUnlabeled = false, extras = []) {
+  const built = buildComboChunksBase(maps, geometry, weekdaysOnly, includeUnlabeled);
+  const spans = (extras || []).map((e) => Math.floor(Number(e && e.lookbackHours) || 0));
+  if (!spans.length) return built;
+  if (spans.some((h) => !(h > 0))) throw new Error('an extra look-back has to be a number of hours above nought');
+  const back = GEOMETRIES[geometry].featureHours;
+  const chunks = [];
+  let tooEarly = 0;
+  for (const c of built.chunks) {
+    const add = [];
+    let short = false;
+    for (const hours of spans) {
+      const run = candleRun(maps.trade, c.startTs + (back - hours) * HOUR_MS, hours);
+      if (!run) { short = true; break; }
+      for (const v of feats.spanFeatures(run)) add.push(v);
+    }
+    if (short) { tooEarly++; continue; }
+    chunks.push({ ...c, x: [...c.x, ...add] });
+  }
+  return { chunks, featureCount: built.featureCount + spans.length * PER_ASSET_N, tooEarly };
+}
+function buildComboChunksBase(maps, geometry, weekdaysOnly, includeUnlabeled = false) {
   // includeUnlabeled keeps chunks whose outcome window (+exitOffsetH) has not
   // completed yet — needed ONLY by the live pilot, which must decide on the
   // CURRENT chunk (features complete, outcome still in the future). Every other

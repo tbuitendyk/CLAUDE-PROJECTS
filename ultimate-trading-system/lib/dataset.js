@@ -289,6 +289,7 @@ module.exports = {
   mondayStarts,
   dailyStarts,
   buildChunks,
+  candleRun,
   meanOHLC,
   scoreDiff,
   balancedBandPct,

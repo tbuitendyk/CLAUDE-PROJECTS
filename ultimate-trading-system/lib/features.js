@@ -298,8 +298,30 @@ function viewIndices(view) {
   return FEATURE_NAMES.map((n, i) => (pred(n) ? i : -1)).filter((i) => i >= 0);
 }
 
+// THE SAME NUMBERS AGAIN, OVER A SPAN THE CALLER NAMES (3.182.0,
+// ADDITIONAL-MEMBER-DESIGN.md section B).
+//
+// This is not a new measurement block and it must never become one. It is
+// assetCompressed, unchanged, handed a longer run of candles -- the same
+// twenty-one numbers in the same order, describing a longer stretch. The block
+// version stays at 3 because nothing existing moves: these columns are
+// APPENDED, and a unit that asks for none of them gets exactly the vector it
+// got before.
+//
+// THE PLAIN MOVE OVER THE LOOK-BACK IS ALREADY IN HERE. The owner asked for the
+// walk's own number to be among them; `total_ret` over the span IS that number
+// -- last close against first open across the look-back -- so it needs no
+// column of its own, and adding one would be the same fact twice.
+function spanFeatures(candles) {
+  const names = [];
+  const out = [];
+  assetCompressed(candles, 'span', names, out);
+  return out;
+}
+
 module.exports = {
   compressedFeatures, FEATURE_NAMES, featureNamesFor, FEATURE_VIEWS, viewIndices,
+  assetCompressed, spanFeatures,
   FAMILY, PER_ASSET, CROSS, PER_ASSET_SPEC, CROSS_SPEC, MEASUREMENTS_VERSION,
   mean, std, linSlope, pearson,
 };
