@@ -134,6 +134,56 @@ function shapeOf(vals) {
 // lead over null set: how far above the null set's typical score the real
 // one sits, against the null set's own spread. Population spread; a spread
 // of zero reads 0, never infinity (decision record #6).
+// EACH MEMBER ON THE QUESTION IT WAS ACTUALLY ASKED (3.183.0,
+// ADDITIONAL-MEMBER-DESIGN.md sections E and F).
+//
+// THIS IS WHAT MAKES THE SIT-OUT PROTECTION REACH THE EXTRA MEMBER, and it is
+// the load-bearing line of the whole design. A member whose forecasts barely
+// move scores the same shuffled as unshuffled, because the null keeps the same
+// forecasts and the same answers and destroys only the pairing -- so it beats
+// none of its deals and silence earns nothing. That protection already existed,
+// but the score was POOLED across the committee, and a quiet member hid inside
+// the pool. Dealt its own null against its own answers, it cannot.
+//
+// AND HOW OFTEN IT SPOKE, beside it. A member right about sitting out on 95 of
+// 100 chunks has said nothing, and one number cannot tell that apart from a
+// member that spoke and was right. Two numbers can.
+function memberReadings({ members, specs, testChunks, seed, unitKey, nullN, tag }) {
+  const n = testChunks.length;
+  return members.map((m, mi) => {
+    const at = specs[mi] ? specs[mi].at : null;
+    const labels = testChunks.map((c) => (at == null ? c.label : c.altLabels[at]));
+    const probs = [m.probs.slice(0, n)];
+    const score = forecastScore(probs, labels);
+    const nulls = [];
+    for (let d = 0; d < nullN; d++) nulls.push(forecastScore(probs, labels, dealOrder(seed, unitKey, `${tag}m${mi}#${d}`, n)));
+    let beat = 0;
+    for (const s of nulls) if (score > s) beat++;
+    let spoke = 0;
+    let rightWhenSpoke = 0;
+    for (let i = 0; i < n; i++) {
+      const p = m.probs[i];
+      // its OWN call: whichever of the three it puts most on. Index 1 is sit out.
+      const call = (p[2] >= p[0] && p[2] > p[1]) ? 1 : ((p[0] > p[1]) ? -1 : 0);
+      if (!call) continue;
+      spoke++;
+      if (call === labels[i]) rightWhenSpoke++;
+    }
+    return {
+      from: specs[mi] ? (specs[mi].from || 'own') : 'own',
+      score, beat, deals: nullN, lead: leadOver(score, nulls),
+      spoke, chunks: n, rightWhenSpoke,
+    };
+  });
+}
+
+// HOW MANY EXTRA BLOCKS A COMMITTEE WAS BUILT WITH, read off its own members
+// (3.183.0). Never recomputed from the combo size: that is the assumption this
+// design exists to remove, and a record that says what it holds cannot drift
+// from what it holds.
+const extrasInMembers = (members) => (members || []).reduce(
+  (n, m) => Math.max(n, m && m.spec && m.spec.at != null ? m.spec.at + 1 : 0), 0);
+
 function leadOver(real, nullScores) {
   if (!nullScores.length) return null;
   const mean = nullScores.reduce((a, b) => a + b, 0) / nullScores.length;
@@ -368,9 +418,14 @@ function weightReadingFor(p, trainChunks, fee) {
   return trainOnOf(p) === 'money' ? moneyWeightReading(trainChunks, fee, capOf(p)) : null;
 }
 
-async function trainProbMember({ model, viewIdx, trainChunks, predictChunks, weights = null }) {
+async function trainProbMember({ model, viewIdx, trainChunks, predictChunks, weights = null, labelOf = null }) {
+  // WHICH ANSWERS THIS MEMBER IS MARKED AGAINST (3.183.0). A base member is
+  // marked against the unit's own band, as it always has been; an extra member
+  // against its own. Left unset it is the unit's, so nothing that existed
+  // before this reads differently.
+  const answer = labelOf || ((c) => c.label);
   const Xtr = trainChunks.map((c) => viewIdx.map((i) => c.x[i]));
-  const ytr = trainChunks.map((c) => c.label);
+  const ytr = trainChunks.map(answer);
   const Xte = predictChunks.map((c) => viewIdx.map((i) => c.x[i]));
   const nVal = Math.max(3, Math.round(Xtr.length * 0.25));
   const nSub = Xtr.length - nVal;
@@ -476,9 +531,12 @@ function passGeometry(room, ofRaw, kRaw) {
 
 async function unitChunks(combo, geometry, p) {
   const branch = { geometry, decision: 'argmax', band: 'auto', weekdaysOnly: false };
-  const { geo, maps, chunks } = await buildCombo(combo, branch, {
+  // THE UNIT'S EXTRAS (3.183.0). A list, so a second one is an entry and not a
+  // branch. Each is a look-back in hours and a band, both declared by the walk.
+  const extras = p.extras || [];
+  const { geo, maps, chunks, tooEarly } = await buildCombo(combo, branch, {
     allLoaded: !!p.allLoaded, startMonth: p.startMonth, endMonth: p.endMonth,
-    pinnedFiles: p.pinnedFiles || null,
+    pinnedFiles: p.pinnedFiles || null, extras,
   });
   let workChunks = chunks;
   let reserve = null;
@@ -529,7 +587,10 @@ async function unitChunks(combo, geometry, p) {
   }
   // every layout keeps a held-back slice (the 80/20 layout, which kept none, went 2026-09-08),
   // except the retrain layout, whose judge is the Reserve
-  const split = passCut ? splitAndLabelPass(workChunks, branch, passCut.nTrain, passCut.judge) : splitAndLabel(workChunks, branch, true);
+  const extraBands = extras.map((e) => e.bandPct);
+  const split = passCut
+    ? splitAndLabelPass(workChunks, branch, passCut.nTrain, passCut.judge, extraBands)
+    : splitAndLabel(workChunks, branch, true, extraBands);
   // THE ACTUAL DATE RANGES EVERY RUN USED (3.85.0, owner order 2026-09-07: "on
   // all s1/2/3 sweep runs the three actual date ranges for 70/15/15 and
   // 61/13/13 should be stored"). Written on every stage 1 and 2 record and,
@@ -547,10 +608,10 @@ async function unitChunks(combo, geometry, p) {
     // actually used rather than the ones a table predicted.
     pass: passCut ? { ...passCut, room: passCut.before + passCut.judge } : null,
   };
-  return { geo, maps, split, reserve, windows };
+  return { geo, maps, split, reserve, windows, extras, tooEarly: tooEarly || 0 };
 }
 
-const viewsFor = (combo, geo) => bracketLib.comboViews(combo.size, geo.featureHours / 24).views;
+const viewsFor = (combo, geo, nExtras = 0) => bracketLib.comboViews(combo.size, geo.featureHours / 24, nExtras).views;
 
 // Every number simCell hands back, minus the two the record already stores.
 // A window's money is unreadable without the count of periods behind it and
@@ -603,11 +664,11 @@ function appendKept(existing, from, fresh) {
 async function s1UnitTask(task) {
   const { combo, geometry, seed, unitKey, nullN, fee } = task;
   const p = { ...task.params, pinnedFiles: pinnedFilesFor(task.pin) };
-  const { geo, maps, split, reserve, windows } = await unitChunks(combo, geometry, p);
-  const { trainChunks, testChunks, holdChunks, bandPct } = split;
-  const views = viewsFor(combo, geo);
+  const { geo, maps, split, reserve, windows, extras, tooEarly } = await unitChunks(combo, geometry, p);
+  const { trainChunks, testChunks, holdChunks, bandPct, extraBandPcts } = split;
+  const views = viewsFor(combo, geo, extras.length);
   const predictChunks = holdChunks.length ? [...testChunks, ...holdChunks] : testChunks;
-  const specs = require('./bracketwork').slimViewsFor(combo.size).map((view) => ({ model: 'logreg', view }));
+  const specs = require('./bracketwork').memberSpecs('logreg', combo.size, extras.length);
   // WHAT EACH TRAINING WEEK IS WORTH (3.69.0, owner order). Off unless the
   // launch asked for it, and off is what every set before this was trained
   // under -- so a set says how it was trained rather than leaving it to be
@@ -616,11 +677,19 @@ async function s1UnitTask(task) {
   const weightReading = weightReadingFor(p, trainChunks, fee);
   const members = [];
   for (const spec of specs) {
-    const m = await trainProbMember({ model: spec.model, viewIdx: views[spec.view], trainChunks, predictChunks, weights });
+    const m = await trainProbMember({
+      model: spec.model, viewIdx: views[spec.view], trainChunks, predictChunks, weights,
+      labelOf: spec.at == null ? null : (c) => c.altLabels[spec.at],
+    });
     members.push({ spec, ...m });
   }
   const testLabels = testChunks.map((c) => c.label);
-  const testProbs = members.map((m) => m.probs.slice(0, testChunks.length));
+  // THE COMMITTEE'S OWN SCORE POOLS ONLY THE MEMBERS MARKED AGAINST ITS OWN
+  // BAND (3.183.0). Pooling in a member asked a different question would drag
+  // this number and make it mean something new, and it has to stay comparable
+  // with every set already on the box. The extra member is read on its own,
+  // just below, and it still VOTES -- pooling is for the score, not the vote.
+  const testProbs = members.filter((_, i) => specs[i].at == null).map((m) => m.probs.slice(0, testChunks.length));
   const score = forecastScore(testProbs, testLabels);
   const nullScores = [];
   for (let d = 0; d < nullN; d++) {
@@ -657,6 +726,11 @@ async function s1UnitTask(task) {
     },
     labels: { test: testLabels, hold: holdChunks.map((c) => c.label) },
     score, nullScores, beat, pairs: nullN, lead: leadOver(score, nullScores),
+    // WHAT THE UNIT WAS BUILT WITH, and each member read on its own question
+    // (3.183.0). perMember is what makes a quiet member visible: its own score,
+    // its own deals, and how often it actually spoke.
+    extras, extraBandPcts, tooEarly,
+    perMember: memberReadings({ members, specs, testChunks, seed, unitKey, nullN, tag: 's1' }),
     tuning,
     trainedOn: weightsSaid(p, weights, weightReading),
   };
@@ -671,7 +745,7 @@ async function s1UnitTask(task) {
 async function s2UnitTask(task) {
   const { combo, geometry, s1, seed, unitKey, nullN, fee } = task;
   const p = { ...task.params, pinnedFiles: pinnedFilesFor(task.pin) };
-  const { geo, maps, split, windows } = await unitChunks(combo, geometry, p);
+  const { geo, maps, split, windows, extras } = await unitChunks(combo, geometry, p);
   const { trainChunks, testChunks, holdChunks } = split;
   // The stage 1 votes must be describing THESE chunks. Refuse a unit whose
   // stored timestamps disagree with the rebuild — a manifest mismatch should
@@ -682,9 +756,9 @@ async function s2UnitTask(task) {
     || tsH.length !== s1.ts.hold.length || tsH.some((t, i) => t !== s1.ts.hold[i])) {
     throw new Error('stage 1 votes do not line up with the rebuilt chunks — the price files changed underneath the set');
   }
-  const views = viewsFor(combo, geo);
+  const views = viewsFor(combo, geo, extras.length);
   const predictChunks = holdChunks.length ? [...testChunks, ...holdChunks] : testChunks;
-  const specs = require('./bracketwork').slimViewsFor(combo.size).map((view) => ({ model: 'boost', view }));
+  const specs = require('./bracketwork').memberSpecs('boost', combo.size, extras.length);
   // THE SAME WEIGHTING THE STAGE 1 HALF OF THIS COMMITTEE WAS TRAINED UNDER
   // (3.69.0). A stage 2 set copies its parent's settings at launch, so this
   // cannot differ -- half a committee trained on direction and half on money
@@ -693,21 +767,34 @@ async function s2UnitTask(task) {
   const weightReading = weightReadingFor(p, trainChunks, fee);
   const members = [];
   for (const spec of specs) {
-    const m = await trainProbMember({ model: spec.model, viewIdx: views[spec.view], trainChunks, predictChunks, weights });
+    const m = await trainProbMember({
+      model: spec.model, viewIdx: views[spec.view], trainChunks, predictChunks, weights,
+      labelOf: spec.at == null ? null : (c) => c.altLabels[spec.at],
+    });
     members.push({ spec, ...m });
   }
   const testLabels = testChunks.map((c) => c.label);
   const s1Test = s1.probs.map((mp) => mp.slice(0, testChunks.length));
   const boostTest = members.map((m) => m.probs.slice(0, testChunks.length));
-  const score3 = forecastScore(s1Test, testLabels);
-  const scoreAll = forecastScore([...s1Test, ...boostTest], testLabels);
+  // THE POOLED SCORES POOL ONLY THE MEMBERS MARKED AGAINST THIS UNIT'S OWN BAND
+  // (3.183.0). An extra member answers a different question, so pooling it in
+  // would change what these two numbers mean and they have to stay comparable
+  // with every set already on the box. Base members come first and extras are
+  // appended, in both lists and in the same order, because memberSpecs builds
+  // them that way and the child rebuilds with its parent's extras -- so the
+  // extras are the last nx of each. Read on their own, just below. They still
+  // VOTE: pooling is for the score, not for the vote.
+  const nx = extras.length;
+  const own = (arr) => (nx ? arr.slice(0, arr.length - nx) : arr);
+  const score3 = forecastScore(own(s1Test), testLabels);
+  const scoreAll = forecastScore([...own(s1Test), ...own(boostTest)], testLabels);
   // THE MERGED MEMBERS FACE THE PARENT'S NULL SET (3.46.0): the same deals the
   // stage 1 members were read against -- the parent's seed, the same unit, the
   // same tag, the same test length -- so 'beat its own null set' on the stage 2
   // table describes every member on the row, BOOST included. Before this the
   // stage 2 record copied the stage 1 numbers and the BOOST members never
   // faced a null set at all.
-  const allTest = [...s1Test, ...boostTest];
+  const allTest = [...own(s1Test), ...own(boostTest)];
   const nullScores = [];
   for (let d = 0; d < nullN; d++) {
     const order = dealOrder(seed, unitKey, `s1#${d}`, testChunks.length);
@@ -729,6 +816,8 @@ async function s2UnitTask(task) {
     members: members.map((m) => ({ spec: m.spec, picked: m.picked, saved: m.saved, tauProbs: m.tauProbs, probs: m.probs })),
     score3, scoreAll, helped: scoreAll - score3,
     beat, pairs: nullN, lead: leadOver(scoreAll, nullScores), nullScores,
+    extras, extraBandPcts: split.extraBandPcts,
+    perMember: memberReadings({ members, specs, testChunks, seed, unitKey, nullN, tag: 's2' }),
     tuning3, tuning,
     trainedOn: weightsSaid(p, weights, weightReading),
     windows,
@@ -784,8 +873,12 @@ const agreedKeyOfRecord = (r) => agreedKey(r.decision, agrOf(r));
 // the probabilities are rounded exactly as the stored votes are, so a saved
 // model applied to the test chunks gives the stored votes back (the test holds
 // that equal).
-function predictMember(saved, spec, chunks, combo, geo) {
-  const views = viewsFor(combo, geo);
+// READ BACK AGAINST THE VECTOR IT WAS TRAINED ON (3.183.0). A member that reads
+// an extra block needs the views built with that block present, or its column
+// positions point at nothing. A spec with no `from`, or `from: 'own'`, is a base
+// member and nothing changes for it.
+function predictMember(saved, spec, chunks, combo, geo, nExtras = 0) {
+  const views = viewsFor(combo, geo, nExtras);
   const viewIdx = views[(spec || {}).view || 'full'];
   if (!viewIdx) throw new Error(`no view called '${(spec || {}).view}' on this unit`);
   const X = chunks.map((c) => viewIdx.map((i) => c.x[i]));
@@ -861,7 +954,7 @@ async function s3UnitTask(task) {
   // null set -- those are already on disk and re-doing them would turn a
   // two-hour fill into a twelve-hour re-run.
   const noiseOnly = !!task.noiseOnly;
-  const { geo, maps, split, windows } = await unitChunks(combo, geometry, p);
+  const { geo, maps, split, windows, extras } = await unitChunks(combo, geometry, p);
   const { trainChunks, testChunks } = split;
   let { holdChunks } = split;
   const tsT = testChunks.map((c) => c.startTs);
@@ -909,7 +1002,7 @@ async function s3UnitTask(task) {
     dealSlice = 's4-unread';
     const forecasts = (unit.members || []).map((m, mi) => {
       if (!m.saved) throw new Error(`member ${mi} carries no saved model, so it cannot forecast the unread window`);
-      return predictMember(m.saved, m.spec, holdChunks, combo, geo);
+      return predictMember(m.saved, m.spec, holdChunks, combo, geo, extrasInMembers(unit.members));
     });
     memberProbs = forecasts.map((f, mi) => [...unit.probs[mi].slice(0, testChunks.length), ...f]);
     // hashed from the votes the slice is PRICED on, never from the forecasts
@@ -1100,7 +1193,7 @@ async function s3UnitTask(task) {
     if (trainProbsMemo) return trainProbsMemo;
     trainProbsMemo = (unit.members || []).map((m, mi) => {
       if (!m.saved) throw new Error(`member ${mi} carries no saved model, so it cannot forecast its own training window`);
-      return predictMember(m.saved, m.spec, trainChunks, combo, geo);
+      return predictMember(m.saved, m.spec, trainChunks, combo, geo, extrasInMembers(unit.members));
     });
     return trainProbsMemo;
   };

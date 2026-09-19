@@ -215,7 +215,10 @@ module.exports = {
     assert.ok(!/reserve|0\.13/.test(geo.replace(/\/\/[^\n]*/g, '')), 'the pass arithmetic knows a reserve exists');
     // the judging stretch still lands in the held-back slot, which is what lets
     // everything downstream price it without knowing a pass happened
-    assert.ok(fn.includes('splitAndLabelPass(workChunks, branch, passCut.nTrain, passCut.judge)'),
+    // RE-AIMED 3.183.0: the splitter also takes the extras' bands now. They are
+    // declared numbers, never fitted, so nothing about "the band comes from
+    // train and never from the judge" changes -- which is what this guards.
+    assert.ok(fn.includes('splitAndLabelPass(workChunks, branch, passCut.nTrain, passCut.judge, extraBands)'),
       'a pass is split by something other than the splitter that keeps the band off the judge');
     assert.ok(/hold: span\(split\.holdChunks\)/.test(fn), 'the judging stretch no longer lands in the held-back slot');
     assert.ok(fn.includes('pass: passCut ?'), 'the windows a pass used do not travel with it, so the screen would have to guess them');

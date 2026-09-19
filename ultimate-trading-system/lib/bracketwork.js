@@ -62,6 +62,36 @@ async function getMap(sym, p) {
 // fourth reading, so a coin judged on its own has 8 members too).
 // 'pricevol' is price and volume TOGETHER — numbers neither narrow reading
 // can express and a straight-line model can never build for itself.
+// EVERY EXTRA BAND, CHECKED BEFORE ANY LABEL IS WRITTEN (3.183.0). A band that
+// is not a number would silently label every chunk sit-out, which is the one
+// failure this design must not have.
+function extraBandsOrRefuse(bands) {
+  return (bands || []).map((b, i) => {
+    const v = Math.abs(Number(b));
+    if (!Number.isFinite(v) || !(v > 0)) {
+      throw new Error(`extra ${i + 1}'s band is ${JSON.stringify(b)} — an extra's band is a declared number above nought, never auto`);
+    }
+    return v;
+  });
+}
+
+// THE COMMITTEE, AS A LIST THE UNIT CARRIES (3.183.0, owner order 2026-09-19:
+// "code it in such a way that if we add another voting member in the future ...
+// then we can add another voting member when we need to").
+//
+// The base members are what they have always been, one per slice of the
+// numbers. Each extra adds ONE more, reading its own block and marked against
+// its own labels. A second extra is one more entry in the unit's list -- there
+// is no branch here that knows how many there are, which is the whole point.
+//
+// `from` says which numbers a member reads; a spec without one is a base
+// member, which is how every record written before this reads correctly.
+const memberSpecs = (model, size, nExtras = 0) => [
+  ...slimViewsFor(size).map((view) => ({ model, view, from: 'own' })),
+  ...Array.from({ length: Math.max(0, Math.floor(Number(nExtras) || 0)) },
+    (_, i) => ({ model, view: `extra${i}`, from: `extra${i}`, at: i })),
+];
+
 const slimViewsFor = (size) => (size === 1
   ? ['full', 'prices', 'volume', 'pricevol']
   : ['full', 'prices', 'volume', 'pricevol', 'cross']);
@@ -124,9 +154,13 @@ async function buildCombo(combo, branch, p) {
     ctx1: combo.ctx1 ? await getMap(combo.ctx1, p) : null,
     ctx2: combo.ctx2 ? await getMap(combo.ctx2, p) : null,
   };
-  const { chunks } = bracketLib.buildComboChunks(maps, branch.geometry, branch.weekdaysOnly, p.includeUnlabeled);
-  if (chunks.length < MIN_CHUNKS) throw new Error(`only ${chunks.length} labelable chunks`);
-  return { geo, maps, chunks };
+  const { chunks, tooEarly } = bracketLib.buildComboChunks(
+    maps, branch.geometry, branch.weekdaysOnly, p.includeUnlabeled, p.extras || []);
+  if (chunks.length < MIN_CHUNKS) {
+    throw new Error(`only ${chunks.length} labelable chunks`
+      + (tooEarly ? ` — ${tooEarly} more went to the extra look-back's warm-up` : ''));
+  }
+  return { geo, maps, chunks, tooEarly: tooEarly || 0 };
 }
 
 // Chronological split, band calibrated on TRAINING chunks only, then every
@@ -189,7 +223,7 @@ function reserveChunks(n) {
 //
 // 'series' is kept as the default so every board recorded so far still means
 // what it meant when it was recorded.
-function splitAndLabel(chunks, branch, holdout) {
+function splitAndLabel(chunks, branch, holdout, extraBands = []) {
   const n = chunks.length;
   const { nHold, nTest } = splitBounds(n, holdout);
   const trainChunks = chunks.slice(0, n - nTest - nHold);
@@ -198,7 +232,21 @@ function splitAndLabel(chunks, branch, holdout) {
   if (trainChunks.length < MIN_CHUNKS) throw new Error(`only ${trainChunks.length} training chunks after the split`);
   const bandPct = branch.band === 'auto' ? balancedBandPct(trainChunks.map((c) => c.diffPct)) : Math.abs(branch.band);
   for (const c of chunks) c.label = scoreDiff(c.diffPct / 100, bandPct / 100);
-  return { trainChunks, testChunks, holdChunks, bandPct };
+  // AND ONE MORE SET OF ANSWERS PER EXTRA BAND (3.183.0,
+  // ADDITIONAL-MEMBER-DESIGN.md section C). Same chunks, same figures, same
+  // comparison -- only the threshold differs, so this costs nothing but the
+  // comparison itself. Positional: altLabels[i] belongs to the unit's i-th
+  // extra, in the order the unit carries them.
+  //
+  // AN EXTRA BAND IS ALWAYS A DECLARED NUMBER, NEVER `auto`. The band above may
+  // be fitted from train because it is the engine choosing for itself; an
+  // extra's band arrives from the walk, fixed in advance and held across train,
+  // test and held alike, which is what the typed band % has always been.
+  const extraBandPcts = extraBandsOrRefuse(extraBands);
+  if (extraBandPcts.length) {
+    for (const c of chunks) c.altLabels = extraBandPcts.map((b) => scoreDiff(c.diffPct / 100, b / 100));
+  }
+  return { trainChunks, testChunks, holdChunks, bandPct, extraBandPcts };
 }
 
 // THE SAME LABELLING AGAIN, WITH A JUDGE STRETCH THE CALLER SIZES (3.111.0,
@@ -215,7 +263,7 @@ function splitAndLabel(chunks, branch, holdout) {
 //
 // `chunks` is everything up to and including the judge -- the caller has already
 // cut the sealed reserve off the end, so nothing here can reach it.
-function splitAndLabelPass(chunks, branch, nTrain, nJudge) {
+function splitAndLabelPass(chunks, branch, nTrain, nJudge, extraBands = []) {
   const n = chunks.length;
   const judge = Math.max(1, Math.min(n - MIN_CHUNKS - 1, Math.floor(Number(nJudge) || 0)));
   const keep = Math.max(0, Math.min(n - judge - 1, Math.floor(Number(nTrain) || 0)));
@@ -226,7 +274,21 @@ function splitAndLabelPass(chunks, branch, nTrain, nJudge) {
   if (!testChunks.length) throw new Error('this pass has no test slice between its training slice and its judging stretch');
   const bandPct = branch.band === 'auto' ? balancedBandPct(trainChunks.map((c) => c.diffPct)) : Math.abs(branch.band);
   for (const c of chunks) c.label = scoreDiff(c.diffPct / 100, bandPct / 100);
-  return { trainChunks, testChunks, holdChunks, bandPct };
+  // AND ONE MORE SET OF ANSWERS PER EXTRA BAND (3.183.0,
+  // ADDITIONAL-MEMBER-DESIGN.md section C). Same chunks, same figures, same
+  // comparison -- only the threshold differs, so this costs nothing but the
+  // comparison itself. Positional: altLabels[i] belongs to the unit's i-th
+  // extra, in the order the unit carries them.
+  //
+  // AN EXTRA BAND IS ALWAYS A DECLARED NUMBER, NEVER `auto`. The band above may
+  // be fitted from train because it is the engine choosing for itself; an
+  // extra's band arrives from the walk, fixed in advance and held across train,
+  // test and held alike, which is what the typed band % has always been.
+  const extraBandPcts = extraBandsOrRefuse(extraBands);
+  if (extraBandPcts.length) {
+    for (const c of chunks) c.altLabels = extraBandPcts.map((b) => scoreDiff(c.diffPct / 100, b / 100));
+  }
+  return { trainChunks, testChunks, holdChunks, bandPct, extraBandPcts };
 }
 
 // (splitByLayout and the quota window layouts were purged 2026-08-03 on the
@@ -234,4 +296,4 @@ function splitAndLabelPass(chunks, branch, nTrain, nJudge) {
 // test. Nothing can run them; lib/rng.js keeps the one function that outlived
 // their module.)
 
-module.exports = { quorumCall, declaredQuorumFor, slimViewsFor, buildCombo, splitAndLabel, splitAndLabelPass, splitBounds, reserveChunks, RESERVE_SHARE };
+module.exports = { quorumCall, declaredQuorumFor, slimViewsFor, memberSpecs, extraBandsOrRefuse, buildCombo, splitAndLabel, splitAndLabelPass, splitBounds, reserveChunks, RESERVE_SHARE };

@@ -2336,12 +2336,29 @@ module.exports = {
     assert.ok(alone >= 1 && withOthers > alone,
       `the committee sizes read ${alone} and ${withOthers} — a coin read alongside others must have more to read, not fewer`);
 
-    // stage 1 trains LOGREG on each slice; stage 2 adds BOOST on the same ones
+    // stage 1 trains LOGREG on each slice; stage 2 adds BOOST on the same ones.
+    // RE-AIMED 3.183.0: the committee is now a list the unit carries, so both
+    // stages build it through memberSpecs. The counts the screen prints are
+    // still the BASE counts, which is what these two lines are about.
     const work = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
-    assert.ok(/slimViewsFor\(combo\.size\)\.map\(\(view\) => \(\{ model: 'logreg', view \}\)\)/.test(work),
-      'stage 1 no longer trains one LOGREG member per slice, so these counts are derived from the wrong thing');
-    assert.ok(/slimViewsFor\(combo\.size\)\.map\(\(view\) => \(\{ model: 'boost', view \}\)\)/.test(work),
-      'stage 2 no longer adds one BOOST member per slice');
+    assert.ok(/memberSpecs\('logreg', combo\.size, extras\.length\)/.test(work),
+      'stage 1 no longer builds its committee through memberSpecs, so these counts are derived from the wrong thing');
+    assert.ok(/memberSpecs\('boost', combo\.size, extras\.length\)/.test(work),
+      'stage 2 no longer adds one BOOST member per slice through memberSpecs');
+    // AND WITH NO EXTRAS IT IS EXACTLY WHAT IT WAS: same count, same views, in
+    // the same order. An extra adds one and only one, at the end.
+    const { memberSpecs } = require('../lib/bracketwork');
+    for (const size of [1, 2, 3]) {
+      const base = memberSpecs('logreg', size);
+      assert.deepStrictEqual(base.map((s) => s.view), slimViewsFor(size), `size ${size}: the base slices, in order`);
+      assert.ok(base.every((s) => s.at == null), 'and none of them is an extra');
+      assert.strictEqual(memberSpecs('logreg', size, 0).length, base.length, 'asking for none is the same as not asking');
+      const plusOne = memberSpecs('logreg', size, 1);
+      assert.strictEqual(plusOne.length, base.length + 1, `size ${size}: one extra is one more member`);
+      assert.deepStrictEqual(plusOne.slice(0, base.length), base, 'and it is added at the end, never in place of one');
+      assert.strictEqual(plusOne[base.length].at, 0, 'the extra says which of the unit\u2019s extras it reads');
+      assert.strictEqual(memberSpecs('logreg', size, 3).length, base.length + 3, 'a third is one more entry, not another branch');
+    }
 
     const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     const HELP = (() => { const box = {}; // eslint-disable-next-line no-new-func
@@ -5357,12 +5374,15 @@ module.exports = {
     // Held window). The invariant now: NOTHING reaches a split without a
     // held-back slice, because none exists -- a pass is split with its judge,
     // everything else with the split that keeps a held-back slice.
-    const pick = sw.slice(sw.indexOf('const split = passCut ?'), sw.indexOf('// THE ACTUAL DATE RANGES'));
-    assert.ok(pick.length > 80 && pick.length < 500, 'the chunk split no longer chooses its splitter in one place');
+    const pick = sw.slice(sw.indexOf('const split = passCut'), sw.indexOf('// THE ACTUAL DATE RANGES'));
+    assert.ok(pick.length > 80 && pick.length < 900, 'the chunk split no longer chooses its splitter in one place');
     const bw = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'bracketwork.js'), 'utf8');
     assert.ok(!/splitAndLabelAt|retrain72/.test(sw.replace(/\/\/[^\n]*/g, '')) && !/splitAndLabelAt|retrain72/.test(bw.replace(/\/\/[^\n]*/g, '')),
       'a splitter that returns no held-back slice, or the layout that reached it, is back');
-    assert.ok(/passCut \? splitAndLabelPass\(workChunks, branch, passCut\.nTrain, passCut\.judge\) : splitAndLabel\(workChunks, branch, true\);/.test(pick),
+    // RE-AIMED 3.183.0: both splitters now also take the extras' bands, which
+    // are declared numbers and never fitted. The invariant is unchanged - a
+    // pass is split with its judge, everything else with a held-back slice.
+    assert.ok(/passCut\s*\?\s*splitAndLabelPass\(workChunks, branch, passCut\.nTrain, passCut\.judge, extraBands\)\s*:\s*splitAndLabel\(workChunks, branch, true, extraBands\);/.test(pick),
       'the split is no longer: a pass with its judge, everything else with a held-back slice');
     // and a pass really does come back with one, run rather than read
     const made = require('../lib/bracketwork').splitAndLabelPass(

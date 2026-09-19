@@ -100,3 +100,48 @@ same unit without one, and its train/test/held boundaries therefore sit
 elsewhere. That is honest and it is not comparable with a plain unit row for
 row. **The unit records how many chunks the extra's warm-up cost, and the screen
 says so** (RULE ELEVEN clause 3).
+
+## Decisions — the committee, the labels and the scoring
+
+- **`altLabels` is positional, not keyed by the band.** `altLabels[i]` belongs to
+  the unit's i-th extra. Keying a map by a floating-point band is the kind of
+  thing that works until two bands round the same way.
+- **An extra's band may never be `auto`.** `auto` is the engine fitting a band
+  from train for itself; an extra's band arrives from the walk, declared and
+  held. `extraBandsOrRefuse` refuses anything else by name, before a single
+  label is written — a band that is not a number would silently mark every
+  chunk sit out, which is the one failure this design must not have.
+- **The pooled score pools only the members marked against the unit's own
+  band.** An extra answers a different question, so pooling it would change what
+  that number means, and it has to stay comparable with every set on the box.
+  The extra still VOTES — pooling is for the score, not the vote. This is the
+  owner's "pool only for the vote", made concrete.
+- **How many extras a committee had is read off its own member list**
+  (`extrasInMembers`), never recomputed from the combo size. That assumption is
+  the thing this design exists to remove.
+- **A member's own call, for "how often it spoke", is its own argmax** across
+  the three answers, not the pooled direction the committee trades on. The
+  question is whether THIS member said anything, and the pooled call cannot
+  answer that.
+- **`predictMember` takes the extras count** so a member read back later is read
+  against the vector it was trained on. Stage 3 and the reserve grade get it
+  from `extrasInMembers(unit.members)` — the record describing itself.
+
+## Tests re-aimed, and why each was a real anchor
+
+- `test-stages.js :: everyMemberCountOnScreenIsTheCountTheCodeBuilds` — anchored
+  on `slimViewsFor(combo.size).map(...)`. Re-aimed at `memberSpecs`, and
+  **strengthened**: it now also proves that with no extras the list is exactly
+  what it was, at every combo size, and that an extra is added at the end and
+  never in place of one.
+- `test-stages.js :: theEightyTwentyLayoutIsGoneFromStageOne` and
+  `test-passes.js :: aPassIsAModifierOnTheSetsOwnLayoutAndNamesNoneOfThem` —
+  both anchored on the exact splitter call, which now also takes the extras'
+  bands. The invariant they guard is untouched.
+
+## Three suite failures that are NOT mine
+
+Checked by stashing the work and running the same files on a clean tree, which
+fails the same ones: `test-pool.js :: poolSizeLeavesHeadroom` (the box is busy),
+and two in `test-stages.js` that depend on what is in `data/stagesets`. Plus the
+two already known: `theWordListSeesEveryVisibleLabel` and the half-life one.
