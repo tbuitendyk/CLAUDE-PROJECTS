@@ -8752,9 +8752,14 @@ function cBandEdge(band) {
   const b = Number(band);
   const lo = Math.min(...list);
   const hi = Math.max(...list);
-  const which = b === hi ? 'highest' : (b === lo ? 'lowest' : null);
-  if (!which) return '';
-  return ` <span class="warn" title="this is the ${which} band in this walk&#39;s sit-out bands to try, so a better one may lie ${which === 'highest' ? 'above' : 'below'} it and this walk never looked. Walk it again with the list extended if you want to know.">${which} tried</span>`;
+  // BOTH LABELS WRITTEN OUT, never assembled (3.180.1). Built as `${which}
+  // tried` the word-list generator could only see the word `tried`, so the
+  // owner had "highest tried" on screen and the closed list held a fragment --
+  // RULE ONE-A's own tool authorising a word they cannot see, which is the
+  // 2026-08-22 fault exactly.
+  if (b === hi) return ' <span class="warn" title="this is the highest band in this walk&#39;s sit-out bands to try, so a better one may lie above it and this walk never looked. Walk it again with the list extended if you want to know.">highest tried</span>';
+  if (b === lo) return ' <span class="warn" title="this is the lowest band in this walk&#39;s sit-out bands to try, so a better one may lie below it and this walk never looked. Walk it again with the list extended if you want to know.">lowest tried</span>';
+  return '';
 }
 function cWalkRow(r, shapes) {
   const key = `${r.coin}|${r.geometry}|${r.lookback}|${r.band}`;

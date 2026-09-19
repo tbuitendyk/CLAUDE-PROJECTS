@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **a6206b1c9d1d — what the box is serving**, not from the working tree.
+Generated from **15437f445e04 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -90,7 +90,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 # Coins
 
-## What the controls are called (203)
+## What the controls are called (222)
 
 - `-hour window · one decision a`
 - `— press`
@@ -108,6 +108,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `(chance is`
 - `(from a sit-out band sweep of`
 - `(its own sweet spot)`
+- `&#9666; its rows above`
 - `&mdash;`
 - `&middot;`
 - `&middot; pooled late money`
@@ -157,6 +158,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `Delete it`
 - `down`
 - `downloaded)`
+- `each picked on its first`
 - `early`
 - `edge`
 - `edge over chance`
@@ -164,6 +166,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `entire`
 - `Every figure below is`
 - `falling`
+- `fewest late windows`
 - `fewest trades`
 - `fewest trades a window must have`
 - `fewest trades each half must have`
@@ -173,6 +176,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `gap (points)`
 - `green`
 - `had ONE setting win both halves`
+- `hidden by the filter boxes above`
 - `highest sit-out band`
 - `holds`
 - `How each coin reads`
@@ -186,10 +190,18 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `learned before each window`
 - `learned once on train`
 - `least best window, %`
+- `least early, %`
+- `least late windows paid, %`
+- `least late windows up, %`
+- `least late, %`
+- `least lead, %`
 - `least per trade per spread`
 - `least per trade, %`
+- `least percentile`
+- `least whole per trade, %`
 - `least windows paid, %`
 - `least windows up, %`
+- `least worst late window, %`
 - `least worst window, %`
 - `look-back`
 - `look-backs`
@@ -211,10 +223,12 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `on disk, finished`
 - `One coloured unit is one`
 - `only rows best on both halves`
+- `only rows same pick`
 - `only what is ticked on Coins`
+- `Open this screen`
 - `Open this set`
 - `own`
-- `pair(s), each picked on its first`
+- `pair(s) shown`
 - `part`
 - `per decision`
 - `per trade`
@@ -237,8 +251,10 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `rows · page`
 - `run`
 - `same pick`
+- `Save as&hellip;`
 - `scrambled copies`
 - `scrambles as good`
+- `screens on this box`
 - `searched`
 - `shape is walked for each:`
 - `signal`
@@ -264,11 +280,14 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `the records carry`
 - `the walk stopped:`
 - `thin side`
+- `Tick every row shown`
 - `to`
 - `trades`
 - `trades a month`
 - `trailing`
 - `traits`
+- `tried`
+- `Untick every row shown`
 - `up`
 - `up after falling`
 - `up after rising`
@@ -312,7 +331,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `steady`
 - `trending`
 
-## Sentences the page prints (85)
+## Sentences the page prints (90)
 
 - puts the three boxes above into the list below. Nothing is swept until the coins are read.
 - file(s) on disk this release cannot draw:
@@ -359,6 +378,8 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - row(s) hidden by the filter boxes above
 - The headings stay put while the rows scroll under them, and every one of them sorts the whole walk, not this page.
 - A row ticked on one page stays ticked when you move to another.
+- row(s) are shown &mdash; these two reach all of them, not just this page.
+- Narrow the boxes above first, then tick, then untick the few you do not want.
 - ticked · they will appear at the top under
 - row(s) promoted — they are in the list at the top
 - — the check with the link cut found a plateau at least this strong in at most
@@ -377,6 +398,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - where the readings really do differ. This is why the table is smaller than it was.
 - the last walk finished but could not be written down:
 - &mdash; the table above is still good, and it goes when the service restarts.
+- only rows from the pairs shown below
 - Each coin and shape's windows are cut in two. Its best row is picked on the
 - windows alone, and what that one row did on the
 - choosing never saw &mdash; is what is reported. The test is whether the pick beats what taking a row
@@ -396,14 +418,16 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - history to answer whether the choosing is worth anything at all, and that is all they are for.
 - The whole history chose the same look-back and band as the early windows on
 - &mdash; higher than the late figure because it is the best of everything, chosen with everything in view.
+- row(s) of this reading are hidden by the filter boxes above.
+- Nothing is wrong with the reading &mdash; the table is there. Empty a box to widen it, or clear them all:
 - window(s) or thereabouts &mdash; a coin with fewer windows is cut in its own half.
 - Every heading sorts: click to add it, again to flip it, once more to drop it.
 - · with the link cut, one at least this strong in
 
-## Every word, flat (500)
+## Every word, flat (515)
 
 ```
--hour above Above above. Account across actually add ADDITIONAL after again again. against ahead all All alone also among and another another. answer anything apart. appear Apply are as at At auto auto-apply average AWARENESS band bands bands. bar bars be beat beats because been before behind belongs below Below below. best black blank blind both box boxes built-in but by cached call called came Candidates candles cannot carries carry chance Change changes changes. charges check checked Choose choose chooses chooses. choosing chose chosen chunk clear Clear cleared click closes coin coin-and-shape coin. coins Coins colour coloured colours columns CONFIRMATION copies cost costs could counted. counts cut day deals deals. decides decision decisions default delete Delete did differ. different disk do does. down downloaded draw drop each Each early early/late edge either else else. empty Empty end. enough Enter entire every Every Everything everything exactly exam exchange fading falling feed fell fewer fewest figure file files filter filters finished first fixed flip for for. forward found four from gap Getting go goes good graded green had half half. halves has have heading headings held held. here hidden higher highest history hold holds hours How how if in in. into is it It it. its Its judged keeps knew known landed last late lead leans learned least left less link list listed little long LOOK look-back look-backs looked lowest may mdash mean measurements median MEMBER middot mixed money month months more most move moved moves much must name named needs neither never Next No no noise. not Nothing nothing number numbers of off off-then-on often on once one One ONE ones only ONLY. open Open opening opens or out out. over own page page. paid pair part pass passed pay per percentile phase pick picked picking picks picture plateau points pooled press Press Prev price priced Promote promoted property put puts random rather ratio reaches Read read read. reading reading. readings reads really recolours record records red refuses release Remove removes Rename reported. reserve. restarts. reverting right rising rose round row rows rsquo run runs same saw scale. scrambled scrambles scroll sealed searched section selections service set sets setting settings Setup shape shape. shapes share should side signal since sit sit-out sits skill slides slower smaller so So sort sorts span spend spot spread STAGE standing stands start starts stay stays steady step steps still Stop stopped strong swath sweep Sweep Sweep. sweet swept system tab table Take take taken takes taking test th than that the The them then there there. thereabouts these they thin this This those three tick ticked ticked. time time. to together too top trade trades trailing train TRAINING traits trending trip trip. try try. tune two two. typically under unit units until up usual UTC venue view. Walk walk walked was was. way well. were what What when where whether which while whole why widen will win window window. windows windows. with worked works worst worth would writes written Written wrong yes yet you your
+-hour above Above above. Account across actually add ADDITIONAL after again again. against ahead all All alone also among and another another. answer anything apart. appear Apply are as at At auto auto-apply average AWARENESS band bands bands. bar bars be beat beats because been before behind belongs below Below below. best black blank blind both box boxes built-in but by cached call called came Candidates candles cannot carries carry chance Change changes changes. charges check checked Choose choose chooses chooses. choosing chose chosen chunk clear Clear cleared click closes coin coin-and-shape coin. coins Coins colour coloured colours columns CONFIRMATION copies cost costs could counted. counts cut day deals deals. decides decision decisions default delete Delete did differ. different disk do does. down downloaded draw drop each Each early early/late edge either else else. empty Empty end. enough Enter entire every Every Everything everything exactly exam exchange fading falling feed fell few fewer fewest figure file files filter filters finished first fixed flip for for. forward found four from gap Getting go goes good graded green had half half. halves has have heading headings held held. hellip here hidden higher highest history hold holds hours How how if in in. into is it It it. its Its judged just keeps knew known landed last late lead leans learned least left less link list listed little long LOOK look-back look-backs looked lowest may mdash mean measurements median MEMBER middot mixed money month months more most move moved moves much must name named Narrow needs neither never Next No no noise. not Nothing nothing number numbers of off off-then-on often on once one One ONE ones only ONLY. open Open opening opens or out out. over own page page. paid pair pairs part pass passed pay per percentile phase pick picked picking picks picture plateau points pooled press Press Prev price priced Promote promoted property put puts random rather ratio reach reaches Read read read. reading reading. readings reads really recolours record records red refuses release Remove removes Rename reported. reserve. restarts. reverting right rising rose round row rows rsquo run runs same Save saw scale. scrambled scrambles screen screens scroll sealed searched section selections service set sets setting settings Setup shape shape. shapes share should shown side signal since sit sit-out sits skill slides slower smaller so So sort sorts span spend spot spread STAGE standing stands start starts stay stays steady step steps still Stop stopped strong swath sweep Sweep Sweep. sweet swept system tab table Take take taken takes taking test th than that the The them then there there. thereabouts these they thin this This those three tick Tick ticked ticked. time time. to together too top trade trades trailing train TRAINING traits trending tried trip trip. try try. tune two two. typically under unit units Untick untick until up usual UTC venue view. Walk walk walked want. was was. way well. were what What when where whether which while whole why widen will win window window. windows windows. with worked works worst worth would writes written Written wrong yes yet you your
 ```
 
 ---

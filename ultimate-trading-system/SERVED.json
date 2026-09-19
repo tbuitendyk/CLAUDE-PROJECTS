@@ -1,16 +1,16 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html — so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "a6206b1c9d1df27cbd3aa9c3dcac3b24a05e09c1",
-  "subject": "3.177.0: Walk it forward comes a page at a time, in a taller box",
-  "capturedAt": "2026-09-19T04:52:34Z",
+  "commit": "15437f445e04e93d0e0c0e7ebc001007f53c26b8",
+  "subject": "3.180.0: named screens kept on the box, and a band on the edge says so",
+  "capturedAt": "2026-09-19T06:02:30Z",
   "files": {
     "public/construct.js": {
-      "sha256": "3f9634a3eeb9d761dbcf7bac358465c5597568c7b96c0f296b66f76e62bbf23d",
-      "bytes": 743998
+      "sha256": "5acbd282b6e974ce2843e4abdac077cf193ec233bd78f8cf3d6e259cefb2d171",
+      "bytes": 772553
     },
     "public/help-content.js": {
-      "sha256": "a249d0b77b2284ed3c29650aa4023cc1ff04bf7da38778d03e543c4ffc04009c",
-      "bytes": 139050
+      "sha256": "e4eb227a02f27e6f822751dda7de4200c8f3507ffd9b577a8eb8f844dc30a86e",
+      "bytes": 145621
     }
   },
   "htmlNotVerified": "public/construct.html, public/trade.html and public/setup.html are served with the release stamped into the head (3.137.0) and, for construct.html, the cache markers rewritten to the content hash of each script, so their served bytes never equal their stored bytes. Nothing is generated from them."
