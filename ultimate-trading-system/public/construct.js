@@ -8757,8 +8757,8 @@ function cBandEdge(band) {
   // owner had "highest tried" on screen and the closed list held a fragment --
   // RULE ONE-A's own tool authorising a word they cannot see, which is the
   // 2026-08-22 fault exactly.
-  if (b === hi) return ' <span class="warn" title="this is the highest band in this walk&#39;s sit-out bands to try, so a better one may lie above it and this walk never looked. Walk it again with the list extended if you want to know.">highest tried</span>';
-  if (b === lo) return ' <span class="warn" title="this is the lowest band in this walk&#39;s sit-out bands to try, so a better one may lie below it and this walk never looked. Walk it again with the list extended if you want to know.">lowest tried</span>';
+  if (b === hi) return ` <span class="warn" title="this is the highest band in this walk&#39;s sit-out bands to try, so a better one may lie above it and this walk never looked. Walk it again with the list extended if you want to know.">highest tried</span>`;
+  if (b === lo) return ` <span class="warn" title="this is the lowest band in this walk&#39;s sit-out bands to try, so a better one may lie below it and this walk never looked. Walk it again with the list extended if you want to know.">lowest tried</span>`;
   return '';
 }
 function cWalkRow(r, shapes) {
