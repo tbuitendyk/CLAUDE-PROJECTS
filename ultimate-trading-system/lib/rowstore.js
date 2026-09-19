@@ -223,22 +223,7 @@ function writer(runId, name, { offThread = false, manualBlocks = false } = {}) {
       if (!manualBlocks && (squashed ? pending >= BLOCK_BYTES : buf.length >= 512)) api.flush();
       return count;
     },
-    // AN EMPTY BLOCK, ON PURPOSE (3.173.0). Only a caller that owns every
-    // boundary may ask for one, and only a squashed store has blocks at all,
-    // so no ordinary run can reach this line.
-    //
-    // A migration that DROPS rows cannot keep the same row count, but it must
-    // keep the same BLOCK COUNT and the same block order, because block
-    // indexes are recorded elsewhere -- per unit on the set document, per coin
-    // in the totals -- and a block that disappears moves every index after it.
-    // Where every row of a source block goes, the block still has to be there.
-    // A header-only block is what that is: both readers set their column list
-    // from the header and then find no data lines, so it yields nothing and
-    // the block after it keeps its index. Measured on the box before this was
-    // written: of the four sets being migrated, one loses no block, two lose
-    // two of three, and one loses thirty of forty-five.
-    flush(force = false) {
-      if (!buf.length && force && manualBlocks && squashed) header();
+    flush() {
       if (buf.length) {
         const text = `${buf.join('\n')}\n`;
         buf = [];

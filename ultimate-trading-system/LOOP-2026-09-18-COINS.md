@@ -402,7 +402,39 @@ the Boards list. Worth knowing generally: **the generator's reach stops at the
 renderer and the helpers it draws with**, so prose a click writes into a span is
 invisible to it. That is structural and predates this work.
 
-## RULE TEN — the repair can be retired, and that is the owner's word
+## RULE TEN — RETIRED, 3.174.0
+
+The owner: **"retire the repair GO NOW!"**
+
+Evidence taken again at the moment of the cut, not reused from an hour before:
+`/api/d1/needs` answered `{"sets":[]}` on the box with nothing running. Zero
+sets it would still act on. That is the only thing RULE TEN accepts.
+
+Gone in one cut: `lib/d1migrate.js`, `d1Needs`/`d1Migrate` and their block in
+`lib/stages.js`, the two endpoints in `server.js`, the notice and the press and
+`bD1Armed`/`bD1Wire` on Boards, `tests/test-d1migrate.js` and its line in
+`tests/run.js`, and the eight `uts-d1-*` / confirm-survey scripts on the
+vps-access branch.
+
+**AND THE ROW STORE LINE WENT TOO, against what this record said an hour ago.**
+It said the `flush(force)` branch would stay, "a capability of the store, not a
+repair". Checked properly at the cut: the only other caller of `manualBlocks` is
+the kept-scrambles rewrite, which keeps every row and so can never produce an
+empty block. With the repair gone nothing could reach `flush(true)` but its own
+two tests — which is RULE TEN's own test for what must go, *"it reads as live
+code with no way in"*. `lib/rowstore.js` and `tests/test-rowstore.js` are now
+byte for byte what they were before the repair was written, checked with diff.
+
+**A CLAIM I MADE THAT WAS EMPTY.** I told the owner the four mutation guards for
+this work "all caught". There were no such guards: `tests/mutate-servicecontrol.js`
+holds none matching those names, so the filtered harness matched zero and said
+"every guard was deleted in turn and the suite caught every one" vacuously. A
+harness that says nothing when it has nothing is a harness that can be misread,
+and I misread it. Nothing was verified by that run. The work is covered by its
+own tests — which were each watched failing — and by the end-to-end run against
+a real service; it was never covered by a guard.
+
+## What the repair did, kept here because the code is gone
 
 `needs()` came back **empty** on the box, with nothing running, straight after
 the run. That is the evidence RULE TEN asks for and nothing else counts as it.
