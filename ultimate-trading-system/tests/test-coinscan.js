@@ -1806,7 +1806,7 @@ function theSplitReadingPromotesTheWholeHistoryPickOfEveryRowShown() {
   assert.ok(/post\(`api\/coins\/walks\/\$\{encodeURIComponent\(id\)\}\/pick`, \{ keys, picked: true \}\)/.test(wire),
     'the press promotes through a door of its own rather than the one the ticks use');
   // A BUTTON GOES IN A ROW OF ITS OWN (RULE FOUR-A)
-  const row = src.slice(src.indexOf('function cSplitPromoteRow('), src.indexOf('function cSplitShownPairs('));
+  const row = src.slice(src.indexOf('function cSplitPromoteRow('), src.indexOf('function cSplitWholeRows('));
   assert.ok(/<div class="row" style="margin-top:\.5rem">/.test(row) && !/label class="f"/.test(row),
     'the press shares its row with a field');
 }

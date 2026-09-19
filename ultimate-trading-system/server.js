@@ -1764,4 +1764,11 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`ultimate-trading-system listening on 127.0.0.1:${PORT}`);
+  // A SAVED SCREEN SPEAKS TODAY'S VOCABULARY (3.193.0, RULE NINE). One pass,
+  // announced, once -- and the block it calls is written to be deleted the day
+  // every screen on the box has been through it (lib/coinsscreens.js).
+  try {
+    const done = require('./lib/coinsscreens').repairRetiredBoxNames();
+    if (done.changed) console.log(`saved screens: ${done.changed} of ${done.screens} brought up to date (${done.named.join(', ')})`);
+  } catch (err) { console.log(`saved screens could not be checked: ${err.message}`); }
 });

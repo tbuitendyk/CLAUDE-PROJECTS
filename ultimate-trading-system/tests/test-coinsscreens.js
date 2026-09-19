@@ -42,7 +42,7 @@ function aFreshBoxHasNoScreensAndSaysSoRatherThanOfferingOne() {
 
 function aScreenGoesInAndComesBackWithBothSetsOfBoxes() {
   onACleanFile((S) => {
-    const walk = { minPer: '0.25', maxGood: '10', shownPairsOnly: 'yes' };
+    const walk = { minPer: '0.25', maxGood: '10', wholeOnly: 'yes' };
     const split = { minLead: '0', minLatePaid: '50', bothOnly: 'yes' };
     const out = S.saveScreen('  the   honest  cut ', walk, split);
     assert.strictEqual(out.saved.name, 'the honest cut', 'the name is trimmed and its runs of spaces closed up');
@@ -118,7 +118,42 @@ function aSettingsFileHoldingRubbishUnderTheKeyReadsAsNoScreensRatherThanThrowin
   });
 }
 
+// A SAVED SCREEN SPEAKS TODAY'S VOCABULARY (3.193.0, RULE NINE). The box
+// `shownPairsOnly` was retired when it turned out to keep tens of thousands of
+// rows where the owner wanted twenty-four; `wholeOnly` replaced it. A screen
+// saved before that carries the old name, and a reader that had to ask which
+// era a record came from is the thing RULE NINE forbids -- so the record moves.
+//
+// THE INTENT CARRIES, NOT JUST THE KEY. A screen that said "narrow to what the
+// reading shows" still says it. Dropping the box instead would silently widen
+// a rule the owner wrote down.
+//
+// This test goes out with the repair it guards (RULE TEN).
+function aScreenSavedUnderARetiredBoxNameIsBroughtUpToDate() {
+  onACleanFile((S) => {
+    const fs = require('fs');
+    const file = require('path').join(__dirname, '..', 'data', 'settings.json');
+    fs.writeFileSync(file, JSON.stringify({
+      [S.KEY]: [
+        { name: 'old one', walk: { minPer: '0.25', shownPairsOnly: 'yes' }, split: {} },
+        { name: 'old two', walk: { shownPairsOnly: '' }, split: {} },
+        { name: 'new one', walk: { wholeOnly: 'yes' }, split: {} },
+      ],
+    }, null, 1));
+    const done = S.repairRetiredBoxNames();
+    assert.strictEqual(done.changed, 2, 'both screens carrying the retired box are counted');
+    const back = S.listScreens();
+    const at = (n) => back.find((x) => x.name === n).walk;
+    assert.deepStrictEqual(at('old one'), { minPer: '0.25', wholeOnly: 'yes' }, 'a ticked one keeps its intent under the new name');
+    assert.deepStrictEqual(at('old two'), {}, 'an unticked one simply loses a box that no longer exists');
+    assert.deepStrictEqual(at('new one'), { wholeOnly: 'yes' }, 'and a screen already in today\'s words is left alone');
+    // AND IT IS IDEMPOTENT, so a restart cannot undo or double it
+    assert.strictEqual(S.repairRetiredBoxNames().changed, 0, 'a second pass finds nothing to do');
+  });
+}
+
 module.exports = {
+  aScreenSavedUnderARetiredBoxNameIsBroughtUpToDate,
   aFreshBoxHasNoScreensAndSaysSoRatherThanOfferingOne,
   aScreenGoesInAndComesBackWithBothSetsOfBoxes,
   savingOverANameReplacesItRatherThanMakingASecondOfThatName,

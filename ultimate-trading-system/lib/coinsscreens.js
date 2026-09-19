@@ -117,4 +117,42 @@ function deleteScreen(rawName) {
   return { deleted: name, screens: listScreens() };
 }
 
-module.exports = { KEY, MAX_SCREENS, MAX_NAME, listScreens, saveScreen, renameScreen, deleteScreen };
+// ---- A REPAIR, WRITTEN TO BE DELETED (3.193.0, RULE NINE and RULE TEN) -----
+//
+// 3.193.0 retired the box `shownPairsOnly` -- "keep every row of the pairs the
+// reading is showing", which on a real walk is tens of thousands of rows -- and
+// replaced it with `wholeOnly`, which keeps the ONE row per pair the reading is
+// actually about. A screen saved before that carries the retired name, and a
+// record in a vocabulary no reader speaks is the thing RULE NINE forbids.
+//
+// The intent carries over exactly: a screen that said "narrow this table to
+// what the reading is showing" still says that, and now does it correctly. So
+// the box is renamed in place rather than dropped, which would silently widen
+// a saved rule.
+//
+// IT DIES WHEN EVERY SCREEN ON THE BOX HAS BEEN THROUGH IT. Run it, see it
+// report 0 screens changed on a box with screens on it, and delete this block,
+// its call in server.js and its test. It calls nothing that only it calls, so
+// that is one cut.
+function repairRetiredBoxNames() {
+  const have = listScreens();
+  const stale = have.filter((x) => x.walk && Object.prototype.hasOwnProperty.call(x.walk, 'shownPairsOnly'));
+  if (!stale.length) return { changed: 0, screens: have.length };
+  writeSettings((s) => {
+    s[KEY] = have.map((x) => {
+      if (!x.walk || !Object.prototype.hasOwnProperty.call(x.walk, 'shownPairsOnly')) return x;
+      const walk = { ...x.walk };
+      const was = walk.shownPairsOnly;
+      delete walk.shownPairsOnly;
+      if (String(was) === 'yes') walk.wholeOnly = 'yes';
+      return { ...x, walk };
+    }).sort(byName);
+  });
+  return { changed: stale.length, screens: have.length, named: stale.map((x) => x.name) };
+}
+// ---- end of the repair ------------------------------------------------------
+
+module.exports = {
+  KEY, MAX_SCREENS, MAX_NAME, listScreens, saveScreen, renameScreen, deleteScreen,
+  repairRetiredBoxNames,
+};

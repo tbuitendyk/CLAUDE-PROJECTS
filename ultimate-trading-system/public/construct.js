@@ -9233,16 +9233,25 @@ function cWalkList(matches) {
   // in the other. Worked out ONCE: a Set built inside the row loop is one Set
   // per row. With no reading taken it hides nothing, the same rule the tick
   // beside it follows and for the same reason.
-  const pairsOn = f.shownPairsOnly === 'yes' && cSplit && !cSplit.none && (cSplit.pairs || []).length;
-  const shownPairs = pairsOn ? cSplitShownPairs() : null;
-  // THE EXACT ROWS Promote every row shown WOULD TAKE (3.192.0). Same rule as
-  // the tick above it: with no reading taken there is nothing to filter on and
-  // it hides nothing, because a tick that empties a fifteen-thousand-row table
-  // because a button below has not been pressed is the 3.164.1 fault again.
+  // ONE ROW PER PAIR, NOT EVERY ROW OF EVERY PAIR (3.193.0, owner order: "I've
+  // got 24 units with their SPECIFIC settings on the [Choose early, read late]
+  // view -- that's how many rows I want to see on the table above when the
+  // filter is applied! NOT 37,488 rows which is entirely USELESS").
+  //
+  // The tick used to keep every row belonging to a shown pair. On the owner's
+  // set that is a walk's worth of rows per pair -- 37,488 of them -- which is
+  // not a review of anything. What a shown pair MEANS on this table is its one
+  // row at whole look-back and whole band: the setting to tune with, and the
+  // row Promote every row shown sends. So that is the row this keeps, and the
+  // keys are built by cSplitWholeRows, which the press builds its keys from
+  // too, so the table and the press can never name different rows.
+  //
+  // With no reading taken it hides nothing, because a tick that empties a
+  // fifteen-thousand-row table because a button below has not been pressed is
+  // the 3.164.1 fault again.
   const wholeOn = f.wholeOnly === 'yes' && cSplit && !cSplit.none && (cSplit.pairs || []).length;
   const wholeRows = wholeOn ? cSplitWholeRows() : null;
   return matches.rows.filter((r) => {
-    if (shownPairs && !shownPairs.has(`${r.coin}|${r.geometry}`)) return false;
     if (wholeRows && !wholeRows.has(`${r.coin}|${r.geometry}|${r.lookback}|${r.band}`)) return false;
     if (coins.length && !coins.some((c) => String(r.coin).toLowerCase().includes(c))) return false;
     if (shapes.length && !shapes.some((g) => label(r.geometry).includes(g) || String(r.geometry).toLowerCase().includes(g))) return false;
@@ -9569,7 +9578,7 @@ function cWalkShown(rows, shapes) {
 // this file for `id="..."` and a control whose id is assembled from a variable
 // is one it cannot see -- so it would be described on Help and found nowhere,
 // which is the opposite fault to the one it guards.
-const C_WALK_F_KEYS = ['bothOnly', 'shownPairsOnly', 'wholeOnly', 'coin', 'shape', 'back', 'band', 'minTrades', 'minPer', 'minWindows', 'minUp', 'minPaid',
+const C_WALK_F_KEYS = ['bothOnly', 'wholeOnly', 'coin', 'shape', 'back', 'band', 'minTrades', 'minPer', 'minWindows', 'minUp', 'minPaid',
   'minBest', 'minWorst', 'maxSpread', 'minPerSpread', 'maxGood', 'maxSlid'];
 function cFilterBoxesNow() {
   const out = {};
@@ -9630,8 +9639,7 @@ function cWalkFilterRow() {
     <label title="hide rows that pay less than this for every point of scatter between their best half-year and their worst. This is the one box that asks for high money AND tight windows at once."><span class="fname">least per trade per spread</span><span class="fbox"><input id="wf_minPerSpread" type="number" step="any" value="${v('minPerSpread')}"></span></label>
     <label title="hide rows that more than this many scrambled copies matched."><span class="fname">most scrambles as good</span><span class="fbox"><input id="wf_maxGood" type="number" step="any" value="${v('maxGood')}"></span></label>
     <label title="hide rows that more than this many sliding copies matched."><span class="fname">most slides as good</span><span class="fbox"><input id="wf_maxSlid" type="number" step="any" value="${v('maxSlid')}"></span></label>
-    <label class="c frow" title="keep only the rows belonging to a coin and chunk shape that Choose early, read late is showing below. Screen the pairs down there, screen the rows up here, and the two work together. With no reading taken yet it hides nothing, the same as an empty box."><input id="wf_shownPairsOnly" type="checkbox"${cState.wF && cState.wF.shownPairsOnly ? ' checked' : ''}> only rows from the pairs shown below</label>
-    <label class="c frow" title="keep only the one row per pair that Promote every row shown sends &mdash; each pair&#39;s whole-history row, at its whole look-back and whole band. The tick above keeps every row of those pairs; this keeps just the rows that were promoted, so a promotion can be read back row by row on this table. Press Promote every row shown and it comes on by itself. With no reading taken yet it hides nothing, the same as an empty box."><input id="wf_wholeOnly" type="checkbox"${cState.wF && cState.wF.wholeOnly ? ' checked' : ''}> only rows Promote every row shown would take</label>
+    <label class="c frow" title="keep ONE ROW for each coin and chunk shape Choose early, read late is showing &mdash; the row at its whole look-back and whole band, which is the setting to tune with and the row Promote every row shown sends. 24 pairs down there means 24 rows up here, not every row those pairs have. Press Promote every row shown and it comes on by itself. With no reading taken yet it hides nothing, the same as an empty box."><input id="wf_wholeOnly" type="checkbox"${cState.wF && cState.wF.wholeOnly ? ' checked' : ''}> only the rows Choose early, read late is showing</label>
     <label class="c frow" title="keep only the rows Choose early, read late picked AND that also topped the LATE half — one setting winning both halves of the history. With no reading taken yet it hides nothing, the same as an empty box."><input id="wf_bothOnly" type="checkbox"${cState.wF && cState.wF.bothOnly ? ' checked' : ''}> only rows best on both halves</label>
     <span class="frow"><button id="wfApply" class="pri" disabled title="puts every box above on at once. Greyed out until a box says something different from what the table is already showing, and greyed out again if you type it back. Not needed while auto-apply settings is ticked.">Apply settings</button>
     <label class="c" title="ticked, each box goes on the moment you leave it. Unticked, nothing goes on until you press Apply settings &mdash; one wait for the whole set of boxes rather than one wait per box. The same control, and the same words, as the filters on Boards."><input type="checkbox" id="wfAuto"${cState.wAuto ? ' checked' : ''}> auto-apply settings</label>
@@ -9830,11 +9838,6 @@ function cSplitPromoteRow(shown) {
   </div>`;
 }
 
-function cSplitShownPairs() {
-  const out = new Set();
-  for (const p of cSplitShown((cSplit && cSplit.pairs) || [])) out.add(`${p.coin}|${p.geometry}`);
-  return out;
-}
 // AND THE EXACT ROWS THAT PRESS WOULD TAKE (3.192.0, owner order: "if a Promote
 // every row shown operation is done then that exact filtered set should be
 // applied to the main walk forward table so that the rows can be reviewed
@@ -10516,8 +10519,8 @@ function cWalkBind() {
         cState.wF = { ...(cState.wF || {}), wholeOnly: 'yes' };
         cState.wFrom = 0;
         cShownFor = null;
-        cSplitSaid = `${keys.length} row(s) promoted \u2014 the table above is showing those rows and nothing else. `
-          + 'Untick only rows Promote every row shown would take to widen it again.';
+        cSplitSaid = `${keys.length} row(s) promoted \u2014 the table above is showing those ${keys.length} rows and nothing else. `
+          + 'Untick only the rows Choose early, read late is showing to widen it again.';
         cRemember();
         said.innerHTML = `<span class="pos">${keys.length} row(s) promoted \u2014 they are in the list at the top, and the table above is showing them</span>`;
         draw();
