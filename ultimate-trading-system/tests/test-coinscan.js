@@ -287,9 +287,16 @@ function everyColumnOfTheWalkTableSorts() {
 function theWalkTableKeepsItsHeadingsWhileTheRowsScroll() {
   const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
   const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.html'), 'utf8');
-  assert(/<div class="cwbox"><table class="cgap cpassers">/.test(src), 'the rows sit in their own box');
-  assert(/<\/table><\/div>/.test(src), 'and the box closes after the table');
+  // READ INSIDE THE WALK, not anywhere on the screen. Four tables share this
+  // box shape, and when the walk's gained its own class this test went on
+  // passing on a candidate list -- proving nothing about the table it names.
+  const walkFn = src.slice(src.indexOf('function cWalkPanel()'), src.indexOf('function cWalkRepaint('));
+  assert(/<div class="cwbox cwtall"><table class="cgap cpassers">/.test(walkFn), 'the rows sit in their own box');
+  assert(/<\/table><\/div>/.test(walkFn), 'and the box closes after the table');
   assert(/div\.cwbox \{ overflow:auto; max-height:24rem; \}/.test(css), 'the box scrolls and is about fifteen rows deep');
+  // AND THE WALK'S IS 60% TALLER THAN THAT (owner order, 2026-09-19).
+  assert(/div\.cwbox\.cwtall \{ max-height:38\.4rem; \}/.test(css),
+    "and Walk it forward's own box is 60% taller than the plain one -- 24rem to 38.4rem");
   assert(/div\.cwbox table thead th \{ position:sticky; top:0;/.test(css), 'the headings are stuck to the top of that box');
   assert(/box-shadow:inset 0 -1px 0 var\(--line\)/.test(css.slice(css.indexOf('div.cwbox'))),
     'the line under the heading is a shadow -- a collapsed border on a sticky cell scrolls away with its row');
@@ -329,15 +336,76 @@ function windowsUpOrdersByShareAndMoreWindowsWinsATie() {
 // the browser clamped to, not the owner's.
 function openingARowLeavesBothScrollBarsWhereTheyWere() {
   const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
-  const fn = src.slice(src.indexOf('function cWalkRepaint()'), src.indexOf('function cWalkBind()'));
+  const fn = src.slice(src.indexOf('function cWalkRepaint('), src.indexOf('function cWalkBind()'));
   assert(/const y = window\.scrollY;/.test(fn), 'the page place is taken');
-  assert(/const top = box \? box\.scrollTop : 0;/.test(fn), 'and the rows box place');
+  assert(/const top = toTop \? 0 : \(box \? box\.scrollTop : 0\);/.test(fn), 'and the rows box place');
   assert(fn.indexOf('const top =') < fn.indexOf('wrap.innerHTML = cWalkPanel()'),
     'both are taken BEFORE the panel is replaced, or the figure read is the clamped one');
   assert(/b\.scrollTop = top; b\.scrollLeft = left;/.test(fn), 'the box is put back');
   assert(/window\.scrollTo\(0, y\)/.test(fn), 'and the page');
   assert(/holdScrollMemory\(\)/.test(fn), 'and the tab memory is held so it cannot overwrite it');
   assert(/requestAnimationFrame\(\(\) => requestAnimationFrame\(/.test(fn), 'put back after the layout has settled, not during it');
+}
+
+// THE WALK TABLE COMES A PAGE AT A TIME (owner order, 2026-09-19: "page it like
+// boards"). Every row of a big walk went into the page at once, and a press of
+// a sorting heading then froze the browser long enough for Chrome to offer to
+// close the page. Measured at the owner's 15,912 rows: the sort itself 13 ms,
+// building the markup 55 ms, the browser reading 10.3 MB of it 0.8 s -- and
+// laying 318,240 cells out again between three and five seconds, more than once
+// a press, for six to fifteen seconds of a dead page. A hundred rows is half a
+// second for the lot.
+//
+// The bar under the table is bPager, the one Boards and Held already draw, so
+// it says the same things in the same words. What is this screen's is only
+// where a page lands.
+function theWalkTableIsDrawnAPageAtATime() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const walkFn = src.slice(src.indexOf('function cWalkPanel()'), src.indexOf('function cWalkRepaint('));
+  const bindFn = src.slice(src.indexOf('function cWalkBind()'), src.indexOf('async function cWalkTick()'));
+  assert(walkFn.length > 2000 && bindFn.length > 2000, 'both halves of the walk are in hand');
+
+  // ONE PAGE IN THE MARKUP, never the whole walk
+  assert(/<tbody>\$\{wPage\.map\(\(r\) => cWalkRow\(r, shapes\)\)\.join\(''\)\}<\/tbody>/.test(walkFn),
+    'the table draws one page of rows, not every row it has');
+  assert(!/cWalkSorted\(cWalkShown\(/.test(walkFn),
+    'and nothing in the markup sorts or filters the whole walk a second time');
+  assert(/const wPage = wSorted\.slice\(wFrom, wFrom \+ C_WALK_PER\);/.test(walkFn),
+    'the page is a slice of the sorted rows at the remembered place');
+  assert(/const C_WALK_PER = 100;/.test(src), 'a hundred rows a page, which is what Boards pages at');
+
+  // THE BAR IS BOARDS' OWN, under the table
+  assert(/\$\{bPager\(wSorted\.length, wFrom, C_WALK_PER, 'W'\)\}/.test(walkFn),
+    'the paging bar is the one Boards draws, so it says the same things');
+  assert(walkFn.indexOf("bPager(wSorted.length") > walkFn.indexOf('<tbody>${wPage.map'),
+    'and it sits under the table, not above it');
+  assert(/data-bpage\b/.test(bindFn) && /data-bpageto/.test(bindFn),
+    'both of its controls are wired on this screen -- Prev and Next, and the page box');
+
+  // THE PLACE IS CLAMPED, NOT WRITTEN BACK. A renderer that edits what it is
+  // drawing is a renderer whose second draw disagrees with its first.
+  assert(/const wFrom = Math\.min\(Math\.max\(0, Number\(cState\.wFrom\) \|\| 0\),/.test(walkFn),
+    'a page past the end is clamped to the last one');
+  assert(!/cState\.wFrom =/.test(walkFn), 'and the renderer never writes the place back');
+
+  // ANYTHING THAT REORDERS OR NARROWS THE TABLE GOES BACK TO PAGE ONE, because
+  // page 84 of one order is a different hundred rows in another.
+  assert(/cState\.wFrom = 0;\s*\/\/ a new order means page one/.test(bindFn), 'sorting a column goes back to page one');
+  assert(/cState\.wSorts = \[\]; cState\.wFrom = 0;/.test(bindFn), 'and clearing the sort');
+  assert(/cState\.wF = \{\}; cState\.wFrom = 0; cShownFor = null; cRemember\(\); cWalkRepaint\(true\);/.test(bindFn),
+    'and clearing the filters');
+  assert(/cState\.wFrom = 0;\s*\/\/ a narrower table is a new table/.test(src), 'and applying them');
+
+  // A PAGE CHANGE READS FROM ITS FIRST ROW. Landing on page two already
+  // scrolled to its bottom is the jumping cWalkRepaint exists to stop, pointed
+  // the other way -- so the rows box goes to its top while the page keeps its
+  // own place.
+  const repaint = src.slice(src.indexOf('function cWalkRepaint('), src.indexOf('function cWalkBind()'));
+  assert(/function cWalkRepaint\(toTop\) \{/.test(repaint), 'the repaint can be told a page has changed');
+  assert(/const top = toTop \? 0 : \(box \? box\.scrollTop : 0\);/.test(repaint), 'and then the rows box starts at its top');
+  assert(/window\.scrollTo\(0, y\)/.test(repaint), 'while the page itself stays where the owner left it');
+  assert((bindFn.match(/cWalkRepaint\(true\)/g) || []).length >= 5,
+    'every press that changes which hundred rows are shown asks for that');
 }
 
 // THE STRIP IS STYLED AGAINST CLASSES THAT EXIST, AND SAYS HOW MANY WINDOWS
@@ -916,9 +984,9 @@ function anEmptyFilterBoxHidesNothingAtAll() {
   // a set opened, or a walk landing, starts with nothing hidden -- the boxes are
   // remembered in the browser, so filters typed for one set would otherwise
   // carry onto the next and hide a fresh table for reasons set up hours before
-  assert(/cState\.wF = \{\}; cShownFor = null; cRemember\(\);\s*\n\s*cSplit = null;/.test(src),
-    'opening a saved set clears the filters');
-  assert(/if \(wasRunning && st && !st\.running\) \{ cState\.wF = \{\}; cShownFor = null; cRemember\(\); \}/.test(src),
+  assert(/cState\.wF = \{\}; cState\.wFrom = 0; cShownFor = null; cRemember\(\);\s*\n\s*cSplit = null;/.test(src),
+    'opening a saved set clears the filters and starts at its first page');
+  assert(/if \(wasRunning && st && !st\.running\) \{ cState\.wF = \{\}; cState\.wFrom = 0; cShownFor = null; cRemember\(\); \}/.test(src),
     'and so does a walk landing');
 }
 
@@ -1301,7 +1369,7 @@ function everyCoinsControlSitsBesideTheThingItChanges() {
   // THE WALK IS DRAWN BY ITS OWN FUNCTION, defined ABOVE the reading in this
   // file, so source order says nothing about where it lands on the screen.
   // Whether a control is IN it is what matters, and that is read by slicing it.
-  const walkFn = src.slice(src.indexOf('function cWalkPanel()'), src.indexOf('function cWalkRepaint()'));
+  const walkFn = src.slice(src.indexOf('function cWalkPanel()'), src.indexOf('function cWalkRepaint('));
   assert(read > 0 && bars > 0 && walkFn.length > 2000, 'the three sections are all there');
 
   // the reading keeps the coins box and the look-backs it MEASURES, and nothing else
@@ -1611,6 +1679,7 @@ module.exports = {
   theWalkTableKeepsItsHeadingsWhileTheRowsScroll,
   windowsUpOrdersByShareAndMoreWindowsWinsATie,
   openingARowLeavesBothScrollBarsWhereTheyWere,
+  theWalkTableIsDrawnAPageAtATime,
   theWindowStripIsReadableAndSaysWhatIsMissing,
   theLookBackIsItsOwnAxisAndOnlyWhatTheRecordCarries,
   theLookBacksHaveOneBoxAndItIsOnTheWalk,

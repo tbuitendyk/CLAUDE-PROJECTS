@@ -106,6 +106,13 @@
      line under the heading is a shadow for the same reason it is there: a
      collapsed border on a sticky cell scrolls away with its row. */
   div.cwbox { overflow:auto; max-height:24rem; }
+  /* AND WALK IT FORWARD'S OWN BOX IS 60% TALLER (owner order, 2026-09-19:
+     "allow it to use about 60% more vertical screen real estate"). 24rem is
+     about fifteen rows; 38.4rem is about twenty-four. It gets its own class
+     rather than a taller .cwbox, because the three short tables that share
+     this box shape -- the two candidate lists and Choose early, read late --
+     were not asked about and a mostly empty box is worse, not better. */
+  div.cwbox.cwtall { max-height:38.4rem; }
   /* THE WINDOW STRIP UNDER AN OPENED ROW (3.158.2). Written first against
      classes that did not exist, so the date and the figure ran together into
      one unreadable string -- the very fault RULE FOUR names. Each window is a

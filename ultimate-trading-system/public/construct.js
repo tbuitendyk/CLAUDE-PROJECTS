@@ -8435,7 +8435,7 @@ const cState = (() => {
     wUsual: 'trailing', wSigns: 'rolled', wScrambles: 10, wFloor: 5, wCoins: '',
     wBandFrom: 200, wBandTo: 500, wBandStep: 25,
     wSort: 'asGood', wDir: 'asc',
-    wSorts: [{ key: 'asGood', dir: 'asc' }], wF: {}, wAuto: false, wName: '', wSetPick: '',
+    wSorts: [{ key: 'asGood', dir: 'asc' }], wF: {}, wFrom: 0, wAuto: false, wName: '', wSetPick: '',
     sCut: '', sMin: 30, sSorts: [{ key: 'latePerTrade', dir: 'desc' }],
   };
   try { return { ...d, ...(JSON.parse(localStorage.getItem(C_KEY) || 'null') || {}) }; } catch (_) { return d; }
@@ -8801,6 +8801,16 @@ const C_WALK_OF = {
 // AND WHAT SITS BEHIND EACH OF ITS SHARES. Both of these are a count out of
 // the row's counted windows, so more windows is the tie-break for both.
 const C_WALK_DEPTH = { windowsUp: (r) => r.windows, paid: (r) => r.windows };
+// HOW MANY ROWS A PAGE HOLDS (owner order, 2026-09-19). A hundred, which is
+// what every table on Boards pages at. Drawing all of a big walk at once is
+// what made a press of a sorting heading freeze the browser: measured at
+// 15,912 rows, the sort itself was 13 ms and building the markup 55 ms, but
+// laying 318,240 cells out again cost between three and five seconds -- and
+// a repaint forces that more than once, because it reads both scroll places
+// before the swap and puts them back after. Six to fifteen seconds a press,
+// which is where Chrome offers to close the page. A hundred rows is half a
+// second for the lot.
+const C_WALK_PER = 100;
 // ONE SORTING MECHANISM, TWO TABLES (3.164.0). The walk's table and Choose
 // early, read late both sort through this; a second implementation beside it is
 // how the two end up disagreeing about where a missing figure goes.
@@ -8997,7 +9007,7 @@ function cWalkSetsBind() {
       // remembered in this browser, so boxes typed for one set would otherwise
       // carry onto the next one -- and a fresh set of thousands of rows would
       // come up empty for something typed an hour ago on a different set.
-      cState.wF = {}; cShownFor = null; cRemember();
+      cState.wF = {}; cState.wFrom = 0; cShownFor = null; cRemember();
       cSplit = null;
       await cWalkTick();
     } catch (err) { say(String(err && err.message ? err.message : err), true); ob.disabled = false; }
@@ -9163,9 +9173,10 @@ function cFilterBtnState() {
 }
 function cApplyFilters() {
   cState.wF = cFilterBoxesNow();
+  cState.wFrom = 0;                     // a narrower table is a new table: page one
   cShownFor = null;
   cRemember();
-  cWalkRepaint();
+  cWalkRepaint(true);
 }
 function cWalkFilterRow() {
   const f = cState.wF || {};
@@ -9363,6 +9374,17 @@ function cWalkPanel() {
   const off = walking || heldBy ? ' disabled' : '';
   const rows = (cWalkRows && cWalkRows.rows) || null;
   const shapes = (cWalkRows && cWalkRows.shapes) || [];
+  // FILTERED, SORTED AND CUT TO ONE PAGE, ONCE. All three used to happen
+  // inside the markup, the filtering three times over, and every row of the
+  // walk went into the page at once -- see C_WALK_PER for what that cost.
+  // The page is clamped here and never written back: a renderer that edits
+  // what it is drawing is a renderer whose second draw disagrees with its
+  // first.
+  const wShown = rows ? cWalkShown(rows, shapes) : [];
+  const wSorted = wShown.length ? cWalkSorted(wShown) : [];
+  const wFrom = Math.min(Math.max(0, Number(cState.wFrom) || 0),
+    Math.max(0, (Math.ceil(wSorted.length / C_WALK_PER) - 1) * C_WALK_PER));
+  const wPage = wSorted.slice(wFrom, wFrom + C_WALK_PER);
   return `<div class="panel">
     <h3 style="margin-top:0">Walk it forward</h3>
     <p class="note">Every coin and shape, priced one window at a time from the start of its history to the end.
@@ -9432,11 +9454,11 @@ function cWalkPanel() {
     ${(st && st.error) ? `<p class="note warn">the walk stopped: ${esc(st.error)}</p>` : ''}
     ${!rows ? (walking ? '' : '<p class="note">nothing walked yet — press <b>Walk it forward</b>, or open a set above</p>') : (!rows.length ? '<p class="note">no coin and shape had enough history for a window this long</p>' : `
     ${cWalkFilterRow()}
-    ${cWalkShown(rows, shapes).length ? '' : `<p class="note warn" style="margin:.6rem 0"><b>All ${rows.length.toLocaleString()} row(s) of this walk are hidden by the filter boxes above.</b>
+    ${wShown.length ? '' : `<p class="note warn" style="margin:.6rem 0"><b>All ${rows.length.toLocaleString()} row(s) of this walk are hidden by the filter boxes above.</b>
       Nothing is wrong with the walk &mdash; the table is there. Empty a box to widen it, or clear them all:</p>
       <div class="row" style="margin-bottom:.6rem"><button id="wfClear2" class="pri">Clear filters</button></div>`}
-    ${!cWalkShown(rows, shapes).length ? '' : `
-    <div class="cwbox"><table class="cgap cpassers"><thead><tr>
+    ${!wShown.length ? '' : `
+    <div class="cwbox cwtall"><table class="cgap cpassers"><thead><tr>
       <th></th>
       <th></th>
       <th title="the coin">coin${cWalkSortBtn('coin', 'asc')}</th>
@@ -9458,12 +9480,14 @@ function cWalkPanel() {
       <th title="its late money less what a row taken at random from the same coin and shape would have paid on those same late windows. Above nought means the choosing carried something.">lead${cWalkSortBtn('lead', 'desc')}</th>
       <th title="whether THIS row was also the best of its coin and shape on the LATE half — one setting winning both halves of the history. Where it was not, the cell names the look-back and band that did win late, so how far off the pick was is readable. NOT the same as same pick on the reading below, which compares the early half against the WHOLE history: the whole contains the early half, so agreement there is partly baked in. These two halves share nothing.">best on both halves${cWalkSortBtn('both', 'desc')}</th>
     </tr></thead>
-    <tbody>${cWalkSorted(cWalkShown(rows, shapes)).map((r) => cWalkRow(r, shapes)).join('')}</tbody></table></div>
-    <p class="note">${(() => { const n = cWalkShown(rows, shapes).length; return n === rows.length
-      ? `${rows.length.toLocaleString()} row(s), all of them shown`
-      : `<b>${n.toLocaleString()} of ${rows.length.toLocaleString()} row(s) shown</b> — ${(rows.length - n).toLocaleString()} hidden by the filter boxes above`; })()}
+    <tbody>${wPage.map((r) => cWalkRow(r, shapes)).join('')}</tbody></table></div>
+    ${bPager(wSorted.length, wFrom, C_WALK_PER, 'W')}
+    <p class="note">${wShown.length === rows.length
+    ? 'nothing is hidden by the filter boxes above'
+    : `<b>${(rows.length - wShown.length).toLocaleString()} of ${rows.length.toLocaleString()} row(s) hidden by the filter boxes above</b>`}
       ${(cState.wSorts || []).length ? ` · sorted by ${(cState.wSorts || []).map((x) => `${esc(x.key)} ${x.dir === 'desc' ? 'high to low' : 'low to high'}`).join(', then ')}` : ' · unsorted'}.
-      The headings stay put while the rows scroll under them; every one of them sorts.</p>
+      The headings stay put while the rows scroll under them, and every one of them sorts the whole walk, not this page.
+      A row ticked on one page stays ticked when you move to another.</p>
     <div class="row">
       <button id="wPromote" class="pri"${cWalkPick.size && st && st.saved && st.saved.id ? '' : ' disabled'}>Promote the ticked rows</button>
       <span id="wPromoteOut" class="note">${!(st && st.saved && st.saved.id)
@@ -9489,12 +9513,16 @@ function cWalkPanel() {
 // what is left, and a place read afterwards is the clamped one, not the
 // owner's. Told to the tab's own memory at the end so it does not overwrite
 // this with the clamped figure a moment later.
-function cWalkRepaint() {
+// toTop is for a PAGE CHANGE and nothing else: a new hundred rows read from
+// their first one, so the box goes back to its top while the page keeps its
+// own place -- landing on page two already scrolled to its bottom is exactly
+// the jumping this function was written to stop, pointed the other way.
+function cWalkRepaint(toTop) {
   const wrap = $('#cWalkWrap');
   if (!wrap) return;
   const y = window.scrollY;
   const box = wrap.querySelector('.cwbox');
-  const top = box ? box.scrollTop : 0;
+  const top = toTop ? 0 : (box ? box.scrollTop : 0);
   const left = box ? box.scrollLeft : 0;
   wrap.innerHTML = cWalkPanel();
   cWalkBind();
@@ -9606,10 +9634,10 @@ function cWalkBind() {
     // greyed out, looking applied and not being it
     if (cState.wAuto && !cFilterSame(cFilterBoxesNow(), cState.wF)) cApplyFilters(); else cFilterBtnState();
   };
-  const clearF = () => { cState.wF = {}; cShownFor = null; cRemember(); cWalkRepaint(); };
+  const clearF = () => { cState.wF = {}; cState.wFrom = 0; cShownFor = null; cRemember(); cWalkRepaint(true); };
   if ($('#wfClear')) $('#wfClear').onclick = clearF;
   if ($('#wfClear2')) $('#wfClear2').onclick = clearF;
-  if ($('#wsClear')) $('#wsClear').onclick = () => { cState.wSorts = []; cRemember(); cWalkRepaint(); };
+  if ($('#wsClear')) $('#wsClear').onclick = () => { cState.wSorts = []; cState.wFrom = 0; cRemember(); cWalkRepaint(true); };
   cWalkSetsBind();
   for (const b of document.querySelectorAll('[data-ssort]')) {
     b.onclick = () => {
@@ -9622,9 +9650,37 @@ function cWalkBind() {
   // in the order they were clicked, and dropping one leaves the rest alone.
   for (const b of document.querySelectorAll('[data-wsort]')) {
     b.onclick = () => {
+      cState.wFrom = 0;                 // a new order means page one, not page 84 of the old one
       cCycleSort('wSorts', b.dataset.wsort, b.dataset.sdir === 'desc' ? 'desc' : 'asc');
-      cWalkRepaint();
+      cWalkRepaint(true);
     };
+  }
+  // THE PAGING BAR IS THE ONE BOARDS DRAWS, so it says the same things; only
+  // where a page lands is this screen's. Held on Funnel does exactly this.
+  for (const b of document.querySelectorAll('[data-bpage]')) {
+    b.onclick = () => {
+      cState.wFrom = Number(b.dataset.bpage.split(':')[1]) || 0;
+      cRemember();
+      cWalkRepaint(true);
+    };
+  }
+  for (const el of document.querySelectorAll('[data-bpageto]')) {
+    let jumped = false;                 // change fires, the repaint pulls the box out, blur follows: one jump
+    const jump = () => {
+      if (jumped) return;
+      const pages = Math.max(1, Number(el.dataset.bpages) || 1);
+      const per = Math.max(1, Number(el.dataset.bper) || C_WALK_PER);
+      const want = Math.round(Number(el.value));
+      if (!Number.isFinite(want)) { el.value = String(Math.floor(Number(el.defaultValue) || 1)); return; }
+      const page = Math.min(pages, Math.max(1, want));
+      if (page === Number(el.defaultValue)) { el.value = String(page); return; }
+      jumped = true;
+      cState.wFrom = (page - 1) * per;
+      cRemember();
+      cWalkRepaint(true);
+    };
+    el.onchange = jump;
+    el.onblur = jump;
   }
   for (const el of document.querySelectorAll('input.cwpick')) {
     el.onchange = () => {
@@ -9707,6 +9763,7 @@ function cWalkBind() {
     // than one word that could mean anything (owner, 2026-09-17).
     cWalkRows = null;
     cWalkOpen.clear();
+    cState.wFrom = 0;
     cWalkSt = { running: true, done: 0, of: (ans && ans.of) || 0, workers: (ans && ans.workers) || null, cpu: null, asked: null, rows: null, finishedAt: null, error: null, stopping: false };
     cWalkRepaint();
     cWalkTick();
@@ -9724,7 +9781,7 @@ async function cWalkTick() {
   if (!st) { cWalkPoll = setTimeout(cWalkTick, 2000); return; }
   const wasRunning = !!(cWalkSt && cWalkSt.running);
   // and the same when a walk LANDS: a new table starts with nothing hidden
-  if (wasRunning && st && !st.running) { cState.wF = {}; cShownFor = null; cRemember(); }
+  if (wasRunning && st && !st.running) { cState.wF = {}; cState.wFrom = 0; cShownFor = null; cRemember(); }
   cWalkSt = st;
   if (st && st.fee) cFeeNow = st.fee;
   if (st && Array.isArray(st.collapse)) cCollapse = st.collapse;
