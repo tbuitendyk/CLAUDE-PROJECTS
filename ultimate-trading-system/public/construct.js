@@ -4987,9 +4987,15 @@ function bMembersPanel(stage, d) {
 // THE PRESS THAT OPENS IT, and the one that closes it. Drawn into the cell that
 // already holds the head count, which is the thing it is about (RULE ELEVEN
 // clause 4: group by what things are, not by where there was room).
-function bMembersBtn(stage, u, label) {
+//
+// IT RETURNS THE PRESS AND NOTHING ELSE, and the cell's words stay in the
+// template beside it. Wrapping them in this call as an argument took LOGREG and
+// BOOST off the Boards word list at a stroke -- the labels were still on the
+// owner's screen and the generator could no longer see them, which is a hole in
+// the closed list and worse than no list at all (RULE ONE-A).
+function bMembersBtn(stage, u) {
   const open = bMemberOpen[stage] === u;
-  return `<button data-bmem="${stage}:${u}" style="padding:0 .3rem;min-width:1.4rem" title="${open ? 'closes the list of this unit’s members' : 'opens this unit’s members one per row, under the table — what each one reads, what it is marked at, and how each one did on its own'}">${open ? '−' : '+'}</button> ${label}`;
+  return `<button data-bmem="${stage}:${u}" style="padding:0 .3rem;min-width:1.4rem" title="${open ? 'closes the list of this unit’s members' : 'opens this unit’s members one per row, under the table — what each one reads, what it is marked at, and how each one did on its own'}">${open ? '−' : '+'}</button> `;
 }
 async function bWireMembers(doc, mount, stage) {
   const root = $(mount);
@@ -5080,7 +5086,7 @@ async function bDrawStage1(doc, incomplete, view, mount) {
         <td ${btdN}>${bCoin(r)}</td>
         <td ${btdN}${r.ctx1 ? '' : ' class="muted"'}>${r.ctx1 ? esc([r.ctx1, r.ctx2].filter(Boolean).join(' + ')) : '—'}</td>
         <td ${btdN}>${esc(bGeo(r.geometry))}</td>
-        <td ${btdN}>${r.members == null ? '—' : bMembersBtn('S1', r.u, r.members)}</td>
+        <td ${btdN}>${bMembersBtn('S1', r.u)}${r.members == null ? '—' : r.members}</td>
         <td ${btdN}${r.voices != null && r.members && r.voices < r.members ? ' class="warn"' : ''}>${r.voices == null ? '—' : r.voices}</td>
         <td ${btdN}>${bForecastScore(r.score, r.testChunks)}</td>
         <td ${btdN}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
@@ -5165,7 +5171,7 @@ async function bDrawStage2(doc, incomplete, view, mount) {
         <td ${btdN}>${bCoin(r)}</td>
         <td ${btdN}${r.ctx1 ? '' : ' class="muted"'}>${r.ctx1 ? esc([r.ctx1, r.ctx2].filter(Boolean).join(' + ')) : '—'}</td>
         <td ${btdN}>${esc(bGeo(r.geometry))}</td>
-        <td ${btdN}>${bMembersBtn('S2', r.u, `${r.members} — ${r.logreg} LOGREG + ${r.boost} BOOST`)}</td>
+        <td ${btdN}>${bMembersBtn('S2', r.u)}${r.members} — ${r.logreg} LOGREG + ${r.boost} BOOST</td>
         <td ${btdN}${r.voices != null && r.members && r.voices < r.members ? ' class="warn"' : ''}>${r.voices == null ? '—' : r.voices}${r.voices3 == null ? '' : ` <span class="muted">(${r.voices3} before BOOST)</span>`}</td>
         <td ${btdN}>${r.score3 == null ? '—' : r.score3.toFixed(1)}</td>
         <td ${btdN}>${r.scoreAll == null ? '—' : r.scoreAll.toFixed(1)}</td>

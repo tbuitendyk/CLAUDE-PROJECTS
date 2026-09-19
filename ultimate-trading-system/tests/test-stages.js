@@ -845,8 +845,13 @@ module.exports = {
   theMembersOfAUnitAreOnBoardsOnBothTables() {
     const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     // the press, in the members cell of each table
-    assert.ok(/<td \$\{btdN\}>\$\{r\.members == null \? '—' : bMembersBtn\('S1', r\.u, r\.members\)\}<\/td>/.test(src), 'stage 1\'s head count does not open the members');
-    assert.ok(/bMembersBtn\('S2', r\.u, `\$\{r\.members\} — \$\{r\.logreg\} LOGREG \+ \$\{r\.boost\} BOOST`\)/.test(src), 'stage 2\'s head count does not open the members');
+    assert.ok(/<td \$\{btdN\}>\$\{bMembersBtn\('S1', r\.u\)\}\$\{r\.members == null \? '—' : r\.members\}<\/td>/.test(src), 'stage 1\'s head count does not open the members');
+    assert.ok(/<td \$\{btdN\}>\$\{bMembersBtn\('S2', r\.u\)\}\$\{r\.members\} — \$\{r\.logreg\} LOGREG \+ \$\{r\.boost\} BOOST<\/td>/.test(src), 'stage 2\'s head count does not open the members');
+    // AND THE PRESS TAKES NO WORDS WITH IT. A label passed in as an argument is
+    // a label the word-list generator cannot see, and LOGREG and BOOST went off
+    // the Boards list that way once already (RULE ONE-A: a list with holes is
+    // worse than no list).
+    assert.ok(/function bMembersBtn\(stage, u\) \{/.test(src), 'the press swallows the cell\'s words again');
     // a place for the panel under each table, and the wiring for each
     for (const st of ['S1', 'S2']) {
       assert.ok(src.includes(`<div data-bmempanel="${st}"></div>`), `no place under the ${st} table for the members to appear`);
