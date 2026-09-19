@@ -275,19 +275,36 @@ function promotedLeans() {
 
 // EVERY TICKED PROMOTED ROW AS COIN AND SHAPE, deduplicated across every set --
 // the shape lib/stages.js unitsForPassers already takes.
+// AND WHAT THE WALK FOUND RIDES WITH IT (3.184.0, ADDITIONAL-MEMBER-DESIGN.md).
+// This is where the look-back and the band used to be dropped: the row carries
+// both and only the coin and chunk shape came out. A promoted row is still ONE
+// unit -- a coin and a chunk shape, as it has always been -- and what it brings
+// in addition is an EXTRA, which the sweep turns into one more member.
+//
+// WHERE TWO TICKED ROWS SHARE A COIN AND CHUNK SHAPE they are one unit with two
+// extras, in the order they are met. That is the list the design asks for, and
+// it is why this collects rather than skipping the second.
 function promotedUnits() {
-  const seen = new Set();
-  const out = [];
+  const at = new Map();
   for (const set of promoted()) {
     for (const r of set.rows) {
       if (!r.ticked) continue;
       const k = `${r.coin}|${r.geometry}`;
-      if (seen.has(k)) continue;
-      seen.add(k);
-      out.push({ coin: r.coin, geometry: r.geometry });
+      if (!at.has(k)) at.set(k, { coin: r.coin, geometry: r.geometry, extras: [] });
+      const back = r.lookback == null || r.lookback === 'own' ? null : Number(r.lookback);
+      const band = Number(r.band);
+      // A ROW WITH NO LOOK-BACK OF ITS OWN ADDS NO MEMBER. `own` means the
+      // chunk shape's own span, which is exactly what the members already
+      // read -- a second member on the same numbers would be the same member
+      // twice. The unit still runs; it just runs as a plain one.
+      if (!Number.isFinite(back) || !(back > 0) || !Number.isFinite(band) || !(band > 0)) continue;
+      at.get(k).extras.push({
+        lookbackHours: back, bandPct: Math.abs(band),
+        from: { set: set.id, name: set.name, key: r.key },
+      });
     }
   }
-  return out;
+  return [...at.values()];
 }
 
 // DELETING ONE FOLLOWS THE SAME TWO STEPS AS A RECORD SET: the first press

@@ -116,7 +116,12 @@ module.exports = {
     const fn = run.slice(run.indexOf('function passingUnits()'), run.indexOf('function passerLeans()'));
     assert.ok(/passersCached\(\)\.filter\(\(r\) => r\.ticked\)/.test(fn), 'the passers, as always');
     assert.ok(/require\('\.\/walkset'\)\.promotedUnits\(\)/.test(fn), 'and every ticked promoted row');
-    assert.ok(/if \(seen\.has\(k\)\) continue;/.test(fn), 'a coin and shape in both lists is one unit, not two entries');
+    // RE-AIMED 3.184.0: a coin and shape in both lists is still ONE unit, but
+    // the promoted row is no longer thrown away when a passer already holds it
+    // — it carries a look-back and a band now, and those are what the sweep
+    // turns into an extra member. One unit, and its extras merged onto it.
+    assert.ok(/if \(at\.has\(k\)\) \{ at\.get\(k\)\.extras\.push\(\.\.\.\(u\.extras \|\| \[\]\)\); continue; \}/.test(fn),
+      'a coin and shape in both lists is one unit, not two entries, and the promoted row\u2019s extras are kept');
     assert.ok(/promoted: \(\(\) => \{ try \{ return require\('\.\/walkset'\)\.promoted\(\); \}/.test(run),
       'and the answer carries the promoted rows, grouped per walk set, for the screen to draw');
 
@@ -592,7 +597,8 @@ module.exports = {
         served = runner.coinsRecords();
         assert.deepStrictEqual(served.passers.rows.filter((r) => r.coin.startsWith('ZZZPASS')).map((r) => [r.coin, r.ticked]), [['ZZZPASSAUSDT', false], ['ZZZPASSBUSDT', true]]);
         const units = runner.passingUnits().filter((u) => u.coin.startsWith('ZZZPASS'));
-        assert.deepStrictEqual(units, [{ coin: 'ZZZPASSBUSDT', geometry: 'daily-3d' }], 'the units Sweep runs are the ticked passers');
+        assert.deepStrictEqual(units, [{ coin: 'ZZZPASSBUSDT', geometry: 'daily-3d', extras: [] }],
+          'the units Sweep runs are the ticked passers, and a passer brings no extra of its own');
         runner.setPasserTicked('ZZZPASSAUSDT', 'daily-3d', true);
         assert.deepStrictEqual(readSettings()[runner.PASS_OFF_KEY], []);
         assert.deepStrictEqual(runner.passingUnits().filter((u) => u.coin.startsWith('ZZZPASS')).map((u) => u.coin), ['ZZZPASSAUSDT', 'ZZZPASSBUSDT']);

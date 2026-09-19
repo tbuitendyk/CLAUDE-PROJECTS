@@ -148,6 +148,7 @@ function shapeOf(vals) {
 // AND HOW OFTEN IT SPOKE, beside it. A member right about sitting out on 95 of
 // 100 chunks has said nothing, and one number cannot tell that apart from a
 // member that spoke and was right. Two numbers can.
+const { argmaxCall } = require('./agreement');
 function memberReadings({ members, specs, testChunks, seed, unitKey, nullN, tag }) {
   const n = testChunks.length;
   return members.map((m, mi) => {
@@ -162,14 +163,22 @@ function memberReadings({ members, specs, testChunks, seed, unitKey, nullN, tag 
     let spoke = 0;
     let rightWhenSpoke = 0;
     for (let i = 0; i < n; i++) {
-      const p = m.probs[i];
-      // its OWN call: whichever of the three it puts most on. Index 1 is sit out.
-      const call = (p[2] >= p[0] && p[2] > p[1]) ? 1 : ((p[0] > p[1]) ? -1 : 0);
+      // ITS OWN CALL, THROUGH THE ENGINE'S OWN RULE. The first version of this
+      // hand-rolled a fourth definition of "which way is this member leaning"
+      // and disagreed with the other three on ties, which is exactly how a
+      // measurement comes to contradict the vote it is meant to describe.
+      // argmaxCall is the one the engine votes with.
+      const call = argmaxCall(m.probs[i]);
       if (!call) continue;
       spoke++;
       if (call === labels[i]) rightWhenSpoke++;
     }
     return {
+      // NOTE what `spoke` is and is not: it is how often THIS member leaned up
+      // or down on its own, at argmax. It is NOT how often its vote changed
+      // what the committee did -- the committee trades on a pooled direction
+      // and under its own decision, and a member can lean all day without
+      // moving it. Two different questions; this answers the first.
       from: specs[mi] ? (specs[mi].from || 'own') : 'own',
       score, beat, deals: nullN, lead: leadOver(score, nulls),
       spoke, chunks: n, rightWhenSpoke,

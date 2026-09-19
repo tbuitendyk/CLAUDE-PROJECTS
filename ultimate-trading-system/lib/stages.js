@@ -40,7 +40,16 @@ function voicesOf(members, nTest) {
   const calls = members.map((m) => (m.probs || []).slice(0, nTest).map(agreement.argmaxCall));
   return agreement.voiceGroups(calls, nTest).voices;
 }
-const trainingsPerUnit = (size) => require('./bracketwork').slimViewsFor(size === 1 ? 1 : 2).length;
+// HOW MANY MEMBERS A UNIT TRAINS AT ONE STAGE (3.184.0). Takes the UNIT, not
+// its size: a unit carrying extras trains one more per extra, and counting from
+// the size alone made the progress line and the time-to-land undercount by
+// exactly that. Given a bare size it still answers, so nothing that only knows
+// a size has to be found and changed.
+const trainingsPerUnit = (u) => {
+  const size = typeof u === 'number' ? u : (u && u.size);
+  const extras = typeof u === 'number' ? 0 : ((u && u.extras) || []).length;
+  return require('./bracketwork').slimViewsFor(size === 1 ? 1 : 2).length + extras;
+};
 
 // A LONG JOB SAYS WHERE IT IS, HOW FAST IT IS GOING, AND WHEN IT WILL LAND
 // (owner order, 2026-08-29: "no idea if it will take 10 hours or 10 minutes to
@@ -620,7 +629,11 @@ function unitsForPassers(pairs, sizes, compare = null) {
   for (const p of pairs || []) {
     const coin = String(p.coin || '').trim().toUpperCase();
     if (!coin || !GEOMETRIES[p.geometry]) continue;
-    units.push(...unitsFor([coin], sizes, [p.geometry], compare));
+    // THE PAIR'S EXTRAS RIDE ONTO EVERY UNIT IT MAKES (3.184.0). A pair read
+    // alongside other coins becomes several units and each one is the same
+    // coin and chunk shape, so each one carries the same extras.
+    const extras = Array.isArray(p.extras) ? p.extras : [];
+    units.push(...unitsFor([coin], sizes, [p.geometry], compare).map((u) => (extras.length ? { ...u, extras } : u)));
   }
   return units;
 }
@@ -633,7 +646,15 @@ function startStage1(params) {
   const passers = params.passers === true
     ? require('./coinsrun').passingUnits()
     : Array.isArray(params.passers)
-      ? params.passers.map((x) => ({ coin: String((x || {}).coin || '').trim().toUpperCase(), geometry: (x || {}).geometry })).filter((x) => x.coin && GEOMETRIES[x.geometry])
+      // A RELAUNCH KEEPS THE EXTRAS (3.184.0). Rebuilding the pairs and keeping
+      // only coin and shape would turn a set built from promoted rows into a
+      // plain run, silently -- the record saying it was one thing and the run
+      // being another, which is the failure RULE NINE is about.
+      ? params.passers.map((x) => ({
+        coin: String((x || {}).coin || '').trim().toUpperCase(),
+        geometry: (x || {}).geometry,
+        extras: Array.isArray((x || {}).extras) ? (x || {}).extras : [],
+      })).filter((x) => x.coin && GEOMETRIES[x.geometry])
       : null;
   // THE REFUSAL QUOTES THE TICK BY ITS LABEL, so it has to be the label the
   // tick carries: "only what is ticked on Coins" (3.172.0). It also names where
@@ -749,7 +770,7 @@ function startStage1(params) {
     plan: { units: units.length, unitList: units },
     perf: {
       unitsDone: 0, unitsTotal: units.length, elapsedMs: 0, etaMs: null, workers: null,
-      cyclesDone: 0, cyclesTotal: units.reduce((nn, uu) => nn + trainingsPerUnit(uu.size), 0), cyclesWord: 'trainings',
+      cyclesDone: 0, cyclesTotal: units.reduce((nn, uu) => nn + trainingsPerUnit(uu), 0), cyclesWord: 'trainings',
     },
     failures: [],
     counts: null,
@@ -767,7 +788,11 @@ function startStage1(params) {
   (async () => {
     const payloads = units.map((u) => ({
       combo: { trade: u.trade, ctx1: u.ctx1, ctx2: u.ctx2, size: u.size },
-      geometry: u.geometry, params: p, seed: doc.seed, unitKey: unitKeyOf(u), nullN, fee, pin: pinOf(doc),
+      // PER UNIT, NOT PER RUN (3.184.0). `p` is one object shared by the whole
+      // launch; a unit's extras are its own, so they ride beside it. Units with
+      // none get `p` exactly as before.
+      geometry: u.geometry, params: (u.extras || []).length ? { ...p, extras: u.extras } : p,
+      seed: doc.seed, unitKey: unitKeyOf(u), nullN, fee, pin: pinOf(doc),
     }));
     const records = new Array(units.length).fill(null);
     await pool.forEach('s1Unit', payloads, (settled, i) => {
@@ -781,6 +806,18 @@ function startStage1(params) {
           bandPct: res.bandPct, counts: res.counts, reserve: res.reserve || null, windows: res.windows || null,
           specs: res.members.map((m) => ({ ...m.spec, picked: m.picked })),
           voices: voicesOf(res.members, (res.counts || {}).test || 0),
+          // WHAT THIS UNIT WAS BUILT WITH, on the row itself (3.184.0). The
+          // extras are what a child must rebuild with and what makes every
+          // number here readable later: the bands are stored, so each member's
+          // own answers can be worked out again without keeping a second copy
+          // of every label. tooEarly is what the extras' warm-up cost.
+          extras: res.extras && res.extras.length ? res.extras : null,
+          extraBandPcts: res.extraBandPcts && res.extraBandPcts.length ? res.extraBandPcts : null,
+          tooEarly: res.tooEarly || 0,
+          // AND EACH MEMBER READ ON THE QUESTION IT WAS ASKED, with its own
+          // deals beside it. This is what stops a member that never speaks
+          // hiding inside the pooled number.
+          perMember: res.perMember || null,
           score: res.score, beat: res.beat, pairs: res.pairs, lead: res.lead,
           nullScores: res.nullScores,
           // the tuning-slice money (3.46.0): the probe votes priced on the slice
@@ -803,7 +840,7 @@ function startStage1(params) {
       doc.perf.unitsDone++;
       doc.perf.elapsedMs = Date.now() - t0;
       doc.perf.etaMs = doc.perf.unitsDone ? Math.round((doc.perf.elapsedMs / doc.perf.unitsDone) * (units.length - doc.perf.unitsDone)) : null;
-      doc.perf.cyclesDone += trainingsPerUnit(u.size);
+      doc.perf.cyclesDone += trainingsPerUnit(u);
       phaseNote(doc, {
         phase: 'training the LOGREG members', done: doc.perf.unitsDone, total: units.length, word: 'units', startedMs: t0,
         extra: `${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} trainings (${unitKeyOf(u)})`,
@@ -1541,7 +1578,7 @@ function startStage2(params) {
     plan: { units: carried.length },
     perf: {
       unitsDone: 0, unitsTotal: carried.length, elapsedMs: 0, etaMs: null, workers: null,
-      cyclesDone: 0, cyclesTotal: carried.reduce((nn, row) => nn + trainingsPerUnit((parentRecords.get(row.u) || {}).size), 0), cyclesWord: 'trainings',
+      cyclesDone: 0, cyclesTotal: carried.reduce((nn, row) => nn + trainingsPerUnit(parentRecords.get(row.u) || {}), 0), cyclesWord: 'trainings',
     },
     failures: [],
     counts: null,
@@ -1573,7 +1610,14 @@ function startStage2(params) {
       const probs = rec.specs.map((_, mi) => votes.map((v) => v.m[mi]));
       payloads.push({
         combo: { trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size },
-        geometry: rec.geometry, params: p, pin: pinOf(doc),
+        // THE CHILD REBUILDS WITH ITS PARENT'S EXTRAS (3.184.0). Without this
+        // the stage 1 half of the committee read a vector with the extra
+        // blocks on it and the stage 2 half would read one without -- half a
+        // committee looking at columns the other half never saw, and a chunk
+        // count that would not even line up, because the extras' warm-up
+        // dropped the earliest chunks at stage 1.
+        geometry: rec.geometry, params: (rec.extras || []).length ? { ...p, extras: rec.extras } : p,
+        pin: pinOf(doc),
         s1: {
           probs,
           // the stage 1 members' votes on the tuning slice, so their money
@@ -1658,7 +1702,7 @@ function startStage2(params) {
       doc.perf.unitsDone++;
       doc.perf.elapsedMs = Date.now() - t0;
       doc.perf.etaMs = doc.perf.unitsDone ? Math.round((doc.perf.elapsedMs / doc.perf.unitsDone) * (carried.length - doc.perf.unitsDone)) : null;
-      doc.perf.cyclesDone += trainingsPerUnit(rec.size);
+      doc.perf.cyclesDone += trainingsPerUnit(rec);
       phaseNote(doc, {
         phase: 'training the BOOST members', done: doc.perf.unitsDone, total: carried.length, word: 'units', startedMs: t0,
         extra: `${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} trainings`,
@@ -1761,6 +1805,13 @@ function agreementsFor(params, sizes) {
   const boths = params.agreePermuteBoth ? [false, true] : [!!params.agreeBothModels];
   const persists = params.agreePermutePersist ? PERSISTS.slice() : [Math.max(0, Math.floor(Number(params.agreePersist) || 0))];
   const seenSizes = (sizes && sizes.length ? sizes : [1]);
+  // THE COMMITTEE IS BIGGER WHEN THE UNITS CARRY EXTRAS (3.184.0). This folds
+  // two agreement shares into one when they land on the same rung, and the
+  // rung depends on how many members there ARE. Read from the size alone, a
+  // run whose units carry an extra would fold two shares that land on
+  // DIFFERENT rungs -- two genuinely different settings collapsed into one,
+  // silently. Nought here is exactly what it was before.
+  const nx = Math.max(0, Math.floor(Number(params.nExtras) || 0));
   const out = [];
   const seen = new Set();
   for (const rule of rules) {
@@ -1787,9 +1838,9 @@ function agreementsFor(params, sizes) {
           // the rungs this share lands on, one per committee size in the run
           let key = null;
           if (bar === 'all' && (rule === 'count' || rule === 'conviction')) {
-            key = `${rule}|${seenSizes.map((z) => rungFor(pct, membersForSize(z))).join(',')}`;
+            key = `${rule}|${seenSizes.map((z) => rungFor(pct, membersForSize(z) + 2 * nx)).join(',')}`;
           } else if (bar === 'all' && rule === 'families') {
-            key = `${rule}|${seenSizes.map((z) => rungFor(pct, readingsForSize(z))).join(',')}`;
+            key = `${rule}|${seenSizes.map((z) => rungFor(pct, readingsForSize(z) + nx)).join(',')}`;
           }
           for (const bothModels of boths) {
             for (const persist of persists) {

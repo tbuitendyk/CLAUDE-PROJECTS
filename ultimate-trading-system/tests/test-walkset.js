@@ -60,16 +60,37 @@ module.exports = {
       const after = ws.promoted().find((g) => g.id === got.id);
       assert(after.rows.length === 2, 'unticking does not un-promote');
       assert(after.rows.filter((r) => r.ticked).length === 1, 'but only one is ticked now');
-      assert.deepStrictEqual(ws.promotedUnits(), [{ coin: 'LTCUSDT', geometry: 'daily-1d' }],
-        'and only the ticked one goes forward as a unit');
+      // 3.184.0: a promoted row brings its look-back and band with it as an
+      // extra, which is what the sweep turns into one more member. BOTH LTC
+      // rows here are the same coin and chunk shape, so they are ONE unit --
+      // and with one of them unticked, that unit carries exactly one extra,
+      // the 504-hour / band 300 row. That is the merge the design asks for,
+      // tested by accident of this fixture and worth keeping on purpose.
+      const fwd = ws.promotedUnits();
+      assert.strictEqual(fwd.length, 1, 'and only the ticked one goes forward as a unit');
+      assert.strictEqual(fwd[0].coin, 'LTCUSDT');
+      assert.strictEqual(fwd[0].geometry, 'daily-1d');
+      assert.strictEqual(fwd[0].extras.length, 1, 'carrying what the walk found, and only for the row still ticked');
+      assert.strictEqual(fwd[0].extras[0].lookbackHours, 504);
+      assert.strictEqual(fwd[0].extras[0].bandPct, 300);
+      assert.strictEqual(fwd[0].extras[0].from.set, got.id, 'and saying which walk set it came from');
+      // and a row whose look-back is the chunk shape's own span adds no member:
+      // the existing members already read exactly those numbers
+      assert.ok(!fwd.some((u) => (u.extras || []).some((e) => !(e.lookbackHours > 0))),
+        'no extra is carried without a look-back of its own');
       ws.setRowOff(got.id, k(rows[0]), false);
       assert(ws.promoted().find((g) => g.id === got.id).rows.every((r) => r.ticked), 'ticking it back on restores it');
 
-      // TWO ROWS OF ONE COIN AND SHAPE FOLD TO ONE UNIT here, because that is
-      // the shape unitsForPassers takes. Telling them apart is what step D is
-      // for; until then they are the same coin and the same chunk shape.
-      assert.deepStrictEqual(ws.promotedUnits(), [{ coin: 'LTCUSDT', geometry: 'daily-1d' }],
-        'two promoted rows on one coin and shape are one unit for now');
+      // TWO ROWS OF ONE COIN AND SHAPE ARE ONE UNIT WITH TWO EXTRAS (3.184.0).
+      // They were folded to a bare coin and shape until the walk's look-back
+      // and band started travelling with them; now the unit is still one, and
+      // each row it came from is one more member the sweep will train.
+      const both = ws.promotedUnits();
+      assert.strictEqual(both.length, 1, 'two rows of one coin and shape are ONE unit');
+      assert.strictEqual(both[0].coin, 'LTCUSDT');
+      assert.strictEqual(both[0].geometry, 'daily-1d');
+      assert.deepStrictEqual(both[0].extras.map((e) => [e.lookbackHours, e.bandPct]), [[312, 200], [504, 300]],
+        'with one extra per row, in the order they were met — a list, so a third is an entry and not a branch');
 
       // A ROW THAT IS NOT PROMOTED CANNOT BE TICKED
       assert.throws(() => ws.setRowOff(got.id, k(rows[1]), true), /is not promoted from/,

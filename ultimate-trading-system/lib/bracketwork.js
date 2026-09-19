@@ -98,11 +98,20 @@ const slimViewsFor = (size) => (size === 1
 
 // How many members must agree, for THIS committee.
 //
-// Committees come in two sizes and only two: 6 for a single coin (3 data
-// views x 2 model types), 8 with one or two context coins (a fourth view
-// appears). A declaration may therefore name a count PER SIZE — owner,
-// 2026-07-31 — because one number cannot mean the same thing on both: an
-// exact 7 is 7-of-8 on a context combo and silently unanimous on a single.
+// A declaration may name a count PER SIZE — owner, 2026-07-31 — because one
+// number cannot mean the same thing on both: an exact 7 is 7-of-8 on a context
+// combo and silently unanimous on a single.
+//
+// THE COUNTS IN THE COMMENT THAT USED TO BE HERE WERE WRONG (3.184.0). It said
+// committees are 6 and 8, from 3 slices and 2 model types. slimViewsFor gives
+// FOUR slices for a single and FIVE alongside others, so they have been 8 and
+// 10 for a long time. Now they are not fixed at all: a unit carrying an extra
+// trains one more member per extra per stage, so the count is 9, 11, or more.
+//
+// SO THE SIZE IS TAKEN, NEVER GUESSED. It used to fall back to `members <= 6`
+// when the caller did not pass one, which was already wrong at 8 and is wronger
+// now. `members` is the real count and is still what a declared number is
+// clamped to.
 //
 // `size` is the combo size (1 = single). Older declarations carrying a
 // single ratio or count still work exactly as before.
@@ -112,7 +121,10 @@ function declaredQuorumFor(dec, members, size = null) {
   if (dec.quorumSingles != null || dec.quorumContexts != null) {
     // Fall back to whichever was declared if this run mixes sizes and only
     // one was named — clamped, never guessed at.
-    const isSingle = size != null ? size === 1 : members <= 6;
+    if (size == null) {
+      throw new Error('a per-size quorum needs to know the combo size — committee sizes are not fixed any more, so it cannot be read back from the member count');
+    }
+    const isSingle = size === 1;
     const pick = isSingle
       ? (dec.quorumSingles ?? dec.quorumContexts)
       : (dec.quorumContexts ?? dec.quorumSingles);

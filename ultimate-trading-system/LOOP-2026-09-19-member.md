@@ -145,3 +145,44 @@ Checked by stashing the work and running the same files on a clean tree, which
 fails the same ones: `test-pool.js :: poolSizeLeavesHeadroom` (the box is busy),
 and two in `test-stages.js` that depend on what is in `data/stagesets`. Plus the
 two already known: `theWordListSeesEveryVisibleLabel` and the half-life one.
+
+## What the recon workflow found that I had missed or got wrong
+
+Seven readers over the subsystems, read-only, before the orchestration work.
+Three of its findings were about code I had just written:
+
+- **I hand-rolled a fourth definition of "which way is this member leaning"**,
+  and it disagreed with the other three on ties. That is how a measurement comes
+  to contradict the vote it describes. Replaced with `argmaxCall`, the rule the
+  engine actually votes with.
+- **`assetCompressed` does not floor its halves.** Every built-in span is 24,
+  48, 72, 96 or 192, so it was always whole and it never mattered. An
+  owner-typed look-back is a free number, and an odd one made the two halves
+  different lengths with nothing thrown and nothing said. Floored, which changes
+  none of the existing spans, and a span under 8 hours or off a multiple of four
+  is now refused by name — its quarters would drop hours on the floor.
+- **A warning I had already avoided by luck**: a block that reached as far as
+  the decision candle would carry that candle's high, low and close, which are
+  not known when the decision is made, and the member would look BETTER for it.
+  The block ends where the base features end, one clear hour before. It held by
+  construction, which is exactly why it now has a test of its own.
+
+And five blockers further out, all fixed in this commit: the promoted row
+dropping its look-back and band; a passer silently replacing a promoted row for
+the same coin and shape; the unit losing its extras on a relaunch; one shared
+params object with no per-unit channel; and a child rebuilding without its
+parent's extras.
+
+## PARKED — `params.nExtras` at the stage 3 launch
+
+`agreementsFor` folds two agreement shares into one when they land on the same
+rung, and the rung depends on how many members there are. It now reads
+`params.nExtras` and is correct at nought, which is every set that exists today.
+
+**Nothing sets it yet.** The stage 3 launch would have to read it off its
+parent, and that path is downstream of the screen work this loop has not
+reached. Left unset on a run whose units carry extras, two genuinely different
+settings would fold into one, silently.
+
+Not built rather than half-built, because a wrong fold is invisible. The fix is
+one line at the stage 3 launch once the parent is in hand there.

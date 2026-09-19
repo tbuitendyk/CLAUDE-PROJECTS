@@ -172,6 +172,49 @@ function anExtraWithoutAnHourCountIsRefusedRatherThanIgnored() {
   }
 }
 
+// THE EXTRA BLOCK MUST NOT SEE THE DECISION CANDLE (3.184.0). The trade opens
+// at the geometry's entry hour, one clear hour after the chunk's own window
+// closes. Only that candle's OPEN is known at the moment of decision — its
+// high, its low and its close are not. A block that reached even one hour
+// further than the base features would carry three numbers from after the
+// decision, and it would look like a BETTER member for it.
+//
+// The block ends exactly where the base features end, so this holds by
+// construction — and it is worth a test of its own precisely because it holds
+// by construction: the next person to move the span by an hour will not know.
+function theExtraBlockNeverReachesTheDecisionCandle() {
+  const maps = maps1();
+  const entryAt = GEOMETRIES[GEO].entryOffsetH;
+  assert.ok(entryAt > FEATURE_HOURS, 'the entry candle sits after the chunk window closes');
+  for (const HOURS of [48, 168, 24 * 21]) {
+    const now = buildComboChunks(maps, GEO, false, false, [{ lookbackHours: HOURS }]);
+    const c = now.chunks[4];
+    const lastHour = c.startTs + (FEATURE_HOURS - 1) * HOUR_MS;
+    const from = c.startTs + (FEATURE_HOURS - HOURS) * HOUR_MS;
+    assert.strictEqual(from + (HOURS - 1) * HOUR_MS, lastHour,
+      `a ${HOURS}-hour block ends on the chunk's own last candle, never later`);
+    assert.ok(lastHour < c.startTs + entryAt * HOUR_MS,
+      'and that is strictly before the candle the trade opens on');
+  }
+}
+
+// AN UNREADABLE SPAN IS REFUSED RATHER THAN QUIETLY MISREAD (3.184.0).
+function aSpanThatCannotBeHalvedOrQuarteredIsRefused() {
+  const maps = maps1();
+  for (const h of [1, 4, 6, 7]) {
+    assert.throws(() => buildComboChunks(maps, GEO, false, false, [{ lookbackHours: h }]),
+      /at least 8 and a whole multiple of 4/, `${h} hours is refused by name`);
+  }
+  for (const h of [25, 50, 99, 167]) {
+    assert.throws(() => buildComboChunks(maps, GEO, false, false, [{ lookbackHours: h }]),
+      /whole multiple of 4/, `${h} hours is refused: its quarters would drop hours on the floor`);
+  }
+  for (const h of [8, 24, 48, 168, 504]) {
+    assert.doesNotThrow(() => buildComboChunks(maps, GEO, false, false, [{ lookbackHours: h }]),
+      `${h} hours is fine — every look-back the walk offers is a multiple of 24`);
+  }
+}
+
 module.exports = {
   aUnitWithNoExtraIsByteForByteWhatItWasBefore,
   anExtraIsAppendedAndTheBaseColumnsDoNotMove,
@@ -181,4 +224,6 @@ module.exports = {
   twoExtrasSitInTheOrderTheUnitCarriesThem,
   theSlicesForTheExtrasAreTheirOwnAndTheBaseSlicesDoNotMove,
   anExtraWithoutAnHourCountIsRefusedRatherThanIgnored,
+  theExtraBlockNeverReachesTheDecisionCandle,
+  aSpanThatCannotBeHalvedOrQuarteredIsRefused,
 };

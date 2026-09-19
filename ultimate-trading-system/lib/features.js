@@ -166,7 +166,12 @@ function assetCompressed(candles, prefix, names, out) {
   // The two halves are compared over the SAME number of hours. The old one
   // started the second half a candle early, so it weighed 12 hours against
   // 11 at the shortest shape.
-  const half = HOURS / 2;
+  // FLOORED (3.184.0). Every built-in span is 24, 48, 72, 96 or 192, so this
+  // was always a whole number and flooring changes none of them. An owner-typed
+  // look-back is a free number, and an odd one made `half` fractional: the two
+  // halves were then compared over different numbers of hours and slice()
+  // truncated without a word. Nothing threw and nothing said so.
+  const half = Math.floor(HOURS / 2);
   const volFirst = std(hourlyLogReturns(candles, 0, half + 1));
   const volSecond = std(hourlyLogReturns(candles, half - 1, HOURS));
   push('vol_shift', Math.log((volSecond + EPS) / (volFirst + EPS)));

@@ -462,15 +462,21 @@ function passersCached() {
 // the lean rides on the unit they fold to the same coin and shape here, which
 // is exactly what unitsForPassers has always taken.
 function passingUnits() {
-  const out = passersCached().filter((r) => r.ticked).map((r) => ({ coin: r.coin, geometry: r.geometry }));
-  const seen = new Set(out.map((u) => `${u.coin}|${u.geometry}`));
+  const out = passersCached().filter((r) => r.ticked).map((r) => ({ coin: r.coin, geometry: r.geometry, extras: [] }));
+  const at = new Map(out.map((u) => [`${u.coin}|${u.geometry}`, u]));
   let fromWalks = [];
   try { fromWalks = require('./walkset').promotedUnits(); } catch (_) { fromWalks = []; }
   for (const u of fromWalks) {
     const k = `${u.coin}|${u.geometry}`;
-    if (seen.has(k)) continue;
-    seen.add(k);
-    out.push(u);
+    // THEY MERGE, THEY DO NOT REPLACE (3.184.0). This used to drop a promoted
+    // row outright when a passer already held the same coin and chunk shape --
+    // which is fine while a promoted row is only a coin and a shape, and
+    // throws away everything the walk found the moment it carries an extra.
+    // One unit either way; the extras are what the walk adds to it.
+    if (at.has(k)) { at.get(k).extras.push(...(u.extras || [])); continue; }
+    const made = { coin: u.coin, geometry: u.geometry, extras: [...(u.extras || [])] };
+    at.set(k, made);
+    out.push(made);
   }
   return out;
 }

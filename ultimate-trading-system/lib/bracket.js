@@ -95,7 +95,18 @@ function buildComboChunks(maps, geometry, weekdaysOnly, includeUnlabeled = false
   const built = buildComboChunksBase(maps, geometry, weekdaysOnly, includeUnlabeled);
   const spans = (extras || []).map((e) => Math.floor(Number(e && e.lookbackHours) || 0));
   if (!spans.length) return built;
-  if (spans.some((h) => !(h > 0))) throw new Error('an extra look-back has to be a number of hours above nought');
+  // A SPAN IS AT LEAST 8 HOURS AND A WHOLE MULTIPLE OF FOUR (3.184.0).
+  // assetCompressed cuts its span into quarters and into halves; under 8 hours
+  // a quarter is one candle or none, and off a multiple of four the quarters
+  // drop up to three hours on the floor. Both are silent. The walk's own
+  // look-backs are multiples of 24, so this costs nothing real and removes a
+  // wrongness that would never have announced itself.
+  for (const h of spans) {
+    if (!(h > 0)) throw new Error('an extra look-back has to be a number of hours above nought');
+    if (h < 8 || h % 4 !== 0) {
+      throw new Error(`an extra look-back of ${h} hour(s) cannot be read: it has to be at least 8 and a whole multiple of 4, because the numbers are worked out over its quarters and its halves`);
+    }
+  }
   const back = GEOMETRIES[geometry].featureHours;
   const chunks = [];
   let tooEarly = 0;
