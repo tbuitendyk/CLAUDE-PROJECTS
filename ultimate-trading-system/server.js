@@ -1104,6 +1104,17 @@ app.get('/api/stageset/:id/coin-rows', (req, res) => {
   try { return res.json(stages.stage3CoinRows(req.params.id, req.query || {})); }
   catch (err) { return res.status(500).json({ error: err.message }); }
 });
+// ONE UNIT'S COMMITTEE, MEMBER BY MEMBER (3.186.0). Everything the record
+// already stored about each member and nothing derived here: the page draws
+// what the engine says, so the two cannot come to disagree about how many
+// members a unit has or what each of them reads.
+app.get('/api/stageset/:id/unit/:u/members', (req, res) => {
+  try {
+    const out = stages.unitMembers(req.params.id, req.params.u);
+    if (!out) return res.status(404).json({ error: 'no record set of that name holds a unit of that number' });
+    return res.json(out);
+  } catch (err) { return res.status(500).json({ error: err.message }); }
+});
 
 // The counters behind the Sweep cost lines — the same enumerators the
 // launches run, so the number on the screen and the number that runs can
@@ -1142,7 +1153,10 @@ app.post('/api/stage3-count', (req, res) => {
     const out = { settings: d.settings, declared: d.declared, folded: d.folded, pricings: d.pricings, unitSettings: d.unitSettings, weekdaysApply: d.weekdaysApply, holds: d.holds || [], filtered: d.filtered || null,
       // the confirm dial's ghosting (3.130.0): how many of the units to be
       // priced carry a lean, and whether the block asked for one at all
-      leanUnits: d.leanUnits == null ? null : d.leanUnits, confirmWanted: !!d.confirmWanted };
+      // and WHICH list of Coins this chain's leans could come from (3.186.0),
+      // so the screen says why Confirmation is greyed rather than only that it is
+      leanUnits: d.leanUnits == null ? null : d.leanUnits, confirmWanted: !!d.confirmWanted,
+      leanSource: d.leanSource || null };
     const units = d.units ?? Math.max(0, Math.floor(Number(b.units) || 0));
     const coins = d.coins ?? Math.max(1, Math.floor(Number(b.coins) || 1));
     if (units > 0) {

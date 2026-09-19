@@ -2094,11 +2094,44 @@ function confirmWanted(params) {
   const { confirms } = blockAxesFor(params || {});
   return confirms.some((c) => c !== 'off');
 }
-// THE LEAN EACH UNIT PRICES WITH, keyed by coin and shape, read off Coins'
-// passers at the moment of the count or the launch; a unit not listed there
-// has none and every value of confirm folds into off on it.
-function confirmLeansFor(records) {
-  const all = require('./coinsrun').passerLeans();
+// WHERE A CHAIN TOOK ITS UNITS FROM, read off the stage 1 at the top of it
+// (3.186.0). A stage 2 or stage 3 document carries no source of its own -- the
+// choice is made once, at the stage 1 launch -- so the answer is found by
+// walking up. A set written before the choice existed carries none and read
+// BOTH lists if it was launched from Coins at all, which is what 'both' says;
+// it read neither if it was not, which is 'none'. Neither is a guess: both are
+// what that launch actually did.
+function coinsSourceOf(doc) {
+  let cur = doc;
+  const seen = new Set();
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    if (cur.stage === 1) {
+      const p = cur.params || {};
+      if (p.coinsSource) return String(p.coinsSource);
+      return Array.isArray(p.passers) && p.passers.length ? 'both' : 'none';
+    }
+    cur = cur.parent && cur.parent.id ? getSet(cur.parent.id) : null;
+  }
+  // NO STAGE 1 AT THE TOP OF THE CHAIN IS NOT A LICENCE TO READ COINS. A chain
+  // whose root cannot be found cannot say it took its units off Coins, so it
+  // is read as having taken them from the boxes -- the safe direction, because
+  // it switches the lean OFF rather than applying somebody else's.
+  return 'none';
+}
+// THE LEAN EACH UNIT PRICES WITH, keyed by coin and shape, read off the list
+// the CHAIN ITSELF took its units from at the moment of the count or the
+// launch; a unit not listed there has none and every value of confirm folds
+// into off on it.
+//
+// 3.186.0 (owner order): this used to read whatever Coins knew today, whatever
+// the set was. A set launched with `ignore what is on Coins` then priced a
+// lean it had never met, purely because the coin happened to be ticked when
+// the owner pressed start; and a set launched from a walk set read the OTHER
+// box's lean wherever a passer held the same coin and chunk shape. Both are a
+// fact about a different run being spent on this one's money.
+function confirmLeansFor(records, source = 'both') {
+  const all = require('./coinsrun').leansFrom(source);
   const out = {};
   for (const rec of records || []) {
     const key = `${rec.trade}|${rec.geometry}`;
@@ -2553,10 +2586,17 @@ function stage3Declared(b) {
   // the dial says, because the screen greys the dial off this count -- a
   // count that only looked when the dial was already on could never let it
   // be switched on.
-  const leans = records ? confirmLeansFor(records) : {};
+  // WHICH LIST THIS CHAIN TOOK ITS UNITS FROM (3.186.0). Worked out ONCE: it
+  // walks the chain reading documents, and this count runs on every keystroke.
+  const chainSource = parent ? coinsSourceOf(parent) : null;
+  const leans = records ? confirmLeansFor(records, chainSource || 'none') : {};
   const counted = countDeclared(b || {}, sizes, records || [], leans);
   out.settings = counted.kept;
   out.leanUnits = counted.leanUnits;
+  // AND THE SCREEN IS TOLD WHICH LIST, so it can say WHY Confirmation is
+  // greyed. "no unit passes" and "this chain never read a list" are two
+  // different answers and the second one cannot be fixed by ticking anything.
+  out.leanSource = chainSource;
   out.confirmWanted = confirmWanted(b || {});
   out.declared = counted.declared;
   out.folded = counted.folded;
@@ -2612,9 +2652,20 @@ function startStage3(params) {
   // THE LEANS (COINS.md section 11): read off Coins' passers now, for the
   // units this launch prices; refused in words when the dial asks for them
   // and no unit has one, rather than pricing three copies of the same trades
-  const leans = confirmWanted(params) ? confirmLeansFor(parentRecords) : {};
+  const chainSource = coinsSourceOf(parent);
+  const leans = confirmWanted(params) ? confirmLeansFor(parentRecords, chainSource) : {};
+  // AND THE REFUSAL SAYS WHICH LIST IT LOOKED IN (3.186.0). "none of them pass
+  // on Coins" was the only thing it could say while the lean was read off
+  // whatever Coins held; now that it is read off the chain's own list, a run
+  // that took its units from neither list has a different reason and needs a
+  // different sentence, or the owner goes and ticks rows that will never be
+  // read.
   if (confirmWanted(params) && !Object.keys(leans).length) {
-    throw new Error('none of the units this run prices is among the coins and shapes that pass on Coins, so confirm would change nothing — set confirm to off, or pick a parent whose units pass');
+    throw new Error(chainSource === 'none'
+      ? 'this record set was not built from anything ticked on Coins, so no unit it prices carries a reading of how its coin moves and confirm would change nothing — set confirm to off, or price a record set built from Candidates for Sweep'
+      : chainSource === 'walk'
+        ? 'none of the units this run prices is among the rows ticked from a walk set on Coins, so confirm would change nothing — set confirm to off, or pick a parent whose units are'
+        : 'none of the units this run prices is among the coins and shapes that pass on Coins, so confirm would change nothing — set confirm to off, or pick a parent whose units pass');
   }
   const counted = countDeclared(params, sizes, parentRecords, leans);
   if (!counted.kept) throw new Error('the block declared no settings');
@@ -4889,6 +4940,89 @@ function chainOf(id) {
     cur = cur.parent ? getSet(cur.parent.id) : null;
   }
   return out;
+}
+
+// ONE UNIT'S COMMITTEE, MEMBER BY MEMBER (3.186.0, owner order: "the extra
+// member details on screen"). RULE ELEVEN clause 3 -- if it is stored, show it.
+//
+// Every number here was already being written on the record and none of it
+// could be seen. The columns on Boards are one row per UNIT, so a committee of
+// eight or ten could only ever be a head count there; this is the other way
+// round, one row per member, for the one unit asked about.
+//
+// WHAT IS STORED AND THEREFORE SHOWN:
+//   * what each member is -- which of the two ways of working out a forecast,
+//     and which slice of the numbers it reads
+//   * for an EXTRA member, the look-back and the band the walk found, and which
+//     walk set row they came off
+//   * each member's own forecast score, how many of its OWN deals it beat, and
+//     its lead over them (section E/F2: this is what stops a member that never
+//     speaks hiding inside the pooled number)
+//   * how often it spoke and how often it was right when it spoke (F3)
+//   * what the extras cost the unit in warm-up, in decision moments
+//
+// WHAT IS NOT HERE, AND WHY IT IS NOT: the design's F1 asked for each member's
+// realised class weights and whether the ceiling on them bound. There are none
+// to show. The sweep trains through trainProbMember in lib/stagework.js, which
+// passes exampleWeights and no class weights at all -- the weighting and its
+// ceiling live in lib/bracket.js trainMember, which nothing in lib/ calls. A
+// column of dashes claiming to report a protection that does not run would be
+// worse than no column, so there is none, and the shortfall is the owner's to
+// decide on (RULE ELEVEN clause 6, RULE ZERO).
+function unitMembers(id, u) {
+  const doc = getSet(id);
+  if (!doc) return null;
+  const idx = Math.max(0, Math.floor(Number(u)));
+  const rec = allRecords(id).find((r) => r.u === idx);
+  if (!rec) return null;
+  const specs = Array.isArray(rec.specs) ? rec.specs : [];
+  const per = Array.isArray(rec.perMember) ? rec.perMember : [];
+  const extras = Array.isArray(rec.extras) ? rec.extras : [];
+  const bands = Array.isArray(rec.extraBandPcts) ? rec.extraBandPcts : [];
+  const members = specs.map((sp, i) => {
+    const r = per[i] || null;
+    // AN EXTRA MEMBER IS THE ONE WHOSE SPEC CARRIES A PLACE IN THE EXTRAS LIST.
+    // Read off the record, never worked out from the committee's size -- that
+    // assumption is the one this whole design exists to remove.
+    const at = sp && sp.at != null ? Number(sp.at) : null;
+    const ex = at != null ? (extras[at] || null) : null;
+    return {
+      i,
+      model: sp ? sp.model : null,
+      view: sp ? sp.view : null,
+      at,
+      // what an extra reads, and where the walk found it
+      lookbackHours: ex ? (ex.lookbackHours ?? null) : null,
+      bandPct: at != null ? (bands[at] ?? (ex ? ex.bandPct ?? null : null)) : (rec.bandPct ?? null),
+      fromSet: ex && ex.from ? (ex.from.name || ex.from.set || null) : null,
+      // its own reading, against its own answers
+      score: r ? r.score : null,
+      beat: r ? r.beat : null,
+      deals: r ? r.deals : null,
+      lead: r ? r.lead : null,
+      // and how often it said anything at all
+      spoke: r ? r.spoke : null,
+      chunks: r ? r.chunks : null,
+      rightWhenSpoke: r ? r.rightWhenSpoke : null,
+    };
+  });
+  return {
+    id, stage: doc.stage, name: doc.name, u: idx,
+    trade: rec.trade, ctx1: rec.ctx1 || null, ctx2: rec.ctx2 || null, geometry: rec.geometry,
+    bandPct: rec.bandPct ?? null,
+    // THE COUNT IS THE LIST'S LENGTH, never the combo size (3.183.0)
+    members: members.length,
+    nExtras: extras.length,
+    // what the extras cost in decision moments that could not reach back far
+    // enough to be built at all
+    tooEarly: rec.tooEarly || 0,
+    // NOTHING SCORED IS NOT NOTHING RUN. A set finished before per-member
+    // scoring existed carries no readings, and saying so is the honest answer;
+    // filling the columns with dashes would read as a committee of silent
+    // members (RULE ELEVEN clause 6).
+    scored: per.length > 0,
+    rows: members,
+  };
 }
 
 function stage1Table(id, from, n, filters = null) {
@@ -9746,7 +9880,7 @@ module.exports = {
   startStage1, startStage2, startStage3,
   missingUnitsOf, unitFillRefusal, fillMissingUnitsStart, fillMissingUnitsStatus, rebuildRanking,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
-  settingsFor, unitsFor, unitsForPassers, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, confirmWanted, confirmLeansFor, confirmLabel, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
+  settingsFor, unitsFor, unitsForPassers, unitMembers, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, confirmWanted, confirmLeansFor, coinsSourceOf, confirmLabel, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
   setSetPicked, pickedOf, unitsChoiceOf, stage3RecordsFor, PICK_CHOICES, PICK_LABELS, stage3UnitsFor,
   setSetNotes, setSetName, nextNames, nextFreeName, nameTaken, setSetSort, setSetFilters, recordHeldBackLook, stage2Rows, stage2Ordered, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,

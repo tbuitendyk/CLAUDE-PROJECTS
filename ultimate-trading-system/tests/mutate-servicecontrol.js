@@ -1508,6 +1508,21 @@ const GUARDS = [
     'theBasketOpensTheCoinsScreenAsOneSectionWithOneCount', 'the one count leaves the promoted rows out, so "4 of 11 ticked" undercounts'],
   [path.join(ROOT, 'public', 'construct.js'), "      passers: !!($('#swPassers') && $('#swPassers').checked),\n      windowLayout: $('#swLayout').value, allLoaded: $('#swAllData').checked,", "      windowLayout: $('#swLayout').value, allLoaded: $('#swAllData').checked,",
     'theScreensDrawThePassersAndSweepsTick', 'Sweep\'s tick is drawn but the launch ignores it'],
+  // ---- THE READING COMES FROM THE CHAIN'S OWN LIST (3.186.0) ----
+  // Each names the test that READS THE LINE IT BREAKS (RULE EIGHT).
+  [path.join(ROOT, 'lib', 'coinsrun.js'), "  if (source === 'walk') return { ...(fromWalks || {}) };", "  if (source === 'walk') return { ...(fromPassers || {}) };",
+    'theReadingComesFromTheListTheChainTookItsUnitsFrom', 'a run built from a walk set prices the OTHER box\'s reading wherever a passer holds the same coin and chunk shape'],
+  [path.join(ROOT, 'lib', 'coinsrun.js'), "  if (source === 'none') return {};\n  if (source === 'passers') return { ...(fromPassers || {}) };", "  if (source === 'none') return { ...(fromPassers || {}) };\n  if (source === 'passers') return { ...(fromPassers || {}) };",
+    'theReadingComesFromTheListTheChainTookItsUnitsFrom', 'a run that read no list still prices a reading off Coins'],
+  [path.join(ROOT, 'lib', 'stages.js'), "      return Array.isArray(p.passers) && p.passers.length ? 'both' : 'none';", "      return 'both';",
+    'theReadingComesFromTheListTheChainTookItsUnitsFrom', 'a chain built from the boxes on Sweep is read as one built from Coins'],
+  [path.join(ROOT, 'lib', 'stages.js'), "  const all = require('./coinsrun').leansFrom(source);", "  const all = require('./coinsrun').passerLeans();",
+    'theReadingComesFromTheListTheChainTookItsUnitsFrom', 'the reading is read off whatever Coins holds today rather than off the list this chain used'],
+  // ---- ONE UNIT'S COMMITTEE, MEMBER BY MEMBER (3.186.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "    const at = sp && sp.at != null ? Number(sp.at) : null;", "    const at = null;",
+    'theCommitteeOfOneUnitIsReadableMemberByMember', 'no member is ever shown as one added from a walk set, so its look-back, its band and the set it came from all read blank'],
+  [path.join(ROOT, 'lib', 'stages.js'), "    scored: per.length > 0,", "    scored: true,",
+    'theCommitteeOfOneUnitIsReadableMemberByMember', 'a set finished before per-member scoring draws a committee of silent members instead of saying its readings were never taken'],
   // ---- STAGE 3: the confirmation overlay (3.130.0, COINS.md section 11) ----
   // Each names the test that READS THE LINE IT BREAKS (RULE EIGHT).
   [path.join(ROOT, 'lib', 'stages.js'), "    st.agreeBoth, st.agreePersist, hasLean ? (st.confirm || 'off') : 'off'].join('|');", "    st.agreeBoth, st.agreePersist, 'off'].join('|');",

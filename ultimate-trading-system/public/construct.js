@@ -1267,6 +1267,25 @@ function swGhostGroup(sel, off) {
   e.classList.toggle('ctl-off', !!off);
   for (const c of e.querySelectorAll('select, input')) c.disabled = !!off;
 }
+// WHY CONFIRMATION IS GREYED, in the sentence beside it (3.186.0). Three
+// different reasons and they are not interchangeable: a chain built from the
+// boxes on this screen can never carry a reading however Coins is ticked, and
+// a chain built from one of the two lists is one tick away from carrying one.
+// Empty when it is not greyed, so nothing is said when there is nothing to say.
+const SW_NO_CONFIRM = {
+  none: 'Greyed: this record set was built from trade coins and chunk shape on this screen, not from anything ticked on Coins, '
+    + 'so no unit it prices carries a reading of how its coin moves. Ticking rows on Coins will not change that — only a record set built from Candidates for Sweep will.',
+  passers: 'Greyed: not one unit this run prices is ticked under coins and shapes that pass on Coins, so all three values place the same trades.',
+  walk: 'Greyed: not one unit this run prices is ticked from a walk set on Coins, so all three values place the same trades.',
+  both: 'Greyed: not one unit this run prices is ticked under Candidates for Sweep on Coins, so all three values place the same trades.',
+};
+function swSayWhyNoConfirm(source) {
+  const e = $('#swWhyConfirm');
+  if (!e) return;
+  const said = source ? (SW_NO_CONFIRM[source] || SW_NO_CONFIRM.both) : '';
+  e.textContent = said;
+  e.style.display = said ? '' : 'none';
+}
 
 // THE COST LINES ARE ASKED ROBUSTLY (owner order, 2026-08-29: flipping the
 // stage 3 permutations around produced "the counter could not be asked" —
@@ -1446,8 +1465,15 @@ async function swCounts() {
       // trades, so the dial and its two boxes would change nothing. Ghosted
       // only once there are units to price -- with no parent picked yet
       // there is nothing to know.
+      //
+      // 3.186.0 (owner order): the lean is now read off the list the CHAIN took
+      // its units from, not off whatever Coins holds today, so a record set
+      // built from the boxes greys this whatever is ticked. The reason is said
+      // out loud beside it, because "greyed" with no reason sends the owner to
+      // tick rows that this record set will never read.
       const noLean = Array.isArray(got.unitSettings) && got.unitSettings.length > 0 && !got.leanUnits;
       swGhostGroup('#swGrpConfirm', noLean);
+      swSayWhyNoConfirm(noLean ? got.leanSource : null);
       // the budget verdict comes from the SAME arithmetic the launch enforces:
       // a refusal is said here, before the button is pressed
       const refuse = (got.heap && got.heap.band === 'refuse' && got.heap) || (got.disk && got.disk.band === 'refuse' && got.disk) || null;
@@ -3683,7 +3709,8 @@ async function drawSweep() {
         <label class="f" title="how many decision moments in a row the same call must have stood before it is acted on. off acts at once.">hold<select id="swAgreeHold">${vocabOptions('agreeHold', '0')}</select></label>
         <label class="c" title="price every hold as its own setting."><input type="checkbox" id="swPermAgreeHold"> permute</label>
       </div>
-      <p class="note" style="margin:.6rem 0 .1rem"><b>Confirmation</b> — on a unit whose coin and chunk shape pass on Coins, every call the members make is checked against the way that coin itself has moved after a rising window and after a falling window, at its own sweet spot band. These boxes decide what that check changes. Greyed while no unit being priced passes.</p>
+      <p class="note" style="margin:.6rem 0 .1rem"><b>Confirmation</b> — on a unit whose coin and chunk shape are ticked on Coins, every call the members make is checked against the way that coin itself has moved after a rising window and after a falling window, at its own sweet spot band. These boxes decide what that check changes. The reading is taken from the SAME list this record set took its units from — the one named under where this run takes its units from when its stage 1 was started — and never from the other one. Greyed when no unit being priced has one, and the line below says why.</p>
+      <p class="note warn" id="swWhyConfirm" style="margin:.1rem 0 .4rem;display:none"></p>
       <div id="swGrpConfirm" style="display:flex;align-items:flex-end;gap:.45rem">
         <label class="f" title="WHAT THE CHECK CHANGES. off: nothing, every trade at size 1, exactly as before this box existed. confirmed only: a call the coin's own lean disagrees with is not traded at all; the rest trade at size 1. sized: a call the lean agrees with trades at confirmed × the size, a call it disagrees with at unconfirmed × the size, and a call made when the coin sat inside its band trades at size 1. On a unit whose coin and chunk shape do not pass on Coins the three values place the same trades and are one setting there.">confirm<select id="swConfirm">${vocabOptions('confirm', 'off')}</select></label>
         <label class="c" title="price all three values of confirm, each as its own setting, so the three can be read side by side on Boards."><input type="checkbox" id="swPermConfirm"> permute</label>
@@ -4884,6 +4911,128 @@ function bShown(t) {
   return of > total ? `<p class="note">${total.toLocaleString()} of ${of.toLocaleString()} rows — the rest are held back by the filters above.</p>` : '';
 }
 
+// ONE UNIT'S COMMITTEE, MEMBER BY MEMBER (3.186.0, owner order: "the extra
+// member details on screen"). RULE ELEVEN clause 3 -- if it is stored, show it.
+//
+// The tables above are one row per unit, so a committee of eight or ten could
+// only ever be a head count there. This is the other way round: the one unit
+// asked about, one row per member, everything the record already wrote down.
+// Nothing here is worked out on the page -- the engine answers and this draws,
+// so the two cannot come to disagree about how many members a unit has.
+//
+// WHICH UNIT IS OPEN is kept per table, so opening one on stage 1 does not
+// close the one open on stage 2, and a page or a sort leaves both where they were.
+const bMemberOpen = { S1: null, S2: null };
+// WHAT A MEMBER READS, in words, with the name the record stores beside it.
+// The stored names are on no screen and never were; putting the plain words on
+// the screen is what makes this something the owner can point at, and keeping
+// the stored name beside them is what stops anything being hidden (RULE FIVE).
+const B_VIEW_WORDS = {
+  full: 'everything',
+  prices: 'prices only',
+  volume: 'volume only',
+  pricevol: 'prices and volume',
+  cross: 'the coins it is read alongside',
+};
+function bMemberReads(m) {
+  if (m.at != null) return 'everything, over its own look-back';
+  return B_VIEW_WORDS[m.view] || String(m.view || '—');
+}
+function bMembersPanel(stage, d) {
+  if (!d) return '';
+  if (d.error) return `<p class="note warn">${esc(d.error)}</p>`;
+  const unit = [d.trade, [d.ctx1, d.ctx2].filter(Boolean).length ? `alongside ${[d.ctx1, d.ctx2].filter(Boolean).join(' + ')}` : null, bGeo(d.geometry)]
+    .filter(Boolean).join(' · ');
+  const th = 'style="padding:.3rem .5rem;text-align:right;white-space:nowrap"';
+  const td = 'style="padding:.25rem .5rem;text-align:right;white-space:nowrap"';
+  const n2 = (v, dp = 1) => (v == null ? '<span class="muted">—</span>' : Number(v).toFixed(dp));
+  return `<div class="panel" style="margin-top:.5rem">
+    <div class="row" style="justify-content:space-between">
+      <h3 style="margin:0">Members of this unit — ${esc(unit)}</h3>
+      <button data-bmemclose="${stage}">Close</button>
+    </div>
+    <p class="note">${d.members} member(s)${d.nExtras ? `, of which ${d.nExtras} came from a walk set` : ', none from a walk set'}${d.bandPct == null ? '' : ` · the unit's own band ${Number(d.bandPct).toFixed(2)}%`}${d.tooEarly ? ` · <b class="warn">${Number(d.tooEarly).toLocaleString()} decision moment(s) dropped</b> because they could not reach back far enough for a member's look-back` : ''}</p>
+    ${d.scored ? '' : '<p class="note warn">This record set was finished before each member was read on its own, so the readings below are blank. They are blank because they were never taken, not because the members said nothing.</p>'}
+    <div class="scrollx"><table class="cgap"><thead><tr>
+      <th ${th} title="its place in the list of members this unit votes with, in the order the unit was built">member</th>
+      <th ${th} title="which of the two ways of working out a forecast this member uses. Both read the same prices; they disagree about how to turn them into a lean, which is why a committee holds some of each.">kind</th>
+      <th ${th} title="which slice of the numbers this member reads. The name the record stores is in brackets — it is on no other screen, and it is here so nothing about the member is hidden.">reads</th>
+      <th ${th} title="how far back this member measures the move it is marked against. Blank on a member that reads its chunk shape's own span, which is every member except one added from a walk set.">look-back</th>
+      <th ${th} title="how big a move has to be before this member counts it as up or down rather than sitting out. A member added from a walk set is marked at the band that walk found; every other member is marked at the unit's own.">band</th>
+      <th ${th} title="the walk set a member was added from. Blank on a member the unit was always going to have.">from</th>
+      <th ${th} title="this member's OWN forecast score, read against the answers IT was marked on — not the committee's pooled score. This is what stops a member that never speaks hiding inside the pooled number.">forecast score</th>
+      <th ${th} title="of this member's own null set — the same forecasts against the same answers with only the pairing between them destroyed — how many it beat. A member that always says the same thing scores the same shuffled as unshuffled and beats none of them, so silence earns nothing here.">beat its own null set</th>
+      <th ${th} title="how far above its own null set's typical forecast score the real one sits, against that null set's own spread">lead over null set</th>
+      <th ${th} title="how many decision moments this member leaned up or down on, out of how many there were. It is NOT how often it changed what the committee did — the committee trades on a pooled direction, and a member can lean all day without moving it.">spoke</th>
+      <th ${th} title="of the moments it spoke on, how many it got right. A member right about sitting out nine times in ten has said nothing; this is the number that tells you so.">right when it spoke</th>
+    </tr></thead><tbody>${(d.rows || []).map((m) => `<tr${m.at != null ? ' class="selected"' : ''}>
+      <td ${td}>${m.i + 1}</td>
+      <td ${td}>${esc(String(m.model || '—').toUpperCase())}</td>
+      <td ${td}>${esc(bMemberReads(m))}${m.at == null ? ` <span class="muted">(${esc(String(m.view || ''))})</span>` : ''}</td>
+      <td ${td}>${m.lookbackHours == null ? '<span class="muted">—</span>' : `${Number(m.lookbackHours).toLocaleString()} h`}</td>
+      <td ${td}>${m.bandPct == null ? '<span class="muted">—</span>' : `${Number(m.bandPct).toFixed(2)}%`}</td>
+      <td ${td}>${m.fromSet ? esc(m.fromSet) : '<span class="muted">—</span>'}</td>
+      <td ${td}>${n2(m.score)}</td>
+      <td ${td}>${bShare(m.deals ? m.beat / m.deals : null, m.beat, m.deals)}</td>
+      <td ${td}>${bLead(m.lead)}</td>
+      <td ${td}>${m.spoke == null ? '<span class="muted">—</span>' : `${Number(m.spoke).toLocaleString()} <span class="muted">of ${Number(m.chunks || 0).toLocaleString()}</span>`}</td>
+      <td ${td}>${bShare(m.spoke ? m.rightWhenSpoke / m.spoke : null, m.rightWhenSpoke, m.spoke)}</td>
+    </tr>`).join('') || '<tr><td colspan="11" class="empty">nothing here</td></tr>'}</tbody></table></div>
+    <p class="note">A member added from a walk set is marked with a line down its left edge. It is trained on the same
+      prices as the rest and marked against its own look-back and its own band — everything the unit already trained is
+      untouched, and this is one more voice beside it. Each member is read against the answers IT was marked on, so a
+      member asked a different question is neither flattered nor punished for it.</p>
+  </div>`;
+}
+// THE PRESS THAT OPENS IT, and the one that closes it. Drawn into the cell that
+// already holds the head count, which is the thing it is about (RULE ELEVEN
+// clause 4: group by what things are, not by where there was room).
+function bMembersBtn(stage, u, label) {
+  const open = bMemberOpen[stage] === u;
+  return `<button data-bmem="${stage}:${u}" style="padding:0 .3rem;min-width:1.4rem" title="${open ? 'closes the list of this unit’s members' : 'opens this unit’s members one per row, under the table — what each one reads, what it is marked at, and how each one did on its own'}">${open ? '−' : '+'}</button> ${label}`;
+}
+async function bWireMembers(doc, mount, stage) {
+  const root = $(mount);
+  if (!root) return;
+  const slot = root.querySelector(`[data-bmempanel="${stage}"]`);
+  const paint = async () => {
+    if (!slot) return;
+    const u = bMemberOpen[stage];
+    if (u == null) { slot.innerHTML = ''; return; }
+    slot.innerHTML = '<p class="note">reading this unit’s members…</p>';
+    const d = await apiOr(`api/stageset/${doc.id}/unit/${u}/members`, { error: 'this unit’s members could not be read' });
+    // the owner may have closed it, or opened another, while that was in flight
+    if (bMemberOpen[stage] !== u || !$(mount)) return;
+    const again = $(mount).querySelector(`[data-bmempanel="${stage}"]`);
+    if (again) again.innerHTML = bMembersPanel(stage, d);
+    bWireMemberClose(doc, mount, stage);
+  };
+  root.querySelectorAll('[data-bmem]').forEach((btn) => {
+    btn.onclick = async () => {
+      const u = Number(String(btn.dataset.bmem).split(':')[1]);
+      bMemberOpen[stage] = bMemberOpen[stage] === u ? null : u;
+      root.querySelectorAll('[data-bmem]').forEach((b) => {
+        const mine = Number(String(b.dataset.bmem).split(':')[1]);
+        b.textContent = bMemberOpen[stage] === mine ? '−' : '+';
+      });
+      await paint();
+    };
+  });
+  if (bMemberOpen[stage] != null) await paint();
+}
+function bWireMemberClose(doc, mount, stage) {
+  const root = $(mount);
+  if (!root) return;
+  const x = root.querySelector(`[data-bmemclose="${stage}"]`);
+  if (!x) return;
+  x.onclick = () => {
+    bMemberOpen[stage] = null;
+    const slot = root.querySelector(`[data-bmempanel="${stage}"]`);
+    if (slot) slot.innerHTML = '';
+    root.querySelectorAll('[data-bmem]').forEach((b) => { b.textContent = '+'; });
+  };
+}
+
 async function bDrawStage1(doc, incomplete, view, mount) {
   const heading = `Stage 1 — every unit's LOGREG members, scored once (${esc(doc.name)})`;
   if (!bTableOpen('S1')) {
@@ -4931,7 +5080,7 @@ async function bDrawStage1(doc, incomplete, view, mount) {
         <td ${btdN}>${bCoin(r)}</td>
         <td ${btdN}${r.ctx1 ? '' : ' class="muted"'}>${r.ctx1 ? esc([r.ctx1, r.ctx2].filter(Boolean).join(' + ')) : '—'}</td>
         <td ${btdN}>${esc(bGeo(r.geometry))}</td>
-        <td ${btdN}>${r.members == null ? '—' : r.members}</td>
+        <td ${btdN}>${r.members == null ? '—' : bMembersBtn('S1', r.u, r.members)}</td>
         <td ${btdN}${r.voices != null && r.members && r.voices < r.members ? ' class="warn"' : ''}>${r.voices == null ? '—' : r.voices}</td>
         <td ${btdN}>${bForecastScore(r.score, r.testChunks)}</td>
         <td ${btdN}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
@@ -4948,11 +5097,13 @@ async function bDrawStage1(doc, incomplete, view, mount) {
       committee is smaller than it looks. The tuning-slice $ columns are the only money before stage 3: each unit's own
       votes priced on the last quarter of its training window, which the fit never saw and the test window is not.
       Test-window money is priced at stage 3 alone.</p>
+    <div data-bmempanel="S1"></div>
   </div>`)) return;
   bWirePager(mount);
   bWireSort(doc, mount);
   bWireFilters(mount);
   bWireTableFold(mount);
+  await bWireMembers(doc, mount, 'S1');
 }
 
 async function bDrawStage2(doc, incomplete, view, mount) {
@@ -5014,7 +5165,7 @@ async function bDrawStage2(doc, incomplete, view, mount) {
         <td ${btdN}>${bCoin(r)}</td>
         <td ${btdN}${r.ctx1 ? '' : ' class="muted"'}>${r.ctx1 ? esc([r.ctx1, r.ctx2].filter(Boolean).join(' + ')) : '—'}</td>
         <td ${btdN}>${esc(bGeo(r.geometry))}</td>
-        <td ${btdN}>${r.members} — ${r.logreg} LOGREG + ${r.boost} BOOST</td>
+        <td ${btdN}>${bMembersBtn('S2', r.u, `${r.members} — ${r.logreg} LOGREG + ${r.boost} BOOST`)}</td>
         <td ${btdN}${r.voices != null && r.members && r.voices < r.members ? ' class="warn"' : ''}>${r.voices == null ? '—' : r.voices}${r.voices3 == null ? '' : ` <span class="muted">(${r.voices3} before BOOST)</span>`}</td>
         <td ${btdN}>${r.score3 == null ? '—' : r.score3.toFixed(1)}</td>
         <td ${btdN}>${r.scoreAll == null ? '—' : r.scoreAll.toFixed(1)}</td>
@@ -5038,6 +5189,7 @@ async function bDrawStage2(doc, incomplete, view, mount) {
       money here: the members' own votes on the last quarter of the training window, stage 1 members alone and every
       member pooled, so what the BOOST members bought in money is visible before any pricing. Test-window money and the
       held-back window belong to stage 3.</p>
+    <div data-bmempanel="S2"></div>
   </div>`)) return;
   bWirePager(mount);
   bWireSort(doc, mount);
@@ -5046,6 +5198,7 @@ async function bDrawStage2(doc, incomplete, view, mount) {
   // stage 3 carry reads them
   bWireFilters(mount, doc);
   bWireTableFold(mount);
+  await bWireMembers(doc, mount, 'S2');
 }
 
 // PICKING RECORDS (owner order, 2026-09-02): a tick on the left of every

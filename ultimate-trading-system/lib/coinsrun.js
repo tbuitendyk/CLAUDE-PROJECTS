@@ -497,20 +497,29 @@ function passingUnits(source = 'both') {
 // THE LEAN EACH PASSER CARRIES, keyed by coin and shape: what stage 3's
 // confirm dial prices with (COINS.md section 11). Listed at the bar, ticked
 // or not: the tick says what Sweep RUNS, the lean is a fact about the coin.
-function passerLeans() {
+// WHAT `coins and shapes that pass` KNOWS, ON ITS OWN (3.186.0). Split out of
+// passerLeans, which merges this with the walk sets' rows -- because a run that
+// took its units from only one of the two lists has to be able to ask one of
+// them without the other answering over the top of it.
+//
+// A PASSER'S LEAN IS AT THE SHAPE'S OWN SPAN, always: its band comes off the
+// plateau, which is searched on the shape's own window move. Saying so rather
+// than leaving it unsaid is what lets a promoted row say something different
+// (3.171.0).
+function passerOwnLeans() {
   const out = {};
   for (const r of passersCached()) {
     if (!r.lean || !(r.lean.rising || r.lean.falling)) continue;
-    // A PASSER'S LEAN IS AT THE SHAPE'S OWN SPAN, always: its band comes off
-    // the plateau, which is searched on the shape's own window move. Saying so
-    // rather than leaving it unsaid is what lets a promoted row say something
-    // different (3.171.0).
     out[`${r.coin}|${r.geometry}`] = {
       band: r.band, yardstick: r.yardstick ?? null,
       rising: r.lean.rising || 0, falling: r.lean.falling || 0,
       lookback: 'own', from: { source: 'passer' },
     };
   }
+  return out;
+}
+function passerLeans() {
+  const out = passerOwnLeans();
   // AND EVERY TICKED PROMOTED ROW BRINGS ITS OWN, at its own look-back
   // (3.171.0, owner order: "how can the signals be encoded onto those records
   // and read by the stage three sweep to add value to the decision making").
@@ -531,6 +540,48 @@ function passerLeans() {
   } catch (_) { /* no walk sets is not a fault */ }
   Object.defineProperty(out, '__passedOver', { value: passedOver, enumerable: false });
   return out;
+}
+
+// THE SAME LEANS, BUT ONLY FROM THE LIST A RUN ACTUALLY TOOK ITS UNITS FROM
+// (3.186.0, owner order: "fix the confirmation greying to check the set's
+// source").
+//
+// passerLeans() answers "what does Coins know about this coin and shape TODAY",
+// which is the right question for the screens and the wrong one for a record
+// set. A stage 3 prices a chain that was launched from one named list, or from
+// neither -- and a lean out of the other list, or out of a list the run never
+// read, is a fact about a different run being applied to this one's money.
+//
+// The four names are the launch's own (COINS_SOURCES), so a set says which of
+// these it gets and there is no fifth answer to guess at:
+//   none    -- the run read no list, so no unit of it carries a lean at all
+//   passers -- only what coins and shapes that pass knows
+//   walk    -- only what a ticked promoted row knows, INCLUDING one a passer
+//              outranks in passerLeans: the passer is not this run's source
+//   both    -- what passerLeans says, which is what every set written before
+//              the choice existed actually priced with
+// WHICH OF THE TWO A NAMED SOURCE READS, as arithmetic on the two maps and
+// nothing else -- no files, no caches, no requires. Kept pure so the rule can
+// be held to by a test with two literal maps in front of it, which is the only
+// way to prove the `walk` case: there the walk's reading must win on a coin and
+// chunk shape that a passer holds everywhere else.
+function pickLeans(source, fromPassers, fromWalks) {
+  if (!COINS_SOURCES.includes(source)) throw new Error(`there is no unit source called ${JSON.stringify(source)}`);
+  if (source === 'none') return {};
+  if (source === 'passers') return { ...(fromPassers || {}) };
+  if (source === 'walk') return { ...(fromWalks || {}) };
+  // both: the passer holds the key, which is what passerLeans does and what
+  // every set written before the choice existed actually priced with
+  return { ...(fromWalks || {}), ...(fromPassers || {}) };
+}
+function leansFrom(source = 'both') {
+  if (!COINS_SOURCES.includes(source)) throw new Error(`there is no unit source called ${JSON.stringify(source)}`);
+  if (source === 'none') return {};
+  let fromWalks = {};
+  if (source !== 'passers') {
+    try { fromWalks = require('./walkset').promotedLeans().leans || {}; } catch (_) { fromWalks = {}; }
+  }
+  return pickLeans(source, source === 'walk' ? {} : passerOwnLeans(), fromWalks);
 }
 
 // ---- reading the records back -------------------------------------------------
@@ -1026,7 +1077,7 @@ function coinsWalkStart(opts = {}) {
 module.exports = {
   RECORD_V, DEFAULTS, BAND_KEY, AUTO_KEY, PASS_BAR_KEY, PASS_OFF_KEY, LINK_CUT_TRIALS, layouts, recordFile,
   sitOutBand, setSitOutBand, bandAuto, setBandAuto,
-  passBar, setPassBar, passersOff, setPasserTicked, passingUnits, COINS_SOURCES, passersCached, passerLeans,
+  passBar, setPassBar, passersOff, setPasserTicked, passingUnits, COINS_SOURCES, passersCached, passerLeans, passerOwnLeans, leansFrom, pickLeans,
   LOOKBACKS_KEY, lookbacks, setLookbacks,
   readOneCoin, normalise, busyWhy, coinsOwnBusy, removeOlderFilesFor,
   coinsRunStart, coinsRunStatus, coinsRunStop,

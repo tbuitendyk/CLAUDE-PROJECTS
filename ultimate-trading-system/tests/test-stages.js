@@ -16,14 +16,27 @@ const SETS_DIR = path.join(ROOT, 'data', 'stagesets');
 // A finished stage 2 parent with one record and a price-file record that
 // matches this box, so a stage 3 launch gets past every gate. The coin has no
 // price files, so the run behind the launch ends incomplete, quickly.
-function writeLaunchParent(tag) {
+// WITH AN OPTIONAL STAGE 1 ABOVE IT (3.186.0), because where a chain took its
+// units from is written on the stage 1 alone and every reader of it walks up.
+// Left out, the stage 2 has no parent at all -- which is a chain that took its
+// units from the boxes, and reads as `none`.
+function writeLaunchParent(tag, source = null) {
   const { stampManifest } = require('../lib/manifest');
   const pid = `s2-test-${Date.now().toString(36)}-${tag}`;
   const universe = ['ZZZTESTUSDT'];
   fs.mkdirSync(SETS_DIR, { recursive: true });
+  let root = null;
+  if (source) {
+    root = `s1-test-${Date.now().toString(36)}-${tag}`;
+    fs.writeFileSync(path.join(SETS_DIR, `${root}.json`), JSON.stringify({
+      id: root, stage: 1, seq: 999983, name: `S1 #${tag}`, status: 'done', createdAt: new Date().toISOString(),
+      params: { universe, coinsSource: source, nullN: 3 }, plan: { units: 1 },
+    }));
+  }
   fs.writeFileSync(path.join(SETS_DIR, `${pid}.json`), JSON.stringify({
     id: pid, stage: 2, seq: 999984, name: `S2 #${tag}`, status: 'done', createdAt: new Date().toISOString(),
     engineVersion: require('../package.json').version, measurements: require('../lib/features').MEASUREMENTS_VERSION,
+    parent: root ? { id: root, name: `S1 #${tag}` } : undefined,
     params: { universe, allLoaded: true, windowLayout: 'reserve61', startMonth: '2024-01', endMonth: '2024-03', nullN: 3 },
     dataManifest: stampManifest(pid, universe), plan: { units: 1 },
   }));
@@ -48,10 +61,22 @@ async function untilEnded(id, ms = 30000) {
   if (tally) await tally.catch(() => {});
   return stages.getSet(id);
 }
-// the parent, every set that names it as parent (a launch that threw after
-// starting its run leaves one this test never learned the id of), and the
-// price-file records of each
+// the parent, the stage 1 above it when there is one, every set that names it
+// as parent (a launch that threw after starting its run leaves one this test
+// never learned the id of), and the price-file records of each
+// ONE FIXTURE SET AND EVERYTHING IT WROTE. A leftover set in data/stagesets is
+// how phantom failures get into other files, so a test that writes one takes it
+// away in a finally, whichever way it ends.
+function rmSet(id) {
+  try { fs.rmSync(path.join(SETS_DIR, `${id}.json`), { force: true }); } catch (_) { /* fixture */ }
+  try { fs.rmSync(path.join(SETS_DIR, `${id}-tally.json.gz`), { force: true }); } catch (_) { /* fixture */ }
+  try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+}
 function cleanLaunchParent(pid) {
+  try {
+    const up = JSON.parse(fs.readFileSync(path.join(SETS_DIR, `${pid}.json`), 'utf8'));
+    if (up && up.parent && up.parent.id) { try { fs.unlinkSync(path.join(SETS_DIR, `${up.parent.id}.json`)); } catch (_) { /* gone */ } }
+  } catch (_) { /* the parent is already gone */ }
   const { MANIFEST_DIR } = require('../lib/manifest');
   const kids = stages.listSets().filter((x) => ((x.parent || {}).id === pid || (x.params || {}).from === pid)).map((x) => x.id);
   for (const id of [pid, ...kids]) {
@@ -724,8 +749,14 @@ module.exports = {
       assert.strictEqual(stages.stage3Declared({ ...LAUNCH_BLOCK, from: pid }).confirmWanted, false, 'off asks for nothing');
       let refused = null;
       try { stages.startStage3({ ...LAUNCH_BLOCK, from: pid, confirm: 'sized' }); } catch (err) { refused = err.message; }
-      assert.ok(refused && /none of the units this run prices is among the coins and shapes that pass on Coins, so confirm would change nothing/.test(refused),
+      // RE-AIMED 3.186.0 (owner order): the lean is read off the list the CHAIN
+      // took its units from, so the refusal has to say WHICH list -- and this
+      // chain read neither, which no amount of ticking on Coins can fix. A
+      // sentence that sent the owner off to tick rows would be worse than none.
+      assert.ok(refused && /this record set was not built from anything ticked on Coins/.test(refused)
+        && /price a record set built from Candidates for Sweep/.test(refused),
         `expected the refusal in words, got: ${refused || 'a launch'}`);
+      assert.ok(!/pick a parent whose units pass/.test(refused), 'it still tells the owner to go and tick rows this chain will never read');
       assert.strictEqual(stages.listSets().filter((x) => (x.params || {}).from === pid).length, 0, 'nothing was written');
       // permuted, the same: the block asked for the lean
       refused = null;
@@ -738,6 +769,225 @@ module.exports = {
         ['off', false, 2, 1, {}], 'the set says what it used');
       await untilEnded(got.id);
     } finally { cleanLaunchParent(pid); }
+  },
+
+  // EVERY UNIT'S COMMITTEE IS ON SCREEN, MEMBER BY MEMBER (3.186.0, owner
+  // order: "the extra member details on screen"). RULE ELEVEN clause 3 -- if
+  // it is stored, show it. Each of these numbers was already being written on
+  // the record and none of it could be seen.
+  //
+  // Read through a record written exactly as stage 1 writes one, so the reader
+  // is held to the shape on disk and not to a shape convenient to the test.
+  theCommitteeOfOneUnitIsReadableMemberByMember() {
+    const id = `s1-test-${Date.now().toString(36)}-mem`;
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(path.join(SETS_DIR, `${id}.json`), JSON.stringify({
+        id, stage: 1, seq: 999981, name: 'S1 #mem', status: 'done', createdAt: new Date().toISOString(),
+        params: {}, plan: { units: 1 },
+      }));
+      const w = rowstore.writer(id, 'records');
+      w.push({
+        u: 0, trade: 'LTCUSDT', ctx1: null, ctx2: null, size: 1, geometry: 'daily-3d', bandPct: 2.5,
+        specs: [{ model: 'logreg', view: 'full', from: 'own' }, { model: 'boost', view: 'prices', from: 'own' },
+          { model: 'logreg', view: 'extra0', from: 'extra0', at: 0 }],
+        extras: [{ lookbackHours: 720, bandPct: 90, from: { set: 'W-4', name: 'test-walk-4', key: 'k' } }],
+        extraBandPcts: [4.2], tooEarly: 6,
+        perMember: [{ from: 'own', score: 55.1, beat: 9, deals: 10, lead: 2.2, spoke: 80, chunks: 100, rightWhenSpoke: 44 },
+          { from: 'own', score: 51, beat: 5, deals: 10, lead: 0.3, spoke: 20, chunks: 100, rightWhenSpoke: 12 },
+          { from: 'extra0', score: 58.9, beat: 10, deals: 10, lead: 3.4, spoke: 12, chunks: 100, rightWhenSpoke: 9 }],
+        blocks: {},
+      });
+      w.close();
+      const d = stages.unitMembers(id, 0);
+      // THE COUNT IS THE LIST'S LENGTH, never worked out from the combo size
+      assert.deepStrictEqual([d.members, d.nExtras, d.tooEarly, d.scored], [3, 1, 6, true], 'the unit does not say what it holds');
+      assert.deepStrictEqual([d.trade, d.geometry, d.bandPct], ['LTCUSDT', 'daily-3d', 2.5], 'the unit does not name itself');
+      // A MEMBER ADDED FROM A WALK SET IS THE ONE WHOSE SPEC CARRIES A PLACE in
+      // the extras list -- read off the record, never from the member's number
+      assert.deepStrictEqual(d.rows.map((m) => m.at), [null, null, 0], 'which members came from a walk set is worked out, not read');
+      const ex = d.rows[2];
+      assert.deepStrictEqual([ex.lookbackHours, ex.bandPct, ex.fromSet], [720, 4.2, 'test-walk-4'],
+        'the look-back, the band and the walk set a member came from are not all on screen');
+      // THE BAND IS THE ONE IT WAS MARKED AT, which for an extra is the band
+      // the unit RESOLVED, not the percent the walk row carried
+      assert.notStrictEqual(ex.bandPct, 90, 'the extra shows the walk row\'s own percent instead of the band the unit resolved');
+      assert.deepStrictEqual(d.rows.slice(0, 2).map((m) => m.bandPct), [2.5, 2.5], 'a member the unit always had is marked at the unit\'s own band');
+      // EACH MEMBER READ ON ITS OWN, which is what stops a quiet member hiding
+      // inside the pooled number (design section E, and therefore F2)
+      assert.deepStrictEqual(d.rows.map((m) => [m.score, m.beat, m.deals, m.lead]),
+        [[55.1, 9, 10, 2.2], [51, 5, 10, 0.3], [58.9, 10, 10, 3.4]], 'a member\'s own score and its own deals are not on screen');
+      // AND HOW OFTEN IT SPOKE, separately from how it did overall (F3)
+      assert.deepStrictEqual(d.rows.map((m) => [m.spoke, m.chunks, m.rightWhenSpoke]),
+        [[80, 100, 44], [20, 100, 12], [12, 100, 9]], 'how often a member spoke, and how it did when it spoke, are not on screen');
+      assert.strictEqual(stages.unitMembers(id, 7), null, 'a unit number no record carries is answered as though it existed');
+      assert.strictEqual(stages.unitMembers('s1-no-such-set', 0), null, 'a record set that is not there is answered as though it were');
+      // A SET FINISHED BEFORE PER-MEMBER SCORING SAYS SO rather than drawing a
+      // committee of silent members (RULE ELEVEN clause 6)
+      const old = `s1-test-${Date.now().toString(36)}-memold`;
+      fs.writeFileSync(path.join(SETS_DIR, `${old}.json`), JSON.stringify({
+        id: old, stage: 1, seq: 999980, name: 'S1 #memold', status: 'done', createdAt: new Date().toISOString(), params: {}, plan: { units: 1 },
+      }));
+      const w2 = rowstore.writer(old, 'records');
+      w2.push({ u: 0, trade: 'LTCUSDT', ctx1: null, ctx2: null, size: 1, geometry: 'daily-3d', bandPct: 2, specs: [{ model: 'logreg', view: 'full', from: 'own' }], blocks: {} });
+      w2.close();
+      const o = stages.unitMembers(old, 0);
+      assert.deepStrictEqual([o.scored, o.members, o.nExtras], [false, 1, 0], 'a set with no per-member readings does not say so');
+      assert.strictEqual(o.rows[0].spoke, null, 'a reading that was never taken is reported as a number');
+      rmSet(old);
+    } finally { rmSet(id); }
+  },
+
+  // AND THE SCREEN DRAWS IT (3.186.0). The press sits in the cell that already
+  // holds the head count -- the thing it is about (RULE ELEVEN clause 4) -- on
+  // BOTH tables, because a unit has a committee at stage 1 and a bigger one at
+  // stage 2 and the owner reads them on the same screen.
+  theMembersOfAUnitAreOnBoardsOnBothTables() {
+    const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    // the press, in the members cell of each table
+    assert.ok(/<td \$\{btdN\}>\$\{r\.members == null \? '—' : bMembersBtn\('S1', r\.u, r\.members\)\}<\/td>/.test(src), 'stage 1\'s head count does not open the members');
+    assert.ok(/bMembersBtn\('S2', r\.u, `\$\{r\.members\} — \$\{r\.logreg\} LOGREG \+ \$\{r\.boost\} BOOST`\)/.test(src), 'stage 2\'s head count does not open the members');
+    // a place for the panel under each table, and the wiring for each
+    for (const st of ['S1', 'S2']) {
+      assert.ok(src.includes(`<div data-bmempanel="${st}"></div>`), `no place under the ${st} table for the members to appear`);
+      assert.ok(src.includes(`await bWireMembers(doc, mount, '${st}');`), `the ${st} table's press is drawn and never wired`);
+    }
+    // ONE OPEN UNIT PER TABLE, so opening one on stage 1 does not close the one
+    // open on stage 2
+    assert.ok(/const bMemberOpen = \{ S1: null, S2: null \};/.test(src), 'the two tables share which unit is open');
+    // EVERY STORED NUMBER HAS A COLUMN. Named as the tables above already name
+    // them where the same job is being done (RULE ELEVEN clause 5).
+    const panel = src.slice(src.indexOf('function bMembersPanel('), src.indexOf('function bMembersBtn('));
+    for (const col of ['>member</th>', '>kind</th>', '>reads</th>', '>look-back</th>', '>band</th>', '>from</th>',
+      '>forecast score</th>', '>beat its own null set</th>', '>lead over null set</th>', '>spoke</th>', '>right when it spoke</th>']) {
+      assert.ok(panel.includes(col), `the members table has no ${col.replace(/[<>/th]/g, '')} column`);
+    }
+    // and each one is filled from the answer, not left as decoration
+    for (const f of ['m.lookbackHours', 'm.bandPct', 'm.fromSet', 'm.score', 'm.beat', 'm.lead', 'm.spoke', 'm.rightWhenSpoke']) {
+      assert.ok(panel.includes(f), `the ${f} column is drawn and never filled`);
+    }
+    // THE STORED NAME OF WHAT A MEMBER READS IS BESIDE THE PLAIN WORDS, so
+    // nothing about the member is hidden (RULE FIVE) and the owner still has
+    // something they can point at (RULE ONE)
+    assert.ok(/const B_VIEW_WORDS = \{/.test(src) && /pricevol: 'prices and volume'/.test(src), 'what a member reads is shown as a name off no screen');
+    assert.ok(/<span class="muted">\(\$\{esc\(String\(m\.view \|\| ''\)\)\}\)<\/span>/.test(panel), 'the stored name is hidden rather than shown beside the words');
+    // A SET WITH NO READINGS SAYS SO instead of drawing blank columns
+    assert.ok(/d\.scored \? '' :/.test(panel) && /blank because they were never taken/.test(panel),
+      'a set finished before per-member scoring draws a committee of silent members');
+    // and the route the page reads it through
+    const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+    assert.ok(server.includes("app.get('/api/stageset/:id/unit/:u/members'"), 'there is no way for the page to ask for a unit\'s members');
+    assert.ok(/stages\.unitMembers\(req\.params\.id, req\.params\.u\)/.test(server), 'the route does not read the engine\'s own answer');
+  },
+
+  // THE READING COMES FROM THE LIST THIS CHAIN TOOK ITS UNITS FROM, AND FROM
+  // NO OTHER (3.186.0, owner order: "fix the confirmation greying to check the
+  // set's source").
+  //
+  // What was wrong. The lean was read off whatever Coins held at the moment of
+  // the count or the launch, whatever the record set was. Two ways that spent
+  // the owner's money on a fact about a different run:
+  //
+  //   * a set launched with `ignore what is on Coins`, whose coin happened to
+  //     be ticked when start was pressed, priced a reading its training had
+  //     never met;
+  //   * a set launched from a walk set read the OTHER box's reading wherever a
+  //     passer held the same coin and chunk shape, because passerLeans gives
+  //     the passer the key (lib/coinsrun.js) and nothing downstream knew.
+  //
+  // Where a chain took its units from is written on its STAGE 1 and nowhere
+  // else, so it is found by walking up -- checked here through a real chain on
+  // disk, not by handing the function a made-up document.
+  theReadingComesFromTheListTheChainTookItsUnitsFrom() {
+    const coinsrun = require('../lib/coinsrun');
+    const key = 'ZZZTESTUSDT|daily-4d';
+    const PASSER = { band: 40, yardstick: 1, rising: 0.6, falling: -0.4, lookback: 'own', from: { source: 'passer' } };
+    const WALK = { band: 90, yardstick: 1, rising: 0.9, falling: -0.9, lookback: 720, from: { set: 'W-9', name: 'a walk', key: 'k' } };
+    // THE RULE ITSELF, with the two maps in front of it and nothing else in the
+    // way. This is the only way to prove the `walk` case: there the walk's
+    // reading must win on a coin and chunk shape that the passer holds
+    // everywhere else, and no fixture on disk can put the box in that state.
+    assert.strictEqual(coinsrun.pickLeans('passers', { [key]: PASSER }, { [key]: WALK })[key].band, 40, 'passers reads the passer');
+    assert.strictEqual(coinsrun.pickLeans('walk', { [key]: PASSER }, { [key]: WALK })[key].band, 90, 'walk reads the walk row, not the passer that holds the key');
+    assert.strictEqual(coinsrun.pickLeans('both', { [key]: PASSER }, { [key]: WALK })[key].band, 40, 'both is what every set written before the choice priced with');
+    assert.deepStrictEqual(coinsrun.pickLeans('none', { [key]: PASSER }, { [key]: WALK }), {}, 'a run that read no list carries no reading');
+    assert.throws(() => coinsrun.pickLeans('sometimes', {}, {}), /there is no unit source called "sometimes"/, 'a name no screen offers is coerced instead of refused');
+    // AND THE WIRING: the chain's own source reaches the reader, and nothing
+    // else does. Patched at the seam stages.js really calls.
+    const wasL = coinsrun.leansFrom;
+    const asked = [];
+    coinsrun.leansFrom = (src) => { asked.push(src); return src === 'walk' ? { [key]: WALK } : src === 'passers' ? { [key]: PASSER } : src === 'both' ? { [key]: PASSER } : {}; };
+    const ids = [];
+    try {
+      const recs = [{ trade: 'ZZZTESTUSDT', geometry: 'daily-4d' }];
+      assert.strictEqual(stages.confirmLeansFor(recs, 'walk')[key].band, 90, 'the named source does not reach the reader');
+      assert.deepStrictEqual(stages.confirmLeansFor(recs, 'none'), {}, 'a run that read no list carries no reading');
+      // AND THE CHAIN ANSWERS FOR ITSELF, walked from the stage 3's parent up
+      for (const [source, band] of [['passers', 40], ['walk', 90], ['none', null]]) {
+        const pid = writeLaunchParent(`src-${source}`, source === 'none' ? null : source);
+        ids.push(pid);
+        assert.strictEqual(stages.coinsSourceOf(stages.getSet(pid)), source, `a chain whose stage 1 says ${source} is read as something else`);
+        const d = stages.stage3Declared({ ...LAUNCH_BLOCK, from: pid, confirm: 'sized' });
+        assert.strictEqual(d.leanSource, source, 'the count does not tell the screen which list it looked in');
+        assert.strictEqual(d.leanUnits, band == null ? 0 : 1, `the count read the wrong number of units carrying a reading under ${source}`);
+      }
+      // a set written BEFORE the choice existed, launched from Coins: 'both'
+      const old = writeLaunchParent('src-old', null);
+      ids.push(old);
+      const root = JSON.parse(fs.readFileSync(path.join(SETS_DIR, `${old}.json`), 'utf8'));
+      const rid = `s1-test-${Date.now().toString(36)}-old`;
+      fs.writeFileSync(path.join(SETS_DIR, `${rid}.json`), JSON.stringify({
+        id: rid, stage: 1, seq: 999982, name: 'S1 #old', status: 'done', createdAt: new Date().toISOString(),
+        params: { universe: ['ZZZTESTUSDT'], passers: [{ coin: 'ZZZTESTUSDT', geometry: 'daily-4d' }], nullN: 3 }, plan: { units: 1 },
+      }));
+      root.parent = { id: rid, name: 'S1 #old' };
+      fs.writeFileSync(path.join(SETS_DIR, `${old}.json`), JSON.stringify(root));
+      assert.strictEqual(stages.coinsSourceOf(stages.getSet(old)), 'both', 'a set launched from Coins before the choice existed read both lists');
+      // AND A STAGE 1 THAT EXISTS AND NAMES NEITHER reads as none, not both.
+      // This is the commonest chain on the box -- every set launched from the
+      // boxes on Sweep -- and reading it as 'both' would price a lean it never
+      // met. Separate from the case above, where there is no stage 1 at all.
+      const bare = writeLaunchParent('src-bare', null);
+      ids.push(bare);
+      const bDoc = JSON.parse(fs.readFileSync(path.join(SETS_DIR, `${bare}.json`), 'utf8'));
+      const bid = `s1-test-${Date.now().toString(36)}-bare`;
+      fs.writeFileSync(path.join(SETS_DIR, `${bid}.json`), JSON.stringify({
+        id: bid, stage: 1, seq: 999979, name: 'S1 #bare', status: 'done', createdAt: new Date().toISOString(),
+        params: { universe: ['ZZZTESTUSDT'], nullN: 3 }, plan: { units: 1 },
+      }));
+      bDoc.parent = { id: bid, name: 'S1 #bare' };
+      fs.writeFileSync(path.join(SETS_DIR, `${bare}.json`), JSON.stringify(bDoc));
+      assert.strictEqual(stages.coinsSourceOf(stages.getSet(bare)), 'none',
+        'a stage 1 that took its units from the boxes is read as one that read a list off Coins');
+      assert.deepStrictEqual(stages.stage3Declared({ ...LAUNCH_BLOCK, from: bare, confirm: 'sized' }).leanUnits, 0,
+        'a chain built from the boxes still finds a reading to price');
+      assert.deepStrictEqual(asked, ['walk', 'none', 'passers', 'walk', 'none', 'none'],
+        'the count asked a list the chain did not name, or failed to ask the one it did');
+    } finally {
+      coinsrun.leansFrom = wasL;
+      for (const id of ids) cleanLaunchParent(id);
+    }
+  },
+
+  // AND THE SCREEN SAYS WHY IT IS GREYED, in three different sentences
+  // (3.186.0). "Greyed" on its own sends the owner to tick rows that a chain
+  // built from the boxes will never read, which is RULE ELEVEN clause 6: a
+  // message that papers over a shortfall instead of naming it.
+  theGreyedConfirmationSaysWhichListItLookedIn() {
+    const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    assert.ok(/swSayWhyNoConfirm\(noLean \? got\.leanSource : null\);/.test(src), 'the reason is not said beside the greying');
+    assert.ok(/<p class="note warn" id="swWhyConfirm"/.test(src), 'there is nowhere on the screen for the reason to appear');
+    const words = src.slice(src.indexOf('const SW_NO_CONFIRM = {'), src.indexOf('function swSayWhyNoConfirm('));
+    for (const k of ['none:', 'passers:', 'walk:', 'both:']) assert.ok(words.includes(k), `no sentence for ${k}`);
+    // the one that cannot be fixed by ticking says so, and does not send them off to tick
+    const none = words.slice(words.indexOf('none:'), words.indexOf('passers:'));
+    assert.ok(/Ticking rows on Coins will not change that/.test(none), 'the one reason a tick cannot fix does not say so');
+    // each of the other two names the box it looked in, as Coins draws it
+    assert.ok(/ticked under coins and shapes that pass on Coins/.test(words) && /ticked from a walk set on Coins/.test(words),
+      'the two that name a box do not name it as Coins draws it');
+    // and the service hands the screen the answer it needs to choose between them
+    const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+    assert.ok(/leanSource: d\.leanSource \|\| null/.test(server), 'the count route does not hand the screen which list it looked in');
   },
 
   // THE TALLY CARRIES THE LEAN AND THE VERDICT (3.130.0): per setting, from
