@@ -9914,19 +9914,21 @@ async function drawCoins() {
   </div>
   <div class="panel">
     <h3 style="margin-top:0">How each coin reads</h3>
-    <p class="note">A picture of each coin's history, one bar per chunk shape, to judge whether the coin is apt for
-      dual member voting or better left on the traditional single member set voting. <b>One coloured unit is one
-      decision</b>, the same rows Sweep trains on: <span class="cr">green</span> where price rose across that
+    <p class="note warn"><b>LOOK ONLY. Everything in this section changes the colours of the bars below and nothing
+      else.</b> No reading is taken, no record is written, and neither box here reaches Sweep, Walk it forward or
+      Candidates for Sweep.</p>
+    <p class="note">A picture of each coin's history, one bar per chunk shape. <b>One coloured unit is one
+      decision</b>: <span class="cr">green</span> where price rose across that
       decision's own window, <span class="cf">red</span> where it fell, <span class="cs">black</span> where it moved
       too little either way and would sit out. Above each bar, ${esc(cLayoutLabel(layouts[0]))}: train, test, held.
       Below it, ${esc(cLayoutLabel(layouts[1]))}: train, test, held, reserve. <b>Nothing here refuses a coin.</b></p>
     <p class="note"><b>The sit-out band is one number for every coin, read on each coin's own scale.</b> It is a share
       of that coin's median window move for the shape: at 50, a decision sits out when it moved less than half what
-      the coin typically moves over that window. Change it and every bar recolours; nothing is read again. Sweep
-      trains with this same number.</p>
+      the coin typically moves over that window. Change it and every bar recolours; nothing is read again and nothing
+      else on the box changes. Sweep has its own band % (or auto); Walk it forward has bands to try.</p>
     <div class="row" style="align-items:flex-end">
-      <label class="f" title="how small a window move counts as sit out, as a percentage of the coin's median window move for that shape. One number for every coin, read on each coin's own scale. Change it and every bar recolours at once; nothing is read again. Sweep trains with this same number.">sit-out band, % of the median window move<input id="cBand" type="number" min="0" step="1" value="${esc(String(band.value))}" style="width:6rem"></label>
-      <label class="c" title="ticked, every coin and shape is drawn at its own sweet spot: the band inside its plateau that keeps the most edge per decision. Where no band beats chance for three steps together the typed band applies, and the bar's heading says which. Unticked, the typed band applies everywhere. Nothing is read again either way."><input id="cAuto" type="checkbox"${band.auto ? ' checked' : ''}> each shape at its own sweet spot</label>
+      <label class="f" title="how small a window move counts as sit out, as a percentage of the coin's median window move for that shape. One number for every coin, read on each coin's own scale. It recolours the bars below and does nothing else: nothing is read again, no record changes, and neither Sweep nor Walk it forward reads it. Sweep has its own band % (or auto); Walk it forward has bands to try.">sit-out band, % of the median window move<input id="cBand" type="number" min="0" step="1" value="${esc(String(band.value))}" style="width:6rem"></label>
+      <label class="c" title="ticked, every coin and shape is drawn at its own sweet spot: the band inside its plateau that keeps the most edge per decision. Where no band beats chance for three steps together the typed band applies, and the bar's heading says which. Unticked, the typed band applies everywhere. This only changes which band the bars below are drawn at: nothing is read again either way, and nothing outside this section reads it."><input id="cAuto" type="checkbox"${band.auto ? ' checked' : ''}> each shape at its own sweet spot</label>
     </div>
   </div>
   <div class="cbarwrap">
