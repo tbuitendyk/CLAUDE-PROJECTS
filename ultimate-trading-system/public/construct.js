@@ -731,7 +731,14 @@ const sweepControls = () => Array.from(document.querySelectorAll('#view [id^="sw
   .filter((e) => e.tagName === 'INPUT' || e.tagName === 'SELECT' || e.tagName === 'TEXTAREA');
 function rememberSweepForm() {
   const o = {};
-  for (const e of sweepControls()) o[e.id] = e.type === 'checkbox' ? e.checked : e.value;
+  // A RADIO IS KEYED BY ITS GROUP, NOT BY ITS OWN id (3.185.0). Its `.value` is
+  // a fixed attribute, so the plain rule below saved the same string under
+  // three different ids and restored the checked state of none of them. The
+  // group's name is not any element's id, so it cannot collide.
+  for (const e of sweepControls()) {
+    if (e.type === 'radio') { if (e.checked) o[e.name] = e.value; continue; }
+    o[e.id] = e.type === 'checkbox' ? e.checked : e.value;
+  }
   try { localStorage.setItem(SWEEP_FORM_KEY, JSON.stringify(o)); } catch (_) { /* private window */ }
 }
 function restoreSweepForm() {
@@ -739,6 +746,10 @@ function restoreSweepForm() {
   try { o = JSON.parse(localStorage.getItem(SWEEP_FORM_KEY) || 'null'); } catch (_) { o = null; }
   if (!o || typeof o !== 'object') return false;
   for (const e of sweepControls()) {
+    if (e.type === 'radio') {
+      if (Object.prototype.hasOwnProperty.call(o, e.name)) e.checked = o[e.name] === e.value;
+      continue;
+    }
     if (!Object.prototype.hasOwnProperty.call(o, e.id)) continue;
     if (e.type === 'checkbox') e.checked = !!o[e.id];
     else e.value = o[e.id] == null ? '' : String(o[e.id]);
@@ -1157,8 +1168,21 @@ function swProvenance() {
     // compared as a box of its own, and when both sides have it on, the pairs
     // ticked on Coins now are held up to the pairs the set recorded; the two
     // greyed boxes are left out of the reading for such a set.
-    const tickBox = c('#swPassers');
+    // 3.185.0: the tick became a choice of three, so the comparison is between
+    // NAMES and not between on and off. A set recorded before this has no
+    // coinsSource of its own; it read both lists, which is what 'both' says,
+    // and it is only ever compared against a set that HAS pairs -- so reading
+    // it that way says what happened rather than guessing.
+    const wantSource = swSourceNow();
     const setPairs = Array.isArray(p.passers) && p.passers.length ? p.passers : null;
+    const setSource = p.coinsSource || (setPairs ? 'both' : 'none');
+    const sourceWords = {
+      none: 'ignore what is on Coins',
+      passers: 'what is ticked under coins and shapes that pass',
+      walk: 'what is ticked from a walk set',
+      both: 'both lists, under the tick this screen used to carry',
+    };
+    const tickBox = wantSource !== 'none';
     const geoWord = (g) => { const hit = ((VOCAB && VOCAB.geometry) || []).find((o) => o.value === g); return hit ? hit.label : String(g); };
     const pairWords = (list) => (Array.isArray(list) ? list : []).map((x) => `${x.coin} ${geoWord(x.geometry)}`).sort().join(', ') || 'none';
     const CHECKS = [
@@ -1166,7 +1190,7 @@ function swProvenance() {
       // on Coins" and the list it reads is "Candidates for Sweep" -- which now
       // holds promoted rows as well, so calling it "coins and shapes that pass"
       // named one of its two boxes and left the other out of the sentence.
-      ['only what is ticked on Coins', tickBox ? 'on' : 'off', setPairs ? 'on' : 'off'],
+      ['where this run takes its units from', sourceWords[wantSource] || wantSource, sourceWords[setSource] || setSource],
       ...(tickBox || setPairs
         ? (tickBox && setPairs ? [['Candidates for Sweep', pairWords(swPassersNow), pairWords(setPairs)]] : [])
         : [['trade coins', wantUni.split(',').join(', '), setUni.split(',').join(', ')],
@@ -1354,7 +1378,7 @@ async function swCounts() {
       compare: ($('#swCompare').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
       sizes: { singles: $('#swSingles').checked, doubles: $('#swDoubles').checked, triples: $('#swTriples').checked },
       geometry: $('#swGeom').value, permuteGeometry: $('#swPermGeom').checked,
-      passers: !!($('#swPassers') && $('#swPassers').checked),
+      coinsSource: swSourceNow(),
     };
     if (!body.universe.length) delete body.universe;
     if (!body.compare.length) delete body.compare;
@@ -1597,6 +1621,17 @@ function fillStageForm(doc) {
 let swSetsCache = null;
 let swDefaultCoins = [];   // every coin downloaded, which is what a blank coin box means
 let swPassersNow = [];     // the coins and shapes ticked on Coins now, off the same answer (3.130.3)
+// WHICH OF THE THREE IS CHOSEN (3.185.0). Read from the radios themselves, so
+// there is one answer and the launch, the cost line and the greying cannot
+// disagree about it. Nothing chosen reads as 'none', which is the option that
+// pays no attention to Coins.
+const swSourceNow = () => {
+  for (const id of ['swSourceOff', 'swSourcePass', 'swSourceWalk']) {
+    const el = $(`#${id}`);
+    if (el && el.checked) return el.value;
+  }
+  return 'none';
+};
 // THE HELD-BACK WINDOW ON BOARDS IS BEHIND A TICK (3.131.0, owner order): off
 // on every visit to the tab, never remembered, so every showing is a
 // deliberate press and each press is written on the set as a look. Kept only
@@ -3510,7 +3545,16 @@ async function drawSweep() {
     <div class="row" style="align-items:flex-end">
       <label class="f" title="the coins this run actually buys and sells. Blank means every coin whose prices are downloaded on this box.">trade coins (blank = all ${swDefaultCoins.length} downloaded)<input id="swUni" placeholder="LTCUSDT,XRPUSDT,BCHUSDT" style="width:16rem"></label>
       <span id="swGrpCompare"><label class="f" title="the coins each traded coin is READ AGAINST — context only, never bought or sold. Blank means every coin downloaded on this box, the same as the box beside it, so one coin typed into trade coins with nothing here is that coin against everything. Only doubles and triples read this: singles is a coin on its own price history alone, so with only singles ticked this box is greyed and nothing reads it.">compare coins (blank = all ${swDefaultCoins.length} downloaded)<input id="swCompare" placeholder="BTCUSDT,ETHUSDT,SOLUSDT" style="width:16rem"></label></span>
-      <label class="c" title="run only what is ticked at the top of Coins &mdash; the coins and shapes that pass, AND every row promoted out of a walk set. A promoted row carries a look-back and a band of its own, so what is ticked there is more than a coin and a chunk shape. With it on, trade coins, chunk shape and permute are greyed: the run's units are those pairs, each at its own shape. Compare coins still applies to doubles and triples."><input type="checkbox" id="swPassers"> only what is ticked on Coins</label>
+      <span class="muted">where this run takes its units from</span>
+    </div>
+    <div class="row">
+      <label class="c" title="take the units from the boxes on this screen — trade coins, chunk shape and permute — and pay no attention to what is ticked at the top of Coins."><input type="radio" name="swSource" id="swSourceOff" value="none"> ignore what is on Coins</label>
+    </div>
+    <div class="row">
+      <label class="c" title="run only the rows ticked under coins and shapes that pass, at the top of Coins. Each is a coin and a chunk shape a reading liked. Trade coins, chunk shape and permute are greyed: the run's units are those pairs, each at its own shape. Compare coins still applies to doubles and triples."><input type="radio" name="swSource" id="swSourcePass" value="passers"> what is ticked under coins and shapes that pass</label>
+    </div>
+    <div class="row">
+      <label class="c" title="run only the rows ticked from a walk set, at the top of Coins. A promoted row carries a look-back and a band of its own, and THAT is what this option is for: each one becomes one more member on its unit, trained on the coin's numbers over that look-back and marked at that band. Everything the unit already trains is untouched. Trade coins, chunk shape and permute are greyed."><input type="radio" name="swSource" id="swSourceWalk" value="walk"> what is ticked from a walk set</label>
       <label class="c"><input type="checkbox" id="swSingles" checked> singles</label>
       <label class="c"><input type="checkbox" id="swDoubles"> doubles</label>
       <label class="c"><input type="checkbox" id="swTriples"> triples</label>
@@ -3677,7 +3721,7 @@ async function drawSweep() {
       compare: ($('#swCompare').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
       sizes: { singles: $('#swSingles').checked, doubles: $('#swDoubles').checked, triples: $('#swTriples').checked },
       geometry: $('#swGeom').value, permuteGeometry: $('#swPermGeom').checked,
-      passers: !!($('#swPassers') && $('#swPassers').checked),
+      coinsSource: swSourceNow(),
       windowLayout: $('#swLayout').value, allLoaded: $('#swAllData').checked,
       startMonth: $('#swStart').value || undefined, endMonth: $('#swEnd').value || undefined,
       nullN: Number($('#swNull1').value) || 0, fee: Number($('#swFee1').value) / 100, desc: $('#swDesc1').value,
@@ -3810,14 +3854,17 @@ async function drawSweep() {
   // WITH THE PASSERS' TICK ON, the boxes the pairs replace are greyed: the
   // run's units come from Coins, not from them
   const swPassersGrey = () => {
-    const on = !!($('#swPassers') && $('#swPassers').checked);
+    // greyed on BOTH Coins options and not on 'ignore what is on Coins': in
+    // either of them the run's units are the ticked pairs, each at its own
+    // chunk shape, so the boxes that would name other ones cannot apply.
+    const on = swSourceNow() !== 'none';
     for (const id of ['swUni', 'swGeom', 'swPermGeom']) if ($(`#${id}`)) $(`#${id}`).disabled = on;
   };
   for (const el of sweepControls()) {
     const onChange = () => {
       rememberSweepForm();
       swProvenance();
-      if (el.id === 'swPassers') swPassersGrey();
+      if (el.name === 'swSource') swPassersGrey();
       if (!NO_COUNT.has(el.id)) swCountsSoon();
     };
     el.addEventListener('change', onChange);

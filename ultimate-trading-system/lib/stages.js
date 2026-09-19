@@ -266,6 +266,10 @@ function publicParams(d) {
     // the pairs a launch from the Coins list ran, or null (3.130.3): the
     // stage headings hold such a set up to the tick and to these
     passers: Array.isArray(p.passers) ? p.passers : null,
+    // WHICH SOURCE THE RUN TOOK ITS UNITS FROM (3.185.0). It has to be served
+    // or the screen cannot hold a set up against the boxes, and every set drawn
+    // after the change would read as not matching.
+    coinsSource: p.coinsSource || null,
     trainOn: p.trainOn || null,
     allLoaded: p.allLoaded !== false, startMonth: p.startMonth || null, endMonth: p.endMonth || null,
   };
@@ -643,8 +647,16 @@ function startStage1(params) {
   // `passers: true` reads the ticked pairs off Coins now; a list of pairs (a
   // set relaunched from its own record) is used as given, so the record says
   // what ran and never what Coins happens to say later.
-  const passers = params.passers === true
-    ? require('./coinsrun').passingUnits()
+  // WHICH SOURCE, BY NAME (3.185.0). This was a boolean that meant "both", and
+  // a boolean cannot say which of the two a run wanted. Refused by name rather
+  // than coerced, the way trainOn and windowLayout already are. Absent means
+  // `none`, which is what the screen's first option says.
+  const source = params.coinsSource == null ? 'none' : String(params.coinsSource);
+  if (!Array.isArray(params.passers) && !require('./coinsrun').COINS_SOURCES.includes(source)) {
+    throw new Error(`there is no unit source called ${JSON.stringify(source)} — it is one of ${require('./coinsrun').COINS_SOURCES.join(', ')}`);
+  }
+  const passers = (!Array.isArray(params.passers) && source !== 'none')
+    ? require('./coinsrun').passingUnits(source)
     : Array.isArray(params.passers)
       // A RELAUNCH KEEPS THE EXTRAS (3.184.0). Rebuilding the pairs and keeping
       // only coin and shape would turn a set built from promoted rows into a
@@ -659,7 +671,16 @@ function startStage1(params) {
   // THE REFUSAL QUOTES THE TICK BY ITS LABEL, so it has to be the label the
   // tick carries: "only what is ticked on Coins" (3.172.0). It also names where
   // to go and tick: Candidates for Sweep, at the top of Coins.
-  if (passers && !passers.length) throw new Error('nothing is ticked under Candidates for Sweep on Coins — tick some rows there, or untick "only what is ticked on Coins"');
+  // AND THE REFUSAL NAMES THE SOURCE THAT IS EMPTY (3.185.0). "untick" was the
+  // right word for a tick and is the wrong one for a choice of three, and with
+  // two sources a run has to be told WHICH of them found nothing, because the
+  // owner would otherwise go and look in the wrong list.
+  if (passers && !passers.length) {
+    const where = source === 'walk' ? 'no row is ticked from a walk set'
+      : source === 'passers' ? 'nothing is ticked under coins and shapes that pass'
+        : 'nothing is ticked under Candidates for Sweep';
+    throw new Error(`${where}, at the top of Coins — tick some rows there, or choose "ignore what is on Coins" on this screen`);
+  }
   const universe = passers
     ? [...new Set(passers.map((x) => x.coin))]
     : Array.isArray(params.universe) && params.universe.length
@@ -765,7 +786,7 @@ function startStage1(params) {
     boardNull: { ...BOARD_NULL_NONE },
     // The owner's current campaign name rides on every launch, exactly as it
     // does on the sweeps (owner order, 2026-08-04; carried here 2026-08-27).
-    params: { universe, compare: compareUsed, sizes, geometries, windowLayout, nullN, fee, ...p, passers: passers || null, campaign: require('./campaign').getCampaign() || null },
+    params: { universe, compare: compareUsed, sizes, geometries, windowLayout, nullN, fee, ...p, coinsSource: source, passers: passers || null, campaign: require('./campaign').getCampaign() || null },
     seed: seedOf(id),
     plan: { units: units.length, unitList: units },
     perf: {

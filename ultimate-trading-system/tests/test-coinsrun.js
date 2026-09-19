@@ -113,7 +113,7 @@ module.exports = {
   // has always taken.
   theTickAtTheTopRunsBothListsAndTheScreenSaysSo() {
     const run = fs.readFileSync(path.join(__dirname, '..', 'lib', 'coinsrun.js'), 'utf8');
-    const fn = run.slice(run.indexOf('function passingUnits()'), run.indexOf('function passerLeans()'));
+    const fn = run.slice(run.indexOf('function passingUnits('), run.indexOf('function passerLeans()'));
     assert.ok(/passersCached\(\)\.filter\(\(r\) => r\.ticked\)/.test(fn), 'the passers, as always');
     assert.ok(/require\('\.\/walkset'\)\.promotedUnits\(\)/.test(fn), 'and every ticked promoted row');
     // RE-AIMED 3.184.0: a coin and shape in both lists is still ONE unit, but

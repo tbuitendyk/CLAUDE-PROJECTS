@@ -461,11 +461,25 @@ function passersCached() {
 // from both -- the owner's call: "they become different units" -- and until
 // the lean rides on the unit they fold to the same coin and shape here, which
 // is exactly what unitsForPassers has always taken.
-function passingUnits() {
-  const out = passersCached().filter((r) => r.ticked).map((r) => ({ coin: r.coin, geometry: r.geometry, extras: [] }));
+// WHICH SOURCE A RUN TAKES ITS UNITS FROM (3.185.0, owner order 2026-09-19).
+// Until now these two were always fused and the engine had no way to tell them
+// apart. They answer different questions: the ticked rows of `coins and shapes
+// that pass` are coins a reading liked, and a row promoted out of a walk set is
+// a coin AND a setting the walk found, which is what becomes an extra member.
+//   'passers' - only what is ticked under coins and shapes that pass
+//   'walk'    - only what is ticked from a walk set
+//   'both'    - the union, which is what the single tick always did
+const COINS_SOURCES = ['none', 'passers', 'walk', 'both'];
+function passingUnits(source = 'both') {
+  if (!COINS_SOURCES.includes(source)) throw new Error(`there is no unit source called ${JSON.stringify(source)}`);
+  if (source === 'none') return [];
+  const out = source === 'walk' ? []
+    : passersCached().filter((r) => r.ticked).map((r) => ({ coin: r.coin, geometry: r.geometry, extras: [] }));
   const at = new Map(out.map((u) => [`${u.coin}|${u.geometry}`, u]));
   let fromWalks = [];
-  try { fromWalks = require('./walkset').promotedUnits(); } catch (_) { fromWalks = []; }
+  if (source !== 'passers') {
+    try { fromWalks = require('./walkset').promotedUnits(); } catch (_) { fromWalks = []; }
+  }
   for (const u of fromWalks) {
     const k = `${u.coin}|${u.geometry}`;
     // THEY MERGE, THEY DO NOT REPLACE (3.184.0). This used to drop a promoted
@@ -1012,7 +1026,7 @@ function coinsWalkStart(opts = {}) {
 module.exports = {
   RECORD_V, DEFAULTS, BAND_KEY, AUTO_KEY, PASS_BAR_KEY, PASS_OFF_KEY, LINK_CUT_TRIALS, layouts, recordFile,
   sitOutBand, setSitOutBand, bandAuto, setBandAuto,
-  passBar, setPassBar, passersOff, setPasserTicked, passingUnits, passersCached, passerLeans,
+  passBar, setPassBar, passersOff, setPasserTicked, passingUnits, COINS_SOURCES, passersCached, passerLeans,
   LOOKBACKS_KEY, lookbacks, setLookbacks,
   readOneCoin, normalise, busyWhy, coinsOwnBusy, removeOlderFilesFor,
   coinsRunStart, coinsRunStatus, coinsRunStop,

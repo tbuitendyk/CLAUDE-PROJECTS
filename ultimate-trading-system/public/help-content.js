@@ -230,10 +230,11 @@ window.HELP = {
     controls: {
       ...CAMPAIGN_PANEL_CONTROLS,
       swUni: { what: 'The coins this run buys and sells. Leave it blank to use all of the ones held; write them separated by commas to narrow it down.' },
-      swPassers: {
-        what: 'Run only the coins and shapes ticked on Coins, in its table of coins and shapes that pass. Each pair is a unit at its own chunk shape, so five pairs across four shapes is one launch of five units.',
-        more: 'With it on, trade coins, chunk shape and permute are greyed: the pairs replace all three. Compare coins still applies to doubles and triples. The pairs are read off Coins at the moment of the launch and written on the set, so the set says what ran even if Coins changes later. With nothing ticked on Coins the launch refuses and says so.',
-      },
+      // WHERE A RUN TAKES ITS UNITS FROM (3.185.0). One tick meaning "both
+      // lists" became three choices, because a boolean cannot say which.
+      swSourceOff: 'take the units from the boxes on this screen \u2014 trade coins, chunk shape and permute \u2014 and pay no attention to what is ticked at the top of Coins. This is the plain sweep, and it is what every run did before Coins had a list to tick.',
+      swSourcePass: 'run only the rows ticked under coins and shapes that pass, at the top of Coins. Each is a coin and a chunk shape that a reading liked. The run\u2019s units are those pairs, each at its own shape, so trade coins, chunk shape and permute are greyed \u2014 they would name other ones. Compare coins still applies, because a pair can still be read alongside other coins as a double or a triple.',
+      swSourceWalk: 'run only the rows ticked from a walk set, at the top of Coins. This is the one that uses what the walk found: a promoted row carries a look-back and a band of its own, and each one becomes ONE MORE MEMBER on its unit \u2014 trained on that coin\u2019s numbers measured over that look-back, and marked at that band. Everything the unit already trains is untouched; the extra member is added beside it. Two ticked rows on one coin and chunk shape are one unit with two extra members. A row whose look-back is the chunk shape\u2019s own span adds none, because the members already read exactly those numbers.',
       swCompare: {
         what: 'The coins each traded coin is READ AGAINST. They are context only \u2014 never bought, never sold. Left blank they are every coin downloaded on this box, the same as the box beside it, so one coin in trade coins and nothing here is that coin against everything.',
         more: 'Only doubles and triples read it. A single is a coin on its own price history alone, so with only singles ticked this box is greyed and nothing anywhere reads what is in it. It exists so one coin can be read against a whole field: with one list, asking for triples on a single coin gave nothing at all, because a triple reads a coin against two OTHERS and a list of one holds no others. A coin appearing in both lists is never read against itself. Doubles need one other coin, triples need two.',
