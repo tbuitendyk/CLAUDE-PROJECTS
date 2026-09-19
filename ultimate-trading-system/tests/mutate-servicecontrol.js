@@ -1513,8 +1513,8 @@ const GUARDS = [
     'theSplitReadingPromotesTheWholeHistoryPickOfEveryRowShown', 'a pair the whole history could not choose for is promoted as a row that does not exist'],
   [path.join(ROOT, 'public', 'construct.js'), "const cSplitAddsMember = (p) => p.wholeLookback != null && String(p.wholeLookback) !== 'own';", "const cSplitAddsMember = (p) => true;",
     'theSplitReadingPromotesTheWholeHistoryPickOfEveryRowShown', 'every row is counted as adding a member, so the owner is told a walk finding travels when it does not'],
-  [path.join(ROOT, 'public', 'construct.js'), "  if (!cSplit || !cSplit.setId) return '';", "",
-    'theSplitReadingPromotesTheWholeHistoryPickOfEveryRowShown', 'the press is drawn on a reading of the walk in hand, where it can only fail'],
+  [path.join(ROOT, 'public', 'construct.js'), "  if (!cWalkSt || !cWalkSt.saved || !cWalkSt.saved.id) return '';", "",
+    'theSplitReadingPromotesTheWholeHistoryPickOfEveryRowShown', 'the press is drawn on a walk that has not been saved, where it can only fail'],
   // ---- A SET LISTING READS SET DOCUMENTS ONLY, AND A WALK KEEPS ITS ROWS (3.189.0) ----
   [path.join(ROOT, 'lib', 'stages.js'), "const isSetDocument = (f) => f.endsWith('.json') && !f.slice(0, -'.json'.length).includes('.');", "const isSetDocument = (f) => f.endsWith('.json');",
     'theSetListingReadsSetDocumentsAndNotTheSidecarsBesideThem', 'every listing parses the Funnel\'s sidecar as a set again -- the wedge that timed out every page for hours'],

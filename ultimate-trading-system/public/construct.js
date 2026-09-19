@@ -9795,11 +9795,21 @@ const cSplitAddsMember = (p) => p.wholeLookback != null && String(p.wholeLookbac
 function cSplitPromoteRow(shown) {
   const able = cSplitPromotable(shown);
   if (!able.length) return '';
-  // PROMOTION IS WRITTEN ON A WALK SET, so a reading taken on the walk in hand
-  // has nothing to write to. Drawing the press there would be a control that
-  // could only ever fail (RULE ELEVEN clause 6); it is not drawn at all, and
-  // the way to get one is to let the walk finish, which writes its set.
-  if (!cSplit || !cSplit.setId) return '';
+  // PROMOTION IS WRITTEN ON A WALK SET, so a reading taken on a walk that has
+  // not been saved has nothing to write to. Drawing the press there would be a
+  // control that could only ever fail (RULE ELEVEN clause 6); it is not drawn
+  // at all, and the way to get one is to let the walk finish, which writes it.
+  //
+  // WHICH SET, READ THE WAY THE PRESS ABOVE READS IT (3.190.1). The first
+  // version asked cSplit.setId -- which the reading carries only when it was
+  // asked for by name. Opening a saved set puts it where a fresh walk would be
+  // (lib/coinsrun.js coinsWalkOpen, on purpose, so every control reads it
+  // through one path), and the reading is then taken on the walk in hand and
+  // carries no setId at all. So the press never drew on the one screen it was
+  // built for. Promote the ticked rows has always read cWalkSt.saved.id, which
+  // is right for an opened set AND for a walk that has just sealed its own;
+  // there is no reason for a second answer to the same question.
+  if (!cWalkSt || !cWalkSt.saved || !cWalkSt.saved.id) return '';
   const withMember = able.filter(cSplitAddsMember).length;
   const plain = able.length - withMember;
   return `<div class="row" style="margin-top:.5rem">
@@ -10439,7 +10449,7 @@ function cWalkBind() {
   {
     const b = $('#sPromote');
     const said = $('#sPromoteSaid');
-    const id = (cSplit && cSplit.setId) || null;
+    const id = (cWalkSt && cWalkSt.saved && cWalkSt.saved.id) || null;
     if (b && said) {
       b.onclick = async () => {
         const able = cSplitPromotable(cSplitShown((cSplit && cSplit.pairs) || []));

@@ -1788,7 +1788,18 @@ function theSplitReadingPromotesTheWholeHistoryPickOfEveryRowShown() {
   assert.ok(/add none — their unit runs as a plain one/.test(src), 'the question asked before promoting does not say it');
   // NOT DRAWN WHERE IT COULD ONLY FAIL: promotion is written on a walk set,
   // so a reading of the walk in hand has nothing to write to
-  assert.ok(/if \(!cSplit \|\| !cSplit\.setId\) return '';/.test(src), 'the press is drawn on a reading that has no set to promote onto');
+  // THE SAME ANSWER Promote the ticked rows reads (3.190.1). Asking
+  // cSplit.setId instead hid the press on the one screen it was built for:
+  // opening a saved set puts it where a fresh walk would be, so the reading is
+  // taken on the walk in hand and carries no setId.
+  assert.ok(/if \(!cWalkSt \|\| !cWalkSt\.saved \|\| !cWalkSt\.saved\.id\) return '';/.test(src),
+    'the press asks a different question from the one beside it about which set is open');
+  assert.ok(/const id = \(cWalkSt && cWalkSt\.saved && cWalkSt\.saved\.id\) \|\| null;/.test(src),
+    'and it promotes onto a set found some other way than the press above it');
+  // comments stripped: the note explaining this fix names the old field, and a
+  // check that cannot tell prose from code would fail on its own explanation
+  assert.ok(!/cSplit\.setId/.test(src.replace(/^\s*\/\/[^\n]*$/gm, '')),
+    'the reading\'s own set id is read again in code, which is the answer that is absent on an opened set');
   // THE SAME DOOR a row ticked by hand goes through, so the two promotions
   // are one promotion
   const wire = src.slice(src.indexOf("const b = $('#sPromote');"), src.indexOf("for (const b of document.querySelectorAll('.cwopen'))"));
