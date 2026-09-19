@@ -9390,7 +9390,7 @@ function cWalkPanel() {
       <span id="wBandOut" class="muted">puts the three boxes above into the list below.</span>
     </div>
     <div class="row" style="align-items:flex-end">
-      <label class="f" title="the sit-out bands this walk tries, comma separated, and the only thing that decides them. Apply fills it from the three boxes above; after that it is yours to edit — leave gaps, add one band on its own, take one out. Every one of them is walked and every one is reported, never only the best.">sit-out bands to try<input${off} id="wBands" value="${esc(String(cState.wBands))}" style="width:56rem"></label>
+      <label class="f" title="the sit-out bands this walk tries, comma separated, and the only thing that decides them. Apply fills it from the three boxes above; after that it is yours to edit — leave gaps, add one band on its own, take one out. Every one of them is walked and every one is reported, never only the best.">sit-out bands to try<input${off} id="wBands" value="${esc(String(cState.wBands))}" style="width:70rem"></label>
       <span class="muted">${String(cState.wBands || '').split(',').filter((x) => x.trim() !== '').length} band(s)</span>
     </div>
     <div class="row" style="align-items:flex-end">
@@ -9762,7 +9762,7 @@ function cPromotedBoxes(sets) {
   const pc3 = (v, d = 3) => (v == null ? '—' : `${v > 0 ? '+' : ''}${Number(v).toFixed(d)}%`);
   const cls = (v) => (v == null ? 'muted' : (v > 0 ? 'cr' : 'cf'));
   return `${groups.map((g) => `<div class="passbox">
-      <div class="passname">from <b>${esc(g.name)}</b> &mdash; ${g.rows.length} promoted
+      <div class="passname">from <b>${esc(g.name)}</b> &mdash; ${g.rows.length} promoted - selections may feed units into STAGE 1 and 2 ADDITIONAL MEMBER TRAINING
         <span class="muted">${esc(g.id)} · release ${esc(String(g.release || '—'))}</span></div>
       <div class="cwbox"><table class="cgap cpassers"><thead><tr>
         <th></th><th title="the coin">coin</th><th title="the chunk shape">chunk shape</th>
@@ -9808,7 +9808,7 @@ function cPassersBox(pass) {
       A plateau found over one set of bands, graded against deals checked over another, is two measurements read as one &mdash; so they are left out rather
       than counted. Press <b>Read these coins</b> to take the check again on the bands in <b>sit-out bands to sweep</b>: ${pass.behindGrid.slice(0, 12).map((x) => `<b>${esc(x.coin)}</b> ${esc(x.shape)}`).join(', ')}${pass.behindGrid.length > 12 ? ` and ${pass.behindGrid.length - 12} more` : ''}.</p>` : ''}`;
   const box = (inner) => `<div class="passbox">
-    <div class="passname">from <b>Read these coins</b></div>
+    <div class="passname">from <b>Read these coins</b> - selections may feed units into STAGE 1 and 2 and if so feed STAGE 3 CONFIRMATION AWARENESS</div>
     ${head}${inner}</div>`;
   if (!rows.length) return box('<p class="note">no coin and shape passes at this bar</p>');
   return box(`<div class="cwbox"><table class="cgap cpassers"><thead><tr>
@@ -9985,7 +9985,7 @@ async function drawCoins() {
       <span id="cSweepOut" class="muted">puts the three boxes above into the list below. Nothing is swept until the coins are read.</span>
     </div>
     <div class="row" style="align-items:flex-end">
-      <label class="f" title="the sit-out bands this reading sweeps, comma separated, and the only thing that decides it. Apply fills it from the three boxes above; after that it is yours to edit &mdash; leave gaps in it, add one band on its own, take one out. At most ${cSweepNow.most} of them. The best sit-out band a shape comes out with is one of these and can be no other.">sit-out bands to sweep<input id="cSweepBands" value="${esc((cSweepNow.bands || []).join(','))}" style="width:56rem"${off}></label>
+      <label class="f" title="the sit-out bands this reading sweeps, comma separated, and the only thing that decides it. Apply fills it from the three boxes above; after that it is yours to edit &mdash; leave gaps in it, add one band on its own, take one out. At most ${cSweepNow.most} of them. The best sit-out band a shape comes out with is one of these and can be no other.">sit-out bands to sweep<input id="cSweepBands" value="${esc((cSweepNow.bands || []).join(','))}" style="width:70rem"${off}></label>
       <span class="muted"><b>${cSweepNow.count}</b> band(s)</span>
     </div>
     <div class="row">
