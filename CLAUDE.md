@@ -722,6 +722,77 @@ migration's clothes.
   needs to know what happened to those records reads the history; nobody has to
   read a dead branch to find out.
 
+## RULE ELEVEN — the screen is DESIGNED, not accumulated (owner order, 2026-09-19)
+
+**Every control I add is designed against the screen it lands on, before it
+ships.** RULE FOUR says a control is not finished until it lines up. This says
+the rest of it: a control that lines up perfectly and still makes the owner
+guess what it is, or forces them into a shape the software found convenient, is
+not finished either.
+
+The owner's words, after walking me through four faults on one screen in one
+sitting: *"look at this sloppy and irregular design and smarten it up like you
+actually care about the quality of your work"*, and then: *"what I just prompted
+is the EXPECTED quality of screen layout and design going forward."*
+
+### The six
+
+1. **A LABEL NAMES THE THING, NOT THE CATEGORY.** If a screen holds more than
+   one kind of something, no label on it may be the bare category. Coins had
+   `lowest band` and `highest band` on a screen that also had a sit-out band, a
+   sweet spot band and the walk's own bands. They are `lowest sit-out band` and
+   `highest sit-out band`. The owner: *"instead of making the user guess about
+   what 'band' the software is talking about."*
+
+2. **A GENERATOR IS NOT THE SETTING.** Where a control can produce a value,
+   the produced value goes in a box of its own that the owner may then edit,
+   and THAT box is what the system reads. The owner: *"that field becomes the
+   truth of the matter, and how it's constructed with gaps and extras etc. etc.
+   is completely irrelevant."* A from/to/step that IS the setting forces every
+   answer to be a regular range; a from/to/step plus `Apply` plus an editable
+   list forces nothing.
+
+3. **IF IT IS STORED, SHOW IT.** Never make the owner guess at something the
+   system already knows and wrote down. The sweep that produced a shape's best
+   sit-out band was recorded on every reading and the screen said nothing about
+   it. The owner: *"if that's stored, why not be clear and let the user know? is
+   that too much to ask for?"*
+
+4. **GROUP BY WHAT THINGS ARE**, never by the order they were built in. A tick
+   that adds a band belongs beside the band boxes, not stranded past an
+   unrelated field because that is where there was room the day it was added.
+
+5. **THE SAME JOB GETS THE SAME SHAPE ON EVERY SCREEN.** Two screens that both
+   choose a list of sit-out bands choose it the same way. A second convention
+   beside the first is the drift RULE TWO exists to stop, pointed at layout.
+
+6. **NEVER SHIP A MESSAGE THAT PAPERS OVER A SHORTFALL.** *"A look-back not
+   among them is left out of the walk"* was the software telling the owner,
+   politely, that it had declined to do what they asked. The owner: **"IF THE
+   USER SPECIFIES MORE LOOK-BACKS THEN THE CODE DOES THEM."** When a message
+   explains why the system did less than it was asked, the message is not the
+   deliverable — the missing behaviour is. Write the behaviour, or say plainly
+   that it cannot be done and why, and never dress the second up as the first.
+
+### Four of these are COUNTED, because a rule that depends on remembering is
+### not a rule
+
+`tests/test-coinscan.js :: theCoinsScreenIsDesignedAndNotAccumulated` walks the
+source and fails on:
+
+- a control label that is a bare `band` where the screen holds more than one
+  kind (clause 1);
+- an `Apply` that is not alone in its row, or that is not followed by the box
+  it fills (clauses 2 and RULE FOUR-A);
+- the two sit-out band groups carrying different captions (clause 5);
+- a list box too narrow to read a long list back.
+
+**Clauses 3, 4 and 6 are judgement and are not counted.** Pretending otherwise
+would be worse than leaving them out: the check would pass and the screen would
+still be wrong. What they get instead is a rendering — the screen is drawn in a
+browser and READ before it ships, which is how every one of these was actually
+caught, including two that reading the source could not have found.
+
 ## Working style (all sessions)
 
 ### Answer short by default — `/plain` is the standing style, not a request

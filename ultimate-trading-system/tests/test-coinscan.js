@@ -1527,6 +1527,72 @@ function noCoinsTableIsStyledSoWideItNeedsASidewaysBar() {
   assert(bare.length === 0, `every table drawn on Coins carries cgap, so this rule reaches it: ${bare.join(' ')}`);
 }
 
+// THE SCREEN IS DESIGNED, NOT ACCUMULATED (RULE ELEVEN, owner order
+// 2026-09-19: "what I just prompted is the EXPECTED quality of screen layout
+// and design going forward").
+//
+// Four of the six clauses are countable and they are counted here. Three are
+// judgement and are NOT: pretending to count them would be worse than leaving
+// them out, because the check would pass and the screen would still be wrong.
+// Those get a rendering instead -- the screen is drawn in a browser and read
+// before it ships, which is how every one of these was actually caught.
+function theCoinsScreenIsDesignedAndNotAccumulated() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  // every <label> caption on this tab: the text between > and the <input it wraps
+  const caps = [...src.matchAll(/<label class="[fc]"[^>]*>([^<]*)<input([^>]*)>/g)]
+    .map((m) => ({ cap: m[1].replace(/&#39;/g, "'").replace(/&mdash;/g, '—').trim(), attrs: m[2] }))
+    .filter((x) => /id="(c|w)[A-Z]/.test(x.attrs));
+
+  // (1) A LABEL NAMES THE THING, NOT THE CATEGORY. This tab holds a sit-out
+  // band, a sweet spot band and the walk's own bands, so no caption on it may
+  // be a bare `band`.
+  // NAMED EXACTLY, not guessed at with a pattern. The first attempt here read
+  // "ends in the word band" and flagged `lowest sit-out band`, which is the
+  // CORRECT label -- a check that fails the right answer teaches the next
+  // session to weaken it. These are the bare forms that were actually on the
+  // screen and the ones a hurried hand would reach for again.
+  const BARE = ['band', 'bands', 'lowest band', 'highest band', 'low band', 'high band',
+    'bands to try', 'bands to sweep', 'band from', 'band to'];
+  const bare = caps.filter((x) => BARE.includes(x.cap.toLowerCase().replace(/[,:]$/, '')));
+  assert(bare.length === 0,
+    `a caption says only "band" on a screen with more than one kind of band — say which: ${bare.map((x) => JSON.stringify(x.cap)).join(', ')}`);
+
+  // (2) A GENERATOR IS NOT THE SETTING, and (RULE FOUR-A) a button has its own
+  // row. Every Apply on this tab is alone in its row and is followed by the box
+  // it fills.
+  for (const id of ['cSweepApply', 'wBandApply']) {
+    const at = src.indexOf(`id="${id}"`);
+    assert(at > 0, `${id} is on the screen`);
+    const rowStart = src.lastIndexOf('<div class="row"', at);
+    const rowEnd = src.indexOf('</div>', at);
+    const row = src.slice(rowStart, rowEnd);
+    assert(!/<input/.test(row), `${id} shares its row with a field — a button gets a row of its own (RULE FOUR-A): ${row.slice(0, 120)}`);
+    const after = src.slice(rowEnd);
+    const fills = after.indexOf('<input');
+    const nextPanel = after.indexOf('</div>\n  <div class="panel"');
+    assert(fills > 0 && (nextPanel < 0 || fills < nextPanel),
+      `${id} produces a value with no box under it to put it in — a generator is not the setting (RULE ELEVEN clause 2)`);
+  }
+
+  // (5) THE SAME JOB GETS THE SAME SHAPE. Both places that choose sit-out bands
+  // choose them the same way, so the captions match.
+  const trio = (a, b, c) => [a, b, c].map((id) => (caps.find((x) => x.attrs.includes(`id="${id}"`)) || {}).cap);
+  const reading = trio('cSweepFrom', 'cSweepTo', 'cSweepStep');
+  const walk = trio('wBandFrom', 'wBandTo', 'wBandStep');
+  assert.deepStrictEqual(walk, reading,
+    `the reading and the walk both choose sit-out bands and must do it the same way: ${JSON.stringify(reading)} against ${JSON.stringify(walk)}`);
+  assert.deepStrictEqual(reading, ['lowest sit-out band', 'highest sit-out band', 'step'],
+    `and they say which band they mean: ${JSON.stringify(reading)}`);
+
+  // a list box has to be readable back. 36.4rem was the owner's width for the
+  // look-backs (2026-09-17); a list of bands is the same kind of string.
+  for (const id of ['cSweepBands', 'wBands', 'wBacks']) {
+    const m = new RegExp(`id="${id}"[^>]*?style="width:([\\d.]+)rem"`).exec(src);
+    assert(m, `${id} states a width`);
+    assert(Number(m[1]) >= 36.4, `${id} is ${m[1]}rem, too narrow to read a long list back`);
+  }
+}
+
 module.exports = {
   theWindowsStartAfterTheWarmUpAndTheShortTailIsDropped,
   theUsualMoveTrailingSeesOnlyWhatIsBehindIt,
@@ -1548,6 +1614,7 @@ module.exports = {
   theWindowStripIsReadableAndSaysWhatIsMissing,
   theLookBackIsItsOwnAxisAndOnlyWhatTheRecordCarries,
   theLookBacksHaveOneBoxAndItIsOnTheWalk,
+  theCoinsScreenIsDesignedAndNotAccumulated,
   aSlidCopyKeepsEveryOutcomeBesideTheOnesItHappenedBeside,
   aPlantedRelationshipBeatsItsSlidCopiesToo,
   theDealtCopiesAreUnfairOnADriftingCoinAndTheSlidOnesAreNot,
