@@ -1014,11 +1014,29 @@ module.exports = {
     // the Boards list that way once already (RULE ONE-A: a list with holes is
     // worse than no list).
     assert.ok(/function bMembersBtn\(stage, u\) \{/.test(src), 'the press swallows the cell\'s words again');
-    // a place for the panel under each table, and the wiring for each
+    // IT OPENS UNDER THE ROW IT WAS ASKED FROM (3.199.0, owner order: "open up
+    // the members immediately below the record it was hit on without moving the
+    // parent table"). It used to draw into one slot at the very bottom of the
+    // panel, past the table, the paging bar and a paragraph of notes, so
+    // pressing + on the fortieth row put the answer off the screen.
     for (const st of ['S1', 'S2']) {
-      assert.ok(src.includes(`<div data-bmempanel="${st}"></div>`), `no place under the ${st} table for the members to appear`);
+      assert.ok(!src.includes(`<div data-bmempanel="${st}"></div>`), `the ${st} members still open in a slot at the bottom of the panel`);
       assert.ok(src.includes(`await bWireMembers(doc, mount, '${st}');`), `the ${st} table's press is drawn and never wired`);
     }
+    // AND THE TABLE IS NOT REDRAWN TO DO IT: one row is put in after the
+    // record's own row and taken out again on close, so every other row keeps
+    // the DOM node it had and nothing re-renders under the owner.
+    const wire = src.slice(src.indexOf('async function bWireMembers(doc, mount, stage) {'),
+      src.indexOf('async function bDrawStage1('));
+    assert.ok(/const row = btn \? btn\.closest\('tr'\) : null;/.test(wire), 'the panel is not placed against the row it was asked from');
+    assert.ok(/row\.after\(holder\);/.test(wire), 'the panel is not put in straight after that row');
+    assert.ok(/colspan="\$\{row\.children\.length\}"/.test(wire), 'the panel row is not as wide as the table it sits in');
+    assert.ok(/tr\[data-bmemrow="\$\{stage\}"\]/.test(wire), 'the opened row cannot be found again to take it out');
+    assert.ok(!/innerHTML = bMembersPanel/.test(wire) || /holder\.innerHTML/.test(wire),
+      'the panel is written into a slot rather than into its own row');
+    // and closing takes the row out rather than blanking a slot that is gone
+    const shut = src.slice(src.indexOf('function bWireMemberClose(doc, mount, stage) {'), src.indexOf('\n}\n', src.indexOf('function bWireMemberClose(doc, mount, stage) {')));
+    assert.ok(/querySelectorAll\(`tr\[data-bmemrow=/.test(shut), 'Close still blanks a slot instead of removing the row');
     // ONE OPEN UNIT PER TABLE, so opening one on stage 1 does not close the one
     // open on stage 2
     assert.ok(/const bMemberOpen = \{ S1: null, S2: null \};/.test(src), 'the two tables share which unit is open');

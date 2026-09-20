@@ -5161,20 +5161,47 @@ function bMembersBtn(stage, u) {
   const open = bMemberOpen[stage] === u;
   return `<button data-bmem="${stage}:${u}" style="padding:0 .3rem;min-width:1.4rem" title="${open ? 'closes the list of this unit’s members' : 'opens this unit’s members one per row, under the table — what each one reads, what it is marked at, and how each one did on its own'}">${open ? '−' : '+'}</button> `;
 }
+// AND IT OPENS UNDER THE ROW IT WAS ASKED FROM (3.199.0, owner order: "when
+// the + is hit open up the members immediately below the record it was hit on
+// without moving the parent table").
+//
+// It used to draw into one slot at the very bottom of the panel, past the
+// table, the paging bar and a paragraph of notes -- so pressing + on the
+// fortieth row put the answer somewhere off the screen and the owner had to go
+// and find it. The row it belongs to is the row it was asked from.
+//
+// AND THE TABLE IS NOT REDRAWN TO DO IT. A new `tr` is put in after that one
+// row and taken out again on close; every other row keeps the DOM node it had,
+// so nothing re-renders, the scroll does not jump, and the sort, the ticks and
+// the paging stay wired exactly as they were.
 async function bWireMembers(doc, mount, stage) {
   const root = $(mount);
   if (!root) return;
-  const slot = root.querySelector(`[data-bmempanel="${stage}"]`);
-  const paint = async () => {
-    if (!slot) return;
+  const shut = (at) => { at.querySelectorAll(`tr[data-bmemrow="${stage}"]`).forEach((tr) => tr.remove()); };
+  // the panel goes in a row of its own, as wide as the table, straight after
+  // the record's own row
+  const put = (html) => {
+    const at = $(mount);
+    if (!at) return;
+    shut(at);
     const u = bMemberOpen[stage];
-    if (u == null) { slot.innerHTML = ''; return; }
-    slot.innerHTML = '<p class="note">reading this unit’s members…</p>';
-    const d = await apiOr(`api/stageset/${doc.id}/unit/${u}/members`, { error: 'this unit’s members could not be read' });
+    if (u == null) return;
+    const btn = at.querySelector(`[data-bmem="${stage}:${u}"]`);
+    const row = btn ? btn.closest('tr') : null;
+    if (!row) return;
+    const holder = document.createElement('tr');
+    holder.setAttribute('data-bmemrow', stage);
+    holder.innerHTML = `<td colspan="${row.children.length}" style="padding:0">${html}</td>`;
+    row.after(holder);
+  };
+  const paint = async () => {
+    const u = bMemberOpen[stage];
+    if (u == null) { shut(root); return; }
+    put('<p class="note">reading this unit\u2019s members\u2026</p>');
+    const d = await apiOr(`api/stageset/${doc.id}/unit/${u}/members`, { error: 'this unit\u2019s members could not be read' });
     // the owner may have closed it, or opened another, while that was in flight
     if (bMemberOpen[stage] !== u || !$(mount)) return;
-    const again = $(mount).querySelector(`[data-bmempanel="${stage}"]`);
-    if (again) again.innerHTML = bMembersPanel(stage, d);
+    put(bMembersPanel(stage, d));
     bWireMemberClose(doc, mount, stage);
   };
   root.querySelectorAll('[data-bmem]').forEach((btn) => {
@@ -5183,7 +5210,7 @@ async function bWireMembers(doc, mount, stage) {
       bMemberOpen[stage] = bMemberOpen[stage] === u ? null : u;
       root.querySelectorAll('[data-bmem]').forEach((b) => {
         const mine = Number(String(b.dataset.bmem).split(':')[1]);
-        b.textContent = bMemberOpen[stage] === mine ? '−' : '+';
+        b.textContent = bMemberOpen[stage] === mine ? '\u2212' : '+';
       });
       await paint();
     };
@@ -5197,8 +5224,7 @@ function bWireMemberClose(doc, mount, stage) {
   if (!x) return;
   x.onclick = () => {
     bMemberOpen[stage] = null;
-    const slot = root.querySelector(`[data-bmempanel="${stage}"]`);
-    if (slot) slot.innerHTML = '';
+    root.querySelectorAll(`tr[data-bmemrow="${stage}"]`).forEach((tr) => tr.remove());
     root.querySelectorAll('[data-bmem]').forEach((b) => { b.textContent = '+'; });
   };
 }
@@ -5267,7 +5293,6 @@ async function bDrawStage1(doc, incomplete, view, mount) {
       committee is smaller than it looks. The tuning-slice $ columns are the only money before stage 3: each unit's own
       votes priced on the last quarter of its training window, which the fit never saw and the test window is not.
       Test-window money is priced at stage 3 alone.</p>
-    <div data-bmempanel="S1"></div>
   </div>`)) return;
   bWirePager(mount);
   bWireSort(doc, mount);
@@ -5359,7 +5384,6 @@ async function bDrawStage2(doc, incomplete, view, mount) {
       money here: the members' own votes on the last quarter of the training window, stage 1 members alone and every
       member pooled, so what the BOOST members bought in money is visible before any pricing. Test-window money and the
       held-back window belong to stage 3.</p>
-    <div data-bmempanel="S2"></div>
   </div>`)) return;
   bWirePager(mount);
   bWireSort(doc, mount);
