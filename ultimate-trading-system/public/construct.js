@@ -3563,6 +3563,25 @@ async function drawSweep() {
   const swOpt2 = swSetOptions(sets, 2, null);
   swParentShown.set('#swFrom2', swOpt1);
   swParentShown.set('#swFrom3', swOpt2);
+  // EVERY OTHER BOX OF THE RUN IN ONE ROW, UNDER THE THREE CHOICES (owner
+  // order, 2026-09-19). Two faults, one cause. The third choice shared its row
+  // with start and end, which are a caption stacked over a box and so twice the
+  // height of a tick: the row class centres, so that radio floated in the
+  // middle of a taller row and sat further from the one above it than that one
+  // sat from the first. The three now hold ticks alone, are the same height,
+  // and are evenly spaced. And what came out of it is not stranded: it joins
+  // the boxes it belongs with rather than making a row of its own (RULE ELEVEN
+  // clause 4), in front of them and bottom-aligned, because a tick beside a
+  // field always is (RULE FOUR-A). The row class wraps, so the eleven controls
+  // fold onto a second line on a narrow screen rather than pushing a scroll bar
+  // out.
+  //
+  // AND IT IS A JS COMMENT, NOT AN HTML ONE (3.194.1). Written inside the
+  // markup it carried two backticks, and a backtick inside a template literal
+  // ENDS it: everything after the first one was parsed as code, the screen
+  // stopped rendering, and node --check passed because what it left behind was
+  // still valid JavaScript. An explanation of the layout is for whoever reads
+  // this file, never for the browser.
   $('#view').innerHTML = `<div class="panel">
     <h3 style="margin-top:0">Sweep — the three stages, live</h3>
     <p class="note">Each stage writes a record set the next one reads, and every set names its parent. What is
@@ -3594,18 +3613,6 @@ async function drawSweep() {
     <div class="row">
       <label class="c" title="run EXACTLY the same coins and chunk shapes that choice gives, and leave the extra members out — so this run and the one without this tick differ in one thing only, the extra members, and can be read one against the other. Without it the only way to run those units without their extra members is to ignore what is on Coins, which builds a different list of coins and shapes altogether: two runs differing in what was traded AND in how many members voted, where neither difference can be told from the other. Greyed unless one of the two Coins choices is on, because with neither of them there are no extra members to leave out."><input type="checkbox" id="swPlainUnits"> leave the extra members out</label>
     </div>
-    <!-- EVERY OTHER BOX OF THE RUN IN ONE ROW, UNDER THE THREE CHOICES (owner
-         order, 2026-09-19). Two faults, one cause. The third choice shared its
-         row with start and end, which are a caption stacked over a box and so
-         twice the height of a tick: `.row` centres, so that radio floated in
-         the middle of a taller row and sat further from the one above it than
-         that one sat from the first. The three now hold ticks alone, are the
-         same height, and are evenly spaced.
-         And what came out of it is not stranded: it joins the boxes it belongs
-         with rather than making a row of its own (RULE ELEVEN clause 4), in
-         front of them and bottom-aligned, because a tick beside a field always
-         is (RULE FOUR-A). `.row` wraps, so the eleven controls fold onto a
-         second line on a narrow screen rather than pushing a scroll bar out. -->
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <label class="c"><input type="checkbox" id="swSingles" checked> singles</label>
       <label class="c"><input type="checkbox" id="swDoubles"> doubles</label>
