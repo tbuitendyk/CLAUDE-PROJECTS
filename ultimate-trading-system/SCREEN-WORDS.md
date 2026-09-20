@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **c004dcec2739 — what the box is serving**, not from the working tree.
+Generated from **605def34aa58 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -456,7 +456,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 # Sweep
 
-## What the controls are called (104)
+## What the controls are called (105)
 
 - `— each says why:`
 - `— none —`
@@ -521,6 +521,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `one voice at`
 - `or a new name`
 - `permute`
+- `plateau share`
 - `Quorum`
 - `quorum bar`
 - `quorum by`
@@ -672,20 +673,20 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - the filters saved on the parent's table leave
 - units; on the rest its values are one setting)
 - of them hold fewer than the block: a setting that places the same orders on a unit as another is priced there once)
-- members, and the number differs from unit to unit
+- , and the number differs from unit to unit
 - . The boxes below decide when enough of them agree to act,
 
-## Every word, flat (399)
+## Every word, flat (400)
 
 ```
-1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 60h 65h 8-day 89h about above above. act act. active add after again against agree all alongside already and another any are argmax arm as at attaches auto band band. bar be because been being belonging below beside best biggest blank block Boards Boards. BOOST both box boxes breakout but buy by call came Campaign campaign campaigns cannot carried carries carry chain changes. check checked chunk coin coins Coins committee compare confirm Confirmation confirmed conviction count cover crumbs Currently cut daily Daily data day decide decision declared Delete deleted deleted. Deleting deployed. description different differs direction directional doubles downloaded Each each end ends enough entry estimate every Every everything exam exist existing extra falling families fee fees fewer files filters finished first fit. folded for forecast forward freak from gate go going gone good greenlight greenlights Greyed has here history hold holds how ignore in into is it it. its itself judged keep keeps. kept kind kinds known lands landslide last later launched layout lean learning. leave lesson limit line list live Load loaded locked LOGREG make many market may member members minted models money more. most moved name named names never new next nine No no none not nothing now null number of Off off off. on On once one One one. ones. only or orders ordinary other others out own parent parent. pass passes paused per permanently permute places plain price priced prices prices. Progress progress quarter Quorum quorum rank read reading reads record records refuse remove removed Removed rest Retire retrained reused right rising rounds run running runs same SAME saved says scans sealed second Selected sell set Set set. sets sets. setting settings setup setups. shape shapes share side side. single singles size sized small so split spot stage Stage stages start Start started starts static stayed staying still Sweep sweeps sweet tab table taken takes taking teaches than that the The their them them. there These they this This those three ticked times to too took trade Trade trades trail train trained training trains travels tree triples tuning tuning-slice turns unconfirmed under undone. unit units units. until up UTC values View voice voices vote votes voting wake walk was wastes way way. week weekly Weekly weigh weightless were What what when where while whole whose why why. will window with working worth writes wrong yet
+1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 60h 65h 8-day 89h about above above. act act. active add after again against agree all alongside already and another any are argmax arm as at attaches auto band band. bar be because been being belonging below beside best biggest blank block Boards Boards. BOOST both box boxes breakout but buy by call came Campaign campaign campaigns cannot carried carries carry chain changes. check checked chunk coin coins Coins committee compare confirm Confirmation confirmed conviction count cover crumbs Currently cut daily Daily data day decide decision declared Delete deleted deleted. Deleting deployed. description different differs direction directional doubles downloaded Each each end ends enough entry estimate every Every everything exam exist existing extra falling families fee fees fewer files filters finished first fit. folded for forecast forward freak from gate go going gone good greenlight greenlights Greyed has here history hold holds how ignore in into is it it. its itself judged keep keeps. kept kind kinds known lands landslide last later launched layout lean learning. leave lesson limit line list live Load loaded locked LOGREG make many market may member members minted models money more. most moved name named names never new next nine No no none not nothing now null number of Off off off. on On once one One one. ones. only or orders ordinary other others out own parent parent. pass passes paused per permanently permute places plain plateau price priced prices prices. Progress progress quarter Quorum quorum rank read reading reads record records refuse remove removed Removed rest Retire retrained reused right rising rounds run running runs same SAME saved says scans sealed second Selected sell set Set set. sets sets. setting settings setup setups. shape shapes share side side. single singles size sized small so split spot stage Stage stages start Start started starts static stayed staying still Sweep sweeps sweet tab table taken takes taking teaches than that the The their them them. there These they this This those three ticked times to too took trade Trade trades trail train trained training trains travels tree triples tuning tuning-slice turns unconfirmed under undone. unit units units. until up UTC values View voice voices vote votes voting wake walk was wastes way way. week weekly Weekly weigh weightless were What what when where while whole whose why why. will window with working worth writes wrong yet
 ```
 
 ---
 
 # Boards
 
-## What the controls are called (172)
+## What the controls are called (173)
 
 - `— nothing came out of`
 - `— pick a stage`
@@ -697,6 +698,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `\u00d7`
 - `+both`
 - `+hold`
+- `+plateau`
 - `× usual)`
 - `1v`
 - `24/5`
