@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **e58cbea8a75a — what the box is serving**, not from the working tree.
+Generated from **90e633ff01a5 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -90,7 +90,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 # Coins
 
-## What the controls are called (234)
+## What the controls are called (236)
 
 - `-hour window · one decision a`
 - `— press`
@@ -107,11 +107,13 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `(chance is`
 - `(from a sit-out band sweep of`
 - `(its own sweet spot)`
+- `\u00b7`
 - `&#9666; its rows`
 - `&mdash;`
 - `&middot;`
 - `&middot; pooled late money`
 - `% · sit out under ±`
+- `% acted on`
 - `% called`
 - `% round trip`
 - `× chance`
@@ -443,10 +445,10 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - carry a look-back in hours and add a member to their unit
 - · with the link cut, one at least this strong in
 
-## Every word, flat (538)
+## Every word, flat (540)
 
 ```
--hour above Above above. Account across actually add ADDITIONAL after again again. against ahead all All alone also among and another another. answer anything apart. appear Apply are as at At auto auto-apply average AWARENESS away back band bands bands. bar bars be beat beats because been before behind belongs below Below below. best black blank blind both box boxes built-in but by cached call called came Candidates candles cannot carries carry Carry chance Change changes changes. charges check checked Choose choose chooses chooses. choosing chose chosen chunk clear Clear cleared click closes coin coin-and-shape coin. coins Coins colour coloured colours columns comes CONFIRMATION copies cost costs could counted. counts cut day deals deals. decides decision decisions default delete Delete deleted did differ. different disk do does. down downloaded draw drop each Each early early/late edge either else else. empty Empty end. enough Enter entire every Every Everything everything exactly exam exchange fading falling feed fell few fewer fewest figure file files filter filters finish finished finished. first fixed flip for for. forward found four from gap Getting go goes good graded green had half half. halves has have heading headings held held. hellip here hidden higher highest history hold holds hours How how if in in. into is it It it. its Its itself judged just keeps kept knew known landed last late lead leans learned least leave left less line link list listed little log long LOOK look-back look-backs looked lost lowest may mdash mean measurements median MEMBER member middot mixed money month months more most move moved moves much must name named Narrow needs neither never Next No no noise. not Nothing nothing number numbers of off off-then-on often on once one One ONE ones only ONLY. Open opening opens or out out. over own page page. paid pair part pass passed pay per percentile phase pick picked picking picks picture plateau points pooled press Press Prev price priced Promote promoted promotions property put puts random rather ratio reach reaches Read read read. reading reading. readings reads really recolours record recorded. records red refuses release Remove removes Rename reported. reserve. Restart restart restarts. reverting right rising rose round row rows rsquo run runs same Save saw says scale. scrambled scrambles screen screens scroll sealed searched section selections service set sets setting settings Setup shape shape. shapes share should showing shown side signal since sit sit-out sits skill slides slower smaller so So sort sorts span spend spot spread STAGE standing stands start starts stay stays steady step steps still Stop stopped strong swath sweep Sweep Sweep. sweet swept system tab table Take take taken takes taking test th than that the The their them then there there. thereabouts these they thin this This those three Throw tick Tick ticked ticked. time time. to together too top trade trades trailing train TRAINING traits trending tried trip trip. try try. tune two two. typically u2014 under unit units Untick untick until untouched up usual UTC venue view. Walk walk walked want. was was. way well. were what What when where whether which while whole why why. widen will win window window. windows windows. with worked works worst worth would writes written Written wrong yes yet you your
+-hour above Above above. Account across acted actually add ADDITIONAL after again again. against ahead all All alone also among and another another. answer anything apart. appear Apply are as at At auto auto-apply average AWARENESS away back band bands bands. bar bars be beat beats because been before behind belongs below Below below. best black blank blind both box boxes built-in but by cached call called came Candidates candles cannot carries carry Carry chance Change changes changes. charges check checked Choose choose chooses chooses. choosing chose chosen chunk clear Clear cleared click closes coin coin-and-shape coin. coins Coins colour coloured colours columns comes CONFIRMATION copies cost costs could counted. counts cut day deals deals. decides decision decisions default delete Delete deleted did differ. different disk do does. down downloaded draw drop each Each early early/late edge either else else. empty Empty end. enough Enter entire every Every Everything everything exactly exam exchange fading falling feed fell few fewer fewest figure file files filter filters finish finished finished. first fixed flip for for. forward found four from gap Getting go goes good graded green had half half. halves has have heading headings held held. hellip here hidden higher highest history hold holds hours How how if in in. into is it It it. its Its itself judged just keeps kept knew known landed last late lead leans learned least leave left less line link list listed little log long LOOK look-back look-backs looked lost lowest may mdash mean measurements median MEMBER member middot mixed money month months more most move moved moves much must name named Narrow needs neither never Next No no noise. not Nothing nothing number numbers of off off-then-on often on once one One ONE ones only ONLY. Open opening opens or out out. over own page page. paid pair part pass passed pay per percentile phase pick picked picking picks picture plateau points pooled press Press Prev price priced Promote promoted promotions property put puts random rather ratio reach reaches Read read read. reading reading. readings reads really recolours record recorded. records red refuses release Remove removes Rename reported. reserve. Restart restart restarts. reverting right rising rose round row rows rsquo run runs same Save saw says scale. scrambled scrambles screen screens scroll sealed searched section selections service set sets setting settings Setup shape shape. shapes share should showing shown side signal since sit sit-out sits skill slides slower smaller so So sort sorts span spend spot spread STAGE standing stands start starts stay stays steady step steps still Stop stopped strong swath sweep Sweep Sweep. sweet swept system tab table Take take taken takes taking test th than that the The their them then there there. thereabouts these they thin this This those three Throw tick Tick ticked ticked. time time. to together too top trade trades trailing train TRAINING traits trending tried trip trip. try try. tune two two. typically u00b7 u2014 under unit units Untick untick until untouched up usual UTC venue view. Walk walk walked want. was was. way well. were what What when where whether which while whole why why. widen will win window window. windows windows. with worked works worst worth would writes written Written wrong yes yet you your
 ```
 
 ---
