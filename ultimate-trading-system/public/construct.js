@@ -1046,6 +1046,23 @@ async function swProgress() {
 // naming no record set is green.
 function swProvenance() {
   const sets = swSetsCache || [];
+  // ...and the helper lives INSIDE this function on purpose: a test lifts
+  // swProvenance out of the page whole and runs it alone.
+  // WHAT A STAGE SECTION IS SHOWING (3.209.0, owner order: "if that copy
+  // settings button is used on BOTH then they should BOTH be green"). The set
+  // named in the section's own name box, when a set of that stage carries that
+  // name -- Copy settings into the form on Boards puts the name there, so the
+  // section shows the set the owner loaded, however many newer sets exist. With
+  // no such set, blank or a name not yet started, it is the NEWEST set of that
+  // stage on the box, a running one included (3.196.0): the run about to be
+  // started is what the section shows then.
+  function swShownSet(sets, stage, name) {
+    const mine = (sets || []).filter((x) => x && x.stage === stage);
+    const typed = String(name || '').trim();
+    const named = typed ? (mine.find((x) => String(x.name || '').trim() === typed) || null) : null;
+    if (named) return named;
+    return mine.reduce((a, b) => (a && String(a.createdAt || '') >= String(b.createdAt || '') ? a : b), null);
+  }
   const rowOf = (id) => sets.find((x) => x.id === id) || null;
   // A SECTION THAT NAMES NO RECORD SET CLAIMS NOTHING (3.76.3, owner order
   // 2026-09-06: "you've got stage 3 that's got nothing in it green. that's
@@ -1145,9 +1162,8 @@ function swProvenance() {
   // exists from the moment Start stage 1 is pressed, which is when the owner
   // says the provenance goes. Read off the box rather than off this screen's
   // memory, so it survives a reload and says the same thing in every tab.
-  const s1Shown = sets
-    .filter((x) => x.stage === 1)
-    .reduce((a, b) => (a && String(a.createdAt || '') >= String(b.createdAt || '') ? a : b), null);
+  // ...or the set the stage 1 name box names (3.209.0), see swShownSet
+  const s1Shown = swShownSet(sets, 1, v('#swName1'));
   const s1row = rowOf(v('#swFrom2'));
   sayWhy('#swWhy2', null);
   sayWhy('#swWhy3', null);
@@ -1159,12 +1175,12 @@ function swProvenance() {
     // the section above is showing now, and that is what to choose here.
     const made = s1Shown.status === 'done' ? 'has since made' : 'is making';
     paint('#swH2', false, `the stage 1 section above ${made} ${s1Shown.name}, and this box still names ${s1row.name}`,
-      `Choose ${s1Shown.name} here and this goes green again — no box above can undo a newer stage 1 existing.`);
+      `Choose ${s1Shown.name} here and this goes green again — or put ${s1row.name} in the stage 1 name box, which is what Copy settings into the form on Boards does.`);
     sayWhy('#swWhy2', {
       what: 'from stage 1 record set',
       say: `this box names ${s1row.name}, and the stage 1 section above ${made} ${s1Shown.name}. `
         + `A record set built here would come out of ${s1row.name}, which is not what stage 1 is showing any more. `
-        + `Choose ${s1Shown.name} to go green again.`,
+        + `Choose ${s1Shown.name} to go green again, or put ${s1row.name} in the stage 1 name box.`,
     });
   } else {
     const p = s1row.params || {};
@@ -1298,9 +1314,8 @@ function swProvenance() {
   // section above had moved to a set it had never heard of -- the identical
   // hole 3.196.0 closed one section up, and it is closed the same way here
   // because the same job gets the same shape (RULE ELEVEN clause 5).
-  const s2Shown = sets
-    .filter((x) => x.stage === 2)
-    .reduce((a, b) => (a && String(a.createdAt || '') >= String(b.createdAt || '') ? a : b), null);
+  // ...or the set the stage 2 name box names (3.209.0), see swShownSet
+  const s2Shown = swShownSet(sets, 2, v('#swName2'));
   const s3v = v('#swFrom3');
   const cont = s3v.startsWith('continue:') ? s3v.slice('continue:'.length) : null;
   const pausedRow = cont ? rowOf(cont) : null;
@@ -1316,12 +1331,12 @@ function swProvenance() {
     // the thing this whole block exists to avoid.
     const made = s2Shown.status === 'done' ? 'has since made' : 'is making';
     paint('#swH3', false, `the stage 2 section above ${made} ${s2Shown.name}, and this box still names ${s2row.name}`,
-      `Choose ${s2Shown.name} here and this goes green again — no box above can undo a newer stage 2 existing.`);
+      `Choose ${s2Shown.name} here and this goes green again — or put ${s2row.name} in the stage 2 name box, which is what Copy settings into the form on Boards does.`);
     sayWhy('#swWhy3', {
       what: 'from stage 2 record set',
       say: `this box names ${s2row.name}, and the stage 2 section above ${made} ${s2Shown.name}. `
         + `A record set built here would come out of ${s2row.name}, which is not what stage 2 is showing any more. `
-        + `Choose ${s2Shown.name} to go green again.`,
+        + `Choose ${s2Shown.name} to go green again, or put ${s2row.name} in the stage 2 name box.`,
     });
   } else {
     const par = s2row.parent || {};
@@ -1751,17 +1766,24 @@ function fillStageForm(doc) {
     setV('#swNull1', p.nullN ?? 19);
     setV('#swFee1', p.fee != null ? p.fee * 100 : 0.125);
     setV('#swDesc1', doc.desc || '');
+    // AND THE NAME (3.209.0, owner order: "the settings INCLUDING the name
+    // must be loaded"). It is also what tells the stage 1 heading which set
+    // this section is showing, so the stage 2 section copied beside it can
+    // read green -- see swShownSet.
+    setV('#swName1', doc.name || '');
   }
   if (doc.stage === 2) {
     if (doc.parent) setV('#swFrom2', doc.parent.id);
     setV('#swCarry', p.carry ?? 0);
     setV('#swDesc2', doc.desc || '');
+    setV('#swName2', doc.name || '');
   }
   if (doc.stage === 3) {
     if (doc.parent) setV('#swFrom3', doc.parent.id);
     setV('#swCarry3', p.carry ?? 0);
     setV('#swPick3', p.selected != null ? 'selected' : 'count');
     setV('#swDesc3', doc.desc || '');
+    setV('#swName3', doc.name || '');
     setV('#swFee', p.fee != null ? p.fee * 100 : '');
     setV('#swNull3', p.nullN ?? 19);
     setV('#swKeep3', p.keepN ?? 0);

@@ -1550,16 +1550,21 @@ module.exports = {
   // and picks the wrong set.
   theStageTwoHeadingGoesRedWhenANewerStageOneExists() {
     const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
-    const m = /const s1Shown = sets\n([\s\S]*?);\n/.exec(UI);
-    assert.ok(m, 'the stage 1 section no longer works out which set it is showing');
+    // ONE FUNCTION SAYS WHAT A SECTION IS SHOWING (3.209.0), lifted out by its
+    // own text and run, so this cannot pass against words that pick the wrong set
+    const m = /\n  function swShownSet\(sets, stage, name\) \{\n([\s\S]*?)\n  \}\n/.exec(UI);
+    assert.ok(m, 'the page no longer works out which set a stage section is showing');
     // eslint-disable-next-line no-new-func
-    const newest = new Function('sets', `return sets${m[1]};`);
+    const shown = new Function('sets', 'stage', 'name', m[1]);
+    const newest = (sets) => shown(sets, 1, '');
 
     const at = (d) => `2026-09-${d}T00:00:00.000Z`;
     const s1a = { id: 's1-a', stage: 1, name: 'S1 #1', status: 'done', createdAt: at('18') };
     const s1b = { id: 's1-b', stage: 1, name: 'S1 #2', status: 'done', createdAt: at('19') };
     const s1run = { id: 's1-c', stage: 1, name: 'S1 #3', status: 'running', createdAt: at('20') };
     const s2 = { id: 's2-a', stage: 2, name: 'S2 #1', status: 'done', createdAt: at('19') };
+    const s2b = { id: 's2-b', stage: 2, name: 'S2 #2', status: 'done', createdAt: at('20') };
+    const s2run = { id: 's2-c', stage: 2, name: 'S2 #3', status: 'running', createdAt: at('21') };
 
     assert.strictEqual(newest([s1a, s2]).id, 's1-a', 'with one stage 1 set it is the one being shown');
     assert.strictEqual(newest([s1a, s1b, s2]).id, 's1-b', 'a newer stage 1 set is what the section shows');
@@ -1572,10 +1577,30 @@ module.exports = {
     // and a stage 2 set is never mistaken for one
     assert.strictEqual(newest([s2, s1a]).id, 's1-a', 'only stage 1 sets are looked at');
 
+    // THE NAME BOX POINTS (3.209.0, owner order: "if that copy settings button
+    // is used on BOTH then they should BOTH be green"). Copy settings into the
+    // form puts the set's name in the section's name box, and a section whose
+    // name box names a set of its own stage is showing THAT set, however many
+    // newer ones exist. Blank, or a name that is no set yet, falls back to the
+    // newest — the run about to be started.
+    assert.strictEqual(shown([s1a, s1b, s1run], 1, 'S1 #1').id, 's1-a', 'the set named in the name box is what the section shows, newer sets or not');
+    assert.strictEqual(shown([s1a, s1b, s1run], 1, '  S1 #1 ').id, 's1-a', 'the name is read trimmed');
+    assert.strictEqual(shown([s1a, s1b, s1run], 1, 'S1 #9').id, 's1-c', 'a name that is no set yet falls back to the newest');
+    assert.strictEqual(shown([s1a, s2], 1, 'S2 #1').id, 's1-a', "a stage 2 set's name never makes the stage 1 section show it");
+    assert.strictEqual(shown([s2, s2b, s2run], 2, 'S2 #1').id, 's2-a', 'and the stage 2 section reads its own name box the same way');
+    assert.strictEqual(shown([], 1, 'S1 #1'), null, 'with no set at all there is nothing being shown');
+
     // THE HEADING ACTS ON IT, and says how to go green — which is NOT "set the
-    // boxes back": no box above can undo a newer stage 1 existing.
+    // boxes back": the way back is to choose the newer set, or to put the
+    // named set's name in the name box, which is what the copy does.
     const fn = UI.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
     const body = fn.slice(fn.indexOf('function swProvenance() {'), fn.indexOf('\n}\n', fn.indexOf('function swProvenance() {')));
+    assert.ok(/const s1Shown = swShownSet\(sets, 1, v\('#swName1'\)\);/.test(body),
+      'the stage 1 section does not read its own name box to say what it is showing');
+    assert.ok(/const s2Shown = swShownSet\(sets, 2, v\('#swName2'\)\);/.test(body),
+      'the stage 2 section does not read its own name box to say what it is showing');
+    assert.ok(/or put \$\{s1row\.name\} in the stage 1 name box/.test(body) && /or put \$\{s2row\.name\} in the stage 2 name box/.test(body),
+      'the red line does not say that the name box is a way back');
     assert.ok(/else if \(s1Shown && s1Shown\.id !== s1row\.id\) \{/.test(body),
       'the heading does not act on a stage 1 set newer than the one its box names');
     assert.ok(/paint\('#swH2', false,/.test(body) && /Choose \$\{s1Shown\.name\} here and this goes green again/.test(body),
@@ -1590,12 +1615,7 @@ module.exports = {
     // the stage 1 set in the stage 2 box -- make a SECOND stage 2 from that
     // same stage 1 and that answers yes, so stage 3 stayed green while the
     // section above had moved on. The reducer is run here too.
-    const m2 = /const s2Shown = sets\n([\s\S]*?);\n/.exec(UI);
-    assert.ok(m2, 'the stage 2 section no longer works out which set it is showing');
-    // eslint-disable-next-line no-new-func
-    const newest2 = new Function('sets', `return sets${m2[1]};`);
-    const s2b = { id: 's2-b', stage: 2, name: 'S2 #2', status: 'done', createdAt: at('20') };
-    const s2run = { id: 's2-c', stage: 2, name: 'S2 #3', status: 'running', createdAt: at('21') };
+    const newest2 = (sets) => shown(sets, 2, '');
     assert.strictEqual(newest2([s1a, s1b, s2]).id, 's2-a', 'only stage 2 sets are looked at');
     assert.strictEqual(newest2([s2, s2b]).id, 's2-b', 'a newer stage 2 set is what the section shows');
     assert.strictEqual(newest2([s2b, s2, s2run]).id, 's2-c', 'a stage 2 run that has begun is what the section is showing');
@@ -1629,6 +1649,16 @@ module.exports = {
       'the load does not put back whether the run was the control arm');
     for (const call of ['swPassersGrey();', 'swProvenance();', 'swCounts();']) {
       assert.ok(fill.includes(call), `the load does not settle the screen: ${call} is not called after it`);
+    }
+    // AND THE NAME RIDES WITH THE COPY, ON EVERY STAGE (3.209.0, owner order:
+    // "the settings INCLUDING the name must be loaded to the appropriate Sweep
+    // section"). Each stage's block fills its own name box and no other.
+    const blockOf = (n) => fill.slice(fill.indexOf(`doc.stage === ${n}`), n < 3 ? fill.indexOf(`doc.stage === ${n + 1}`) : fill.length);
+    for (const n of [1, 2, 3]) {
+      assert.ok(blockOf(n).includes(`setV('#swName${n}', doc.name || '');`), `a stage ${n} set's copy does not carry its name into the stage ${n} name box`);
+      for (const other of [1, 2, 3].filter((x) => x !== n)) {
+        assert.ok(!blockOf(n).includes(`#swName${other}`), `a stage ${n} set's copy must leave the stage ${other} name box alone`);
+      }
     }
   },
 
