@@ -3791,9 +3791,18 @@ function auditRecordSet(doc) {
       if (checked[r.si]) continue;
       checked[r.si] = 1;
       const agr = require('./stagework').agrOf(r);
+      // THE NAME CARRIES THE t CHOICE AND THE RECORD THE HOURS IT WAS PRICED
+      // AT (3.206.1). A record of a `t own` setting keeps 41 on a daily unit
+      // and 60 on a weekly one, so rewriting the name from the record read
+      // every `t own` block as misnamed. The word stands where the name says
+      // it and the stored hours are exactly the unit's own; anything else is
+      // rewritten from the hours, as before.
+      const ownT = /\bt own\b/.test(String(r.label || '')) && r.geometry && bracketLib.tHoursOn(bracketLib.T_OWN, r.geometry) === r.tHours;
       const should = `${agreeLabel({
         rule: agr.rule, pct: agr.pct, bar: agr.bar, copy: agr.copy, bothModels: agr.both, persist: agr.persist,
-      })} ${shapeLabel(r)} \u00b7 ${r.decision} ${r.bandMode === 'auto' ? 'auto' : `${r.bandMode}%`} ${r.weekdaysOnly ? '24/5' : '24/7'}`;
+        // and the plateau share (3.205.0 named it; 3.206.1 teaches the check)
+        plateau: agr.plateau,
+      })} ${shapeLabel(ownT ? { ...r, tHours: bracketLib.T_OWN } : r)} \u00b7 ${r.decision} ${r.bandMode === 'auto' ? 'auto' : `${r.bandMode}%`} ${r.weekdaysOnly ? '24/5' : '24/7'}`;
       if (should !== r.label) {
         misnamed++;
         note('misnamed', `on disk "${r.label}" — today it would be written "${should}"`);
@@ -4702,7 +4711,15 @@ function s3Payload({ doc, parent, rec, settings, fee, nullN, agreedOnly = false,
   const tau = unitRows(parent.id, 'tau', rec.blocks.tau, rec.u);
   return {
     combo: { trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size },
-    geometry: rec.geometry, params: doc.params, pin: pinOf(doc),
+    // THE UNIT IS REBUILT WITH ITS OWN EXTRAS (3.206.1). Handed the set's
+    // params alone, stage 3 rebuilt every unit's decision moments WITHOUT the
+    // extra members' look-back blocks -- so the earliest moments stage 1 had
+    // dropped, the ones that could not reach back over the longest look-back,
+    // came back, the timestamps disagreed, and the unit was refused rather
+    // than priced on the wrong calendar. Every stage 3 pricing goes through
+    // here: the launch, the fill of missing units, Held, Reserve, History,
+    // Tune and the kept-scramble fill.
+    geometry: rec.geometry, params: (rec.extras || []).length ? { ...doc.params, extras: rec.extras, plateaus: rec.plateaus || [] } : doc.params, pin: pinOf(doc),
     unit: {
       bandPct: rec.bandPct,
       probs: rec.specs.map((_, mi) => votes.map((v) => v.m[mi])),

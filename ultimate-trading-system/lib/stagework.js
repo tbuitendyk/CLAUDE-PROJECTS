@@ -27,6 +27,7 @@ const bracketLib = require('./bracket');
 const {
   buildCombo, splitAndLabel, splitAndLabelPass, splitBounds, quorumCall, declaredQuorumFor,
   reserveChunks,
+  markExtraGates,
 } = require('./bracketwork');
 const agreement = require('./agreement');
 // THE ONE DEFINITION OF A COMMITTEE'S CALL (3.91.0): calls from votes, the
@@ -1265,9 +1266,14 @@ async function tradeMapFor(combo, geometry, params, pin) {
   const { geo, maps } = await unitChunks(combo, geometry, { ...(params || {}), pinnedFiles: pinnedFilesFor(pin) });
   return { geo, maps };
 }
-async function unreadChunksFor(combo, geometry, fromTs) {
+// WITH THE UNIT'S EXTRAS (3.206.1): the blocks are built so a member added
+// from a walk set has its columns to read, and each extra's gate is marked on
+// every chunk from the whole history behind it, exactly as stage 1 marks it,
+// so the forecasts on the unread window can be shut where the gate is shut.
+async function unreadChunksFor(combo, geometry, fromTs, extras = []) {
   const branch = { geometry, decision: 'argmax', band: 'auto', weekdaysOnly: false };
-  const { geo, maps, chunks } = await buildCombo(combo, branch, { allLoaded: true, pinnedFiles: null });
+  const { geo, maps, chunks } = await buildCombo(combo, branch, { allLoaded: true, pinnedFiles: null, extras: Array.isArray(extras) ? extras : [] });
+  if (Array.isArray(extras) && extras.length) markExtraGates(chunks, extras.map((e) => e.bandPct));
   const reachOf = (c) => c.startTs + geo.exitOffsetH * 3600000;
   const mine = chunks.filter((c) => c.startTs >= fromTs);
   let seenToTs = -Infinity;
@@ -1347,7 +1353,7 @@ async function s3UnitTask(task) {
   // unread window too -- the hold slice below is then the reserve window, and the
   // entries it writes down are the reserve window's trades
   if (task.unread) {
-    const got = await unreadChunksFor(combo, geometry, task.unread.fromTs);
+    const got = await unreadChunksFor(combo, geometry, task.unread.fromTs, extras);
     if (got.chunks.length < 2) {
       throw new Error(`the unread window holds ${got.chunks.length} whole chunk(s) from ${new Date(task.unread.fromTs).toISOString().slice(0, 10)} to what the box holds — nothing to grade`);
     }
@@ -1357,7 +1363,13 @@ async function s3UnitTask(task) {
     dealSlice = 's4-unread';
     const forecasts = (unit.members || []).map((m, mi) => {
       if (!m.saved) throw new Error(`member ${mi} carries no saved model, so it cannot forecast the unread window`);
-      return predictMember(m.saved, m.spec, holdChunks, combo, geo, extrasInMembers(unit.members));
+      const f = predictMember(m.saved, m.spec, holdChunks, combo, geo, extrasInMembers(unit.members));
+      // AN EXTRA'S GATE SHUTS ITS FORECASTS HERE TOO (3.206.1), as it shut its
+      // votes on every window the set priced: a member that speaks only when
+      // its look-back move clears its band cannot speak everywhere on the one
+      // window nobody had read.
+      const gate = gateOf(m.spec || {});
+      return gate ? f.map((pr, k) => (gate(holdChunks[k]) ? pr : SAT_OUT.slice())) : f;
     });
     memberProbs = forecasts.map((f, mi) => [...unit.probs[mi].slice(0, testChunks.length), ...f]);
     // hashed from the votes the slice is PRICED on, never from the forecasts

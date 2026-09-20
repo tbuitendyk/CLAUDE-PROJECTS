@@ -302,6 +302,30 @@ module.exports = {
     assert.ok(ui.includes('+plateau${r.plateauPct}%'), 'Boards does not say the plateau share a setting used');
   },
 
+  // A STAGE 3 UNIT IS REBUILT WITH ITS EXTRAS (3.206.1), on every window it is
+  // priced on, and the soundness check rewrites a name the way today's code
+  // writes it. Source-held: the payload is one function every pricing goes
+  // through, and the check reads records off disk.
+  aStageThreeUnitIsRebuiltWithItsExtrasAndTheNameCheckKnowsThePlateauShareAndTheTChoice() {
+    const st = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    const payload = st.slice(st.indexOf('function s3Payload('), st.indexOf('\n}\n', st.indexOf('function s3Payload(')));
+    assert.ok(payload.includes("params: (rec.extras || []).length ? { ...doc.params, extras: rec.extras, plateaus: rec.plateaus || [] } : doc.params,"),
+      'the stage 3 payload hands a unit the set\'s params without its own extras, so its decision moments are rebuilt without the look-back blocks and refused');
+    assert.ok(!/params: doc\.params,/.test(payload), 'a unit without extras is still handed the set\'s params unchanged');
+    const check = st.slice(st.indexOf("note('misnamed'") - 1400, st.indexOf("note('misnamed'"));
+    assert.ok(check.includes('plateau: agr.plateau,'), 'the name check rewrites a name without the plateau share, so every plateau set reads as misnamed');
+    assert.ok(check.includes("const ownT = /\\bt own\\b/.test(String(r.label || '')) && r.geometry && bracketLib.tHoursOn(bracketLib.T_OWN, r.geometry) === r.tHours;")
+      && check.includes('shapeLabel(ownT ? { ...r, tHours: bracketLib.T_OWN } : r)'),
+      'the name check rewrites t own as the hours one unit priced at, so every t own block reads as misnamed');
+    const sw = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
+    assert.ok(sw.includes('async function unreadChunksFor(combo, geometry, fromTs, extras = []) {')
+      && sw.includes("{ allLoaded: true, pinnedFiles: null, extras: Array.isArray(extras) ? extras : [] }")
+      && sw.includes('if (Array.isArray(extras) && extras.length) markExtraGates(chunks, extras.map((e) => e.bandPct));'),
+      'the unread window is built without the extras, so a member added from a walk set has no columns to read there');
+    assert.ok(sw.includes('const got = await unreadChunksFor(combo, geometry, task.unread.fromTs, extras);'), 'the reserve grade does not hand the unit\'s extras to the unread window');
+    assert.ok(sw.includes('return gate ? f.map((pr, k) => (gate(holdChunks[k]) ? pr : SAT_OUT.slice())) : f;'), 'an extra speaks ungated on the unread window');
+  },
+
   // THE STAGE 3 COUNT ROUTE SERVES EVERY FIELD THE SCREEN READS (3.206.0). The
   // same hole theProvenanceCheckIsSentEveryFieldItReads closes for the stage
   // headings: 3.205.0 had the screen ghost the plateau share off a field the
