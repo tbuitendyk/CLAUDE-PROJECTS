@@ -4991,7 +4991,7 @@ function bMembersPanel(stage, d) {
       <button data-bmemclose="${stage}">Close</button>
     </div>
     <p class="note">${d.members} member(s)${d.nExtras ? `, of which ${d.nExtras} came from a walk set` : ', none from a walk set'}${d.bandPct == null ? '' : ` · the unit's own band ${Number(d.bandPct).toFixed(2)}%`}${d.tooEarly ? ` · <b class="warn">${Number(d.tooEarly).toLocaleString()} decision moment(s) dropped</b> because they could not reach back far enough for a member's look-back` : ''}</p>
-    ${d.scored ? '' : '<p class="note warn">This record set was finished before each member was read on its own, so the readings below are blank. They are blank because they were never taken, not because the members said nothing.</p>'}
+    ${d.scored ? '' : '<p class="note warn">This record set carries no reading for each member on its own, so those columns below are blank. They are blank because nothing was stored, not because the members said nothing. Run the stage again and they are there.</p>'}
     <div class="scrollx"><table class="cgap"><thead><tr>
       <th ${th} title="its place in the list of members this unit votes with, in the order the unit was built">member</th>
       <th ${th} title="which of the two ways of working out a forecast this member uses. Both read the same prices; they disagree about how to turn them into a lean, which is why a committee holds some of each.">kind</th>

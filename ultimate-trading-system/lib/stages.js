@@ -1682,6 +1682,11 @@ function startStage2(params) {
         pin: pinOf(doc),
         s1: {
           probs,
+          // AND WHAT EACH OF THOSE MEMBERS IS (3.195.0). Without the specs the
+          // child cannot read a parent member on its own: which answers it was
+          // marked against is spec.at, and an extra member is marked against
+          // different ones from the rest.
+          specs: rec.specs || [],
           // the stage 1 members' votes on the tuning slice, so their money
           // can be read again here and held against the parent's record
           tauProbs: rec.specs.map((_, mi) => (tauRows.find((t) => t.mi === mi) || {}).probs || []),
@@ -1745,6 +1750,17 @@ function startStage2(params) {
           voices: voicesOf(merged.members, merged.ts.test.length),
           voices3: voicesOf(merged.members.slice(0, rec.specs.length), merged.ts.test.length),
           score3: res.score3, scoreAll: res.scoreAll, helped: res.helped,
+          // WHAT THIS UNIT WAS BUILT WITH, on the row itself (3.184.0 at stage
+          // 1; 3.195.0 here). The stage 2 record carried none of these four and
+          // the stage 2 task had been returning three of them the whole time --
+          // so every stage 2 set read as a committee with no extra members and
+          // no member readings at all, which is what the owner saw.
+          extras: (rec.extras || []).length ? rec.extras : null,
+          extraBandPcts: res.extraBandPcts && res.extraBandPcts.length ? res.extraBandPcts : null,
+          tooEarly: res.tooEarly || rec.tooEarly || 0,
+          // AND EACH MEMBER READ ON THE QUESTION IT WAS ASKED, both halves of
+          // the committee, in the same order as specs above.
+          perMember: res.perMember || null,
           // every member's own reading against the parent's null set (3.46.0),
           // no longer the stage 1 numbers copied across
           beat: res.beat, pairs: res.pairs, lead: res.lead, nullScores: res.nullScores,

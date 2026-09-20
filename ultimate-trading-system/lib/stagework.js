@@ -754,7 +754,7 @@ async function s1UnitTask(task) {
 async function s2UnitTask(task) {
   const { combo, geometry, s1, seed, unitKey, nullN, fee } = task;
   const p = { ...task.params, pinnedFiles: pinnedFilesFor(task.pin) };
-  const { geo, maps, split, windows, extras } = await unitChunks(combo, geometry, p);
+  const { geo, maps, split, windows, extras, tooEarly } = await unitChunks(combo, geometry, p);
   const { trainChunks, testChunks, holdChunks } = split;
   // The stage 1 votes must be describing THESE chunks. Refuse a unit whose
   // stored timestamps disagree with the rebuild — a manifest mismatch should
@@ -825,8 +825,36 @@ async function s2UnitTask(task) {
     members: members.map((m) => ({ spec: m.spec, picked: m.picked, saved: m.saved, tauProbs: m.tauProbs, probs: m.probs })),
     score3, scoreAll, helped: scoreAll - score3,
     beat, pairs: nullN, lead: leadOver(scoreAll, nullScores), nullScores,
-    extras, extraBandPcts: split.extraBandPcts,
-    perMember: memberReadings({ members, specs, testChunks, seed, unitKey, nullN, tag: 's2' }),
+    extras, extraBandPcts: split.extraBandPcts, tooEarly: tooEarly || 0,
+    // EVERY MEMBER READ ON ITS OWN, BOTH HALVES (3.195.0, owner order: "the
+    // logreg member votings get stored. the boost member votings get stored.
+    // just identify the problem and do it right").
+    //
+    // This read only the members THIS stage trained -- the BOOST half. The
+    // record's specs are the merged list, the parent's LOGREG half first and
+    // this stage's after it, so a list covering only the second half would have
+    // been read against the first: every BOOST reading shown against a LOGREG
+    // member's name. Wrong numbers, silently, which is worse than the blank
+    // columns that were there before.
+    //
+    // So both halves are read here, in the merged order, against the same test
+    // chunks and each with its own deals. The parent's numbers are NOT copied
+    // across: they were taken at stage 1 against stage 1's deals, and half a
+    // column measured one way beside half measured another is not a column.
+    // That is the same call the record already makes for beat, pairs and lead.
+    //
+    // The parent's probs and specs both ride in on the payload; without the
+    // specs there is no way to know which answers a parent member was marked
+    // against, and an extra member is marked against different ones.
+    perMember: memberReadings({
+      members: [...s1.probs.map((pr) => ({ probs: pr })), ...members],
+      specs: [...(s1.specs || []), ...specs],
+      testChunks,
+      seed,
+      unitKey,
+      nullN,
+      tag: 's2',
+    }),
     tuning3, tuning,
     trainedOn: weightsSaid(p, weights, weightReading),
     windows,

@@ -1025,8 +1025,15 @@ module.exports = {
     assert.ok(/const B_VIEW_WORDS = \{/.test(src) && /pricevol: 'prices and volume'/.test(src), 'what a member reads is shown as a name off no screen');
     assert.ok(/<span class="muted">\(\$\{esc\(String\(m\.view \|\| ''\)\)\}\)<\/span>/.test(panel), 'the stored name is hidden rather than shown beside the words');
     // A SET WITH NO READINGS SAYS SO instead of drawing blank columns
-    assert.ok(/d\.scored \? '' :/.test(panel) && /blank because they were never taken/.test(panel),
-      'a set finished before per-member scoring draws a committee of silent members');
+    // ...AND IT SAYS SOMETHING TRUE (3.195.0). It used to say the set was
+    // finished before each member was read on its own, which was false of every
+    // stage 2 set on the box: the reading WAS taken, and the stage 2 record
+    // writer dropped it. A message that explains a shortfall with the wrong
+    // reason is worse than a blank column (RULE ELEVEN clause 6).
+    assert.ok(/d\.scored \? '' :/.test(panel) && /blank because nothing was stored/.test(panel),
+      'a set with no readings draws a committee of silent members');
+    assert.ok(!/finished before each member was read on its own/.test(panel),
+      'and it still blames a release rather than saying nothing was stored');
     // and the route the page reads it through
     const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
     assert.ok(server.includes("app.get('/api/stageset/:id/unit/:u/members'"), 'there is no way for the page to ask for a unit\'s members');
