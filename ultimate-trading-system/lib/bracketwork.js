@@ -102,15 +102,30 @@ function extraBandsOrRefuse(bands) {
 // `auto` already uses for a unit's own band (balancedBandPct, training chunks
 // only) -- the multiple is declared in advance by the walk and only the scale
 // is measured, so this is not a fitted band.
+// THE THRESHOLD AN EXTRA'S BAND SETS, ON THE MOVE IT IS ACTUALLY ABOUT
+// (3.198.0, owner order: "apply the correct scaling to the decision band and
+// training to match what was walked").
+//
+// The walk's band is a multiple of the coin's typical move OVER THAT
+// LOOK-BACK, and it gates the look-back move: act when the last h hours moved
+// more than that, sit out otherwise. This read the median of the OUTCOME
+// instead -- the chunk's own diffPct -- so a band of 4.90x came out as a
+// threshold on what the price was about to do rather than on what it had just
+// done. Same number, other side of the decision.
+//
+// ONE MEDIAN PER EXTRA, because each reads its own look-back and their typical
+// moves are not the same number: 192 hours travels further than 72.
 function extraBandPctsFor(trainChunks, extraBands) {
   const multiples = extraBandsOrRefuse(extraBands);
   if (!multiples.length) return [];
-  const usual = medianAbsMove((trainChunks || []).map((c) => c.diffPct));
-  if (!(usual > 0)) {
-    throw new Error('this unit\'s training chunks show no typical move at all, so a band given as a multiple of it cannot be worked out — '
-      + 'an extra member cannot be marked here');
-  }
-  return multiples.map((m) => usual * (m / 100));
+  return multiples.map((m, i) => {
+    const usual = medianAbsMove((trainChunks || []).map((c) => (Array.isArray(c.backPct) ? c.backPct[i] : null)));
+    if (!(usual > 0)) {
+      throw new Error(`this unit's training chunks show no typical move at all over extra ${i + 1}'s look-back, so a band `
+        + 'given as a multiple of it cannot be worked out — an extra member cannot be marked here');
+    }
+    return usual * (m / 100);
+  });
 }
 
 // THE COMMITTEE, AS A LIST THE UNIT CARRIES (3.183.0, owner order 2026-09-19:
@@ -124,6 +139,27 @@ function extraBandPctsFor(trainChunks, extraBands) {
 //
 // `from` says which numbers a member reads; a spec without one is a base
 // member, which is how every record written before this reads correctly.
+// WHAT AN EXTRA MEMBER IS ASKED (3.198.0, owner order). The walk's rule is:
+// when the look-back move clears the band, act in the direction the history
+// leans; otherwise sit out. So the extra is asked THE UNIT'S OWN QUESTION --
+// which way will this chunk go -- on the moments the walk would have acted on,
+// and `sit out` on every other one. That is the walk's decision, trained.
+//
+// IT WAS A DIFFERENT QUESTION ENTIRELY BEFORE THIS. The band was applied to the
+// outcome, so the extra was asked "will this chunk move more than 4.90x its
+// usual amount", which on a three-day chunk is a once-in-a-few-hundred event:
+// the member learned to say sit out and spoke once in 441 decisions. The walk
+// placed hundreds of trades on the same row, because a look-back move that big
+// is common enough to trade on. Same number, opposite side of the decision.
+//
+// A LOOK-BACK THAT CANNOT BE READ AT THIS CHUNK IS A SIT OUT, never a guess:
+// there is no move to hold up to the threshold, so the walk would not have
+// acted either.
+const altLabelsFor = (c, thresholds) => thresholds.map((t, i) => {
+  const m = Array.isArray(c.backPct) ? c.backPct[i] : null;
+  return (m != null && Math.abs(m) > t) ? c.label : 0;
+});
+
 const memberSpecs = (model, size, nExtras = 0) => [
   ...slimViewsFor(size).map((view) => ({ model, view, from: 'own' })),
   ...Array.from({ length: Math.max(0, Math.floor(Number(nExtras) || 0)) },
@@ -294,7 +330,7 @@ function splitAndLabel(chunks, branch, holdout, extraBands = []) {
   // test and held alike, which is what the typed band % has always been.
   const extraBandPcts = extraBandPctsFor(trainChunks, extraBands);
   if (extraBandPcts.length) {
-    for (const c of chunks) c.altLabels = extraBandPcts.map((b) => scoreDiff(c.diffPct / 100, b / 100));
+    for (const c of chunks) c.altLabels = altLabelsFor(c, extraBandPcts);
   }
   return { trainChunks, testChunks, holdChunks, bandPct, extraBandPcts };
 }
@@ -336,7 +372,7 @@ function splitAndLabelPass(chunks, branch, nTrain, nJudge, extraBands = []) {
   // test and held alike, which is what the typed band % has always been.
   const extraBandPcts = extraBandPctsFor(trainChunks, extraBands);
   if (extraBandPcts.length) {
-    for (const c of chunks) c.altLabels = extraBandPcts.map((b) => scoreDiff(c.diffPct / 100, b / 100));
+    for (const c of chunks) c.altLabels = altLabelsFor(c, extraBandPcts);
   }
   return { trainChunks, testChunks, holdChunks, bandPct, extraBandPcts };
 }
@@ -346,4 +382,4 @@ function splitAndLabelPass(chunks, branch, nTrain, nJudge, extraBands = []) {
 // test. Nothing can run them; lib/rng.js keeps the one function that outlived
 // their module.)
 
-module.exports = { quorumCall, declaredQuorumFor, slimViewsFor, memberSpecs, extraBandsOrRefuse, extraBandPctsFor, buildCombo, splitAndLabel, splitAndLabelPass, splitBounds, reserveChunks, RESERVE_SHARE };
+module.exports = { quorumCall, declaredQuorumFor, slimViewsFor, memberSpecs, altLabelsFor, extraBandsOrRefuse, extraBandPctsFor, buildCombo, splitAndLabel, splitAndLabelPass, splitBounds, reserveChunks, RESERVE_SHARE };

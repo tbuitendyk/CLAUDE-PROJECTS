@@ -108,6 +108,21 @@ function buildComboChunks(maps, geometry, weekdaysOnly, includeUnlabeled = false
     }
   }
   const back = GEOMETRIES[geometry].featureHours;
+  // AND THE MOVE OVER THAT LOOK-BACK, THE WAY THE WALK MEASURES IT (3.198.0,
+  // owner order: "apply the correct scaling to the decision band and training
+  // to match what was walked").
+  //
+  // The walk's band is a threshold on THIS -- how far price travelled over the
+  // look-back, ending at the decision -- and not on the outcome. It was being
+  // applied to the outcome, which is the other side of the decision entirely,
+  // and turned a filter on when to act into a redefinition of the answer.
+  //
+  // MEASURED BY THE ONE FUNCTION THAT ALREADY DEFINES IT. lib/windowmove.js
+  // windowMoves reads (price at the decision - price h hours before) over that
+  // earlier price, off decisionAt's moment. A second copy of that arithmetic
+  // here is how the two come to disagree, which is the fault this fixes.
+  const { decisionAt } = require('./windowmove');
+  const geoOf = GEOMETRIES[geometry];
   const chunks = [];
   let tooEarly = 0;
   for (const c of built.chunks) {
@@ -119,7 +134,17 @@ function buildComboChunks(maps, geometry, weekdaysOnly, includeUnlabeled = false
       for (const v of feats.spanFeatures(run)) add.push(v);
     }
     if (short) { tooEarly++; continue; }
-    chunks.push({ ...c, x: [...c.x, ...add] });
+    // A LOOK-BACK WITH NO CANDLE BEHIND IT IS NOT MEASURED AND NOT GUESSED --
+    // the same rule windowMoves follows, and for the same reason: reading a
+    // missing price as a move of nought drags the median down and makes the
+    // band too tight for every decision after it.
+    const at = decisionAt(maps.trade, c.startTs, geoOf);
+    const backPct = spans.map((hours) => {
+      if (at.price == null) return null;
+      const b = maps.trade.get(at.ts - hours * HOUR_MS);
+      return b && b.open > 0 ? Number((((at.price - b.open) / b.open) * 100).toFixed(4)) : null;
+    });
+    chunks.push({ ...c, x: [...c.x, ...add], backPct });
   }
   return { chunks, featureCount: built.featureCount + spans.length * PER_ASSET_N, tooEarly };
 }

@@ -1724,8 +1724,19 @@ function startStage2(params) {
           ts: { test: votes.filter((v) => v.w === 0).map((v) => v.ts), hold: votes.filter((v) => v.w === 1).map((v) => v.ts) },
           labels: { test: votes.filter((v) => v.w === 0).map((v) => v.y), hold: votes.filter((v) => v.w === 1).map((v) => v.y) },
           members: [
+            // THE WHOLE SPEC, NOT TWO FIELDS OF IT (3.198.0, owner: "the logreg
+            // ... not so much"). Rebuilt from model and view alone, this threw
+            // away `at` and `from` on every LOGREG member -- so the extra one
+            // came out of stage 2 looking like a base member. Three things went
+            // with it: the screen showed it at the unit's own band with no
+            // look-back and no set it came from; memberReadings picks a
+            // member's answers with specs[mi].at, so it was TRAINED against its
+            // own answers and SCORED against the unit's, which is why it read
+            // 5.6x its own null set while the BOOST half of the same extra read
+            // 0.7x; and a greenlight built from such a set carried at: null
+            // into the live path, where stagesignal reads it to pick the label.
             ...rec.specs.map((spec, mi) => ({
-              spec: { model: spec.model, view: spec.view }, picked: spec.picked,
+              spec, picked: spec.picked,
               saved: (models.find((m) => m.mi === mi) || {}).saved,
               tauProbs: (tau.find((t) => t.mi === mi) || {}).probs || [],
               probs: votes.map((v) => v.m[mi]),
