@@ -817,4 +817,27 @@ module.exports = {
     assert.ok(/out\.textContent = cWalkLine\(\)/.test(src), 'and the poll writes that line');
     assert.ok(/cWalkPoll = setTimeout\(cWalkTick, 1000\)/.test(src), 'once a second while it runs');
   },
+
+  // THE WALK THAT IS RUNNING IS NOT AN UNFINISHED ONE (3.206.2, owner: "the
+  // run is still walking but the message shouldn't post like this").
+  //
+  // A running walk writes its part as it goes, so it is among the parts
+  // without a set from its first row. The status served it as unfinished, and
+  // coming back to the screen mid-walk drew "did not finish" about the walk in
+  // progress. The box leaves the running walk off that list; a walk that
+  // stopped stays on it, because that is what the list is for.
+  theWalkStatusLeavesTheRunningWalkOffTheUnfinishedList() {
+    const cr = require('../lib/coinsrun');
+    const list = [{ id: 'W-5', rows: 302, of: 5670 }, { id: 'W-4', rows: 10, of: 100 }];
+    assert.deepStrictEqual(cr.unfinishedBesidesRunning(list, { running: true, id: 'W-5' }).map((w) => w.id), ['W-4'],
+      'the walk in progress must not be reported as one that did not finish');
+    assert.deepStrictEqual(cr.unfinishedBesidesRunning(list, { running: false, id: 'W-5' }).map((w) => w.id), ['W-5', 'W-4'],
+      'a walk that stopped IS unfinished, and stays on the list');
+    assert.deepStrictEqual(cr.unfinishedBesidesRunning(list, null).map((w) => w.id), ['W-5', 'W-4'],
+      'with nothing running the list is the list');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'coinsrun.js'), 'utf8');
+    const status = src.slice(src.indexOf('function coinsWalkStatus('), src.indexOf('// THE CHOICE, PUT TO THE TEST'));
+    assert.ok(/unfinishedBesidesRunning\(require\('\.\/walkset'\)\.unfinishedWalks\(\), r\)/.test(status),
+      'the running branch of the walk status must leave the walk in progress off the unfinished list');
+  },
 };

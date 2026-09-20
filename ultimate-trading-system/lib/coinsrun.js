@@ -884,6 +884,16 @@ function walkPieces(opts) {
   return { records, sweetSpots: opts.sweetSpot === false ? null : sweetSpots, fixedUpTo };
 }
 
+// THE WALK THAT IS RUNNING IS NOT AN UNFINISHED ONE (3.206.2, owner: "the run
+// is still walking but the message shouldn't post like this"). A running walk
+// writes its part as it goes, so it is among the parts without a set from its
+// first row; served as unfinished, coming back to the screen mid-walk drew
+// "did not finish" about the walk in progress. A walk that STOPPED stays on
+// the list -- that is what the list is for.
+function unfinishedBesidesRunning(list, run) {
+  if (!run || !run.running) return list || [];
+  return (list || []).filter((w) => w.id !== run.id);
+}
 function coinsWalkStatus() {
   let cpu = { busy: null, cores: null };
   try { cpu = require('./stages').cpuLoad(); } catch (_) { /* the reading is a nicety, never a reason to fail */ }
@@ -919,7 +929,7 @@ function coinsWalkStatus() {
     // what this run is keeping as it goes, and what it left if it did not finish
     keeping: r.id || null, carriedOn: r.carriedOn || 0, unfinished: r.unfinished || null,
     walks: (() => { try { return require('./walkset').listWalks(); } catch (_) { return []; } })(),
-    unfinishedWalks: (() => { try { return require('./walkset').unfinishedWalks(); } catch (_) { return []; } })(),
+    unfinishedWalks: (() => { try { return unfinishedBesidesRunning(require('./walkset').unfinishedWalks(), r); } catch (_) { return []; } })(),
     nextName: (() => { try { return require('./walkset').nextName(); } catch (_) { return ''; } })(),
   };
 }
@@ -1125,5 +1135,5 @@ module.exports = {
   readOneCoin, normalise, busyWhy, coinsOwnBusy, removeOlderFilesFor,
   coinsRunStart, coinsRunStatus, coinsRunStop,
   readRecord, scanRecords, coinsRecords, coinsCleanup,
-  coinsWalkStart, coinsWalkStatus, coinsWalkStop, coinsWalkSplit, coinsWalkOpen,
+  coinsWalkStart, coinsWalkStatus, coinsWalkStop, coinsWalkSplit, coinsWalkOpen, unfinishedBesidesRunning,
 };

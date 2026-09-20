@@ -4808,6 +4808,24 @@ async function buildTally(doc, pool = null, note = null) {
       await new Promise((resolve) => { setImmediate(resolve); });
     }
   }
+  // THE ANSWERS MUST BE FOUND, NOT MERELY KEPT (3.206.2, owner: "strange
+  // that there's no 'SHARE THAT AGREED' at all on this table"). From 3.205.0
+  // to 3.206.1 a record priced under a plateau share did not carry it while
+  // its answers were filed under it, so every record missed and the column
+  // was a dash with no note -- the answers were there. A kept table that no
+  // record finds is keyed differently from the records, and that is said on
+  // the set, where the screen prints it under the tables; it clears the
+  // moment the records find their answers again.
+  const keptAnswers = agreedAt ? Object.keys(agreedAt).length : 0;
+  if (keptAnswers && acc.agreedMiss && !acc.agreedHit) {
+    doc.agreedError = `none of the ${acc.rows.toLocaleString()} records found its answer among the ${keptAnswers.toLocaleString()} kept, `
+      + 'so the records and the answers are keyed differently. A set priced under 3.205.0 to 3.206.1 with a plateau share '
+      + '(the +plateau in quorum by) has this: its records do not carry the share its answers were filed under. Price the set again.';
+    saveSet(doc);
+  } else if (keptAnswers && acc.agreedHit && doc.agreedError) {
+    delete doc.agreedError;
+    saveSet(doc);
+  }
   // THE ACCUMULATOR IS DRAINED AS THE TABLES ARE BUILT (2026-08-27, the
   // second out-of-memory death): the fold of the 177,408-setting block fit,
   // and then building the finished tables ON TOP of the still-whole

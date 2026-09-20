@@ -1798,6 +1798,15 @@ async function s3UnitTask(task) {
       trailMult: st.trailMult ?? null, armMult: st.armMult ?? null,
       agreeRule: agr.rule, agreeBar: agr.bar, agreePct: agr.pct, agreeCopy: agr.copy,
       agreeBoth: agr.both, agreePersist: agr.persist,
+      // THE PLATEAU SHARE IS ON THE RECORD (3.206.2). It is part of the way of
+      // asking -- agreedKey ends in it -- and the record is what the totalling
+      // keys its answer back with, so a record without it looked its answer up
+      // under a name the answer was never filed under: every record on a
+      // walk-set chain missed, and share that agreed was a dash on all three
+      // tables with no note, because the answers were there. null on a setting
+      // without a plateau, which keeps every key written before plateaus
+      // exactly as it was (RULE NINE).
+      plateauPct: agr.plateau,
       rung: levelFor(agr, stream.decision),
       members: memberProbs.length, voices: voicesFor(stream.decision, agr.copy).voices,
       pnl: tRes.pnl, trades: tRes.trades,
@@ -1914,13 +1923,18 @@ function meanNoise(cells, key) {
   return out;
 }
 function newTallyAcc() {
-  return { perSetting: new Map(), perCoin: new Map(), rows: 0 };
+  // agreedHit / agreedMiss (3.206.2): how many records found their answer in
+  // the kept agreement table and how many looked and found nothing. A table
+  // that is there and that NO record finds is keyed differently from the
+  // records, and the totalling says so instead of leaving a dash.
+  return { perSetting: new Map(), perCoin: new Map(), rows: 0, agreedHit: 0, agreedMiss: 0 };
 }
 function tallyFold(acc, r, blockIdx, agreedAt = null) {
   // What the members ACTUALLY did, looked up by the unit and the way of
   // asking. It is not on the record: 329,280 settings on ten units share 600
   // answers between them, so it is kept once per answer and joined here.
   const agreed = agreedAt ? agreedAt[`${r.u}|${agreedKeyOfRecord(r)}`] : null;
+  if (agreedAt) { if (agreed) acc.agreedHit++; else acc.agreedMiss++; }
   let s = acc.perSetting.get(r.si);
   if (!s) {
     s = { si: r.si, label: r.label,
@@ -1932,6 +1946,9 @@ function tallyFold(acc, r, blockIdx, agreedAt = null) {
       agreeRule: r.agreeRule ?? null, agreeBar: r.agreeBar ?? null, agreePct: r.agreePct ?? null,
       agreeCopy: r.agreeCopy ?? null,
       agreeBoth: r.agreeBoth ?? null, agreePersist: r.agreePersist ?? null,
+      // the plateau share the setting was priced under (3.206.2): quorum by on
+      // the ranked table and the Funnel's dial read it off this row
+      plateauPct: r.plateauPct ?? null,
       members: r.members ?? null,
       perCoin: new Map() };
     acc.perSetting.set(r.si, s);
@@ -2048,13 +2065,14 @@ function verdictOfCoin(k) {
 }
 function serializeTallyAcc(acc) {
   return {
-    rows: acc.rows,
+    rows: acc.rows, agreedHit: acc.agreedHit || 0, agreedMiss: acc.agreedMiss || 0,
     perSetting: [...acc.perSetting.values()].map((s) => ({ ...s, perCoin: [...s.perCoin.entries()] })),
     perCoin: [...acc.perCoin.entries()].map(([ck, k]) => [ck, { ...k, b: [...k.b] }]),
   };
 }
 function mergeTallyAcc(acc, part) {
   acc.rows += part.rows;
+  acc.agreedHit += part.agreedHit || 0; acc.agreedMiss += part.agreedMiss || 0;
   for (const ps of part.perSetting) {
     let s = acc.perSetting.get(ps.si);
     if (!s) { s = { ...ps, perCoin: new Map() }; delete s.perCoin; s.perCoin = new Map(); acc.perSetting.set(ps.si, s); }

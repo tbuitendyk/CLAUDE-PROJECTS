@@ -3515,6 +3515,96 @@ module.exports = {
     }
   },
 
+  // A RECORD PRICED UNDER A PLATEAU SHARE FINDS ITS ANSWER (3.206.2, owner:
+  // "strange that there's no 'SHARE THAT AGREED' at all on this table").
+  //
+  // Since 3.205.0 the plateau share is part of the way of asking, so a unit's
+  // answers are filed under a name that ends in it. The record never carried
+  // it, so every record on a walk-set chain looked its answer up under the
+  // shorter name, found nothing, and the column was a dash on all three
+  // tables -- with no note, because the answers were there. Now the record
+  // carries the share, the totalling carries it onto the ranked row, and a
+  // set whose records and answers are keyed differently says so on the screen.
+  async aRecordPricedUnderAPlateauShareFindsItsAnswerAndAMismatchIsSaid() {
+    const sw = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stagework.js'), 'utf8');
+    // the record row carries it beside the other quorum fields, from the same
+    // agr the key is built from
+    assert.ok(/agreeBoth: agr\.both, agreePersist: agr\.persist,\n(?:\s*\/\/[^\n]*\n)*\s*plateauPct: agr\.plateau,/.test(sw),
+      'the priced record does not carry the plateau share its answer is filed under');
+    assert.ok(/plateauPct: r\.plateauPct \?\? null,/.test(sw), 'the tally does not carry the plateau share onto the setting row');
+
+    const id = `s3-test-${Date.now().toString(36)}-pl`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const doc = {
+      id, stage: 3, seq: 999976, name: 'S3 #pl', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 1, settings: 2 }, params: { nullN: 9 },
+      recordsVersion: stages.RECORDS_V,
+    };
+    const mk = (si, decision, plateauPct) => ({
+      si, label: `count 75% +plateau25% market t65h · ${decision} auto 24/7`,
+      decision, bandMode: 'auto', weekdaysOnly: false,
+      bandPct: 2, entry: 'market', gate: 'directional', dMult: null, tHours: 65, trailMult: null, armMult: null,
+      agreeRule: 'count', agreePct: 75, agreeBoth: false, agreePersist: 0,
+      ...(plateauPct == null ? {} : { plateauPct }),
+      rung: 6, members: 8, voices: 8, pnl: 10, trades: 3,
+      holdout: { pnl: 5, trades: 4, stops: 1, vsAlwaysLong: 2 },
+      beat: 5, pairs: 9, lead: 1, u: 0, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
+    });
+    // filed the way a unit files them since 3.205.0: the name ends in the share
+    const answers = {
+      '0|argmax|count|all|75|98|0|0|plateau25': { agreed: 80, agreedLow: 75, agreedHigh: 100, agreedN: 40 },
+      '0|directional|count|all|75|98|0|0|plateau25': { agreed: 90, agreedLow: 87.5, agreedHigh: 100, agreedN: 12 },
+    };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      let w = rowstore.writer(id, 'records');
+      w.push(mk(0, 'argmax', 25));
+      w.push(mk(0, 'directional', 25));
+      w.close();
+      stages.writeAgreed(id, answers);
+      await stages.buildTally(doc);
+      const rk = stages.stage3Ranked(id, 0, 10);
+      const r0 = rk.rows.find((r) => r.si === 0);
+      assert.ok(r0 && r0.avgAgreed != null && Math.abs(r0.avgAgreed - 85) < 1e-12,
+        `a record priced under a plateau share must find its answer: 80 and 90 -> 85; got ${r0 && r0.avgAgreed}`);
+      assert.strictEqual(r0.plateauPct, 25, 'the ranked row must say the plateau share it was priced under');
+      assert.strictEqual(rk.agreedError, null, 'a set whose records found their answers must not be flagged');
+      const cn = stages.stage3Coins(id, {});
+      assert.ok(cn.rows.length === 1 && Math.abs(cn.rows[0].avgAgreed - 85) < 1e-12,
+        `the every-coin table must average the same two answers; got ${JSON.stringify(cn.rows.map((r) => r.avgAgreed))}`);
+      const got = stages.stage3CoinRows(id, { cellLabel: 'count 75% +plateau25% market t65h', trade: 'AAA', ctx1: '', ctx2: '', geometry: 'daily-4d' });
+      assert.deepStrictEqual((got.rows || []).map((r) => r.agreed).sort((a, b) => a - b), [80, 90],
+        'the records under the row must carry their own figures');
+
+      // THE MISMATCH IS SAID, NOT LEFT AS A DASH: the same answers, and
+      // records written without the share, which is what 3.205.0 to 3.206.1 wrote
+      rowstore.remove(id);
+      w = rowstore.writer(id, 'records');
+      w.push(mk(0, 'argmax', null));
+      w.push(mk(0, 'directional', null));
+      w.close();
+      await stages.buildTally(doc);
+      const rk2 = stages.stage3Ranked(id, 0, 10);
+      assert.strictEqual(rk2.rows.find((r) => r.si === 0).avgAgreed, null,
+        'the fixture is wrong if a record without the share still finds an answer filed under it');
+      assert.ok(rk2.agreedError && /keyed differently/.test(rk2.agreedError) && /Price the set again/.test(rk2.agreedError),
+        `a set whose records and answers are keyed differently must say so on the screen; got ${JSON.stringify(rk2.agreedError)}`);
+      // and the note goes the moment the records find their answers again
+      rowstore.remove(id);
+      w = rowstore.writer(id, 'records');
+      w.push(mk(0, 'argmax', 25));
+      w.close();
+      await stages.buildTally(doc);
+      assert.strictEqual(stages.stage3Ranked(id, 0, 10).agreedError, null, 'the note must clear once the records find their answers');
+    } finally {
+      try { fs.unlinkSync(file); } catch (_) { /* gone */ }
+      try { fs.unlinkSync(path.join(SETS_DIR, `${id}-tally.json.gz`)); } catch (_) { /* gone */ }
+      try { fs.unlinkSync(path.join(SETS_DIR, `${id}-agreed.json.gz`)); } catch (_) { /* gone */ }
+      rowstore.remove(id);
+    }
+  },
+
   // THE gate FILTER IS A DROPDOWN OF THE ENGINE'S OWN GATES (owner order,
   // 2026-08-29: "where's the drop down selector on gate on table 3.A?").
   //
