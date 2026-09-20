@@ -81,7 +81,7 @@ module.exports.aStage4GreenlightFreezesTheSurvivorsAgreementNotAQuorum = functio
   assert.strictEqual(cfg.members.length, 8, 'the members as the stage 2 set trained them');
   assert.strictEqual(cfg.cell.quorum, null, 'no integer quorum is invented');
   assert.deepStrictEqual({ entry: cfg.cell.entry, gate: cfg.cell.gate, tHours: cfg.cell.tHours, dMult: cfg.cell.dMult }, { entry: 'market', gate: 'directional', tHours: 65, dMult: null });
-  assert.deepStrictEqual(cfg.agreement, { rule: 'count', bar: 'all', pct: 50, copy: 98, both: false, persist: 0, rung: 4, members: 8, voices: 5 });
+  assert.deepStrictEqual(cfg.agreement, { rule: 'count', bar: 'all', pct: 50, copy: 98, both: false, persist: 0, plateau: null, rung: 4, members: 8, voices: 5 });
   assert.strictEqual(cfg.training.trainOn, 'direction');
   assert.strictEqual(rec.target, 'stage4');
   assert.deepStrictEqual(rec.pick, { by: 'depth', label: 'count 50% market t65h · argmax auto 24/7', si: 4, worst: 0, mean: 0, per: { tHours: 0 }, of: 3 });

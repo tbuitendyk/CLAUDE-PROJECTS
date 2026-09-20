@@ -125,18 +125,65 @@ module.exports = {
     assert.deepStrictEqual(out.calls[3], [0, 0, 0]); assert.deepStrictEqual(out.probs[3][0], [0, 1, 0]);
   },
 
+  // A COMMITTEE WITH PLATEAUS VOTES EACH PLATEAU ONCE PER KIND (3.205.0): its
+  // voters are the base members and one voter per plateau per kind, the fold
+  // happens at the share the setting asks for, and a committee without
+  // plateaus is exactly what it was.
+  aCommitteeWithPlateausVotesEachPlateauOncePerKind() {
+    const S = [
+      { model: 'logreg', view: 'full', at: null }, { model: 'boost', view: 'full', at: null },
+      { model: 'logreg', view: 'extra0', at: 0 }, { model: 'logreg', view: 'extra1', at: 1 }, { model: 'logreg', view: 'extra2', at: 2 },
+      { model: 'boost', view: 'extra0', at: 0 }, { model: 'boost', view: 'extra1', at: 1 }, { model: 'boost', view: 'extra2', at: 2 },
+    ];
+    const plateaus = [{ centre: 1, members: [0, 1, 2] }];
+    // four moments: the base members lean up throughout; the logreg plateau's
+    // members go up/up/up, up/dn/up, dn/dn/up, flat/flat/flat; the boost
+    // plateau's all lean up
+    const rows = (a, b, c) => [a, b, c];
+    const probs = [
+      [up, up, up, up], [up, up, up, up],
+      [up, up, dn, flat], [up, dn, dn, flat], [up, up, up, flat],
+      [up, up, up, up], [up, up, up, up], [up, up, up, up],
+    ];
+    const C = committee.committeeOn({ specs: S, memberProbsTest: probs, taus: null, plateaus, speaking: null });
+    assert.deepStrictEqual(C.voters.map((v) => (v.kind === 'member' ? `m${v.mi}` : `p${v.plateau}:${v.model}`)), ['m0', 'm1', 'p0:logreg', 'p0:boost']);
+    assert.deepStrictEqual(C.models, ['logreg', 'boost', 'logreg', 'boost']);
+    assert.deepStrictEqual(C.families, ['full', 'full', 'plateau0', 'plateau0'], 'a plateau is not its own kind of evidence');
+    // count at 50% of 4 voters: the logreg plateau's call decides the tie moments
+    const agr = (plateau, pct = 50) => ({ rule: 'count', bar: 'all', pct, copy: 98, both: false, persist: 0, plateau });
+    assert.strictEqual(C.denomFor(agr(50), 'argmax'), 4, 'a share is a share of the members, not of the voters');
+    assert.strictEqual(C.rungFor(agr(50), 'argmax'), 2);
+    // at plateau share 50: moment 1 is 2 of 3 up -> up; moment 2 is 2 of 3 down -> down; moment 3 flat -> sit out
+    assert.deepStrictEqual(C.testCalls('argmax', 50)[2], [1, 1, -1, 0], 'the logreg plateau\'s call at half is not the side two of its three called');
+    assert.deepStrictEqual(C.testCalls('argmax', 100)[2], [1, 0, 0, 0], 'at every member, a split plateau still calls');
+    // the stream reads the folded voters: 3 up of 4 clears 2 whatever the plateau says;
+    // conviction reads the plateau's lean, which at moment 2 is two thirds down
+    assert.deepStrictEqual(C.streamOf('argmax', agr(50), probs), [1, 1, 1, 1]);
+    const strict = { ...agr(50, 100) };
+    assert.deepStrictEqual(C.streamOf('argmax', strict, probs), [1, 1, 0, 0], 'at 100% of the voters the down plateau and the flat one do not stop the call');
+    const conv = { ...agr(50), rule: 'conviction', pct: 10 };
+    assert.deepStrictEqual(C.streamOf('argmax', conv, probs).slice(0, 2), [1, 1]);
+    // without plateaus nothing is folded and every member is a voter
+    const plain = committee.committeeOn({ specs: S, memberProbsTest: probs, taus: null });
+    assert.strictEqual(plain.voters.length, 8);
+    assert.deepStrictEqual(plain.testCalls('argmax'), committee.callsOf(probs, 'argmax', null), 'a committee without plateaus no longer reads its members\' own calls');
+    assert.strictEqual(plain.denomFor(agr(null), 'argmax'), 8);
+    assert.deepStrictEqual(rows(1, 2, 3), [1, 2, 3]);
+  },
+
   bothPathsReadTheOneDefinitionAndNeitherKeepsACopy() {
     const sw = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
     const task = sw.slice(sw.indexOf('async function s3UnitTask(task) {'), sw.indexOf('\n}\n', sw.indexOf('async function s3UnitTask(task) {')));
-    assert.ok(task.includes("const C = committee.committeeOn({ specs: (unit.members || []).map((m) => m.spec || {}), memberProbsTest: memberProbs.map((mp) => mp.slice(0, nTest)), taus });"), 'the pricing shapes its committee through the shared definition');
-    assert.ok(task.includes('const out = committee.callsOf(probsFor(dealIdx, slice), decision, taus);'), 'its calls come from there');
+    assert.ok(task.includes("const C = committee.committeeOn({ specs: (unit.members || []).map((m) => m.spec || {}), memberProbsTest: memberProbs.map((mp) => mp.slice(0, nTest)), taus, plateaus: unit.plateaus || [], speaking });"), 'the pricing shapes its committee through the shared definition, plateaus and all');
+    assert.ok(task.includes('const out = C.foldOf(probsFor(dealIdx, slice), decision, share);'), 'its calls come from there, folded');
+    assert.ok(!/committee\.callsOf\(probsFor\(dealIdx, slice\)/.test(task) && !/committee\.callsOf\(trainProbs\(\)/.test(task), 'the pricing still reads the members\' own calls past the fold');
     assert.ok(task.includes('const levelFor = (agr, decision) => C.levelFor(agr, decision);'), 'and what is enough');
     assert.ok(task.includes('const out = C.agreedOn(decision, agr);'), 'and what agreed');
     for (const gone of ['agreement.voiceGroups(', 'agreement.ownHistoryBar(', 'Math.ceil((agr.pct / 100) * n)']) {
       assert.ok(!task.includes(gone), `the pricing keeps a copy of its own: ${gone}`);
     }
     const live = fs.readFileSync(path.join(ROOT, 'lib', 'live', 'stagesignal.js'), 'utf8');
-    assert.ok(live.includes('const C = committee.committeeOn({ specs, memberProbsTest: members.map((m) => m.probs.slice(0, nTest)), taus });'), 'the live path shapes its committee through the same definition');
+    assert.ok(live.includes('const C = committee.committeeOn({ specs, memberProbsTest: members.map((m) => m.probs.slice(0, nTest)), taus, plateaus: cfg.plateaus || [], speaking });'), 'the live path shapes its committee through the same definition, plateaus and all');
     assert.ok(live.includes('const stream = C.streamOf(decision, agr, momentProbs);'), 'and reads the stream');
     assert.ok(live.includes('const call = stream[stream.length - 1] || 0;'), 'at its last moment, the target, so +hold reads the moments before it and never after');
     assert.ok(!/ownHistoryBar|voiceGroups/.test(live), 'and keeps no copy of the arithmetic');

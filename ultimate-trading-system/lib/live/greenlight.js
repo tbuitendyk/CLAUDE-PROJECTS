@@ -113,6 +113,8 @@ function configFromStage4(src) {
     agreement: {
       rule: sv.agreeRule, bar: sv.agreeBar, pct: sv.agreePct ?? null, copy: sv.agreeCopy,
       both: !!sv.agreeBoth, persist: Number.isInteger(sv.agreePersist) ? sv.agreePersist : 0,
+      // the plateau share the survivor was priced at (3.205.0), or nothing
+      plateau: sv.plateauPct ?? null,
       rung: sv.avgRung ?? null, members: sv.members ?? src.members.length, voices: sv.avgVoices ?? null,
     },
     // how the members were trained, so the live path can train the same way

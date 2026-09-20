@@ -890,7 +890,10 @@ function startStage1(params) {
         records[i] = {
           u: i, trade: u.trade, ctx1: u.ctx1, ctx2: u.ctx2, size: u.size, geometry: u.geometry,
           bandPct: res.bandPct, counts: res.counts, reserve: res.reserve || null, windows: res.windows || null,
-          specs: res.members.map((m) => ({ ...m.spec, picked: m.picked })),
+          // A MEMBER THAT COULD NOT BE TRAINED SAYS SO ON ITS SPEC (3.205.0), so
+          // the fold at stage 3 and every screen can know who speaks without
+          // opening the models store, which holds every boosted tree.
+          specs: res.members.map((m) => ({ ...m.spec, picked: m.picked, ...(m.saved && m.saved.kind === 'silent' ? { silent: m.saved.why } : {}) })),
           voices: voicesOf(res.members, (res.counts || {}).test || 0),
           // WHAT THIS UNIT WAS BUILT WITH, on the row itself (3.184.0). The
           // extras are what a child must rebuild with and what makes every
@@ -1915,13 +1918,15 @@ function agreeLabel(a) {
   // as printing the one-voice threshold on a rule that cannot read it, one
   // step further along: it would say two settings differ when they are one
   // trade, and it would tell the owner a number was used when it was not.
+  // the plateau share rides the name only on a run that holds a plateau (3.205.0)
+  const plateau = a.plateau != null ? ` +plateau${a.plateau}%` : '';
   if (agreement.READS_NO_BAR.has(a.rule)) {
-    return `${a.rule}${a.bothModels ? ' +both' : ''}${a.persist ? ` +hold${a.persist}` : ''}`;
+    return `${a.rule}${a.bothModels ? ' +both' : ''}${a.persist ? ` +hold${a.persist}` : ''}${plateau}`;
   }
   // the one-voice threshold rides the name only where it can change anything —
   // no other way of weighing reads it, and a name that carried it everywhere
   // would say two settings differ when they are the same trade.
-  return `${a.rule} ${a.pct}%${a.bar === 'own' ? ' own' : ''}${a.rule === 'voices' ? ` +voice${a.copy}` : ''}${a.bothModels ? ' +both' : ''}${a.persist ? ` +hold${a.persist}` : ''}`;
+  return `${a.rule} ${a.pct}%${a.bar === 'own' ? ' own' : ''}${a.rule === 'voices' ? ` +voice${a.copy}` : ''}${a.bothModels ? ' +both' : ''}${a.persist ? ` +hold${a.persist}` : ''}${plateau}`;
 }
 
 // Every quorum the block declares, with the shares that cannot be told apart on
@@ -1938,15 +1943,46 @@ function agreeLabel(a) {
 // while the next is a triple carrying none. Read as a cross of the two lists
 // it would invent shapes the run does not hold; read as the PAIRS that occur
 // it says what is there. Same shape as `sizes` has always been read.
+// 3.205.0: AND HOW MANY OF THOSE EXTRAS STAND IN PLATEAUS. A plateau is one
+// voter per kind however many extras it holds, so a committee's size is its
+// base members plus its LOOSE extras plus its plateaus -- votersOf, below --
+// and never its extras counted one by one.
 const shapesOf = (records) => {
   const seen = new Map();
   for (const r of records || []) {
     const size = r.size || (r.ctx1 ? (r.ctx2 ? 3 : 2) : 1);
-    const nExtras = Array.isArray(r.extras) ? r.extras.length : 0;
-    seen.set(`${size}|${nExtras}`, { size, nExtras });
+    const extras = Array.isArray(r.extras) ? r.extras : [];
+    const plateaus = Array.isArray(r.plateaus) ? r.plateaus : [];
+    const covered = new Set();
+    for (const pl of plateaus) for (const i of (pl.members || [])) covered.add(i);
+    const nExtras = extras.length;
+    const nPlateaus = plateaus.length;
+    const nLoose = extras.filter((_, i) => !covered.has(i)).length;
+    seen.set(`${size}|${nExtras}|${nPlateaus}|${nLoose}`, { size, nExtras, nPlateaus, nLoose });
   }
   return [...seen.values()];
 };
+// how many VOTERS a committee of this shape holds at stage 3, and how many
+// kinds of evidence: one per base slice at each of the two stages, one per
+// loose extra at each, and one per plateau at each
+const votersOf = (q) => membersForSize(q.size) + 2 * ((q.nLoose ?? q.nExtras ?? 0) + (q.nPlateaus || 0));
+const kindsOf = (q) => readingsForSize(q.size) + (q.nLoose ?? q.nExtras ?? 0) + (q.nPlateaus || 0);
+// THE PLATEAU SHARE, read from the same list the dropdown is drawn from
+// (3.205.0): of a plateau's trained members, the share that must call the same
+// side before its one vote is cast. Refused rather than rounded when it is not
+// on the list; absent is the list's own middle, which is what the box shows.
+function plateauPctsOffered() {
+  const offered = (require('./vocabulary').vocabulary().plateauShare || []).map((o) => Number(o.value));
+  if (!offered.length) throw new Error('the vocabulary offers no plateau share');
+  return offered;
+}
+function plateauPctOrRefuse(raw) {
+  const offered = plateauPctsOffered();
+  if (raw === undefined || raw === null || raw === '') return 50;
+  const n = Number(raw);
+  if (!offered.includes(n)) throw new Error(`${JSON.stringify(raw)} is not a plateau share (${offered.map((x) => `${x}%`).join(', ')})`);
+  return n;
+}
 // `shapes` is the list above. Left out, every committee is read as carrying no
 // member from a walk set -- which is every run that existed before they did,
 // and what `sizes` alone has always meant.
@@ -2005,9 +2041,9 @@ function agreementsFor(params, sizes, shapes = null) {
           // both change how many there are to count
           let key = null;
           if (bar === 'all' && (rule === 'count' || rule === 'conviction')) {
-            key = `${rule}|${seenShapes.map((q) => rungFor(pct, membersForSize(q.size) + 2 * q.nExtras)).join(',')}`;
+            key = `${rule}|${seenShapes.map((q) => rungFor(pct, votersOf(q))).join(',')}`;
           } else if (bar === 'all' && rule === 'families') {
-            key = `${rule}|${seenShapes.map((q) => rungFor(pct, readingsForSize(q.size) + q.nExtras)).join(',')}`;
+            key = `${rule}|${seenShapes.map((q) => rungFor(pct, kindsOf(q))).join(',')}`;
           }
           for (const bothModels of boths) {
             for (const persist of persists) {
@@ -2020,7 +2056,20 @@ function agreementsFor(params, sizes, shapes = null) {
       }
     }
   }
-  return out;
+  // THE PLATEAU SHARE, ONE LEVEL DOWN (3.205.0): of a plateau's trained members,
+  // the share that must call the same side before its one vote is cast. It
+  // multiplies the block only when a unit being priced carries a plateau; on a
+  // run with none it is stored as nothing rather than as whatever the box held,
+  // so a record can never say a share was used when nothing read it (RULE
+  // NINE). On a mixed run a unit without a plateau folds every value of it
+  // into one setting, the way confirm folds on a unit without a lean.
+  const anyPlateau = seenShapes.some((q) => (q.nPlateaus || 0) > 0);
+  const plateaus = anyPlateau
+    ? (params.plateauPermutePct ? plateauPctsOffered() : [plateauPctOrRefuse(params.plateauPct)])
+    : [null];
+  const expanded = [];
+  for (const a of out) for (const plateau of plateaus) expanded.push({ ...a, plateau });
+  return expanded;
 }
 
 // The settings block: (decision x band x 24/5) x (the trade shape) x (the
@@ -2132,11 +2181,16 @@ function weekdaysApplyTo(rec) { return require('./dataset').weekdaysApply(rec.ge
 // other unit the three values place the identical orders, so they are one
 // setting there and fold into the first, exactly as 24/5 folds on a weekly
 // unit. A unit with a lean prices each value on its own.
-function foldKeyRest(st, wk, geometry, hasLean = false) {
+// AND THE PLATEAU SHARE ONLY ON A UNIT THAT CARRIES A PLATEAU (3.205.0), for
+// the same reason as confirm: on any other unit its values place identical
+// orders and are one setting there.
+function foldKeyRest(st, wk, geometry, hasLean = false, hasPlateau = false) {
   return [st.decision, wk ? 1 : 0, st.entry, st.gate, bracketLib.tHoursOn(st.tHours, geometry),
     st.agreeRule, st.agreeBar, st.agreePct, st.agreeRule === 'voices' ? st.agreeCopy : 0,
-    st.agreeBoth, st.agreePersist, hasLean ? (st.confirm || 'off') : 'off'].join('|');
+    st.agreeBoth, st.agreePersist, hasLean ? (st.confirm || 'off') : 'off',
+    hasPlateau ? (st.plateauPct ?? 'none') : 'none'].join('|');
 }
+const hasPlateauOf = (rec) => Array.isArray((rec || {}).plateaus) && rec.plateaus.length > 0;
 // heldOn[u]: the settings unit u prices, as indexes into `settings`, in block order
 function heldOnFor(settings, records, leans = null) {
   const heldOn = [];
@@ -2144,11 +2198,12 @@ function heldOnFor(settings, records, leans = null) {
     const repOf = shapeRepsFor(settings, [rec]);          // one unit's own geometry classes
     const wkApplies = weekdaysApplyTo(rec);
     const hasLean = !!leanOf(leans, rec);
+    const hasPlateau = hasPlateauOf(rec);
     const seen = new Set();
     const mine = [];
     for (let i = 0; i < settings.length; i++) {
       const st = settings[i];
-      const key = `${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, wkApplies ? !!st.weekdaysOnly : false, rec.geometry, hasLean)}`;
+      const key = `${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, wkApplies ? !!st.weekdaysOnly : false, rec.geometry, hasLean, hasPlateau)}`;
       if (seen.has(key)) continue;
       seen.add(key);
       mine.push(i);
@@ -2171,11 +2226,12 @@ function foldSameTradeSettings(settings, records, leans = null) {
     const repOf = shapeRepsFor(settings, [records[0]]);
     const wk0 = weekdaysApplyTo(records[0]);
     const lean0 = !!leanOf(leans, records[0]);
-    for (const i of heldOn[0]) firstOn0.set(`${repOf.get(shapeKeyOf(settings[i]))}|${foldKeyRest(settings[i], wk0 ? !!settings[i].weekdaysOnly : false, records[0].geometry, lean0)}`, settings[i].label);
+    const plat0 = hasPlateauOf(records[0]);
+    for (const i of heldOn[0]) firstOn0.set(`${repOf.get(shapeKeyOf(settings[i]))}|${foldKeyRest(settings[i], wk0 ? !!settings[i].weekdaysOnly : false, records[0].geometry, lean0, plat0)}`, settings[i].label);
     for (let i = 0; i < settings.length; i++) {
       if (keptOnAny[i]) continue;
       const st = settings[i];
-      folded.push({ dropped: st.label, kept: firstOn0.get(`${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, wk0 ? !!st.weekdaysOnly : false, records[0].geometry, lean0)}`) || null });
+      folded.push({ dropped: st.label, kept: firstOn0.get(`${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, wk0 ? !!st.weekdaysOnly : false, records[0].geometry, lean0, plat0)}`) || null });
     }
   }
   for (let i = 0; i < settings.length; i++) {
@@ -2308,6 +2364,7 @@ function settingsFor(params, sizes = null, shapes = null) {
                 ...cell, quorum: undefined,
                 agreeRule: a.rule, agreeBar: a.bar, agreePct: a.pct, agreeCopy: a.copy,
                 agreeBoth: a.bothModels, agreePersist: a.persist,
+                plateauPct: a.plateau ?? null,
                 decision, band, weekdaysOnly: wk,
                 confirm, kx, ux,
                 label: `${agreeLabel(a)} ${shapeLabel(cell)} \u00b7 ${decision} ${band === 'auto' ? 'auto' : `${band}%`} ${wk ? '24/5' : '24/7'}${confirmLabel(confirm, kx, ux)}`,
@@ -2678,12 +2735,19 @@ function countDeclared(params, sizes, records, leans = null) {
   const keptOnAny = new Uint8Array(items.length);
   const perUnit = [];
   let weekdaysApply = false;
+  // the plateau share multiplies the agreement only on a unit that carries a
+  // plateau (3.205.0); on any other unit its values are one setting there
+  const plateauValues = Math.max(1, new Set(agrees.map((a) => a.plateau)).size);
+  const agreesOn = (hasPlateau) => (hasPlateau ? agrees.length : agrees.length / plateauValues);
+  let plateauUnits = 0;
   for (const rec of records) {
     const repOf = shapeRepsFor(items.map((x) => x.shape), [rec]);
     const wkApplies = weekdaysApplyTo(rec);
     if (wkApplies) weekdaysApply = true;
     const hasLean = !!leanOf(leans, rec);
     if (hasLean) leanUnits++;
+    const hasPlateau = hasPlateauOf(rec);
+    if (hasPlateau) plateauUnits++;
     const seen = new Set();
     let mine = 0;
     for (let i = 0; i < items.length; i++) {
@@ -2694,13 +2758,14 @@ function countDeclared(params, sizes, records, leans = null) {
       keptOnAny[i] = 1;
       mine++;
     }
-    perUnit.push(decisions.length * agrees.length * mine * (hasLean ? confirms.length : 1));
+    perUnit.push(decisions.length * agreesOn(hasPlateau) * mine * (hasLean ? confirms.length : 1));
   }
   let union = 0;
   for (let i = 0; i < items.length; i++) if (keptOnAny[i]) union++;
   // every value of confirm is kept on SOME unit as soon as one unit carries a
-  // lean; with none, only the first value survives the fold anywhere
-  const kept = decisions.length * agrees.length * union * (leanUnits ? confirms.length : 1);
+  // lean; with none, only the first value survives the fold anywhere -- and
+  // the plateau share the same way
+  const kept = decisions.length * agreesOn(plateauUnits > 0) * union * (leanUnits ? confirms.length : 1);
   return { declared, kept, folded: declared - kept, perUnit, pricings: perUnit.reduce((a, b) => a + b, 0), weekdaysApply, leanUnits };
 }
 function stage3Declared(b) {
@@ -2768,8 +2833,11 @@ function stage3Declared(b) {
   // two stages. Reading the line off anything else would let the screen say one
   // committee and the pricing use another.
   out.committees = records
-    ? [...new Set(shapesOf(records).map((q) => membersForSize(q.size) + 2 * q.nExtras))].sort((a, b) => a - b)
+    ? [...new Set(shapesOf(records).map((q) => votersOf(q)))].sort((a, b) => a - b)
     : [];
+  // HOW MANY UNITS BEING PRICED CARRY A PLATEAU (3.205.0), so the screen can
+  // ghost the plateau share when none does -- on such a run it changes nothing
+  out.plateauUnits = records ? records.filter((r) => hasPlateauOf(r)).length : 0;
   return out;
 }
 function startStage3(params) {
@@ -2800,15 +2868,6 @@ function startStage3(params) {
   const { records: parentRecords, savedS2, selected } = chosen;
   const carry = selected ? 0 : chosen.carry;
   if (!parentRecords.length) throw new Error(`${parent.name} holds no records — nothing to price`);
-  // A UNIT WHOSE EXTRA MEMBERS COME IN PLATEAUS CANNOT BE PRICED BY THIS
-  // RELEASE (3.203.0). The nine around a promoted row are meant to fold to ONE
-  // vote per kind, by a bar this screen does not yet carry; priced as nine
-  // votes they would outvote the committee they were added to. Refused by
-  // name rather than priced wrong.
-  const withPlateaus = parentRecords.filter((r) => Array.isArray(r.plateaus) && r.plateaus.length).length;
-  if (withPlateaus) {
-    throw new Error(`${withPlateaus} of the units in ${parent.name} carry plateaus of extra members, and this release does not fold a plateau to one vote — stage 3 cannot price them yet`);
-  }
   // The committee sizes actually being priced decide which agreement shares
   // can be told apart: two shares landing on the same rung for every unit in
   // the run are one setting, not two.
@@ -2896,6 +2955,8 @@ function startStage3(params) {
       agreePermuteRule: !!params.agreePermuteRule, agreePermuteBar: !!params.agreePermuteBar,
       agreePermutePct: !!params.agreePermutePct,
       agreePermuteBoth: !!params.agreePermuteBoth, agreePermutePersist: !!params.agreePermutePersist,
+      // the plateau share and its permute (3.205.0); refused by name when off the list
+      plateauPct: plateauPctOrRefuse(params.plateauPct), plateauPermutePct: !!params.plateauPermutePct,
       decision: params.decision || 'argmax', band: params.band ?? 'auto', weekdaysOnly: !!params.weekdaysOnly,
       permuteDecision: !!params.permuteDecision, permuteBand: !!params.permuteBand, permuteWeekdays: !!params.permuteWeekdays,
       // THE CONFIRMATION OVERLAY (3.130.0): the dial, its two multipliers, and
@@ -4613,6 +4674,9 @@ function s3Payload({ doc, parent, rec, settings, fee, nullN, agreedOnly = false,
       probs: rec.specs.map((_, mi) => votes.map((v) => v.m[mi])),
       ts: { test: votes.filter((v) => v.w === 0).map((v) => v.ts), hold: votes.filter((v) => v.w === 1).map((v) => v.ts) },
       members: rec.specs.map((spec, mi) => ({ spec, tauProbs: (tau.find((t) => t.mi === mi) || {}).probs || [] })),
+      // which extras stand in plateaus (3.205.0); the fold reads each spec's
+      // own `silent` mark for who was trained
+      plateaus: Array.isArray(rec.plateaus) ? rec.plateaus : [],
     },
     settings, fee, nullN, keepN: agreedOnly ? 0 : (Number((doc.params || {}).keepN) || 0), seed: doc.seed,
     // the lean this unit prices confirm with, off the set's own record (3.130.0)
@@ -4719,6 +4783,7 @@ async function buildTally(doc, pool = null, note = null) {
       entry: st.entry, gate: st.gate, dMult: st.dMult, tHours: st.tHours, trailMult: st.trailMult, armMult: st.armMult,
       agreeRule: st.agreeRule, agreeBar: st.agreeBar, agreePct: st.agreePct, agreeCopy: st.agreeCopy,
       agreeBoth: st.agreeBoth, agreePersist: st.agreePersist,
+      plateauPct: st.plateauPct ?? null,
       members: st.members,
       // THE CONFIRMATION OVERLAY (3.130.0): the dial's value, its multipliers,
       // and the verdict from the six numbers summed over every coin priced
@@ -5548,6 +5613,7 @@ function boardRowOf(r, unitKey) {
     trailMult: r.trailMult ?? null, armMult: r.armMult ?? null,
     agreeRule: r.agreeRule ?? null, agreeBar: r.agreeBar ?? null, agreePct: r.agreePct ?? null,
     agreeCopy: r.agreeCopy ?? null, agreeBoth: r.agreeBoth ?? null, agreePersist: r.agreePersist ?? null,
+    plateauPct: r.plateauPct ?? null,
     // the confirm dial (3.130.0): a record priced before it existed was priced off
     confirm: r.confirm ?? 'off',
     members: r.members ?? null,

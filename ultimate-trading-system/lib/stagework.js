@@ -1197,8 +1197,14 @@ const agrOf = (st) => ({
   copy: Number(st.agreeCopy) || agreement.COPY_DEFAULT,
   both: !!st.agreeBoth,
   persist: Math.max(0, Math.floor(Number(st.agreePersist) || 0)),
+  // the plateau share (3.205.0): nothing on a run without plateaus, and part
+  // of the quorum's identity on one with them
+  plateau: st.plateauPct == null ? null : Number(st.plateauPct),
 });
-const agreedKey = (decision, agr) => `${decision}|${agr.rule}|${agr.bar}|${agr.pct}|${agr.copy}|${agr.both ? 1 : 0}|${agr.persist}`;
+// THE KEY GROWS A SEGMENT ONLY WHERE A PLATEAU SHARE EXISTS (3.205.0), so every
+// key written on disk before plateaus reads exactly as it did (RULE NINE: the
+// agreed maps of every stage 3 set on the box are keyed by this).
+const agreedKey = (decision, agr) => `${decision}|${agr.rule}|${agr.bar}|${agr.pct}|${agr.copy}|${agr.both ? 1 : 0}|${agr.persist}${agr.plateau == null ? '' : '|plateau' + agr.plateau}`;
 // THE SAME KEY, BUILT THE SAME WAY. These were two expressions that had to
 // agree and did not: one went through agrOf and one read the fields raw, so a
 // row whose stored name differed from its resolved one missed its answer
@@ -1398,7 +1404,11 @@ async function s3UnitTask(task) {
   // stream. A null-set deal shuffles every member by the SAME order, so the
   // committee's own structure is untouched by it -- the shape is worked out
   // once from the real test slice and is correct for the deals too.
-  const C = committee.committeeOn({ specs: (unit.members || []).map((m) => m.spec || {}), memberProbsTest: memberProbs.map((mp) => mp.slice(0, nTest)), taus });
+  // WITH ITS PLATEAUS FOLDED (3.205.0): each plateau is one voter per kind, at
+  // the share each setting asks for, and a member marked silent on its spec is
+  // left out of the fold as it was left out of the training.
+  const speaking = new Set((unit.members || []).map((m, mi) => (m.spec && m.spec.silent ? -1 : mi)).filter((mi) => mi >= 0));
+  const C = committee.committeeOn({ specs: (unit.members || []).map((m) => m.spec || {}), memberProbsTest: memberProbs.map((mp) => mp.slice(0, nTest)), taus, plateaus: unit.plateaus || [], speaking });
   const { models, families } = C;
   // The members' strengths, sliced and dealt exactly as their calls are, so
   // a rule that reads how strongly they lean sees the same moments in the
@@ -1420,15 +1430,19 @@ async function s3UnitTask(task) {
   };
   // Calls per (decision, arm, slice), derived once and cached; quorum streams
   // per (calls, agree) likewise. Settings sharing a stream share the work.
-  const callCache = new Map();
-  const callsFor = (decision, dealIdx, slice) => {
-    const key = `${decision}|${dealIdx}|${slice}`;
-    if (callCache.has(key)) return callCache.get(key);
-    const out = committee.callsOf(probsFor(dealIdx, slice), decision, taus);
-    callCache.set(key, out);
+  // THE VOTERS' CALLS AND LEANS, folded through the committee's own definition
+  // at the plateau share a setting asks for (nothing to fold on a run without
+  // plateaus, and then these are the members' own)
+  const foldCache = new Map();
+  const foldFor = (decision, dealIdx, slice, share) => {
+    const key = `${decision}|${dealIdx}|${slice}|${share == null ? '' : share}`;
+    if (foldCache.has(key)) return foldCache.get(key);
+    const out = C.foldOf(probsFor(dealIdx, slice), decision, share);
+    foldCache.set(key, out);
     return out;
   };
-  const voicesFor = (decision, copy) => C.voicesFor(decision, copy);
+  const callsFor = (decision, dealIdx, slice, share = null) => foldFor(decision, dealIdx, slice, share).calls;
+  const voicesFor = (decision, copy, share = null) => C.voicesFor(decision, copy, share);
   const denomFor = (agr, decision) => C.denomFor(agr, decision);
   const levelFor = (agr, decision) => C.levelFor(agr, decision);
   // The votes and the extras a rule reads, built once per way of asking.
@@ -1437,12 +1451,13 @@ async function s3UnitTask(task) {
   // drift from it.
   const ctxCache = new Map();
   const ctxFor = (decision, agr, dealIdx, slice) => {
-    const key = `${decision}|${agr.rule}|${agr.copy}|${dealIdx}|${slice}`;
+    const key = `${decision}|${agr.rule}|${agr.copy}|${agr.plateau == null ? '' : agr.plateau}|${dealIdx}|${slice}`;
     if (ctxCache.has(key)) return ctxCache.get(key);
+    const f = foldFor(decision, dealIdx, slice, agr.plateau);
     const ctx = {
-      calls: callsFor(decision, dealIdx, slice), models, families,
-      probs: agreement.READS_LEANS.has(agr.rule) ? probsFor(dealIdx, slice) : null,
-      weights: agr.rule === 'voices' ? voicesFor(decision, agr.copy).weights : null,
+      calls: f.calls, models, families,
+      probs: agreement.READS_LEANS.has(agr.rule) ? f.probs : null,
+      weights: agr.rule === 'voices' ? voicesFor(decision, agr.copy, agr.plateau).weights : null,
     };
     ctxCache.set(key, ctx);
     return ctx;
@@ -1553,16 +1568,19 @@ async function s3UnitTask(task) {
     if (!trainStreamCache.has(key)) trainStreamCache.set(key, C.streamOf(decision, agr, trainProbs()));
     return trainStreamCache.get(key);
   };
-  const trainCallsFor = (decision) => {
-    if (!trainCallsCache.has(decision)) trainCallsCache.set(decision, committee.callsOf(trainProbs(), decision, taus));
-    return trainCallsCache.get(decision);
+  // the voters' calls on the training slice, folded at the setting's plateau
+  // share like every other slice's (3.205.0)
+  const trainCallsFor = (decision, share = null) => {
+    const key = `${decision}|${share == null ? '' : share}`;
+    if (!trainCallsCache.has(key)) trainCallsCache.set(key, C.foldOf(trainProbs(), decision, share).calls);
+    return trainCallsCache.get(key);
   };
   const captureOf = (st, agr, cell, bandPct, weekdaysOnly) => {
     const idxOf = (chunksArr, wk) => (weekdaysOnly ? wk : chunksArr.map((_, i) => i));
     const slices = [
-      ['train', trainChunks, idxOf(trainChunks, wkTrain), maps.trade, () => trainStreamFor(st.decision, agr), () => trainCallsFor(st.decision)],
-      ['test', testChunks, idxOf(testChunks, wkTest), maps.trade, () => streamFor(st.decision, agr, -1, 'test'), () => callsFor(st.decision, -1, 'test')],
-      ['hold', holdChunks, idxOf(holdChunks, wkHold), holdTrade, () => streamFor(st.decision, agr, -1, 'hold'), () => callsFor(st.decision, -1, 'hold')],
+      ['train', trainChunks, idxOf(trainChunks, wkTrain), maps.trade, () => trainStreamFor(st.decision, agr), () => trainCallsFor(st.decision, agr.plateau)],
+      ['test', testChunks, idxOf(testChunks, wkTest), maps.trade, () => streamFor(st.decision, agr, -1, 'test'), () => callsFor(st.decision, -1, 'test', agr.plateau)],
+      ['hold', holdChunks, idxOf(holdChunks, wkHold), holdTrade, () => streamFor(st.decision, agr, -1, 'hold'), () => callsFor(st.decision, -1, 'hold', agr.plateau)],
     ];
     const out = {};
     for (const [name, chunksArr, idxs, tradeMap, streamOfSlice, memberCallsOfSlice] of slices) {

@@ -82,6 +82,11 @@ function validateConfig(cfg) {
       if (!COPY_PCTS.includes(a.copy)) fail(errors, `agreement.copy: must be one of ${COPY_PCTS.join(', ')}`);
       if (typeof a.both !== 'boolean') fail(errors, 'agreement.both: must be boolean');
       if (!Number.isInteger(a.persist) || a.persist < 0) fail(errors, 'agreement.persist: must be an integer 0 or more');
+      // THE PLATEAU SHARE (3.205.0): absent or null on a unit without plateaus,
+      // a share above 0 up to 100 on one with them
+      if (a.plateau != null && !(Number.isFinite(a.plateau) && a.plateau > 0 && a.plateau <= 100)) {
+        fail(errors, 'agreement.plateau: must be a share above 0 up to 100, or null when the unit has no plateaus');
+      }
     }
   }
   // A RECORD'S HALF-LIFE, when it carries one (3.95.0): days, positive, or absent

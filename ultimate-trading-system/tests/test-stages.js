@@ -234,6 +234,74 @@ module.exports = {
       'kinds of evidence measured against its own history must be reachable — it was not, and that was the muddle');
   },
 
+  // THE PLATEAU SHARE IS A DIAL ONLY WHERE A PLATEAU IS (3.205.0): it multiplies
+  // the block on a run whose units carry one, is stored as nothing on a run
+  // with none, rides every setting's name and record, folds on a unit without
+  // a plateau, and is refused by name when off the list.
+  thePlateauShareIsADialOnlyWhereAPlateauIs() {
+    const cell = { entry: 'market', tHours: 65 };
+    const B = { cell, agreeRule: 'count', agreeBar: 'all', agreePct: 50 };
+    const nine = Array.from({ length: 9 }, () => ({}));
+    const withPl = stages.shapesOf([{ size: 1, extras: nine, plateaus: [{ centre: 4, members: [0, 1, 2, 3, 4, 5, 6, 7, 8] }] }]);
+    const without = stages.shapesOf([{ size: 1 }]);
+    // stored as nothing where nothing reads it, the box's value where a plateau does
+    assert.deepStrictEqual(stages.agreementsFor(B, [1], without).map((a) => a.plateau), [null], 'a run with no plateaus records a plateau share');
+    assert.deepStrictEqual(stages.agreementsFor({ ...B, plateauPct: 75 }, [1], without).map((a) => a.plateau), [null]);
+    assert.deepStrictEqual(stages.agreementsFor(B, [1], withPl).map((a) => a.plateau), [50], 'the box\'s own middle is not the default');
+    assert.deepStrictEqual(stages.agreementsFor({ ...B, plateauPct: 75 }, [1], withPl).map((a) => a.plateau), [75]);
+    // permute multiplies by the list the box offers, and only where a plateau is
+    const offered = require('../lib/vocabulary').vocabulary().plateauShare.map((o) => Number(o.value));
+    assert.ok(offered.length >= 10 && offered.includes(50) && offered.includes(100), 'the box offers no real list');
+    assert.deepStrictEqual(stages.agreementsFor({ ...B, plateauPermutePct: true }, [1], withPl).map((a) => a.plateau), offered);
+    assert.deepStrictEqual(stages.agreementsFor({ ...B, plateauPermutePct: true }, [1], without).map((a) => a.plateau), [null], 'permute multiplies a run with nothing to permute');
+    // refused by name when off the list
+    assert.throws(() => stages.agreementsFor({ ...B, plateauPct: 33 }, [1], withPl), /33 is not a plateau share/);
+    // the name and the record carry it, after the rule and its share
+    const named = stages.settingsFor({ ...B, plateauPct: 75 }, [1], withPl);
+    assert.strictEqual(named.length, 1);
+    assert.strictEqual(named[0].plateauPct, 75);
+    assert.ok(/^count 50% \+plateau75% /.test(named[0].label), `the name does not carry the plateau share: ${named[0].label}`);
+    assert.ok(!/plateau/.test(stages.settingsFor(B, [1], without)[0].label), 'a run with no plateaus names one');
+    assert.strictEqual(stages.settingsFor(B, [1], without)[0].plateauPct, null);
+    // the trained way of weighing reads no bar and still carries the plateau share
+    const tr = stages.settingsFor({ cell, agreeRule: 'trained', plateauPct: 60 }, [1], withPl);
+    assert.ok(/^trained \+plateau60% /.test(tr[0].label), tr[0].label);
+    // the committee is its voters: 8 base members and one plateau per kind
+    const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    assert.ok(/const votersOf = \(q\) => membersForSize\(q\.size\) \+ 2 \* \(\(q\.nLoose \?\? q\.nExtras \?\? 0\) \+ \(q\.nPlateaus \|\| 0\)\);/.test(src), 'a plateau is still counted as its extras');
+    // on a unit without a plateau every value folds into one setting
+    const a = { decision: 'argmax', entry: 'market', gate: 'directional', tHours: 65, agreeRule: 'count', agreeBar: 'all', agreePct: 50, agreeCopy: 98, agreeBoth: false, agreePersist: 0, confirm: 'off', plateauPct: 50 };
+    const b = { ...a, plateauPct: 75 };
+    const key = (st, has) => src.includes('function foldKeyRest(') && require('../lib/stages').foldKeyRest
+      ? require('../lib/stages').foldKeyRest(st, false, 'daily-4d', false, has) : null;
+    if (key(a, false) != null) {
+      assert.strictEqual(key(a, false), key(b, false), 'two plateau shares are two settings on a unit with no plateau');
+      assert.notStrictEqual(key(a, true), key(b, true), 'two plateau shares are one setting on a unit with a plateau');
+    } else {
+      assert.ok(src.includes("hasPlateau ? (st.plateauPct ?? 'none') : 'none'].join('|');"), 'the per-unit fold does not read the plateau share only where a plateau is');
+    }
+    // the launch records it, the stage 3 unit is told its plateaus, the tables carry it, the refusal is gone
+    assert.ok(src.includes('plateauPct: plateauPctOrRefuse(params.plateauPct), plateauPermutePct: !!params.plateauPermutePct,'), 'the launch does not record the plateau share');
+    assert.ok(src.includes('plateaus: Array.isArray(rec.plateaus) ? rec.plateaus : [],'), 'the stage 3 unit is not told its plateaus');
+    assert.strictEqual((src.match(/plateauPct: (st|r)\.plateauPct \?\? null,/g) || []).length, 2, 'the two tables do not both carry the plateau share');
+    assert.ok(!/does not fold a plateau to one vote/.test(src), 'stage 3 still refuses a set with plateaus');
+    assert.ok(/out\.plateauUnits = records \? records\.filter\(\(r\) => hasPlateauOf\(r\)\)\.length : 0;/.test(src), 'the count line does not say how many units carry a plateau');
+    const sw = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
+    assert.ok(sw.includes("plateau: st.plateauPct == null ? null : Number(st.plateauPct),") && sw.includes("${agr.plateau == null ? '' : '|plateau' + agr.plateau}`;"), 'the quorum\'s identity does not carry the plateau share, so two settings could share one cached stream');
+    // and a key without one is byte for byte what every stage 3 set on the box was written under
+    const keyOf = require('../lib/stagework').agreedKey;
+    assert.strictEqual(keyOf('argmax', { rule: 'count', bar: 'all', pct: 75, copy: 98, both: false, persist: 0, plateau: null }), 'argmax|count|all|75|98|0|0', 'the agreed maps on disk no longer match their own keys');
+    assert.strictEqual(keyOf('argmax', { rule: 'count', bar: 'all', pct: 75, copy: 98, both: false, persist: 0, plateau: 60 }), 'argmax|count|all|75|98|0|0|plateau60');
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    assert.ok(/<label class="f" title="[^"]*">plateau share<select id="swPlateauShare">\$\{vocabOptions\('plateauShare', '50'\)\}<\/select><\/label>/.test(ui), 'Sweep has no plateau share box');
+    assert.ok(/<input type="checkbox" id="swPermPlateauShare"> permute<\/label>/.test(ui), 'or no permute beside it');
+    assert.ok(ui.includes("plateauPct: Number($('#swPlateauShare').value),") && ui.includes("plateauPermutePct: $('#swPermPlateauShare').checked,"), 'the launch does not send it');
+    assert.ok(ui.includes("setV('#swPlateauShare', p.plateauPct == null ? 50 : p.plateauPct); setC('#swPermPlateauShare', p.plateauPermutePct);"), 'loading a set back into the boxes drops it');
+    assert.ok(/swGhostGroup\('#swGrpPlateau', Array\.isArray\(got\.unitSettings\) && got\.unitSettings\.length > 0 && !got\.plateauUnits\);/.test(ui), 'the box is live on a run with no plateau to read it');
+    assert.ok(ui.includes("plateauPct: 'plateau share',"), 'the Funnel cannot name the dial by its box');
+    assert.ok(ui.includes('+plateau${r.plateauPct}%'), 'Boards does not say the plateau share a setting used');
+  },
+
   // THE LAUNCH ANSWERS BEFORE THE SETTINGS ARE BUILT (owner order, 2026-09-02:
   // the press would "go away and do nothing for a minute before crashing
   // without a message", and the run had started). The gates read the count;
@@ -870,12 +938,19 @@ module.exports = {
     const cell = { entry: 'market', tHours: 65 };
     const B = { cell, agreeRule: 'count', agreeBar: 'all', agreePermutePct: true };
     // the pairs, off the records, exactly as `sizes` is read
-    assert.deepStrictEqual(stages.shapesOf([{ size: 1 }, { size: 1, extras: null }]), [{ size: 1, nExtras: 0 }],
+    assert.deepStrictEqual(stages.shapesOf([{ size: 1 }, { size: 1, extras: null }]), [{ size: 1, nExtras: 0, nPlateaus: 0, nLoose: 0 }],
       'two units with no extras are one committee shape');
     assert.deepStrictEqual(stages.shapesOf([{ size: 1 }, { size: 1, extras: [{}, {}] }]),
-      [{ size: 1, nExtras: 0 }, { size: 1, nExtras: 2 }], 'a unit carrying extras is its own committee shape');
-    assert.deepStrictEqual(stages.shapesOf([{ ctx1: 'A', ctx2: 'B', extras: [{}] }]), [{ size: 3, nExtras: 1 }],
+      [{ size: 1, nExtras: 0, nPlateaus: 0, nLoose: 0 }, { size: 1, nExtras: 2, nPlateaus: 0, nLoose: 2 }], 'a unit carrying extras is its own committee shape');
+    assert.deepStrictEqual(stages.shapesOf([{ ctx1: 'A', ctx2: 'B', extras: [{}] }]), [{ size: 3, nExtras: 1, nPlateaus: 0, nLoose: 1 }],
       'a record with no size of its own is read off what it is alongside');
+    // 3.205.0: a plateau is one voter per kind however many extras it holds, so
+    // nine extras in one plateau are a committee of 8 + 2, not 8 + 18
+    const nine = Array.from({ length: 9 }, () => ({}));
+    assert.deepStrictEqual(stages.shapesOf([{ size: 1, extras: nine, plateaus: [{ centre: 4, members: [0, 1, 2, 3, 4, 5, 6, 7, 8] }] }]),
+      [{ size: 1, nExtras: 9, nPlateaus: 1, nLoose: 0 }], 'a plateau is counted as its nine extras');
+    assert.deepStrictEqual(stages.shapesOf([{ size: 1, extras: [{}, {}, {}, {}], plateaus: [{ centre: 1, members: [0, 1, 2] }] }]),
+      [{ size: 1, nExtras: 4, nPlateaus: 1, nLoose: 1 }], 'an extra outside every plateau is not counted as loose');
     assert.deepStrictEqual(stages.shapesOf([]), [], 'no records is no shapes');
     // AND THE FOLD SEES THEM. A committee of 8 and one of 12 land on different
     // rungs, so shares that folded into one when both were read as 8 no longer do.
@@ -909,11 +984,11 @@ module.exports = {
     assert.strictEqual((src.match(/shapesOf\(/g) || []).length, 5,
       'a reader of the block is not handed the committee shapes, or a sixth reader was added without this test being looked at again');
     assert.ok(/out\.committees = records/.test(src)
-      && /shapesOf\(records\)\.map\(\(q\) => membersForSize\(q\.size\) \+ 2 \* q\.nExtras\)/.test(src),
+      && /shapesOf\(records\)\.map\(\(q\) => votersOf\(q\)\)/.test(src),
       'the quorum line is counted off the same shapes the fold reads, never typed');
     const UI2 = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     assert.ok(!/judged by 8 members/.test(UI2), 'the committee size is typed into the screen again');
-    assert.ok(/swSayQuorum\(got\.committees\)/.test(UI2), 'and the line is written from what the run will hold');
+    assert.ok(/swSayQuorum\(got\.committees, got\.plateauUnits\)/.test(UI2), 'and the line is written from what the run will hold');
     assert.ok(/const agrees = agreementsFor\(params, sizes, shapesOf\(records\)\);/.test(src), 'the cost line does not read the shapes off its own records');
     assert.ok(/const declaredSettings = settingsFor\(params, sizes, shapesOf\(parentRecords\)\);/.test(src), 'the launch does not build its plan from the shapes it will price');
     assert.ok(/foldSameTradeSettings\(settingsFor\(doc\.params \|\| \{\}, sizes, shapesOf\(parentRecords\)\)/.test(src), 'a paused run started again rebuilds a different block from the one it paused with');
@@ -3491,7 +3566,7 @@ module.exports = {
     // arriving here the caches confused two settings for each other.
     const key = /const agreedKey = \(decision, agr\) => `([^`]+)`;/.exec(sw);
     assert.ok(key, 'the one definition of what makes a quorum itself is gone');
-    for (const dial of ['agr.rule', 'agr.bar', 'agr.pct', 'agr.copy', 'agr.both', 'agr.persist', 'decision']) {
+    for (const dial of ['agr.rule', 'agr.bar', 'agr.pct', 'agr.copy', 'agr.both', 'agr.persist', 'agr.plateau', 'decision']) {
       assert.ok(key[1].includes(dial), `the quorum's key leaves out ${dial}, so two settings that differ only there share one answer`);
     }
     assert.ok(/const key = `\$\{agreedKey\(decision, agr\)\}\|\$\{dealIdx\}\|\$\{slice\}`;/.test(sw),
@@ -5556,8 +5631,9 @@ module.exports = {
     const swSrc = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
     const cmSrc = fs.readFileSync(path.join(ROOT, 'lib', 'committee.js'), 'utf8');
     const asked = [
-      ...[...swSrc.matchAll(/probs: ([^\n]+?) \? probsFor\(/g)].map((m) => m[1]),
-      ...[...cmSrc.matchAll(/probs: ([^\n]+?) \? probsPerMember : null/g)].map((m) => m[1]),
+      // (3.205.0: both read the folded voters' leans, `f.probs`)
+      ...[...swSrc.matchAll(/probs: ([^\n]+?) \? f\.probs : null/g)].map((m) => m[1]),
+      ...[...cmSrc.matchAll(/probs: ([^\n]+?) \? f\.probs : null/g)].map((m) => m[1]),
     ];
     assert.strictEqual(asked.length, 2, 'both places that build a quorum must decide whether to build the leans');
     for (const test of asked) {

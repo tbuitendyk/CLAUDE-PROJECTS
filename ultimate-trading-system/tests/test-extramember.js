@@ -475,7 +475,8 @@ async function aNeighbourTooThinToTrainGoesSilentAndACentreStillRefuses() {
   assert.ok(st.includes('plateaus: res.plateaus && res.plateaus.length ? res.plateaus : null,'), 'the stage 1 record drops the plateaus');
   assert.ok(st.includes('plateaus: (rec.plateaus || []).length ? rec.plateaus : null,'), 'the stage 2 record drops the plateaus');
   assert.ok(/plateaus: \(rec\.plateaus \|\| \[\]\)\.map\(\(f\) => \(\{ centre: f\.centre, members: \(f\.members \|\| \[\]\)\.slice\(\) \}\)\) \}/.test(st), 'the greenlight is never told the plateaus');
-  assert.ok(/carry plateaus of extra members, and this release does not fold a plateau to one vote/.test(st), 'stage 3 prices a plateau as nine votes');
+  assert.ok(!/does not fold a plateau to one vote/.test(st), 'stage 3 still refuses a set with plateaus (3.205.0 folds them)');
+  assert.ok(/plateaus: unit\.plateaus \|\| \[\], speaking \}\);/.test(fs.readFileSync(path.join(__dirname, '..', 'lib', 'stagework.js'), 'utf8')), 'the stage 3 task does not fold the plateaus it is told');
   assert.ok(st.includes("plateaus: Array.isArray((x || {}).plateaus) ? (x || {}).plateaus : [],"), 'a relaunch from a record drops the plateaus');
   assert.ok(st.includes("({ ...u, extras: [], plateaus: [] })"), 'the control arm keeps the plateaus it dropped the extras of');
   const live = fs.readFileSync(path.join(__dirname, '..', 'lib', 'live', 'stagesignal.js'), 'utf8');

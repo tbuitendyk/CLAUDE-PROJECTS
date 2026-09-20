@@ -39,6 +39,8 @@ function agreementOf(cfg) {
   return {
     rule: a.rule, bar: a.bar ?? null, pct: a.pct ?? null,
     copy: a.copy ?? committee.COPY_DEFAULT, both: !!a.both, persist: Math.max(0, Math.floor(Number(a.persist) || 0)),
+    // the plateau share (3.205.0): nothing on a unit without plateaus
+    plateau: a.plateau == null ? null : Number(a.plateau),
   };
 }
 
@@ -120,7 +122,11 @@ async function stageCommitteeCallFor(cfg, target, closed, allChunks, maps, geo, 
     return decision === 'directional' ? tuneTau(valChunks, m.tauProbs.map(committee.probsObj), maps.trade, geo, fee).tau : null;
   });
   const specs = members.map((m) => m.spec);
-  const C = committee.committeeOn({ specs, memberProbsTest: members.map((m) => m.probs.slice(0, nTest)), taus });
+  // WITH ITS PLATEAUS FOLDED, exactly as stage 3 folded them (3.205.0): one
+  // voter per plateau per kind at the configuration's own share, a member
+  // that could not be trained left out of the fold
+  const speaking = new Set(members.map((m, mi) => (m.saved && m.saved.kind === 'silent' ? -1 : mi)).filter((mi) => mi >= 0));
+  const C = committee.committeeOn({ specs, memberProbsTest: members.map((m) => m.probs.slice(0, nTest)), taus, plateaus: cfg.plateaus || [], speaking });
   const momentProbs = members.map((m) => m.probs.slice(nTest));
   const stream = C.streamOf(decision, agr, momentProbs);
   const call = stream[stream.length - 1] || 0;

@@ -29,6 +29,9 @@ const agreement = require('./agreement');
 
 const asChoices = (values, label = (v) => String(v)) => values.map((v) => ({ value: String(v), label: label(v) }));
 
+// the shares a quorum may ask for, and a plateau's too: every whole rung of an
+// 8-member and of a 10-member committee is reachable
+const SHARE_PCTS = [10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 100];
 function vocabulary() {
   const mult = (v) => `${v}×`;
 
@@ -99,7 +102,11 @@ function vocabulary() {
     // only the voices way of weighing reads this, and the block is not
     // multiplied by it for the others
     agreeCopy: asChoices(agreement.COPY_PCTS, (q) => `${q}%`),
-    agreeShare: asChoices([10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 100], (q) => `${q}%`),
+    agreeShare: asChoices(SHARE_PCTS, (q) => `${q}%`),
+    // OF A PLATEAU'S TRAINED MEMBERS, THE SHARE THAT MUST CALL THE SAME SIDE
+    // before the plateau's one vote is cast (3.205.0). The same list as share,
+    // because it is the same kind of number one level down.
+    plateauShare: asChoices(SHARE_PCTS, (q) => `${q}%`),
     agreeHold: asChoices([0, 1, 2], (q) => (q === 0 ? 'off' : `${q}`)),
     windowLayout: [
       { value: 'split70', label: '70/15/15' },

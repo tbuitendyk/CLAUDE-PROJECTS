@@ -45,40 +45,65 @@ function callsOf(probsPerMember, decision, taus) {
 //   specs            [{ model, view }] per member
 //   memberProbsTest  [per member][nTest] probabilities on the test slice
 //   taus             per member, for the directional decision (null otherwise)
-function committeeOn({ specs, memberProbsTest, taus = null }) {
+//   plateaus         [{ centre, members }] over the extras, or none (3.205.0)
+//   speaking         Set of member indices that were trained, or null for all
+//
+// WITH PLATEAUS THE COMMITTEE IS ITS VOTERS, NOT ITS MEMBERS (3.205.0): every
+// base member and every loose extra as itself, and one voter per plateau per
+// kind, folded through plateauVoters / foldPlateaus at the share the setting
+// asks for (agr.plateau). Everything below -- the calls, the independent
+// voices, the bars, the streams, what a share is a share of -- reads the
+// voters, so a plateau is one vote everywhere and nine votes nowhere.
+function committeeOn({ specs, memberProbsTest, taus = null, plateaus = null, speaking = null }) {
   const nTest = memberProbsTest.length ? memberProbsTest[0].length : 0;
-  const models = (specs || []).map((s) => (s || {}).model || 'logreg');
-  const families = (specs || []).map((s) => (s || {}).view || 'full');
-  const testCallCache = new Map();
-  const testCalls = (decision) => {
-    if (!testCallCache.has(decision)) testCallCache.set(decision, callsOf(memberProbsTest, decision, taus));
-    return testCallCache.get(decision);
+  const hasPlateaus = Array.isArray(plateaus) && plateaus.length > 0;
+  const voters = hasPlateaus ? plateauVoters(specs, plateaus, speaking)
+    : (specs || []).map((s, mi) => ({ kind: 'member', mi, spec: s || {} }));
+  const models = voters.map((v) => (v.spec || {}).model || 'logreg');
+  const families = voters.map((v) => (v.spec || {}).view || 'full');
+  // WHAT THE VOTERS SAY over a run of moments: each member as itself, each
+  // plateau folded at the share asked for. A committee without plateaus folds
+  // nothing and this is exactly the members' own calls and votes.
+  const foldOf = (probsPerMember, decision, share) => {
+    const calls = callsOf(probsPerMember, decision, taus);
+    if (!hasPlateaus) return { probs: probsPerMember, calls };
+    return foldPlateaus({ voters, probsPerMember, callsPerMember: calls, share: share == null ? 50 : share });
   };
+  const testFoldCache = new Map();
+  const testFold = (decision, share) => {
+    const key = `${decision}|${hasPlateaus ? (share == null ? 50 : share) : ''}`;
+    if (!testFoldCache.has(key)) testFoldCache.set(key, foldOf(memberProbsTest, decision, share));
+    return testFoldCache.get(key);
+  };
+  const testCalls = (decision, share = null) => testFold(decision, share).calls;
   // WHAT THE COMMITTEE ACTUALLY IS, measured on the test slice and never on
-  // any later window: which members are independent voices and which are
+  // any later window: which voters are independent voices and which are
   // near-copies of each other.
   const voiceCache = new Map();
-  const voicesFor = (decision, copy) => {
-    const key = `${decision}|${copy}`;
-    if (!voiceCache.has(key)) voiceCache.set(key, agreement.voiceGroups(testCalls(decision), nTest, copy / 100));
+  const voicesFor = (decision, copy, share = null) => {
+    const key = `${decision}|${copy}|${hasPlateaus ? (share == null ? 50 : share) : ''}`;
+    if (!voiceCache.has(key)) voiceCache.set(key, agreement.voiceGroups(testCalls(decision, share), nTest, copy / 100));
     return voiceCache.get(key);
   };
   // the votes and the extras a way of weighing reads, for one run of moments
-  const ctxOf = (decision, agr, probsPerMember) => ({
-    calls: callsOf(probsPerMember, decision, taus), models, families,
-    probs: agreement.READS_LEANS.has(agr.rule) ? probsPerMember : null,
-    weights: agr.rule === 'voices' ? voicesFor(decision, agr.copy).weights : null,
-  });
+  const ctxOf = (decision, agr, probsPerMember) => {
+    const f = foldOf(probsPerMember, decision, agr.plateau);
+    return {
+      calls: f.calls, models, families,
+      probs: agreement.READS_LEANS.has(agr.rule) ? f.probs : null,
+      weights: agr.rule === 'voices' ? voicesFor(decision, agr.copy, agr.plateau).weights : null,
+    };
+  };
   // THE BAR TAKEN FROM WHAT THIS COMMITTEE REACHES, from the test slice only
   const cutoffCache = new Map();
   const cutoffFor = (decision, agr) => {
-    const key = `${decision}|${agr.rule}|${agr.copy}|${agr.pct}`;
+    const key = `${decision}|${agr.rule}|${agr.copy}|${agr.pct}|${hasPlateaus ? agr.plateau : ''}`;
     if (!cutoffCache.has(key)) cutoffCache.set(key, agreement.ownHistoryBar(ctxOf(decision, agr, memberProbsTest), nTest, agr.rule, agr.pct));
     return cutoffCache.get(key);
   };
   // WHAT A SHARE IS A SHARE OF, under this rule, for this committee
-  const denomFor = (agr, decision) => (agr.rule === 'voices' ? voicesFor(decision, agr.copy).voices
-    : agr.rule === 'families' ? new Set(families).size : memberProbsTest.length);
+  const denomFor = (agr, decision) => (agr.rule === 'voices' ? voicesFor(decision, agr.copy, agr.plateau).voices
+    : agr.rule === 'families' ? new Set(families).size : voters.length);
   const rungFor = (agr, decision) => {
     const n = denomFor(agr, decision);
     return Math.max(1, Math.min(n, Math.ceil((agr.pct / 100) * n)));
@@ -112,7 +137,7 @@ function committeeOn({ specs, memberProbsTest, taus = null }) {
     return (n && denom) ? { agreed: pct(sum / n), agreedLow: pct(lo), agreedHigh: pct(hi), agreedN: n }
       : { agreed: null, agreedLow: null, agreedHigh: null, agreedN: 0 };
   };
-  return { nTest, models, families, testCalls, voicesFor, ctxOf, cutoffFor, denomFor, rungFor, levelFor, streamOf, agreedOn };
+  return { nTest, models, families, voters, foldOf, testCalls, voicesFor, ctxOf, cutoffFor, denomFor, rungFor, levelFor, streamOf, agreedOn };
 }
 
 // ---- THE PLATEAU, FOLDED TO ONE VOICE PER KIND (3.204.0) ----------------------

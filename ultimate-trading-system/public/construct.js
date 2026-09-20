@@ -240,6 +240,7 @@ const DIAL_ON_SWEEP = {
   agreePct: 'share',
   agreeCopy: 'one voice at',
   agreePersist: 'hold',
+  plateauPct: 'plateau share',
   decision: 'decision',
   weekdaysOnly: '24/5',
   entry: 'entry',
@@ -1453,15 +1454,18 @@ function swCountsSoon() {
 // 2 record set chosen there is nothing to count and it says so rather than
 // standing a number in -- a count with no units behind it is the typed 8 again
 // wearing a different coat (RULE ELEVEN clause 6).
-function swSayQuorum(sizes) {
+function swSayQuorum(sizes, plateauUnits = 0) {
   const el = $('#swQuorumSaid');
   if (!el) return;
   const list = (Array.isArray(sizes) ? sizes : []).filter((n) => Number.isFinite(n) && n > 0);
+  // a plateau is one vote however many members it holds (3.205.0), and the
+  // count says so whenever a unit being priced carries one
+  const asOne = plateauUnits > 0 ? ', a plateau counting as one' : '';
   const how = !list.length
     ? 'every coin is judged by the members its own unit holds'
     : list.length === 1
-      ? `every coin here is judged by <b>${list[0]}</b> members`
-      : `the coins here are judged by <b>${list[0]}</b> to <b>${list[list.length - 1]}</b> members, and the number differs from unit to unit`;
+      ? `every coin here is judged by <b>${list[0]}</b> members${asOne}`
+      : `the coins here are judged by <b>${list[0]}</b> to <b>${list[list.length - 1]}</b> members${asOne}, and the number differs from unit to unit`;
   el.innerHTML = `<b>Quorum</b> — ${how}. The boxes below decide when enough of them agree to act, `
     + 'and <b>share</b> is a share of whatever its own unit holds.';
 }
@@ -1581,7 +1585,11 @@ async function swCounts() {
       //
       // WHERE THE UNITS DIFFER IT SAYS THE RANGE rather than picking one. Two
       // committee sizes under one number is the same fault one step along.
-      swSayQuorum(got.committees);
+      swSayQuorum(got.committees, got.plateauUnits);
+      // THE PLATEAU SHARE IS GHOSTED WHEN NO UNIT BEING PRICED CARRIES A
+      // PLATEAU (3.205.0): on such a run every value of it places the same
+      // trades, so the box and its tick would change nothing.
+      swGhostGroup('#swGrpPlateau', Array.isArray(got.unitSettings) && got.unitSettings.length > 0 && !got.plateauUnits);
       // CONFIRM IS GHOSTED WHEN NO UNIT BEING PRICED PASSES ON COINS (3.130.0,
       // COINS.md section 11): on such units the three values place the same
       // trades, so the dial and its two boxes would change nothing. Ghosted
@@ -1686,6 +1694,9 @@ function swBlockParams() {
     agreePermutePct: $('#swPermAgreeShare').checked,
     agreePermuteBoth: $('#swPermAgreeBoth').checked,
     agreePermutePersist: $('#swPermAgreeHold').checked,
+    // the plateau share and its permute (3.205.0)
+    plateauPct: Number($('#swPlateauShare').value),
+    plateauPermutePct: $('#swPermPlateauShare').checked,
   };
 }
 
@@ -1771,6 +1782,7 @@ function fillStageForm(doc) {
     setC('#swPermAgreeCopy', p.agreePermuteCopy);
     setC('#swPermAgreeShare', p.agreePermutePct);
     setC('#swPermAgreeBoth', p.agreePermuteBoth); setC('#swPermAgreeHold', p.agreePermutePersist);
+    setV('#swPlateauShare', p.plateauPct == null ? 50 : p.plateauPct); setC('#swPermPlateauShare', p.plateauPermutePct);
     const cp = p.cellPermute || {};
     setC('#swPermEntry', cp.entry); setC('#swPermGate', cp.gate); setC('#swPermD', cp.dMult); setC('#swPermT', cp.tHours);
     setC('#swPermTrail', cp.trail); setC('#swPermArm', cp.arm);
@@ -3886,6 +3898,10 @@ async function drawSweep() {
         <label class="c" title="price both with and without the both kinds requirement."><input type="checkbox" id="swPermAgreeBoth"> permute</label>
         <label class="f" title="how many decision moments in a row the same call must have stood before it is acted on. off acts at once.">hold<select id="swAgreeHold">${vocabOptions('agreeHold', '0')}</select></label>
         <label class="c" title="price every hold as its own setting."><input type="checkbox" id="swPermAgreeHold"> permute</label>
+        <div id="swGrpPlateau" style="display:flex;align-items:flex-end;gap:.45rem">
+          <label class="f" title="OF A PLATEAU'S TRAINED MEMBERS, THE SHARE THAT MUST CALL THE SAME SIDE before the plateau's one vote is cast. A plateau is the nine around a promoted row, and it votes ONCE per kind, however many it holds: its lean is its members' votes added and shared out, whatever this says; its call is cast only when this share of them agree. At 50% five of nine must agree; at 100% all of them. A member that could not be trained is left out of the count. Greyed when no unit being priced carries a plateau, because then it changes nothing.">plateau share<select id="swPlateauShare">${vocabOptions('plateauShare', '50')}</select></label>
+          <label class="c" title="price every plateau share as its own setting. On a unit that carries no plateau every value of it places the same trades and is one setting there."><input type="checkbox" id="swPermPlateauShare"> permute</label>
+        </div>
       </div>
       <p class="note" style="margin:.6rem 0 .1rem"><b>Confirmation</b> — on a unit whose coin and chunk shape are ticked on Coins, every call the members make is checked against the way that coin itself has moved after a rising window and after a falling window, at its own sweet spot band. These boxes decide what that check changes. The reading is taken from the SAME list this record set took its units from — the one named under where this run takes its units from when its stage 1 was started — and never from the other one. Greyed when no unit being priced has one, and the line below says why.</p>
       <p class="note warn" id="swWhyConfirm" style="margin:.1rem 0 .4rem;display:none"></p>
@@ -4022,6 +4038,7 @@ async function drawSweep() {
     setC('#swPermAgreeBar', false); setC('#swPermAgreeShare', false); setC('#swPermAgreeCopy', false);
     setC('#swAgreeBoth', false); setC('#swPermAgreeBoth', false);
     setV('#swAgreeHold', '0'); setC('#swPermAgreeHold', false);
+    setV('#swPlateauShare', '50'); setC('#swPermPlateauShare', false);
     setV('#swEntry', 'market'); setC('#swPermEntry', false);
     setC('#swPermGate', false); setC('#swPermD', false);
     setV('#swTrail', ''); setC('#swPermTrail', false); setC('#swPermArm', false);
@@ -5659,7 +5676,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}>${r.tHours}h</td>
         <td ${btd}${r.trailMult == null ? ' class="muted"' : ''}>${r.trailMult == null ? (r.entry === 'market' ? '—' : 'static') : `${r.trailMult}×`}</td>
         <td ${btd}${r.trailMult == null ? ' class="muted"' : ''}>${r.trailMult == null ? '—' : `${r.armMult}×`}</td>
-        <td ${btd}>${esc(r.agreeRule || 'count')}${r.agreeBar === 'own' ? ' <span class="muted">own</span>' : ''}${r.agreeRule === 'voices' && r.agreeCopy ? ` <span class="muted">1v${r.agreeCopy}</span>` : ''}${r.agreeBoth ? ' <span class="muted">+both</span>' : ''}${r.agreePersist ? ` <span class="muted">+hold${r.agreePersist}</span>` : ''}</td>
+        <td ${btd}>${esc(r.agreeRule || 'count')}${r.agreeBar === 'own' ? ' <span class="muted">own</span>' : ''}${r.agreeRule === 'voices' && r.agreeCopy ? ` <span class="muted">1v${r.agreeCopy}</span>` : ''}${r.agreeBoth ? ' <span class="muted">+both</span>' : ''}${r.agreePersist ? ` <span class="muted">+hold${r.agreePersist}</span>` : ''}${r.plateauPct != null ? ` <span class="muted">+plateau${r.plateauPct}%</span>` : ''}</td>
         <td ${btd}>${r.avgAgreed == null ? '<span class="muted">—</span>' : `${r.avgAgreed.toFixed(1)}%`}</td>
         <td ${btd}>${r.avgRung == null ? '—' : r.avgRung.toFixed(1)}${r.members ? ` <span class="muted">of ${r.members}</span>` : ''}</td>
         <td ${btd}${r.avgVoices != null && r.members && r.avgVoices < r.members ? ' class="warn"' : ''}>${r.avgVoices == null ? '—' : r.avgVoices.toFixed(1)}</td>
