@@ -1365,6 +1365,56 @@ module.exports = {
   // red for ever. Read from the source, the way the chain routine's own test
   // reads it, plus the launch's record and the route that hands the screen
   // the pairs ticked now.
+  // A NEW STAGE 1 TAKES THE STAGE 2 HEADING OFF GREEN (3.196.0, owner order:
+  // "as soon that start stage 1 begins the stage 2 sweep is no longer of that
+  // provenance, so turn it red").
+  //
+  // Stage 1 has no picker, so "the section above" used to mean its boxes and
+  // nothing else -- and a new stage 1 run launched from the same boxes moved
+  // none of them. Two greens went on saying the chain was linked while stage 1
+  // had moved to a set the stage 2 box had never heard of.
+  //
+  // THE REDUCER IS RUN, NOT READ. It is lifted out of the file by its own text
+  // and exercised, so this cannot pass against a line that says the right words
+  // and picks the wrong set.
+  theStageTwoHeadingGoesRedWhenANewerStageOneExists() {
+    const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const m = /const s1Shown = sets\n([\s\S]*?);\n/.exec(UI);
+    assert.ok(m, 'the stage 1 section no longer works out which set it is showing');
+    // eslint-disable-next-line no-new-func
+    const newest = new Function('sets', `return sets${m[1]};`);
+
+    const at = (d) => `2026-09-${d}T00:00:00.000Z`;
+    const s1a = { id: 's1-a', stage: 1, name: 'S1 #1', status: 'done', createdAt: at('18') };
+    const s1b = { id: 's1-b', stage: 1, name: 'S1 #2', status: 'done', createdAt: at('19') };
+    const s1run = { id: 's1-c', stage: 1, name: 'S1 #3', status: 'running', createdAt: at('20') };
+    const s2 = { id: 's2-a', stage: 2, name: 'S2 #1', status: 'done', createdAt: at('19') };
+
+    assert.strictEqual(newest([s1a, s2]).id, 's1-a', 'with one stage 1 set it is the one being shown');
+    assert.strictEqual(newest([s1a, s1b, s2]).id, 's1-b', 'a newer stage 1 set is what the section shows');
+    assert.strictEqual(newest([s1b, s1a]).id, 's1-b', 'and the order the list arrives in does not decide it');
+    // A RUNNING ONE COUNTS. The owner's words are "as soon that start stage 1
+    // BEGINS" -- the set exists from the press, and that is when the older
+    // pairing stops being what stage 1 is showing.
+    assert.strictEqual(newest([s1a, s1b, s1run]).id, 's1-c', 'a stage 1 run that has begun is what the section is showing');
+    assert.strictEqual(newest([s2]), null, 'with no stage 1 set there is nothing being shown');
+    // and a stage 2 set is never mistaken for one
+    assert.strictEqual(newest([s2, s1a]).id, 's1-a', 'only stage 1 sets are looked at');
+
+    // THE HEADING ACTS ON IT, and says how to go green — which is NOT "set the
+    // boxes back": no box above can undo a newer stage 1 existing.
+    const fn = UI.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+    const body = fn.slice(fn.indexOf('function swProvenance() {'), fn.indexOf('\n}\n', fn.indexOf('function swProvenance() {')));
+    assert.ok(/else if \(s1Shown && s1Shown\.id !== s1row\.id\) \{/.test(body),
+      'the heading does not act on a stage 1 set newer than the one its box names');
+    assert.ok(/paint\('#swH2', false,/.test(body) && /Choose \$\{s1Shown\.name\} here and this goes green again/.test(body),
+      'it goes red and names the set to choose');
+    assert.ok(/sayWhy\('#swWhy2', \{[\s\S]*?say:/.test(body),
+      'and it says why on the screen, not only in a hover');
+    assert.ok(/const made = s1Shown\.status === 'done' \? 'has since made' : 'is making';/.test(body),
+      'a run still going is described as going, not as finished');
+  },
+
   theStageHeadingsCompareTheTickForASetLaunchedFromCoins() {
     const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8')
       .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');

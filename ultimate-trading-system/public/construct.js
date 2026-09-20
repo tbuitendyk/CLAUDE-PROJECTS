@@ -1053,7 +1053,11 @@ function swProvenance() {
   // there are three states, not two, and the third is the page's own colour:
   // the heading is left exactly as the stylesheet draws it, which is neither
   // claim. Pass `ok` as null for it.
-  const paint = (sel, ok, why) => {
+  // `fix` is how this section goes green again, and it is not always the same
+  // sentence (3.196.0): a setting that has moved is set back, and a chain that
+  // has been overtaken cannot be -- there the way forward is to choose the set
+  // the section above is showing now.
+  const paint = (sel, ok, why, fix = 'Set the boxes back and this goes green again.') => {
     const h = $(sel);
     if (!h) return;
     if (ok === null) {
@@ -1064,7 +1068,7 @@ function swProvenance() {
     h.style.color = ok ? 'var(--pos)' : 'var(--neg)';
     h.title = ok
       ? 'green: this section is part of one linked chain with the green sections above it'
-      : `red: ${why}. Set the boxes back and this goes green again.`;
+      : `red: ${why}. ${fix}`;
   };
   // AND A RED HEADING SAYS WHY ON THE SCREEN, NOT IN A HOVER (3.76.4, owner:
   // "STILL RED"). The reason was written into the heading's hover text and
@@ -1078,8 +1082,16 @@ function swProvenance() {
     if (!p) return;
     if (!m) { p.innerHTML = ''; p.style.display = 'none'; return; }
     p.style.display = '';
-    p.innerHTML = `<b>${esc(m.what)}</b> — the box holds ${esc(m.box)}, and ${esc(m.setName)} was run with ${esc(m.set)}. `
-      + 'Set the box back and this section goes green again.';
+    // ...AND A BREAK THAT IS NOT ABOUT A BOX'S VALUE SAYS ITS OWN SENTENCE
+    // (3.196.0). "the box holds X and Y was run with Z" is the right words for
+    // a setting that has moved and the wrong ones for a chain that has been
+    // overtaken -- there the box holds nothing wrong, it is simply pointing at
+    // a set the section above has stopped showing, and telling the owner to
+    // "set the box back" would send them to undo something they never did.
+    p.innerHTML = m.say
+      ? `<b>${esc(m.what)}</b> — ${esc(m.say)}`
+      : `<b>${esc(m.what)}</b> — the box holds ${esc(m.box)}, and ${esc(m.setName)} was run with ${esc(m.set)}. `
+        + 'Set the box back and this section goes green again.';
   };
   const v = (sel) => { const e = $(sel); return e ? e.value : ''; };
   const c = (sel) => { const e = $(sel); return !!(e && e.checked); };
@@ -1117,12 +1129,43 @@ function swProvenance() {
   paint('#swH1', (c('#swSingles') || c('#swDoubles') || c('#swTriples')) ? true : null,
     'stage 1 is set up once singles, doubles or triples is ticked — until then there is nothing here for the sections below to link to');
 
+  // WHAT THE STAGE 1 SECTION IS SHOWING (3.196.0, owner order: "when there are
+  // two green sections sweep 1 and sweep 2 on the sweep tab, and a new sweep 1
+  // is made, why would the existing sweep 2 set-up that's still named for the
+  // prior sweep 1 stay green? as soon that start stage 1 begins the stage 2
+  // sweep is no longer of that provenance, so turn it red").
+  //
+  // Stage 1 has no picker, so until now "the section above" meant its BOXES and
+  // nothing else -- and a new stage 1 run launched from the same boxes changed
+  // none of them. Two greens went on saying the chain was linked while the
+  // section above had moved on to a set the stage 2 box had never heard of.
+  //
+  // It is the NEWEST stage 1 set on the box, and a running one counts: the set
+  // exists from the moment Start stage 1 is pressed, which is when the owner
+  // says the provenance goes. Read off the box rather than off this screen's
+  // memory, so it survives a reload and says the same thing in every tab.
+  const s1Shown = sets
+    .filter((x) => x.stage === 1)
+    .reduce((a, b) => (a && String(a.createdAt || '') >= String(b.createdAt || '') ? a : b), null);
   const s1row = rowOf(v('#swFrom2'));
   sayWhy('#swWhy2', null);
   sayWhy('#swWhy3', null);
   if (!v('#swFrom2')) paint('#swH2', null, 'this section names no stage 1 record set yet, so nothing is linked to the stage 1 section above');
   else if (!s1row) paint('#swH2', false, 'the stage 1 record set named here is not on this box any more');
-  else {
+  else if (s1Shown && s1Shown.id !== s1row.id) {
+    // OVERTAKEN, AND THE ONLY WAY BACK IS FORWARD. No box above can undo a
+    // newer stage 1 existing, so the line does not offer that: it names the set
+    // the section above is showing now, and that is what to choose here.
+    const made = s1Shown.status === 'done' ? 'has since made' : 'is making';
+    paint('#swH2', false, `the stage 1 section above ${made} ${s1Shown.name}, and this box still names ${s1row.name}`,
+      `Choose ${s1Shown.name} here and this goes green again — no box above can undo a newer stage 1 existing.`);
+    sayWhy('#swWhy2', {
+      what: 'from stage 1 record set',
+      say: `this box names ${s1row.name}, and the stage 1 section above ${made} ${s1Shown.name}. `
+        + `A record set built here would come out of ${s1row.name}, which is not what stage 1 is showing any more. `
+        + `Choose ${s1Shown.name} to go green again.`,
+    });
+  } else {
     const p = s1row.params || {};
     // A BOX IS COMPARED AS THE LAUNCH RESOLVED IT, NEVER AS IT IS TYPED
     // (3.76.3, owner: "you've got state 2 red that matches exactly with stage
