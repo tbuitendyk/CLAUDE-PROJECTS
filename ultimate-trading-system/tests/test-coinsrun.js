@@ -606,6 +606,18 @@ module.exports = {
         runner.setPasserTicked('ZZZPASSAUSDT', 'daily-3d', true);
         assert.deepStrictEqual(readSettings()[runner.PASS_OFF_KEY], []);
         assert.deepStrictEqual(runner.passingUnits().filter((u) => u.coin.startsWith('ZZZPASS')).map((u) => u.coin), ['ZZZPASSAUSDT', 'ZZZPASSBUSDT']);
+        // UNSELECT ALL (3.208.0, owner order): every passer unticked in one
+        // press, nothing removed from the list, and Sweep runs none of them
+        const offBefore = new Set(runner.passersOff());
+        const all = runner.setAllPassersOff();
+        assert.ok(all.unticked >= 2 && all.off >= 2, `it says how many went off: ${JSON.stringify(all)}`);
+        assert.ok(['ZZZPASSAUSDT|daily-3d', 'ZZZPASSBUSDT|daily-3d'].every((x) => readSettings()[runner.PASS_OFF_KEY].includes(x)), 'every passer is in the off list');
+        assert.deepStrictEqual(runner.coinsRecords().passers.rows.filter((r) => r.coin.startsWith('ZZZPASS')).map((r) => r.ticked), [false, false], 'both stay listed, unticked');
+        assert.deepStrictEqual(runner.passingUnits().filter((u) => u.coin.startsWith('ZZZPASS')), [], 'and Sweep runs neither');
+        assert.strictEqual(runner.setAllPassersOff().unticked, 0, 'pressing it again unticks nothing');
+        // put back exactly what was on before, so nothing outside this fixture is left unticked
+        for (const r of runner.passersCached()) { if (!offBefore.has(`${r.coin}|${r.geometry}`)) runner.setPasserTicked(r.coin, r.geometry, true); }
+        assert.deepStrictEqual(readSettings()[runner.PASS_OFF_KEY], [...offBefore].sort(), 'the off list is exactly what it was');
       } finally { Object.values(files).forEach(rm); }
     });
   },

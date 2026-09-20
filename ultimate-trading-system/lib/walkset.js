@@ -529,6 +529,18 @@ function setRowOff(id, key, off) {
   const wrote = writePicks(id, p.picked, [...have]);
   return { id, off: wrote.off.length };
 }
+// EVERY PROMOTED ROW OF ONE SET UNTICKED IN ONE PRESS (3.208.0, owner order:
+// "add an Unselect all button on each row set under candidates for sweep").
+// The promotions stay: it is setRowOff over every row, so the list the owner
+// built row by row is kept and only what runs just now changes. It says how
+// many went off NOW, because a press over a whole list has to.
+function setAllRowsOff(id) {
+  const p = picksOrNone(id);
+  if (!p) throw new Error(`there is no walk ${JSON.stringify(id)} on this box, or it is still being brought up to date`);
+  const wasOn = p.picked.filter((k) => !p.off.includes(k)).length;
+  const wrote = writePicks(id, p.picked, [...p.picked]);
+  return { id, unticked: wasOn, off: wrote.off.length, picked: p.picked.length };
+}
 
 // EVERY PROMOTED ROW ON THE BOX, one group per walk set, for the list at the
 // top of Coins.
@@ -804,7 +816,7 @@ module.exports = {
   V, DIR, walkFile, rowKey, nextId, nextName, saveWalk, saveWalkAs, listWalks, readWalk, renameWalk,
   // a walk keeps what it has done, and can be carried on (3.189.0)
   PARTS, partFile, startPart, appendPart, readPart, removePart, unfinishedWalks, partKeys, sealPart,
-  setPicked, setPickedMany, setRowOff, clearPicks, pickedUnits, promoted, promotedUnits, deleteWalk,
+  setPicked, setPickedMany, setRowOff, setAllRowsOff, clearPicks, pickedUnits, promoted, promotedUnits, deleteWalk,
   // the nine around a promoted row, read off its set (3.203.0)
   plateauOf, PLATEAU_SIDES,
   // one parse per file, and only when the file changes (3.191.0)

@@ -393,6 +393,12 @@ app.post('/api/coins/walks/:id/clear-picks', (req, res) => {
   try { return res.json(require('./lib/walkset').clearPicks(req.params.id)); }
   catch (err) { return res.status(400).json({ error: err.message }); }
 });
+// EVERY TICK OFF ONE SET IN ONE PRESS, NOTHING REMOVED (3.208.0, owner order:
+// "add an Unselect all button on each row set under candidates for sweep").
+app.post('/api/coins/walks/:id/untick-all', (req, res) => {
+  try { return res.json(require('./lib/walkset').setAllRowsOff(req.params.id)); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
 app.post('/api/coins/walks/:id/pick', (req, res) => {
   try {
     const b = req.body || {};
@@ -438,7 +444,10 @@ app.post('/api/coins/passers', (req, res) => {
     const body = req.body || {};
     if ('bar' in body) coinsrun.setPassBar(body.bar);
     if ('coin' in body || 'shape' in body || 'ticked' in body) coinsrun.setPasserTicked(body.coin, body.shape, body.ticked);
-    return res.json({ bar: coinsrun.passBar(), off: coinsrun.passersOff() });
+    // every passer unticked in one press (3.208.0): the same door, one more word
+    let unticked = null;
+    if (body.untickAll === true) unticked = coinsrun.setAllPassersOff().unticked;
+    return res.json({ bar: coinsrun.passBar(), off: coinsrun.passersOff(), ...(unticked == null ? {} : { unticked }) });
   } catch (err) { return res.status(400).json({ error: err.message }); }
 });
 

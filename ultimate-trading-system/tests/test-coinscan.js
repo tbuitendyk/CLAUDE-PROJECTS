@@ -1824,6 +1824,26 @@ function theSplitReadingPromotesTheWholeHistoryPickOfEveryRowShown() {
     'the press shares its row with a field');
 }
 
+// UNSELECT ALL IS ON EVERY ROW SET UNDER Candidates for Sweep (3.208.0, owner
+// order: "add an Unselect all button on each row set under candidates for
+// sweep"). One press per box, in a row of its own with its count beside it,
+// through a door of its own on the box -- never a loop of one press per row
+// from the page -- and it removes nothing.
+function unselectAllIsOnEveryRowSetUnderCandidatesForSweep() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const promoted = src.slice(src.indexOf('function cPromotedBoxes('), src.indexOf('function cPassersBox('));
+  const passers = src.slice(src.indexOf('function cPassersBox('), src.indexOf('function cCandidatesPanel('));
+  assert(/<div class="row"><button class="cuntickall" data-set="\$\{esc\(g\.id\)\}"[^>]*>Unselect all<\/button>/.test(promoted), 'each promoted box has no Unselect all in its button row');
+  assert(/<button class="cunpromall" data-set="\$\{esc\(g\.id\)\}"/.test(promoted), 'Remove them all must still be there beside it');
+  assert(/\$\{g\.rows\.filter\(\(r\) => r\.ticked\)\.length\} ticked/.test(promoted), 'the row says how many are ticked, so the press has a number to read');
+  assert(/<div class="row"><button class="cunpassall"[^>]*>Unselect all<\/button>\s*<span class="muted">\$\{rows\.filter\(\(r\) => r\.ticked\)\.length\} of \$\{rows\.length\} ticked<\/span><\/div>/.test(passers), 'the passers box has no Unselect all row with its count');
+  assert(/button\.cuntickall'\)\)[\s\S]{0,400}api\/coins\/walks\/\$\{encodeURIComponent\(id\)\}\/untick-all/.test(src), "the promoted press does not go through the set's own untick-all door");
+  assert(/button\.cunpassall'\)\)[\s\S]{0,300}post\('api\/coins\/passers', \{ untickAll: true \}\)/.test(src), 'the passers press does not go through the passers door with untickAll');
+  const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  assert(/app\.post\('\/api\/coins\/walks\/:id\/untick-all'/.test(server), 'the box has no untick-all door for a walk set');
+  assert(/if \(body\.untickAll === true\) unticked = coinsrun\.setAllPassersOff\(\)\.unticked;/.test(server), 'the passers door does not take untickAll');
+}
+
 module.exports = {
   theSplitReadingPromotesTheWholeHistoryPickOfEveryRowShown,
   theWindowsStartAfterTheWarmUpAndTheShortTailIsDropped,
@@ -1874,4 +1894,5 @@ module.exports = {
   theChooseEarlyPanelIsOnScreenWithItsDoorAndItsWords,
   theBasketOpensTheCoinsScreenAsOneSectionWithOneCount,
   noCoinsTableIsStyledSoWideItNeedsASidewaysBar,
+  unselectAllIsOnEveryRowSetUnderCandidatesForSweep,
 };

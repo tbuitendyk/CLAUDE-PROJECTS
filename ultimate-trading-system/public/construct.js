@@ -10985,8 +10985,9 @@ function cPromotedBoxes(sets) {
   return `${groups.map((g) => `<div class="passbox">
       <div class="passname">from <b>${esc(g.name)}</b> &mdash; ${g.rows.length} promoted - selections may feed units into STAGE 1 and 2 ADDITIONAL MEMBER TRAINING
         <span class="muted">${esc(g.id)} · release ${esc(String(g.release || '—'))}</span></div>
-      <div class="row"><button class="cunpromall" data-set="${esc(g.id)}" title="takes every row here back off the list in one press, instead of one press per row. The walk set keeps all of them &mdash; only the promotions go, and the set itself is untouched. It asks first.">Remove them all</button>
-        <span class="muted">${g.rows.length} row(s) &mdash; the walk set is not deleted</span></div>
+      <div class="row"><button class="cuntickall" data-set="${esc(g.id)}" title="unticks every row here in one press. Nothing is removed: the rows stay on the list and any of them can be ticked again one at a time.">Unselect all</button>
+        <button class="cunpromall" data-set="${esc(g.id)}" title="takes every row here back off the list in one press, instead of one press per row. The walk set keeps all of them &mdash; only the promotions go, and the set itself is untouched. It asks first.">Remove them all</button>
+        <span class="muted">${g.rows.length} row(s), ${g.rows.filter((r) => r.ticked).length} ticked &mdash; the walk set is not deleted</span></div>
       <div class="cwbox"><table class="cgap cpassers"><thead><tr>
         <th></th><th title="the coin">coin</th><th title="the chunk shape">chunk shape</th>
         <th title="how far back the move was measured from, ending at the decision">look-back</th>
@@ -11037,7 +11038,9 @@ function cPassersBox(pass) {
     <div class="passname">from <b>Read these coins</b> - selections may feed units into STAGE 1 and 2 and if so feed STAGE 3 CONFIRMATION AWARENESS</div>
     ${head}${inner}</div>`;
   if (!rows.length) return box('<p class="note">no coin and shape passes at this bar</p>');
-  return box(`<div class="cwbox"><table class="cgap cpassers"><thead><tr>
+  return box(`<div class="row"><button class="cunpassall" title="unticks every coin and shape here in one press. Nothing is removed: they stay listed at the bar and any of them can be ticked again one at a time.">Unselect all</button>
+      <span class="muted">${rows.filter((r) => r.ticked).length} of ${rows.length} ticked</span></div>
+    <div class="cwbox"><table class="cgap cpassers"><thead><tr>
       <th></th>
       <th title="the coin">coin</th>
       <th title="the chunk shape whose reading passed">chunk shape</th>
@@ -11351,6 +11354,35 @@ async function drawCoins() {
         ans = await post(`api/coins/walks/${encodeURIComponent(id)}/clear-picks`, {});
       } catch (err) { $('#cOut').innerHTML = `<span class="warn">${esc(err.message)}</span>`; b.disabled = false; return; }
       $('#cOut').innerHTML = `<span class="pos">${(ans && ans.removed) || 0} row(s) taken off the list — ${esc(id)} itself is untouched</span>`;
+      draw();
+    };
+  }
+  // UNSELECT ALL (3.208.0, owner order: "add an Unselect all button on each
+  // row set under candidates for sweep"). Every tick in one row set off in one
+  // press and nothing removed: a tick says whether a row runs just now, and
+  // this is the one press that says "none of these, for now" without touching
+  // the list the owner built. One request per press, through the box's own
+  // door, never a loop of one press per row from the page.
+  for (const b of document.querySelectorAll('#view button.cuntickall')) {
+    b.onclick = async () => {
+      const id = b.dataset.set;
+      b.disabled = true;
+      let ans = null;
+      try {
+        ans = await post(`api/coins/walks/${encodeURIComponent(id)}/untick-all`, {});
+      } catch (err) { $('#cOut').innerHTML = `<span class="warn">${esc(err.message)}</span>`; b.disabled = false; return; }
+      $('#cOut').innerHTML = `<span class="pos">${(ans && ans.unticked) || 0} row(s) unticked — nothing removed from ${esc(id)}</span>`;
+      draw();
+    };
+  }
+  for (const b of document.querySelectorAll('#view button.cunpassall')) {
+    b.onclick = async () => {
+      b.disabled = true;
+      let ans = null;
+      try { ans = await post('api/coins/passers', { untickAll: true }); } catch (err) {
+        $('#cOut').innerHTML = `<span class="warn">${esc(err.message)}</span>`; b.disabled = false; return;
+      }
+      $('#cOut').innerHTML = `<span class="pos">${(ans && ans.unticked) || 0} coin(s) and shape(s) unticked — nothing removed</span>`;
       draw();
     };
   }

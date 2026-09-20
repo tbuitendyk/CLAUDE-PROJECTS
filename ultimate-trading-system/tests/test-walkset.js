@@ -99,6 +99,31 @@ module.exports = {
   // worth carrying; the tick says whether to run it just now. A promoted row
   // is TICKED until it is unticked, the same way a passer is, so promoting
   // does not then need a second press to use.
+  // UNSELECT ALL (3.208.0, owner order: "add an Unselect all button on each row
+  // set under candidates for sweep"). Every tick of one set off in one press,
+  // and not one promotion removed: the list the owner built row by row stays,
+  // and Sweep simply runs none of it until rows are ticked again.
+  unselectAllUnticksEveryPromotedRowAndRemovesNone() {
+    const ws = require('../lib/walkset');
+    const rows = [aRow(), aRow({ coin: 'XLMUSDT', lookback: 'own', band: 250 }), aRow({ coin: 'LTCUSDT', lookback: '504', band: 300 })];
+    const got = ws.saveWalk({ asked: {}, shapes: [], collapse: [], rows, startedAt: 1, finishedAt: 2, name: 'unselect set' });
+    const k = (r) => ws.rowKey(r);
+    try {
+      ws.setPickedMany(got.id, rows.map(k), true);
+      ws.setRowOff(got.id, k(rows[1]), true);   // one already off, so the count is of what goes off NOW
+      const ans = ws.setAllRowsOff(got.id);
+      assert.deepStrictEqual([ans.unticked, ans.off, ans.picked], [2, 3, 3],
+        `it says how many went off now, how many are off, and how many stay promoted: ${JSON.stringify(ans)}`);
+      const g = ws.promoted().find((x) => x.id === got.id);
+      assert.strictEqual(g.rows.length, 3, 'nothing is removed');
+      assert.ok(g.rows.every((r) => !r.ticked), 'and nothing is ticked');
+      assert.deepStrictEqual(ws.promotedUnits().filter((u) => (u.extras || []).some((e) => e.from.set === got.id)), [], 'so Sweep runs none of it');
+      assert.strictEqual(ws.setAllRowsOff(got.id).unticked, 0, 'pressing it again unticks nothing and does not throw');
+      ws.setRowOff(got.id, k(rows[2]), false);
+      assert.strictEqual(ws.promoted().find((x) => x.id === got.id).rows.filter((r) => r.ticked).length, 1, 'a row ticks back on one at a time, as before');
+      assert.throws(() => ws.setAllRowsOff('W-no-such-set'), /there is no walk/);
+    } finally { try { ws.deleteWalk(got.id, got.id); } catch (_) { /* already gone */ } }
+  },
   aPromotedRowIsAReferenceToItsWalkSetAndIsTickedUntilUnticked() {
     const ws = require('../lib/walkset');
     const rows = [

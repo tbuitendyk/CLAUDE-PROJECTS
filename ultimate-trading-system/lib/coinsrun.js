@@ -195,6 +195,24 @@ function setPasserTicked(coin, geometry, ticked) {
   writeSettings(settings);
   return { coin: c, geometry, ticked };
 }
+// EVERY PASSER UNTICKED IN ONE PRESS (3.208.0, owner order: "add an Unselect
+// all button on each row set under candidates for sweep"). The rows stay
+// listed at the bar: the tick says what Sweep runs just now, and this says
+// "none of these, for now" over the whole box without a press per row. It
+// says how many went off NOW.
+function setAllPassersOff(rows = passersCached()) {
+  const off = new Set(passersOff());
+  let unticked = 0;
+  for (const r of rows || []) {
+    const k = passerKey(r.coin, r.geometry);
+    if (!off.has(k)) unticked++;
+    off.add(k);
+  }
+  const settings = readSettings();
+  settings[PASS_OFF_KEY] = [...off].sort();
+  writeSettings(settings);
+  return { unticked, off: off.size };
+}
 function setBandAuto(value) {
   if (typeof value !== 'boolean') throw new Error(`the tick is on or off — not ${JSON.stringify(value)}`);
   const settings = readSettings();
@@ -1130,7 +1148,7 @@ function coinsWalkStart(opts = {}) {
 module.exports = {
   RECORD_V, DEFAULTS, BAND_KEY, AUTO_KEY, PASS_BAR_KEY, PASS_OFF_KEY, LINK_CUT_TRIALS, layouts, recordFile,
   sitOutBand, setSitOutBand, bandAuto, setBandAuto,
-  passBar, setPassBar, passersOff, setPasserTicked, passingUnits, COINS_SOURCES, passersCached, passerLeans, passerOwnLeans, leansFrom, pickLeans,
+  passBar, setPassBar, passersOff, setPasserTicked, setAllPassersOff, passingUnits, COINS_SOURCES, passersCached, passerLeans, passerOwnLeans, leansFrom, pickLeans,
   LOOKBACKS_KEY, lookbacks, setLookbacks,
   readOneCoin, normalise, busyWhy, coinsOwnBusy, removeOlderFilesFor,
   coinsRunStart, coinsRunStatus, coinsRunStop,
