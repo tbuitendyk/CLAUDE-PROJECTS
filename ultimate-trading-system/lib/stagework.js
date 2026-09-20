@@ -213,9 +213,29 @@ function memberReadings({ members, specs, testChunks, seed, unitKey, nullN, tag 
       // one held against the floor a direction can be learned from.
       read: n ? { fromTs: rows[0].startTs, toTs: rows[n - 1].startTs, chunks: n, share: own ? own.share : null } : null,
       trained: own ? { chunks: own.trainedOn, of: own.ofChunks } : null,
+      // and why it never speaks, when it could not be trained (3.203.0)
+      silent: m.silent || (m.saved && m.saved.kind === 'silent' ? m.saved.why : null),
     };
   });
 }
+// WHICH EXTRAS BELONG TOGETHER, checked against the extras they index (3.203.0).
+// A family naming an extra the unit does not carry is refused: the record it
+// would write could not be read back.
+function familiesOf(p, extras) {
+  const fams = Array.isArray(p && p.families) ? p.families : [];
+  const n = (extras || []).length;
+  return fams.map((f, j) => {
+    const members = Array.isArray(f && f.members) ? f.members.map(Number) : [];
+    const centre = Number(f && f.centre);
+    if (!members.length || members.some((i) => !Number.isInteger(i) || i < 0 || i >= n) || !members.includes(centre)) {
+      throw new Error(`family ${j + 1} names extras this unit does not carry (${JSON.stringify(f)}, ${n} extra(s))`);
+    }
+    return { ...f, centre, members };
+  });
+}
+// how a member that is too thin to train is handled: a family's centre refuses
+// the unit, a neighbour goes silent; a lone extra is its own centre
+const whenThinFor = (spec, families) => (spec.at != null && families.length && !families.some((f) => f.centre === spec.at) ? 'silent' : 'refuse');
 
 // HOW MANY EXTRA BLOCKS A COMMITTEE WAS BUILT WITH, read off its own members
 // (3.183.0). Never recomputed from the combo size: that is the assumption this
@@ -521,23 +541,21 @@ const SAT_OUT = [0, 1, 0];
 //     it (probeRows), because a member trained on 60% of the history has rows
 //     inside a slice that starts at 52.5% of it
 //   * the sealed reserve: this cuts what the layout leaves, never what it seals
-async function trainGatedMember({ spec, viewIdx, trainChunks, testChunks = [], holdChunks = [], predictChunks, weights = null, weightsOf = null, labelOf, share = null }) {
+//
+// AND A MEMBER TOO THIN TO TRAIN IS EITHER REFUSED OR SILENT (3.203.0). The
+// nine around a promoted row include bands a step higher than the one the walk
+// liked, and a band a step higher opens the gate a step less often -- often
+// enough to fall under the floor a direction can be learned from. The CENTRE
+// of a family is what the owner promoted, so a centre that cannot be trained
+// still refuses the unit, as one extra always has. A NEIGHBOUR that cannot be
+// trained becomes a SILENT member: it sits out on every decision, its record
+// says why, and the family it belongs to is read as that many fewer voices.
+// `whenThin` is 'refuse' unless the caller says 'silent'.
+async function trainGatedMember({ spec, viewIdx, trainChunks, testChunks = [], holdChunks = [], predictChunks, weights = null, weightsOf = null, labelOf, share = null, whenThin = 'refuse' }) {
   const gate = gateOf(spec);
   if (!gate) return trainProbMember({ model: spec.model, viewIdx, trainChunks, predictChunks, weights, labelOf });
   const own = ownSplitOf({ trainChunks, testChunks, holdChunks, share, at: spec.at });
   const keep = own.train.map((c, k) => (gate(c) ? k : -1)).filter((k) => k >= 0);
-  if (keep.length < MIN_TRAIN_GATED) {
-    throw new Error(`extra ${spec.at + 1} clears its band on only ${keep.length} of the ${own.train.length} chunks in the first ${own.share}% of the history — too few to learn a direction from. `
-      + 'A lower band on the walk row would open the gate more often.');
-  }
-  // THE WEIGHTS ARE READ OFF THE ROWS IT TRAINS ON, the way every member's
-  // are, and cut exactly as the rows are cut. A caller has to say HOW to weigh
-  // rows, not hand over weights for a window this member does not train on.
-  if (typeof weightsOf !== 'function') throw new Error('an extra member needs weightsOf: how to weigh whatever rows its split gives it');
-  const ownWeights = weightsOf(own.train);
-  if (Array.isArray(ownWeights) && ownWeights.length !== own.train.length) {
-    throw new Error(`weightsOf gave ${ownWeights.length} weights for ${own.train.length} chunks`);
-  }
   // THE TUNING SLICE IS EVERY MEMBER'S SAME SLICE (3.201.1). It is the last
   // quarter of the WHOLE training window -- worked out here exactly as
   // trainProbMember works it out for a member handed all of it -- because the
@@ -548,6 +566,25 @@ async function trainGatedMember({ spec, viewIdx, trainChunks, testChunks = [], h
   // and the probe that votes on it may fit only on rows that start before it
   const tuneFrom = tune.length ? tune[0].startTs : Infinity;
   const probeRows = keep.filter((k) => own.train[k].startTs < tuneFrom).length;
+  let thin = null;
+  if (keep.length < MIN_TRAIN_GATED) {
+    thin = `extra ${spec.at + 1} clears its band on only ${keep.length} of the ${own.train.length} chunks in the first ${own.share}% of the history — too few to learn a direction from. `
+      + 'A lower band on the walk row would open the gate more often.';
+  } else if (Math.min(keep.length - Math.max(3, Math.round(keep.length * 0.25)), probeRows) < MIN_PROBE_ROWS) {
+    thin = `extra ${spec.at + 1} clears its band on only ${probeRows} chunk(s) before the tuning slice — too few to fit the probe that votes on it`;
+  }
+  if (thin) {
+    if (whenThin !== 'silent') throw new Error(thin);
+    return silentMember({ spec, own, predictChunks, tune, why: thin, trained: keep.length });
+  }
+  // THE WEIGHTS ARE READ OFF THE ROWS IT TRAINS ON, the way every member's
+  // are, and cut exactly as the rows are cut. A caller has to say HOW to weigh
+  // rows, not hand over weights for a window this member does not train on.
+  if (typeof weightsOf !== 'function') throw new Error('an extra member needs weightsOf: how to weigh whatever rows its split gives it');
+  const ownWeights = weightsOf(own.train);
+  if (Array.isArray(ownWeights) && ownWeights.length !== own.train.length) {
+    throw new Error(`weightsOf gave ${ownWeights.length} weights for ${own.train.length} chunks`);
+  }
   const m = await trainProbMember({
     model: spec.model,
     viewIdx,
@@ -572,6 +609,24 @@ async function trainGatedMember({ spec, viewIdx, trainChunks, testChunks = [], h
     // its own reading: the fitted model's votes on the rest of the history,
     // gated the same way
     own: { ...ownReadingOf({ saved: m.saved, spec, viewIdx, trainChunks, testChunks, holdChunks, share }), trainedOn: keep.length, ofChunks: own.train.length },
+  };
+}
+// A MEMBER THAT SITS OUT ON EVERY DECISION BECAUSE IT COULD NOT BE TRAINED
+// (3.203.0). It is a real member with a real record: its saved model is of
+// kind 'silent' and says why, every forecast it is asked for is a sit out, and
+// everything that reads members -- the committee, the tuning-slice money, the
+// unread window, the live rebuild -- reads it without a branch, because a sit
+// out is a vote it already knows how to count.
+function silentMember({ spec, own, predictChunks, tune, why, trained }) {
+  const sit = (rows) => rows.map(() => SAT_OUT.slice());
+  return {
+    saved: { kind: 'silent', why },
+    picked: 'not trained',
+    probs: sit(predictChunks),
+    tauProbs: sit(tune),
+    nSub: null,
+    silent: why,
+    own: { chunks: own.read, probs: sit(own.read), share: own.share, trainedOn: trained, ofChunks: own.train.length },
   };
 }
 // HOW AN EXTRA MEMBER'S HISTORY IS CUT (3.202.0): everything the layout leaves
@@ -896,6 +951,7 @@ async function s1UnitTask(task) {
   const p = { ...task.params, pinnedFiles: pinnedFilesFor(task.pin) };
   const { geo, maps, split, reserve, windows, extras, tooEarly } = await unitChunks(combo, geometry, p);
   const { trainChunks, testChunks, holdChunks, bandPct, extraBandPcts } = split;
+  const families = familiesOf(p, extras);
   const views = viewsFor(combo, geo, extras.length);
   const predictChunks = holdChunks.length ? [...testChunks, ...holdChunks] : testChunks;
   const specs = require('./bracketwork').memberSpecs('logreg', combo.size, extras.length);
@@ -915,6 +971,7 @@ async function s1UnitTask(task) {
     const m = await trainGatedMember({
       spec, viewIdx: views[spec.view], trainChunks, testChunks, holdChunks, predictChunks, weights,
       weightsOf: (rows) => weightsFor(p, rows, fee), share: p.extraTrainShare, labelOf: null,
+      whenThin: whenThinFor(spec, families),
     });
     members.push({ spec, ...m });
   }
@@ -965,6 +1022,8 @@ async function s1UnitTask(task) {
     // (3.183.0). perMember is what makes a quiet member visible: its own score,
     // its own deals, and how often it actually spoke.
     extras, extraBandPcts, tooEarly,
+    // and which extras belong together around a promoted row (3.203.0)
+    families,
     perMember: memberReadings({ members, specs, testChunks, seed, unitKey, nullN, tag: 's1' }),
     tuning,
     trainedOn: weightsSaid(p, weights, weightReading),
@@ -991,6 +1050,7 @@ async function s2UnitTask(task) {
     || tsH.length !== s1.ts.hold.length || tsH.some((t, i) => t !== s1.ts.hold[i])) {
     throw new Error('stage 1 votes do not line up with the rebuilt chunks — the price files changed underneath the set');
   }
+  const families = familiesOf(p, extras);
   const views = viewsFor(combo, geo, extras.length);
   const predictChunks = holdChunks.length ? [...testChunks, ...holdChunks] : testChunks;
   const specs = require('./bracketwork').memberSpecs('boost', combo.size, extras.length);
@@ -1010,6 +1070,7 @@ async function s2UnitTask(task) {
     const m = await trainGatedMember({
       spec, viewIdx: views[spec.view], trainChunks, testChunks, holdChunks, predictChunks, weights,
       weightsOf: (rows) => weightsFor(p, rows, fee), share: p.extraTrainShare, labelOf: null,
+      whenThin: whenThinFor(spec, families),
     });
     members.push({ spec, ...m });
   }
@@ -1088,7 +1149,7 @@ async function s2UnitTask(task) {
         if (sp.at == null) return { probs: pr };
         const saved = (s1.saved || [])[mi];
         if (!saved) throw new Error(`the parent's record carries no saved model for extra ${sp.at + 1}, so it cannot be read on its own stretch`);
-        return { probs: pr, own: ownReadingOf({ saved, spec: sp, viewIdx: views[sp.view], trainChunks, testChunks, holdChunks, share: p.extraTrainShare }) };
+        return { probs: pr, saved, own: ownReadingOf({ saved, spec: sp, viewIdx: views[sp.view], trainChunks, testChunks, holdChunks, share: p.extraTrainShare }) };
       }), ...members],
       specs: [...(s1.specs || []), ...specs],
       testChunks,
@@ -1100,6 +1161,7 @@ async function s2UnitTask(task) {
     tuning3, tuning,
     trainedOn: weightsSaid(p, weights, weightReading),
     windows,
+    families,
   };
 }
 
@@ -1166,8 +1228,10 @@ function predictMember(saved, spec, chunks, combo, geo, nExtras = 0) {
 // the same forecast, on a slice already looked up (3.202.0): what a saved
 // model says about each chunk, through the one arithmetic both callers share
 function forecastRows(saved, viewIdx, chunks) {
-  const X = chunks.map((c) => viewIdx.map((i) => c.x[i]));
   if (!saved || !saved.kind) throw new Error('a member without a saved model cannot forecast');
+  // a member that could not be trained sits out on everything (3.203.0)
+  if (saved.kind === 'silent') return chunks.map(() => SAT_OUT.slice());
+  const X = chunks.map((c) => viewIdx.map((i) => c.x[i]));
   if (saved.kind === 'logreg') {
     const Z = standardizeApply(X, { mean: saved.mean, std: saved.std });
     return Z.map((z) => probsArr(predictLogreg({ W: saved.W, f: saved.f }, z).probs));
@@ -2011,7 +2075,7 @@ module.exports = {
   newTallyAcc, tallyFold, serializeTallyAcc, mergeTallyAcc,
   addNoiseRow, mergeNoise, meanNoise, cents,
   // the arithmetic, exported so the tests can pencil it
-  forecastScore, pooledAt, leadOver, dealOrder, callFromProbs, trainProbMember, trainGatedMember, gateOf, ownSplitOf, ownReadingOf, forecastRows, memberReadings, unitChunks, predictMember, unreadChunksFor, forecastHashOf, tradeMapFor,
+  forecastScore, pooledAt, leadOver, dealOrder, callFromProbs, trainProbMember, trainGatedMember, gateOf, ownSplitOf, ownReadingOf, forecastRows, memberReadings, familiesOf, whenThinFor, silentMember, unitChunks, predictMember, unreadChunksFor, forecastHashOf, tradeMapFor,
   directionCalls, tuningSliceOf, directionMoney, moneyAgainstNull, TUNING_TAG,
   probsArr, probsObj,
 };

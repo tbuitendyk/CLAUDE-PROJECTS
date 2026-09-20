@@ -474,7 +474,7 @@ function passingUnits(source = 'both') {
   if (!COINS_SOURCES.includes(source)) throw new Error(`there is no unit source called ${JSON.stringify(source)}`);
   if (source === 'none') return [];
   const out = source === 'walk' ? []
-    : passersCached().filter((r) => r.ticked).map((r) => ({ coin: r.coin, geometry: r.geometry, extras: [] }));
+    : passersCached().filter((r) => r.ticked).map((r) => ({ coin: r.coin, geometry: r.geometry, extras: [], families: [] }));
   const at = new Map(out.map((u) => [`${u.coin}|${u.geometry}`, u]));
   let fromWalks = [];
   if (source !== 'passers') {
@@ -487,8 +487,17 @@ function passingUnits(source = 'both') {
     // which is fine while a promoted row is only a coin and a shape, and
     // throws away everything the walk found the moment it carries an extra.
     // One unit either way; the extras are what the walk adds to it.
-    if (at.has(k)) { at.get(k).extras.push(...(u.extras || [])); continue; }
-    const made = { coin: u.coin, geometry: u.geometry, extras: [...(u.extras || [])] };
+    // AND THE FAMILIES COME WITH THE EXTRAS THEY INDEX (3.203.0): appended
+    // after whatever the unit already carries, each family's indices are
+    // moved along by that much, so a family still points at its own nine.
+    if (at.has(k)) {
+      const have = at.get(k);
+      const base = (have.extras || []).length;
+      have.extras.push(...(u.extras || []));
+      have.families = [...(have.families || []), ...(u.families || []).map((f) => ({ ...f, centre: f.centre + base, members: f.members.map((i) => i + base) }))];
+      continue;
+    }
+    const made = { coin: u.coin, geometry: u.geometry, extras: [...(u.extras || [])], families: [...(u.families || [])] };
     at.set(k, made);
     out.push(made);
   }

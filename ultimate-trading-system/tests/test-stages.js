@@ -5919,6 +5919,13 @@ module.exports = {
     assert.deepStrictEqual(units.map((u) => `${u.trade}@${u.geometry}`), ['LTCUSDT@daily-3d', 'ATOMUSDT@daily-2d', 'BCHUSDT@weekly-8d', 'BCHUSDT@daily-1d'], 'one unit per pair, at its own shape, the coin upper-cased');
     assert.ok(units.every((u) => u.size === 1 && u.ctx1 === null), 'singles read nothing against');
     assert.deepStrictEqual(stages.unitsForPassers([{ coin: 'LTCUSDT', geometry: 'no-such-shape' }, { coin: '', geometry: 'daily-1d' }], sizes, []), [], 'a pair with no coin or no such shape builds nothing');
+    // 3.203.0: a pair's extras and the families over them ride onto every unit it makes
+    const fam = [{ centre: 1, members: [0, 1, 2], from: { set: 'W-1' } }];
+    const ex = [{ lookbackHours: 24, bandPct: 100 }, { lookbackHours: 48, bandPct: 100 }, { lookbackHours: 96, bandPct: 100 }];
+    const withFam = stages.unitsForPassers([{ coin: 'LTCUSDT', geometry: 'daily-3d', extras: ex, families: fam }], { singles: false, doubles: true, triples: false }, ['LTCUSDT', 'AAAUSDT', 'BBBUSDT']);
+    assert.strictEqual(withFam.length, 2);
+    assert.ok(withFam.every((u) => u.extras === ex && u.families === fam), 'the extras and their families do not reach every unit the pair makes');
+    assert.ok(!('families' in stages.unitsForPassers(pairs.slice(0, 1), sizes, [])[0]), 'a pair with no extras grows a families field it has no use for');
     // doubles: each pair still at its own shape, read against the compare coins
     const dbl = stages.unitsForPassers(pairs.slice(0, 1), { singles: false, doubles: true, triples: false }, ['LTCUSDT', 'AAAUSDT', 'BBBUSDT']);
     assert.deepStrictEqual(dbl.map((u) => `${u.trade}+${u.ctx1}@${u.geometry}`), ['LTCUSDT+AAAUSDT@daily-3d', 'LTCUSDT+BBBUSDT@daily-3d']);

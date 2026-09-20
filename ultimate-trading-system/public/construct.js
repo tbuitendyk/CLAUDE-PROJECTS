@@ -5143,7 +5143,7 @@ function bMembersPanel(stage, d) {
       <h3 style="margin:0">Members of this unit — ${esc(unit)}</h3>
       <button data-bmemclose="${stage}">Close</button>
     </div>
-    <p class="note">${d.members} member(s)${d.nExtras ? `, of which ${d.nExtras} came from a walk set` : ', none from a walk set'}${d.bandPct == null ? '' : ` · the unit's own band ${Number(d.bandPct).toFixed(2)}%`}${d.nExtras ? (d.extraTrainShare == null ? ' · <b class="warn">made before the split for extra members existed</b>: its extra members trained on the window layout\'s training window alone' : ` · split for extra members ${Number(d.extraTrainShare)}/${100 - Number(d.extraTrainShare)}: they trained on the first ${Number(d.extraTrainShare)}% of the history and are read on the rest`) : ''}${d.tooEarly ? ` · <b class="warn">${Number(d.tooEarly).toLocaleString()} decision moment(s) dropped</b> because they could not reach back far enough for a member's look-back` : ''}</p>
+    <p class="note">${d.members} member(s)${d.nExtras ? `, of which ${d.nExtras} came from a walk set` : ', none from a walk set'}${d.bandPct == null ? '' : ` · the unit's own band ${Number(d.bandPct).toFixed(2)}%`}${d.nExtras ? (d.extraTrainShare == null ? ' · <b class="warn">made before the split for extra members existed</b>: its extra members trained on the training window alone, as the window layout cut it' : ` · split for extra members ${Number(d.extraTrainShare)}/${100 - Number(d.extraTrainShare)}: they trained on the first ${Number(d.extraTrainShare)}% of the history and are read on the rest`) : ''}${d.tooEarly ? ` · <b class="warn">${Number(d.tooEarly).toLocaleString()} decision moment(s) dropped</b> because they could not reach back far enough for a member's look-back` : ''}</p>
     ${d.scored ? '' : '<p class="note warn">This record set carries no reading for each member on its own, so those columns below are blank. They are blank because nothing was stored, not because the members said nothing. Run the stage again and they are there.</p>'}
     <div class="scrollx"><table class="cgap"><thead><tr>
       <th ${th} title="its place in the list of members this unit votes with, in the order the unit was built">member</th>
@@ -10911,6 +10911,7 @@ function cPromotedBoxes(sets) {
         <th></th><th title="the coin">coin</th><th title="the chunk shape">chunk shape</th>
         <th title="how far back the move was measured from, ending at the decision">look-back</th>
         <th title="how big a move had to be before it counted, as a percentage of the coin's usual move">band</th>
+        <th title="how many rows of this walk set go to Sweep with this one: the row itself and the eight around it on the set's own grid — the look-back one step shorter and one step longer, the band one step lower and one step higher, and the four corners. Each becomes one more member on the unit, trained the same way, and the family is read together. Fewer than nine means the row sits at an edge of what the set walked; hover for which side is missing.">family</th>
         <th title="how many trades the walk placed">trades</th>
         <th title="how many decision moments this row was read over, and the share of them it placed a trade on. It is what trades has to be read against, and it is the figure to hold against a member's spoke on Boards \u2014 those two counts are over different stretches and are not comparable, and the two shares are. A row promoted before this was recorded shows a dash.">decisions</th>
         <th title="what it made on each trade, before the round trip">per trade</th>
@@ -10925,6 +10926,7 @@ function cPromotedBoxes(sets) {
         <td><input type="checkbox" class="cprom" data-set="${esc(g.id)}" data-key="${esc(r.key)}"${r.ticked ? ' checked' : ''}></td>
         <td>${esc(r.coin)}</td><td>${esc(shapeLabelOf(r.geometry))}</td>
         <td>${r.lookback === 'own' ? 'own' : `${esc(String(r.lookback))}h`}</td><td>${r.band}</td>
+        <td title="${r.family ? esc([`look-backs ${r.family.lookbacks.map((h) => `${h}h`).join(', ')}`, `bands ${r.family.bands.join(', ')}`, ...(r.family.missing || [])].join(' · ')) : 'a row at the chunk shape\'s own span adds no member, so it has no family'}">${r.family ? `${r.family.size} of ${r.family.of}` : '—'}</td>
         <td>${r.trades}</td><td>${cActedCell(r)}</td><td class="${cls(r.perTrade)}">${pc3(r.perTrade)}</td>
         <td>${r.windowsUp} of ${r.windows}</td>
         <td>${cPaid(r) == null ? '—' : `${cPaid(r)} of ${r.windows}`}</td>

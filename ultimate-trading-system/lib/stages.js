@@ -679,7 +679,9 @@ function unitsForPassers(pairs, sizes, compare = null) {
     // alongside other coins becomes several units and each one is the same
     // coin and chunk shape, so each one carries the same extras.
     const extras = Array.isArray(p.extras) ? p.extras : [];
-    units.push(...unitsFor([coin], sizes, [p.geometry], compare).map((u) => (extras.length ? { ...u, extras } : u)));
+    // and the families over those extras (3.203.0), which index into them
+    const families = Array.isArray(p.families) ? p.families : [];
+    units.push(...unitsFor([coin], sizes, [p.geometry], compare).map((u) => (extras.length ? { ...u, extras, families } : u)));
   }
   return units;
 }
@@ -709,7 +711,7 @@ function startStage1(params) {
   // read off the other. Ticked, the unit list is identical, coin for coin and
   // shape for shape, and the extra members are the only thing that changed.
   const plain = params.plainUnits === true;
-  const dropExtras = (list) => (plain && Array.isArray(list) ? list.map((u) => ({ ...u, extras: [] })) : list);
+  const dropExtras = (list) => (plain && Array.isArray(list) ? list.map((u) => ({ ...u, extras: [], families: [] })) : list);
   // ONE PLACE, so what is RUN and what is RECORDED are the same list. The
   // record is what a relaunch and every child stage rebuild from, and a record
   // that carried extras a run did not use would grow members on the relaunch --
@@ -725,6 +727,7 @@ function startStage1(params) {
         coin: String((x || {}).coin || '').trim().toUpperCase(),
         geometry: (x || {}).geometry,
         extras: Array.isArray((x || {}).extras) ? (x || {}).extras : [],
+        families: Array.isArray((x || {}).families) ? (x || {}).families : [],
       })).filter((x) => x.coin && GEOMETRIES[x.geometry])
       : null);
   // THE REFUSAL QUOTES THE TICK BY ITS LABEL, so it has to be the label the
@@ -874,7 +877,7 @@ function startStage1(params) {
       // PER UNIT, NOT PER RUN (3.184.0). `p` is one object shared by the whole
       // launch; a unit's extras are its own, so they ride beside it. Units with
       // none get `p` exactly as before.
-      geometry: u.geometry, params: (u.extras || []).length ? { ...p, extras: u.extras } : p,
+      geometry: u.geometry, params: (u.extras || []).length ? { ...p, extras: u.extras, families: u.families || [] } : p,
       seed: doc.seed, unitKey: unitKeyOf(u), nullN, fee, pin: pinOf(doc),
     }));
     const records = new Array(units.length).fill(null);
@@ -895,6 +898,8 @@ function startStage1(params) {
           // own answers can be worked out again without keeping a second copy
           // of every label. tooEarly is what the extras' warm-up cost.
           extras: res.extras && res.extras.length ? res.extras : null,
+          // and which of them belong together around a promoted row (3.203.0)
+          families: res.families && res.families.length ? res.families : null,
           extraBandPcts: res.extraBandPcts && res.extraBandPcts.length ? res.extraBandPcts : null,
           tooEarly: res.tooEarly || 0,
           // AND EACH MEMBER READ ON THE QUESTION IT WAS ASKED, with its own
@@ -1724,7 +1729,7 @@ function startStage2(params) {
         // committee looking at columns the other half never saw, and a chunk
         // count that would not even line up, because the extras' warm-up
         // dropped the earliest chunks at stage 1.
-        geometry: rec.geometry, params: (rec.extras || []).length ? { ...p, extras: rec.extras } : p,
+        geometry: rec.geometry, params: (rec.extras || []).length ? { ...p, extras: rec.extras, families: rec.families || [] } : p,
         pin: pinOf(doc),
         s1: {
           probs,
@@ -1814,6 +1819,7 @@ function startStage2(params) {
           // so every stage 2 set read as a committee with no extra members and
           // no member readings at all, which is what the owner saw.
           extras: (rec.extras || []).length ? rec.extras : null,
+          families: (rec.families || []).length ? rec.families : null,
           extraBandPcts: res.extraBandPcts && res.extraBandPcts.length ? res.extraBandPcts : null,
           tooEarly: res.tooEarly || rec.tooEarly || 0,
           // AND EACH MEMBER READ ON THE QUESTION IT WAS ASKED, both halves of
@@ -2794,6 +2800,15 @@ function startStage3(params) {
   const { records: parentRecords, savedS2, selected } = chosen;
   const carry = selected ? 0 : chosen.carry;
   if (!parentRecords.length) throw new Error(`${parent.name} holds no records — nothing to price`);
+  // A UNIT WHOSE EXTRA MEMBERS COME IN FAMILIES CANNOT BE PRICED BY THIS
+  // RELEASE (3.203.0). The nine around a promoted row are meant to fold to ONE
+  // vote per kind, by a bar this screen does not yet carry; priced as nine
+  // votes they would outvote the committee they were added to. Refused by
+  // name rather than priced wrong.
+  const withFamilies = parentRecords.filter((r) => Array.isArray(r.families) && r.families.length).length;
+  if (withFamilies) {
+    throw new Error(`${withFamilies} of the units in ${parent.name} carry families of extra members, and this release does not fold a family to one vote — stage 3 cannot price them yet`);
+  }
   // The committee sizes actually being priced decide which agreement shares
   // can be told apart: two shares landing on the same rung for every unit in
   // the run are one setting, not two.
@@ -5196,6 +5211,8 @@ function unitMembers(id, u) {
     scored: per.length > 0,
     // the split the set's extra members trained under, or null before it existed
     extraTrainShare: (doc.params || {}).extraTrainShare ?? null,
+    // the families the extras belong to (3.203.0), indexing the members by `at`
+    families: Array.isArray(rec.families) ? rec.families : [],
     rows: members,
   };
 }
@@ -8230,7 +8247,10 @@ async function stage4GreenlightSource(setId, asked = {}) {
       // says what that member reads and what it is marked at. The MULTIPLE
       // travels, not the percent it worked out to here -- live resolves it
       // against its own training stretch, exactly as stage 1 did against its.
-      extras: (rec.extras || []).map((e) => ({ lookbackHours: e.lookbackHours, bandPct: e.bandPct })) },
+      extras: (rec.extras || []).map((e) => ({ lookbackHours: e.lookbackHours, bandPct: e.bandPct })),
+      // and which of them belong together around a promoted row (3.203.0),
+      // so live folds a family the way the set was priced
+      families: (rec.families || []).map((f) => ({ centre: f.centre, members: (f.members || []).slice() })) },
     survivor: { ...survivor, bandPct: survivor.bandMode === 'auto' || survivor.bandMode == null ? rec.bandPct : Math.abs(Number(survivor.bandMode)), halfLife: hl ? hl.halfLife : null },
     // THE STOP AND THE LADDER AS THE SET FROZE THEM AT ITS PRESS (3.149.0): the survivor's own choice on record, or none
     stop: ((doc.stopChoices || {})[survivor.label]) ? JSON.parse(JSON.stringify(doc.stopChoices[survivor.label])) : null,

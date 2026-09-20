@@ -384,6 +384,106 @@ function theLiveConfigurationCarriesWhatAWalkSetAdded() {
   // marked at, which is the whole defect this release is closing.
   bad({ members: [{ model: 'logreg', view: 'full', at: null }, { model: 'boost', view: 'extra0', at: null }] }, /members\[1\]\.at: must be 0/);
   bad({ members: [{ model: 'logreg', view: 'full', at: 0 }] }, /must be null for a member that reads no extra/);
+  // AND WHICH EXTRAS BELONG TOGETHER (3.203.0): absent is no family; a family
+  // names extras the unit carries and its centre is one of them
+  assert.ok(validateConfig({ ...withOne, families: [] }).ok, 'an empty families list is refused');
+  assert.ok(validateConfig({ ...withOne, families: [{ centre: 0, members: [0] }] }).ok, 'a family of one around the only extra is refused');
+  bad({ families: 'nine' }, /families: must be an array/);
+  bad({ families: [{ centre: 0, members: [0, 1] }] }, /families\[0\]\.members: must name extras 0 to 0/);
+  bad({ families: [{ centre: 1, members: [0] }] }, /families\[0\]\.centre: must be one of its own members/);
+  bad({ families: [{ centre: 0, members: [] }] }, /families\[0\]\.members/);
+}
+
+// A NEIGHBOUR TOO THIN TO TRAIN GOES SILENT, A CENTRE STILL REFUSES (3.203.0).
+// The nine include a band a step higher than the walk liked, and a higher band
+// opens the gate less often -- so a family will sometimes have a member with
+// too few decisions to learn a direction from. Held on a real fit: what such
+// a member becomes, that everything reads it without a branch, and that the
+// centre of a family, being what the owner promoted, refuses as one extra
+// always has.
+async function aNeighbourTooThinToTrainGoesSilentAndACentreStillRefuses() {
+  const sw = require('../lib/stagework');
+  const bw = require('../lib/bracketwork');
+  let seed = 11;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  const chunks = Array.from({ length: 300 }, (_, i) => {
+    const x = [rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1];
+    return { startTs: Date.UTC(2024, 0, 1) + i * 86400000, x, diffPct: 4 * (x[0] - x[1]) + (rnd() - 0.5), backPct: [(rnd() * 2 - 1) * 5, (rnd() * 2 - 1) * 5] };
+  });
+  // extra 0 at a band the gate clears often; extra 1 at one it almost never clears
+  const { trainChunks, testChunks, holdChunks } = bw.splitAndLabel(chunks, { band: 2 }, true, [100, 900]);
+  const predictChunks = [...testChunks, ...holdChunks];
+  const viewIdx = [0, 1, 2, 3];
+  const thinSpec = { model: 'logreg', view: 'extra1', from: 'extra1', at: 1 };
+  const args = { spec: thinSpec, viewIdx, trainChunks, testChunks, holdChunks, predictChunks, weights: null, weightsOf: () => null, labelOf: null, share: 60 };
+  const swath = [...trainChunks, ...testChunks, ...holdChunks];
+  const nOwn = Math.round(swath.length * 0.6);
+  const opened = swath.slice(0, nOwn).filter((c) => c.extraOn[1]).length;
+  assert.ok(opened < 12, `the fixture's thin member opens its gate on ${opened} chunks, which is not thin`);
+  // refused by default, and as a centre
+  await assert.rejects(() => sw.trainGatedMember({ ...args }), /too few to learn a direction from/, 'a thin extra trained anyway');
+  await assert.rejects(() => sw.trainGatedMember({ ...args, whenThin: 'refuse' }), /too few to learn a direction from/);
+  // silent when told so: a real member that never speaks, and says why
+  const m = await sw.trainGatedMember({ ...args, whenThin: 'silent' });
+  assert.strictEqual(m.saved.kind, 'silent', 'a silent member has no saved model of its own kind');
+  assert.match(m.saved.why, /too few to learn a direction from/, 'and it does not say why');
+  assert.strictEqual(m.silent, m.saved.why);
+  assert.strictEqual(m.picked, 'not trained');
+  assert.strictEqual(m.probs.length, predictChunks.length);
+  assert.ok(m.probs.every((p) => p[0] === 0 && p[1] === 1 && p[2] === 0), 'a silent member spoke');
+  const nVal = Math.max(3, Math.round(trainChunks.length * 0.25));
+  assert.strictEqual(m.tauProbs.length, nVal, 'its tuning-slice votes are not every member\'s same slice');
+  assert.ok(m.tauProbs.every((p) => p[1] === 1), 'a silent member spoke on the tuning slice');
+  assert.strictEqual(m.own.chunks.length, swath.length - nOwn, 'its own reading is not over the rest of the history');
+  assert.deepStrictEqual(m.own.trainedOn, opened);
+  assert.ok(m.own.probs.every((p) => p[1] === 1));
+  // everything that forecasts from a saved model reads it without a branch
+  assert.ok(sw.forecastRows(m.saved, viewIdx, testChunks).every((p) => p[1] === 1 && p[0] === 0), 'a silent saved model does not forecast a sit out');
+  const again = sw.ownReadingOf({ saved: m.saved, spec: thinSpec, viewIdx, trainChunks, testChunks, holdChunks, share: 60 });
+  assert.deepStrictEqual(again.probs, m.own.probs);
+  // its reading says it is silent and why
+  const [r] = sw.memberReadings({ members: [{ spec: thinSpec, ...m }], specs: [thinSpec], testChunks, seed: 's', unitKey: 'u', nullN: 3, tag: 't' });
+  assert.strictEqual(r.spoke, 0);
+  assert.match(r.silent, /too few to learn a direction from/);
+  assert.deepStrictEqual(r.trained, { chunks: opened, of: nOwn });
+  // a member that is not thin is untouched by the setting
+  const wide = { model: 'logreg', view: 'extra0', from: 'extra0', at: 0 };
+  const a = await sw.trainGatedMember({ ...args, spec: wide, whenThin: 'silent' });
+  const b = await sw.trainGatedMember({ ...args, spec: wide, whenThin: 'refuse' });
+  assert.strictEqual(a.saved.kind, 'logreg'); assert.deepStrictEqual(a.probs, b.probs);
+  assert.strictEqual(a.silent, undefined);
+  // WHICH MEMBERS MAY GO SILENT: a family's neighbours, never its centre, and
+  // never a lone extra
+  const fams = [{ centre: 0, members: [0, 1] }];
+  assert.strictEqual(sw.whenThinFor(wide, fams), 'refuse', 'a family\'s centre may go silent');
+  assert.strictEqual(sw.whenThinFor(thinSpec, fams), 'silent', 'a neighbour is refused rather than silent');
+  assert.strictEqual(sw.whenThinFor(thinSpec, []), 'refuse', 'a lone extra may go silent');
+  assert.strictEqual(sw.whenThinFor({ model: 'logreg', view: 'full' }, fams), 'refuse');
+  // and a family is checked against the extras it indexes
+  const ex = [{ lookbackHours: 24, bandPct: 100 }, { lookbackHours: 24, bandPct: 900 }];
+  assert.deepStrictEqual(sw.familiesOf({ families: fams }, ex).map((f) => f.members), [[0, 1]]);
+  assert.deepStrictEqual(sw.familiesOf({}, ex), []);
+  assert.throws(() => sw.familiesOf({ families: [{ centre: 0, members: [0, 2] }] }, ex), /names extras this unit does not carry/);
+  assert.throws(() => sw.familiesOf({ families: [{ centre: 2, members: [0, 1] }] }, ex), /names extras this unit does not carry/);
+  // AND THE FAMILIES RIDE ON EVERY RECORD THAT NEEDS THEM: the launch, both
+  // stages' records, the greenlight, the live rebuild, the stage 3 refusal
+  const fs = require('fs');
+  const path = require('path');
+  const st = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+  assert.ok(st.includes("{ ...p, extras: u.extras, families: u.families || [] }"), 'a stage 1 unit is not told its families');
+  assert.ok(st.includes("{ ...p, extras: rec.extras, families: rec.families || [] }"), 'a stage 2 unit is not told its families');
+  assert.ok(st.includes('families: res.families && res.families.length ? res.families : null,'), 'the stage 1 record drops the families');
+  assert.ok(st.includes('families: (rec.families || []).length ? rec.families : null,'), 'the stage 2 record drops the families');
+  assert.ok(/families: \(rec\.families \|\| \[\]\)\.map\(\(f\) => \(\{ centre: f\.centre, members: \(f\.members \|\| \[\]\)\.slice\(\) \}\)\) \}/.test(st), 'the greenlight is never told the families');
+  assert.ok(/carry families of extra members, and this release does not fold a family to one vote/.test(st), 'stage 3 prices a family as nine votes');
+  assert.ok(st.includes("families: Array.isArray((x || {}).families) ? (x || {}).families : [],"), 'a relaunch from a record drops the families');
+  assert.ok(st.includes("({ ...u, extras: [], families: [] })"), 'the control arm keeps the families it dropped the extras of');
+  const live = fs.readFileSync(path.join(__dirname, '..', 'lib', 'live', 'stagesignal.js'), 'utf8');
+  assert.ok(/whenThin: sw\.whenThinFor\(\{ at \}, families\),/.test(live), 'the live rebuild refuses a thin neighbour the set priced as silent');
+  const gl = fs.readFileSync(path.join(__dirname, '..', 'lib', 'live', 'greenlight.js'), 'utf8');
+  assert.ok(/families: \(\(src\.unit \|\| \{\}\)\.families \|\| \[\]\)\.map/.test(gl), 'a greenlight drops which extras belong together');
+  const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  assert.ok(/>family<\/th>/.test(ui) && ui.includes('${r.family ? `${r.family.size} of ${r.family.of}` : '), 'Coins does not say how big each promoted row\'s family is');
 }
 
 // AND THE THREE PLACES THAT REBUILD IT ARE WIRED (3.188.0). Source-scanned,
@@ -438,7 +538,7 @@ function theLivePathBuildsMarksAndTrainsTheExtraMember() {
     'a record that cannot say what its extra members read is greenlighted anyway');
   // and the stage 3 set hands both along
   const stages = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
-  assert.ok(/extras: \(rec\.extras \|\| \[\]\)\.map\(\(e\) => \(\{ lookbackHours: e\.lookbackHours, bandPct: e\.bandPct \}\)\) \}/.test(stages),
+  assert.ok(stages.includes('extras: (rec.extras || []).map((e) => ({ lookbackHours: e.lookbackHours, bandPct: e.bandPct })),'),
     'the greenlight is never told what the unit took from a walk set');
   assert.ok(/members: \(rec\.specs \|\| \[\]\)\.map\(\(sp\) => \(\{ model: sp\.model, view: sp\.view, at: sp\.at \?\? null \}\)\)/.test(stages),
     'the greenlight is never told which extra each member reads');
@@ -583,6 +683,7 @@ function theSplitIsTheOwnersChoiceAndRidesOnEveryRecord() {
 }
 
 module.exports = {
+  aNeighbourTooThinToTrainGoesSilentAndACentreStillRefuses,
   anExtraTrainsOnItsShareOfTheWholeHistoryAndIsReadOnTheRest,
   theSplitIsTheOwnersChoiceAndRidesOnEveryRecord,
   anExtrasBandIsAMultipleOfTheUsualOutcomeMove,
