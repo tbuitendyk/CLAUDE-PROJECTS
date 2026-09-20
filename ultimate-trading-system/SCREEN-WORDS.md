@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **d324d01c6f7c — what the box is serving**, not from the working tree.
+Generated from **e58cbea8a75a — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -453,7 +453,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 # Sweep
 
-## What the controls are called (100)
+## What the controls are called (103)
 
 - `— each says why:`
 - `— none —`
@@ -491,6 +491,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `downloaded)`
 - `end`
 - `entry`
+- `every coin here is judged by`
 - `existing campaigns`
 - `fee % each way`
 - `from stage 1 record set`
@@ -505,6 +506,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `lands about`
 - `leave the extra members out`
 - `Load training setup`
+- `members`
 - `name`
 - `no estimate until the first`
 - `no runs yet`
@@ -541,12 +543,13 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `Sweep — the three stages, live`
 - `t`
 - `The`
+- `the coins here are judged by`
 - `the count is not known right now —`
 - `the most one trade may count for`
+- `to`
 - `trade coins (blank = all`
 - `trail`
 - `triples`
-- `twice the height of a tick:`
 - `unconfirmed ×`
 - `units`
 - `units priced`
@@ -617,7 +620,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `voices`
 - `Weekly 8-day`
 
-## Sentences the page prints (49)
+## Sentences the page prints (46)
 
 - Each stage writes a record set the next one reads, and every set names its parent. What is
 - running, and everything finished, is on Boards.
@@ -628,11 +631,6 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - one buy or sell per chunk in the direction they lean, read against the same null set.
 - where this run takes its units from
 - what is ticked under coins and shapes that pass
-- <!-- EVERY OTHER BOX OF THE RUN IN ONE ROW, UNDER THE THREE CHOICES (owner
-- order, 2026-09-19). Two faults, one cause. The third choice shared its
-- row with start and end, which are a caption stacked over a box and so
-- wraps, so the eleven controls fold onto a
-- second line on a narrow screen rather than pushing a scroll bar out. -->
 - weigh each trade by the money it was worth
 - One chunk of history is one decision and one trade - a week on the weekly shape, a day on the
 - daily ones. Off, a trade where the price moved 0.6% and one where it moved 14% are the same single lesson, so a
@@ -646,7 +644,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - The LOGREG members are reused, never retrained; only the BOOST members train (4 per coin on its own, 5 alongside others),
 - so a carried unit ends up with both kinds voting side by side.
 - Stage 3 — price any settings from the kept votes, no training
-- — every coin is judged by 8 members. These four boxes decide when enough of them agree to act.
+- — the boxes below decide when enough of a coin's members agree to act.
 - — on a unit whose coin and chunk shape are ticked on Coins, every call the members make is checked against the way that coin itself has moved after a rising window and after a falling window, at its own sweet spot band. These boxes decide what that check changes. The reading is taken from the SAME list this record set took its units from — the one named under where this run takes its units from when its stage 1 was started — and never from the other one. Greyed when no unit being priced has one, and the line below says why.
 - units. Progress above; the set lands on Boards.
 - carried units.
@@ -668,18 +666,20 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - the filters saved on the parent's table leave
 - units; on the rest its values are one setting)
 - of them hold fewer than the block: a setting that places the same orders on a unit as another is priced there once)
+- members, and the number differs from unit to unit
+- . The boxes below decide when enough of them agree to act,
 
-## Every word, flat (437)
+## Every word, flat (398)
 
 ```
-1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 60h 65h 8-day 89h about above above. act. active add after again against agree all alongside already and another any are argmax arm as at attaches auto band band. bar be because been being belonging below beside best biggest blank block Boards Boards. BOOST both BOX box boxes breakout but buy by call came Campaign campaign campaigns cannot caption carried carries carry cause. chain changes. check checked choice CHOICES chunk coin coins Coins committee compare confirm Confirmation confirmed controls conviction count cover crumbs Currently cut daily Daily data day decide decision declared Delete deleted deleted. Deleting deployed. description different direction directional doubles downloaded Each each eleven end ends enough entry estimate every EVERY Every everything exam exist existing extra falling families faults fee fees fewer files filters finished first fit. fold folded for forecast forward four freak from gate go going gone good greenlight greenlights Greyed has height here history hold holds how ignore in IN into is it it. its itself judged keep keeps. kept kind kinds known lands landslide last later launched layout lean learning. leave lesson limit line list live Load loaded locked LOGREG make many market may member members members. minted models money more. most moved name named names narrow never new next nine No no none not nothing now null number of OF Off off off. on On once one ONE One one. ones. only onto or order orders ordinary OTHER other others out out. over own owner parent parent. pass passes paused per permanently permute places plain price priced prices prices. Progress progress pushing quarter Quorum quorum rank rather read reading reads record records refuse remove removed Removed rest Retire retrained reused right rising rounds ROW row run RUN running runs same SAME saved says scans screen scroll sealed second Selected sell set Set set. sets sets. setting settings setup setups. shape shapes share shared side side. single singles size sized small so spot stacked stage Stage stages start Start started starts static stayed staying still Sweep sweeps sweet tab table taken takes taking teaches than that the The THE their them them. there These they third this This those three THREE tick ticked times to too took trade Trade trades trail train trained training trains travels tree triples tuning tuning-slice turns twice Two unconfirmed under UNDER undone. unit units units. until up UTC values View voice voices vote votes voting wake walk was wastes way way. week weekly Weekly weigh weightless were What what when where which while whole whose why why. will window with working worth wraps writes wrong yet
+1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 60h 65h 8-day 89h about above above. act act. active add after again against agree all alongside already and another any are argmax arm as at attaches auto band band. bar be because been being belonging below beside best biggest blank block Boards Boards. BOOST both box boxes breakout but buy by call came Campaign campaign campaigns cannot carried carries carry chain changes. check checked chunk coin coins Coins committee compare confirm Confirmation confirmed conviction count cover crumbs Currently cut daily Daily data day decide decision declared Delete deleted deleted. Deleting deployed. description different differs direction directional doubles downloaded Each each end ends enough entry estimate every Every everything exam exist existing extra falling families fee fees fewer files filters finished first fit. folded for forecast forward freak from gate go going gone good greenlight greenlights Greyed has here history hold holds how ignore in into is it it. its itself judged keep keeps. kept kind kinds known lands landslide last later launched layout lean learning. leave lesson limit line list live Load loaded locked LOGREG make many market may member members minted models money more. most moved name named names never new next nine No no none not nothing now null number of Off off off. on On once one One one. ones. only or orders ordinary other others out own parent parent. pass passes paused per permanently permute places plain price priced prices prices. Progress progress quarter Quorum quorum rank read reading reads record records refuse remove removed Removed rest Retire retrained reused right rising rounds run running runs same SAME saved says scans sealed second Selected sell set Set set. sets sets. setting settings setup setups. shape shapes share side side. single singles size sized small so spot stage Stage stages start Start started starts static stayed staying still Sweep sweeps sweet tab table taken takes taking teaches than that the The their them them. there These they this This those three ticked times to too took trade Trade trades trail train trained training trains travels tree triples tuning tuning-slice turns unconfirmed under undone. unit units units. until up UTC values View voice voices vote votes voting wake walk was wastes way way. week weekly Weekly weigh weightless were What what when where while whole whose why why. will window with working worth writes wrong yet
 ```
 
 ---
 
 # Boards
 
-## What the controls are called (152)
+## What the controls are called (153)
 
 - `— nothing came out of`
 - `— pick a stage`
@@ -801,6 +801,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `settings,`
 - `share that agreed`
 - `show the held-back window`
+- `sit out`
 - `Size:`
 - `spoke`
 - `Stage 1`
@@ -854,7 +855,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `trained`
 - `voices`
 
-## Sentences the page prints (80)
+## Sentences the page prints (82)
 
 - Boards — the record sets, and what each stage wrote
 - One section per stage, the whole provenance on screen: picking a stage 3 record set fills the
@@ -931,16 +932,18 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - are ways of asking that did not exist when it ran, so nothing here can answer for them.
 - unit(s); nothing already priced is read, touched or priced again.
 - because they could not reach back far enough for a member's look-back
-- This record set was finished before each member was read on its own, so the readings below are blank. They are blank because they were never taken, not because the members said nothing.
+- This record set carries no reading for each member on its own, so those columns below are blank. They are blank because nothing was stored, not because the members said nothing. Run the stage again and they are there.
 - A member added from a walk set is marked with a line down its left edge. It is trained on the same
-- prices as the rest and marked against its own look-back and its own band — everything the unit already trained is
-- untouched, and this is one more voice beside it. Each member is read against the answers IT was marked on, so a
+- prices as the rest and asked the unit's own question — which way will this chunk go — but only on the decisions where the
+- move over its own look-back cleared its own band; on every other decision the answer it is trained to give is
+- That is what the walk did: act when the last stretch moved more than usual, stand aside otherwise. Everything the unit already
+- trains is untouched, and this is one more voice beside it. Each member is read against the answers IT was marked on, so a
 - member asked a different question is neither flattered nor punished for it.
 
-## Every word, flat (489)
+## Every word, flat (503)
 
 ```
-1v 3.A 3.B above above. accordingly. active actually added adding adds after afterwards. again again. against agreed all alone alone. alongside already always-long an and another answer answers any appear Apply apply are argmax arm arrow as aside asked asking asks at auto-apply average averaged averages avg away away. back back. background band BAND be beat because before behind. belong below beside best better biggest blank blank. block board Boards BOOST both bought box breakout bring broken building but by call came campaign can cannot carried carry ceiling changes Check check child chunk Clear cleared Close coin coin/chunk-shape coins column columns combinations comes committee committees comparable compared comparisons confirm conviction Copy copy cost could count cover Data Date decision DECISION declare declare. declared declares declares. Delete deletes did died different directional disk DOES does done down Drop dropped dropping Dropping each Each edge. either else empty end enough entry every Every everything exactly exist exists factored FACTORED failed FAILED families far few fewer fewer. Fill filled Filling filling fills filter filter. filters fingerprint finished finishes first first. fit fixed flattered floors for forecast form forward four from fuller gate goes going held held-back helped here here. hidden history hold holds if in independent Independent into is it It IT it. its Its ITS just keep kept kind landed lands. last lead lean leaves left leverage line list LOGREG look-back looks. marked market MATCH maximum means median member members Members minimum missing moment money more move name names near-copies neither never Next no nor NOT not not. notes nothing nothing. now null numbers of of. offers old on once once. One one ones only opinions or order Ordered ordinary other others out OUT over OWN own page parent parents parts past per permuted pick picked picking picks place PLAN. pooled press Prev price priced prices Pricing pricing. pricings promoted proved provenance provided punished put Put puts quarter question quorum ran ranges ranked reach read readings reads real record records records. Rename renumbers replaced rest restart. resting rests Revert right row rows rule. run rung running said same Save saved saw says score screen second seconds seconds. section sections Selected selections service set SET set-up set. sets setting SETTING settings Settings settings. shape share short SHORT show Show showed showing shows. signal Size size smaller so some sort sorting sound. spoke stage Stage STAMP started still Stop stopped stopping stops sub-rows suggests. swapped Sweep table Table tables taken takes test Test-window than that the The their them them. then there. these They they thing THIS this This those tick ties time to top totalled totalling touched touched. trade trades trail trained training tried tuning-slice u00b7 u00d7 Undo undoing Undoing unfinished unit unit. units units. untouched usual value variants verdict visible voice voices votes vs walk was way. ways were were. what What when where whether which while whole why window with With without worked would writes written wrote yet you your
+1v 3.A 3.B above above. accordingly. act active actually added adding adds after afterwards. again again. against agreed all alone alone. alongside already always-long an and another answer answers any appear Apply apply are argmax arm arrow as aside asked asking asks at auto-apply average averaged averages avg away away. back back. background band BAND be beat because before behind. belong below beside best better biggest blank blank. block board Boards BOOST both bought box breakout bring broken building but by call came campaign can cannot carried carries carry ceiling changes Check check child chunk Clear cleared Close coin coin/chunk-shape coins column columns combinations comes committee committees comparable compared comparisons confirm conviction Copy copy cost could count cover Data Date decision DECISION decisions declare declare. declared declares declares. Delete deletes did died different directional disk DOES does done down Drop dropped dropping Dropping each Each edge. either else empty end enough entry every Every Everything exactly exist exists factored FACTORED failed FAILED families far few fewer fewer. Fill filled Filling filling fills filter filter. filters fingerprint finished finishes first first. fit fixed flattered floors for forecast form forward four from fuller gate give go goes going held held-back helped here here. hidden history hold holds if in independent Independent into is it It IT it. its Its ITS just keep kept kind landed lands. last lead lean leaves left leverage line list LOGREG look-back looks. marked market MATCH maximum means median member members Members minimum missing moment money more move moved name names near-copies neither never Next no nor NOT not not. notes nothing nothing. now null numbers of of. offers old on once once. One one ones only opinions or order Ordered ordinary other others otherwise. out OUT over OWN own page parent parents parts past per permuted pick picked picking picks place PLAN. pooled press Prev price priced prices Pricing pricing. pricings promoted proved provenance provided punished put Put puts quarter question quorum ran ranges ranked reach read reading reads real record records records. Rename renumbers replaced rest restart. resting rests Revert right row rows rule. run Run rung running said same Save saved saw says score screen second seconds seconds. section sections Selected selections service set SET set-up set. sets setting SETTING settings Settings settings. shape share short SHORT show Show showed showing shows. signal sit Size size smaller so some sort sorting sound. spoke stage Stage STAMP stand started still Stop stopped stopping stops stored stretch sub-rows suggests. swapped Sweep table Table tables takes test Test-window than that That the The their them them. then there. these They they thing THIS this This those tick ties time to top totalled totalling touched touched. trade trades trail trained training trains tried tuning-slice u00b7 u00d7 Undo undoing Undoing unfinished unit unit. units units. untouched usual value variants verdict visible voice voices votes vs walk was way way. ways were. what What when where whether which while whole why will window with With without worked would writes written wrote yet you your
 ```
 
 ---
