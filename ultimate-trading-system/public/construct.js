@@ -9176,13 +9176,13 @@ function cWalkRow(r, shapes) {
   const blanks = all.filter((w) => w.thin || w.n === 0 || w.perTrade == null).length;
   const says = `${all.length} window(s) in this coin's history · ${all.length - blanks} counted`
     + `${blanks ? ` · ${blanks} had too few trades to count and show as a dash` : ''}`;
-  const strip = !open ? '' : `<tr class="cwscan"><td colspan="20">
+  const strip = !open ? '' : `<tr class="cwscan"><td colspan="21">
     <p class="cwsays">${esc(says)}</p>
     <div class="cwstrip">${all.map((w) => {
     const v = w.perTrade;
     const dead = w.thin || v == null || !w.n;
     const col = dead ? 'muted' : (v > 0 ? 'cr' : 'cf');
-    return `<span class="cwwin" title="the window starting ${esc(cDay(w.ts))} · ${w.n} trade(s)${dead ? ' · too few to count' : ` · ${v > 0 ? '+' : ''}${Number(v).toFixed(3)}% a trade`}"><i>${esc(cDay(w.ts)).slice(0, 7)}</i><b class="${col}">${dead ? '—' : `${v > 0 ? '+' : ''}${Number(v).toFixed(2)}`}</b></span>`;
+    return `<span class="cwwin" title="the window starting ${esc(cDay(w.ts))} · ${w.n} trade(s) of ${(w.to - w.from + 1).toLocaleString()} decision(s)${dead ? ' · too few to count' : ` · ${v > 0 ? '+' : ''}${Number(v).toFixed(3)}% a trade`}"><i>${esc(cDay(w.ts)).slice(0, 7)}</i><b class="${col}">${dead ? '—' : `${v > 0 ? '+' : ''}${Number(v).toFixed(2)}`}</b></span>`;
   }).join('')}</div></td></tr>`;
   return `<tr${cWalkMark.has(key) ? ' class="selected"' : ''}>
     <td><input type="checkbox" class="cwpick" data-key="${esc(key)}"${cWalkPick.has(key) ? ' checked' : ''} title="tick to promote this row into the list at the top of Coins, then press Promote the ticked rows below"></td>
@@ -9191,6 +9191,7 @@ function cWalkRow(r, shapes) {
     <td>${r.lookback === 'own' ? 'own' : `${r.lookback}h`}</td>
     <td class="cband">${r.band}${r.searched ? ' <span class="warn" title="this band was SEARCHED FOR across the whole history, so it is not comparable with the bands beside it, which were not">searched</span>' : ''}${cBandEdge(r.band)}</td>
     <td>${r.trades}</td><td>${pt}</td>
+    <td>${cActedCell(r)}</td>
     <td>${r.windows}</td><td>${r.windowsUp} of ${r.windows}</td>
     <td>${cPaid(r) == null ? '—' : `${cPaid(r)} of ${r.windows}`}</td>
     <td>${r.best == null ? '—' : `${r.best > 0 ? '+' : ''}${Number(r.best).toFixed(2)}%`}</td>
@@ -9223,6 +9224,31 @@ function cWalkRow(r, shapes) {
 // columns deep is readable at a glance instead of being remembered.
 function cWalkSortBtn(key, firstDir) { return cSortBtn('wSorts', 'wsort', key, firstDir); }
 // WHAT EACH COLUMN SORTS BY. One place, read by the sorter and by nothing else.
+// HOW MANY DECISION MOMENTS A ROW WAS READ OVER, AND THE SHARE IT ACTED ON
+// (3.200.0, owner: "how can i tell the exact decision counts for the walked set
+// from coins to make the comparison?").
+//
+// Every row has carried `span` -- the window's own length in decision moments
+// -- since the walk existed, and the screen drew it nowhere. So `trades` had no
+// denominator on it: 400 trades is a busy row or a quiet one depending on
+// whether it was read over 2,000 decisions or 40,000, and there was no way to
+// tell from the table.
+//
+// WINDOWS, NOT EVERY WINDOW THE COIN HAS. `windows` counts the ones that met
+// the floor, and those are the ones the trades came out of, so they are the
+// right denominator to put under them.
+//
+// AND THE SHARE IS WHAT COMPARES. A member on Boards says `spoke N of M` over
+// its own test chunks; a walk row's trades are over its counted windows across
+// the whole history. The counts are not comparable and the shares are.
+const cDecisions = (r) => (r && r.windows > 0 && r.span > 0 ? r.windows * r.span : null);
+const cActed = (r) => { const n = cDecisions(r); return n ? (r.trades || 0) / n : null; };
+const cActedCell = (r) => {
+  const n = cDecisions(r);
+  if (n == null) return '<span class="muted">\u2014</span>';
+  return `${n.toLocaleString()} <span class="muted">\u00b7 ${(cActed(r) * 100).toFixed(1)}% acted on</span>`;
+};
+
 const C_WALK_OF = {
   coin: (r) => `${r.coin} ${r.geometry}`,
   geometry: (r) => `${r.geometry} ${r.coin}`,
@@ -9239,6 +9265,10 @@ const C_WALK_OF = {
   // that column was the rows with almost nothing behind them.
   windowsUp: (r) => (r.windows ? r.windowsUp / r.windows : null),
   paid: (r) => (r.windows && cPaid(r) != null ? cPaid(r) / r.windows : null),
+  // the SHARE acted on, not the count -- the same choice windows up and
+  // windows paid make, and for the same reason: at the same share more
+  // decisions behind it beats fewer, and the share is what compares
+  decisions: (r) => cActed(r),
   best: (r) => r.best,
   worst: (r) => r.worst,
   spread: (r) => cSpread(r),
@@ -9262,7 +9292,7 @@ const C_WALK_DEPTH = { windowsUp: (r) => r.windows, paid: (r) => r.windows };
 // heading that actually carries its button, in both directions.
 const C_WALK_NAME = {
   coin: 'coin', geometry: 'chunk shape', lookback: 'look-back', band: 'band',
-  trades: 'trades', perTrade: 'per trade', windows: 'windows', windowsUp: 'windows up',
+  trades: 'trades', perTrade: 'per trade', decisions: 'decisions', windows: 'windows', windowsUp: 'windows up',
   paid: 'windows paid', best: 'best window', worst: 'worst window', spread: 'spread',
   perSpread: 'per trade per spread', asGood: 'scrambles as good', asGoodSlid: 'slides as good',
   late: 'late', lead: 'lead', both: 'best on both halves',
@@ -10313,6 +10343,7 @@ function cWalkPanel() {
       <th title="how big a move had to be before it counted, as a percentage of the coin's usual move">band${cWalkSortBtn('band', 'asc')}</th>
       <th title="how many trades the walk placed in total, across every window that met the floor">trades${cWalkSortBtn('trades', 'desc')}</th>
       <th title="what it made on each trade it placed, averaged over the whole walk. Before the round trip.">per trade${cWalkSortBtn('perTrade', 'desc')}</th>
+      <th title="how many decision moments the counted windows hold between them \u2014 the windows column times each window's own length \u2014 and beside it the share of them this row placed a trade on. THIS IS WHAT trades HAS TO BE READ AGAINST: four hundred trades is a busy row over two thousand decisions and a very quiet one over forty thousand. It is also the figure to hold against a member's spoke on Boards, which says how many of ITS decisions a member leaned on: the two counts are over different stretches and are not comparable, and the two shares are. Sorts by the share, so at the same share more decisions behind it sorts above fewer.">decisions${cWalkSortBtn('decisions', 'desc')}</th>
       <th title="how many windows met the floor and were counted. NOT how many windows the coin has: a wide band leaves whole half-years with too few trades, and those are left out of this count and of windows up. Open the row to see the total and which ones were empty.">windows${cWalkSortBtn('windows', 'desc')}</th>
       <th title="how many of those windows made money. Half is what a coin with nothing in it looks like.">windows up${cWalkSortBtn('windowsUp', 'desc')}</th>
       <th title="how many of those windows cleared the round trip &mdash; made MORE than the ${cTripPc()} it costs to get in and out, which is your own figure, set on Setup&#39;s Account tab under the exchange it belongs to. Made money and paid are not the same thing, and this is the one that matters. It cannot be carried by a single spectacular window the way per trade and per trade per spread both can, and at the same share more windows sorts above fewer. Read it beside least worst window, %: as many windows as possible paying, and no bad ones.">windows paid${cWalkSortBtn('paid', 'desc')}</th>
@@ -10844,6 +10875,7 @@ function cPromotedBoxes(sets) {
         <th title="how far back the move was measured from, ending at the decision">look-back</th>
         <th title="how big a move had to be before it counted, as a percentage of the coin's usual move">band</th>
         <th title="how many trades the walk placed">trades</th>
+        <th title="how many decision moments this row was read over, and the share of them it placed a trade on. It is what trades has to be read against, and it is the figure to hold against a member's spoke on Boards \u2014 those two counts are over different stretches and are not comparable, and the two shares are. A row promoted before this was recorded shows a dash.">decisions</th>
         <th title="what it made on each trade, before the round trip">per trade</th>
         <th title="how many counted windows made money">windows up</th>
         <th title="how many cleared the round trip">windows paid</th>
@@ -10856,7 +10888,7 @@ function cPromotedBoxes(sets) {
         <td><input type="checkbox" class="cprom" data-set="${esc(g.id)}" data-key="${esc(r.key)}"${r.ticked ? ' checked' : ''}></td>
         <td>${esc(r.coin)}</td><td>${esc(shapeLabelOf(r.geometry))}</td>
         <td>${r.lookback === 'own' ? 'own' : `${esc(String(r.lookback))}h`}</td><td>${r.band}</td>
-        <td>${r.trades}</td><td class="${cls(r.perTrade)}">${pc3(r.perTrade)}</td>
+        <td>${r.trades}</td><td>${cActedCell(r)}</td><td class="${cls(r.perTrade)}">${pc3(r.perTrade)}</td>
         <td>${r.windowsUp} of ${r.windows}</td>
         <td>${cPaid(r) == null ? '—' : `${cPaid(r)} of ${r.windows}`}</td>
         <td class="${cls(r.worst)}">${pc3(r.worst, 2)}</td>

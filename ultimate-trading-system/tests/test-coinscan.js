@@ -646,7 +646,7 @@ function bothCopyCountsAreOnTheTableSideBySide() {
   assert(/>slides as good\$\{cWalkSortBtn\('asGoodSlid', 'asc'\)\}/.test(src), 'and the slid count has one beside it');
   assert(/<td>\$\{scr\}<\/td><td>\$\{sld\}<\/td>/.test(src), 'both are drawn on every row');
   assert(/const sld = r\.asGoodSlid == null \? '—'/.test(src), 'a row with no slid count shows a dash, not a nought');
-  assert(/<tr class="cwscan"><td colspan="20">/.test(src), 'the opened strip spans the table, which is as wide as the table is');
+  assert(/<tr class="cwscan"><td colspan="21">/.test(src), 'the opened strip spans the table, which is as wide as the table is');
   assert(/scrambled and \$\{a\.scrambles == null \? 10 : a\.scrambles\} sliding copies/.test(src), 'the finished line says both kinds were built');
   assert(/Each copy is built two ways and BOTH are reported/.test(help), 'and Help says the one box builds both');
 }
@@ -930,6 +930,12 @@ function theWalkTableHeadingsSitOverTheirOwnFigures() {
     ['band', '${r.band}${r.searched'],
     ['trades', '<td>${r.trades}</td>'],
     ['perTrade', '${pt}'],
+    // WHAT trades HAS TO BE READ AGAINST (3.200.0, owner: "how can i tell the
+    // exact decision counts for the walked set from coins to make the
+    // comparison?"). span has been on every row since the walk existed and was
+    // drawn nowhere, so 400 trades could be a busy row or a quiet one and the
+    // table could not say which.
+    ['decisions', '${cActedCell(r)}'],
     ['windows', '<td>${r.windows}</td>'],
     ['windowsUp', '${r.windowsUp} of'],
     ['paid', '${cPaid(r)} of'],
@@ -1150,7 +1156,7 @@ function theSpreadAndWhatARowPaysForItAreOnTheTableAndCannotBeGamedByOneWindow()
   assert(/>per trade per spread\$\{cWalkSortBtn\('perSpread', 'desc'\)\}/.test(src), 'the ratio is a column and sorts high-first');
   assert(/spread: \(r\) => cSpread\(r\),/.test(src) && /perSpread: \(r\) => cPerSpread\(r\),/.test(src),
     'and the sorter reads the SAME two functions the cells and the filters do, not a second copy');
-  assert(/<tr class="cwscan"><td colspan="20">/.test(src), 'the opened strip spans the table, and the table has gained columns since');
+  assert(/<tr class="cwscan"><td colspan="21">/.test(src), 'the opened strip spans the table, and the table has gained columns since');
   // the four boxes that answer the question, and the two the owner asked for
   for (const id of ['wf_minBest', 'wf_minWorst', 'wf_maxSpread', 'wf_minPerSpread']) {
     assert(new RegExp(`id="${id}"`).test(src), `${id} is on the screen`);

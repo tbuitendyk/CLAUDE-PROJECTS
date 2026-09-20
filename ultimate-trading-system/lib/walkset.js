@@ -167,6 +167,11 @@ const shapeRow = (r, k) => ({
   lookback: r.lookback == null ? 'own' : r.lookback,
   band: r.band,
   trades: r.trades,
+  // HOW LONG ONE WINDOW IS, IN DECISION MOMENTS (3.200.0). windows times this
+  // is what `trades` has to be read against, and it is the figure that compares
+  // with a member's `spoke` on Boards. It has been on the walk's rows since the
+  // walk existed and never came out with a promoted one.
+  span: r.span ?? null,
   perTrade: r.perTrade,
   windows: r.windows,
   windowsUp: r.windowsUp,
