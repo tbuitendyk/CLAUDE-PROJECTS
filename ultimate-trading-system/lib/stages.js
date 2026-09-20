@@ -294,9 +294,27 @@ function publicParams(d) {
     // say this reads as the other run, and comparing the two is the whole point
     // of it existing.
     plainUnits: p.plainUnits === true,
+    // AND HOW THE HISTORY WAS CUT FOR THE EXTRA MEMBERS (3.202.0): the share
+    // they trained on, or null on a set made before the split existed
+    extraTrainShare: Number.isFinite(Number(p.extraTrainShare)) && p.extraTrainShare != null ? Number(p.extraTrainShare) : null,
     trainOn: p.trainOn || null,
     allLoaded: p.allLoaded !== false, startMonth: p.startMonth || null, endMonth: p.endMonth || null,
   };
+}
+// HOW MUCH OF THE HISTORY A MEMBER ADDED FROM A WALK SET TRAINS ON (3.202.0).
+// Read from the same list the Sweep dropdown is drawn from, never typed here:
+// typed, a share the box offers could be one the launch refuses. Absent is
+// the first choice on that list, which is the one the box shows; anything
+// else that is not on the list is refused rather than rounded to a neighbour.
+function extraTrainShareOrRefuse(raw) {
+  const offered = (require('./vocabulary').vocabulary().extraTrainShare || []).map((o) => Number(o.value));
+  if (!offered.length) throw new Error('the vocabulary offers no split for extra members');
+  if (raw === undefined || raw === null || raw === '') return offered[0];
+  const n = Number(raw);
+  if (!offered.includes(n)) {
+    throw new Error(`${JSON.stringify(raw)} is not a split for extra members (${offered.map((x) => `${x}/${100 - x}`).join(' or ')})`);
+  }
+  return n;
 }
 
 function seqFor(stage) {
@@ -761,6 +779,8 @@ function startStage1(params) {
   // than quietly relaid, so a launch that still asks for it hears why.
   if (params.windowLayout === 'legacy80') throw new Error('the 80/20 window layout was removed: it keeps no held-back slice, so nothing cut from it could ever be verified — choose 70/15/15 or 61/13/13/13');
   const windowLayout = ['split70', 'reserve61'].includes(params.windowLayout) ? params.windowLayout : 'reserve61';
+  // and, beside the layout, the split the extra members train under (3.202.0)
+  const extraTrainShare = extraTrainShareOrRefuse(params.extraTrainShare);
   const nullN = Math.max(0, Math.floor(num(params.nullN, 19)));
   const fee = feeOrRefuse(params.fee, 'it prices the tuning-slice $ every unit is read by');
   // WHAT EACH TRAINING WEEK IS WORTH (3.69.0, owner order). `direction` is what
@@ -785,6 +805,7 @@ function startStage1(params) {
     startMonth: params.startMonth || '2018-01',
     endMonth: params.endMonth || '2026-06',
     windowLayout,
+    extraTrainShare,
     trainOn,
     weightCap,
   };
@@ -1616,6 +1637,20 @@ function startStage2(params) {
     ordered = applySort(1, merged, saved, (a, b) => a._i - b._i);
   }
   const carried = carry > 0 ? ordered.slice(0, carry) : ordered;
+  // A PARENT WHOSE EXTRA MEMBERS WERE TRAINED BEFORE THE SPLIT EXISTED IS
+  // REFUSED (3.202.0, RULE NINE). Its LOGREG extras were trained on the window
+  // layout's training window; the BOOST extras here would train on a share of
+  // the whole history, and half a committee cut one way beside half cut the
+  // other is two committees wearing one name. There is no share to migrate
+  // such a set to -- it was made a different way -- so it says so, and stage
+  // 1 is run again.
+  if (!Number.isFinite(Number((parent.params || {}).extraTrainShare)) || (parent.params || {}).extraTrainShare == null) {
+    const withExtras = carried.filter((row) => ((parentRecords.get(row.u) || {}).extras || []).length).length;
+    if (withExtras) {
+      throw new Error(`${parent.name} was made before the split for extra members existed: ${withExtras} of the units carried have extra members `
+        + 'trained on the window layout alone, and the members added here would be trained on a share of the whole history instead. Run stage 1 again.');
+    }
+  }
 
   const setName = nameOrRefuse(params.name, 2);
   const seq = seqFor(2);
@@ -1660,6 +1695,9 @@ function startStage2(params) {
   const p = {
     allLoaded: parent.params.allLoaded, startMonth: parent.params.startMonth,
     endMonth: parent.params.endMonth, windowLayout: parent.params.windowLayout,
+    // the parent's split for its extra members (3.202.0), so the BOOST half of
+    // a committee is cut the way the LOGREG half was
+    extraTrainShare: parent.params.extraTrainShare,
   };
   (async () => {
     const payloads = [];
@@ -1670,6 +1708,14 @@ function startStage2(params) {
       const tauRows = unitRows(parent.id, 'tau', rec.blocks.tau, rec.u);
       const nTest = votes.filter((v) => v.w === 0).length;
       const probs = rec.specs.map((_, mi) => votes.map((v) => v.m[mi]));
+      // THE PARENT'S EXTRA MEMBERS' SAVED MODELS RIDE ALONG (3.202.0), so the
+      // child can read each of them on its own stretch of the history from the
+      // model that was actually fitted -- the votes stored cover the test and
+      // held-back windows only. Base members carry nothing here: they are read
+      // where they always were.
+      const hasExtras = (rec.specs || []).some((sp) => sp && sp.at != null);
+      const models = hasExtras ? unitRows(parent.id, 'models', rec.blocks.models, rec.u) : [];
+      const saved = hasExtras ? rec.specs.map((sp, mi) => (sp && sp.at != null ? ((models.find((m) => m.mi === mi) || {}).saved || null) : null)) : null;
       payloads.push({
         combo: { trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size },
         // THE CHILD REBUILDS WITH ITS PARENT'S EXTRAS (3.184.0). Without this
@@ -1687,6 +1733,7 @@ function startStage2(params) {
           // marked against is spec.at, and an extra member is marked against
           // different ones from the rest.
           specs: rec.specs || [],
+          saved,
           // the stage 1 members' votes on the tuning slice, so their money
           // can be read again here and held against the parent's record
           tauProbs: rec.specs.map((_, mi) => (tauRows.find((t) => t.mi === mi) || {}).probs || []),
@@ -5124,6 +5171,12 @@ function unitMembers(id, u) {
       spoke: r ? r.spoke : null,
       chunks: r ? r.chunks : null,
       rightWhenSpoke: r ? r.rightWhenSpoke : null,
+      // WHERE IT WAS READ, AND WHAT IT TRAINED ON (3.202.0). An extra is read
+      // on its own rest of the history under the set's split; every other
+      // member on the test window. Both are stored, so both are said.
+      read: r && r.read ? r.read : null,
+      trained: r && r.trained ? r.trained
+        : (r && rec.counts && Number.isFinite(Number(rec.counts.train)) ? { chunks: rec.counts.train, of: rec.counts.train } : null),
     };
   });
   return {
@@ -5141,6 +5194,8 @@ function unitMembers(id, u) {
     // filling the columns with dashes would read as a committee of silent
     // members (RULE ELEVEN clause 6).
     scored: per.length > 0,
+    // the split the set's extra members trained under, or null before it existed
+    extraTrainShare: (doc.params || {}).extraTrainShare ?? null,
     rows: members,
   };
 }
@@ -8186,6 +8241,8 @@ async function stage4GreenlightSource(setId, asked = {}) {
     members: (rec.specs || []).map((sp) => ({ model: sp.model, view: sp.view, at: sp.at ?? null })),
     // how the members were trained, so the live path can train the same way -- with the record's half-life when it carries one
     training: { trainOn: p1.trainOn ?? null, weightCap: p1.weightCap ?? null, windowLayout: p1.windowLayout ?? null, startMonth: p1.startMonth ?? null, endMonth: p1.endMonth ?? null, allLoaded: !!p1.allLoaded, nullN: p1.nullN ?? null,
+      // and the split its extra members trained under (3.202.0), so live cuts the history for them the same way
+      extraTrainShare: p1.extraTrainShare ?? null,
       halfLife: hl ? HL.daysOfMonths(hl.halfLife) : null, halfLifeMonths: hl ? hl.halfLife : null },
     fee: Number.isFinite(Number((parent.params || {}).fee)) ? Number((parent.params || {}).fee) : null,
     readings: {

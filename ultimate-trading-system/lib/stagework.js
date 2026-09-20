@@ -150,10 +150,21 @@ function shapeOf(vals) {
 // member that spoke and was right. Two numbers can.
 const { argmaxCall } = require('./agreement');
 function memberReadings({ members, specs, testChunks, seed, unitKey, nullN, tag }) {
-  const n = testChunks.length;
   return members.map((m, mi) => {
     const at = specs[mi] ? specs[mi].at : null;
-    const labels = testChunks.map((c) => (at == null ? c.label : c.altLabels[at]));
+    // WHERE THIS MEMBER IS READ (3.202.0). A member the unit was always going
+    // to have is read on the test window, as it always was. A member added
+    // from a walk set is read on ITS OWN rest of the history -- everything
+    // after the share it trained on -- which is the whole point of giving it a
+    // split of its own: fifteen percent of the history opened its gate on six
+    // decisions, and six decisions read nothing. `own` is what trainGatedMember
+    // hands back for such a member; a member without it is read where it
+    // always was.
+    const own = m.own && Array.isArray(m.own.chunks) ? m.own : null;
+    const rows = own ? own.chunks : testChunks;
+    const votes = own ? own.probs : m.probs;
+    const n = rows.length;
+    const labels = rows.map((c) => (at == null ? c.label : c.altLabels[at]));
     // A FORCED SIT OUT IS NOT A FORECAST (3.201.0). An extra's gate shuts it on
     // most chunks, and both its answer and its call are `sit out` there -- so
     // scoring those would hand it every one of them right while its shuffled
@@ -164,10 +175,10 @@ function memberReadings({ members, specs, testChunks, seed, unitKey, nullN, tag 
     // `spoke` and `chunks` below stay over every chunk, because how often it
     // acts out of all decisions is the rate, and that is the number being held
     // against the walk.
-    const open = at == null ? testChunks.map((_, i) => i)
-      : testChunks.map((c, i) => ((c.extraOn && c.extraOn[at]) ? i : -1)).filter((i) => i >= 0);
+    const open = at == null ? rows.map((_, i) => i)
+      : rows.map((c, i) => ((c.extraOn && c.extraOn[at]) ? i : -1)).filter((i) => i >= 0);
     const onLabels = open.map((i) => labels[i]);
-    const probs = [open.map((i) => m.probs[i])];
+    const probs = [open.map((i) => votes[i])];
     const score = forecastScore(probs, onLabels);
     const nulls = [];
     for (let d = 0; d < nullN; d++) nulls.push(forecastScore(probs, onLabels, dealOrder(seed, unitKey, `${tag}m${mi}#${d}`, open.length)));
@@ -181,7 +192,7 @@ function memberReadings({ members, specs, testChunks, seed, unitKey, nullN, tag 
       // and disagreed with the other three on ties, which is exactly how a
       // measurement comes to contradict the vote it is meant to describe.
       // argmaxCall is the one the engine votes with.
-      const call = argmaxCall(m.probs[i]);
+      const call = argmaxCall(votes[i]);
       if (!call) continue;
       spoke++;
       if (call === labels[i]) rightWhenSpoke++;
@@ -195,6 +206,13 @@ function memberReadings({ members, specs, testChunks, seed, unitKey, nullN, tag 
       from: specs[mi] ? (specs[mi].from || 'own') : 'own',
       score, beat, deals: nullN, lead: leadOver(score, nulls),
       spoke, chunks: n, rightWhenSpoke,
+      // AND WHAT STRETCH THAT READING COVERS, so the screen can say it rather
+      // than leave the owner to guess which window six decisions came out of
+      // (RULE ELEVEN clause 3). For an extra, the share it trained on and how
+      // many decisions its gate opened there ride along too: that count is the
+      // one held against the floor a direction can be learned from.
+      read: n ? { fromTs: rows[0].startTs, toTs: rows[n - 1].startTs, chunks: n, share: own ? own.share : null } : null,
+      trained: own ? { chunks: own.trainedOn, of: own.ofChunks } : null,
     };
   });
 }
@@ -478,13 +496,47 @@ const SAT_OUT = [0, 1, 0];
 // TRAINED ON WHAT IT MAY ANSWER, GATED ON WHAT IT MAY SAY. The weights are cut
 // exactly as the rows are, or the fit is graded against a different objective
 // than it was trained on.
-async function trainGatedMember({ spec, viewIdx, trainChunks, predictChunks, weights, labelOf }) {
+//
+// AND IT TRAINS ON ITS OWN SHARE OF THE WHOLE HISTORY (3.202.0, owner order:
+// "We're making an exception ... for walk sets ... That gets trained fifty
+// fifty or ... sixty forty using the entire history swath"). The window
+// layout cuts the history for every member the unit was always going to have,
+// and it is not touched: 70/15/15 and 61/13/13/13 still mean what they mean.
+// But a member added from a walk set had its look-back and band SET on the
+// first half of this same history and CONFIRMED on the second, by the walk --
+// there is nothing left for a small test slice to choose, and on the box that
+// slice opened its gate on six decisions, which reads nothing.
+//
+// So such a member takes everything the layout leaves unsealed -- train, test
+// and held-back together, in order -- and trains on the first `share` percent
+// of it. The system's test and held-back windows lie inside the rest, so its
+// VOTES there are still votes on chunks it never trained on, and it votes in
+// the committee exactly as before. What is new is where it is READ: on the
+// whole of that rest (`own`), not on the test slice alone.
+//
+// Three things stay exactly where they were, on purpose:
+//   * the tuning slice: the last quarter of the SYSTEM training window, every
+//     member's same slice, because the tuning-slice money pools them all
+//   * the probe that votes on that slice fits only on rows that start BEFORE
+//     it (probeRows), because a member trained on 60% of the history has rows
+//     inside a slice that starts at 52.5% of it
+//   * the sealed reserve: this cuts what the layout leaves, never what it seals
+async function trainGatedMember({ spec, viewIdx, trainChunks, testChunks = [], holdChunks = [], predictChunks, weights = null, weightsOf = null, labelOf, share = null }) {
   const gate = gateOf(spec);
   if (!gate) return trainProbMember({ model: spec.model, viewIdx, trainChunks, predictChunks, weights, labelOf });
-  const keep = trainChunks.map((c, k) => (gate(c) ? k : -1)).filter((k) => k >= 0);
+  const own = ownSplitOf({ trainChunks, testChunks, holdChunks, share, at: spec.at });
+  const keep = own.train.map((c, k) => (gate(c) ? k : -1)).filter((k) => k >= 0);
   if (keep.length < MIN_TRAIN_GATED) {
-    throw new Error(`extra ${spec.at + 1} clears its band on only ${keep.length} training chunk(s) — too few to learn a direction from. `
+    throw new Error(`extra ${spec.at + 1} clears its band on only ${keep.length} of the ${own.train.length} chunks in the first ${own.share}% of the history — too few to learn a direction from. `
       + 'A lower band on the walk row would open the gate more often.');
+  }
+  // THE WEIGHTS ARE READ OFF THE ROWS IT TRAINS ON, the way every member's
+  // are, and cut exactly as the rows are cut. A caller has to say HOW to weigh
+  // rows, not hand over weights for a window this member does not train on.
+  if (typeof weightsOf !== 'function') throw new Error('an extra member needs weightsOf: how to weigh whatever rows its split gives it');
+  const ownWeights = weightsOf(own.train);
+  if (Array.isArray(ownWeights) && ownWeights.length !== own.train.length) {
+    throw new Error(`weightsOf gave ${ownWeights.length} weights for ${own.train.length} chunks`);
   }
   // THE TUNING SLICE IS EVERY MEMBER'S SAME SLICE (3.201.1). It is the last
   // quarter of the WHOLE training window -- worked out here exactly as
@@ -493,15 +545,19 @@ async function trainGatedMember({ spec, viewIdx, trainChunks, predictChunks, wei
   // different stretch would be added into a total about somewhere else.
   const nVal = Math.max(3, Math.round(trainChunks.length * 0.25));
   const tune = trainChunks.slice(trainChunks.length - nVal);
+  // and the probe that votes on it may fit only on rows that start before it
+  const tuneFrom = tune.length ? tune[0].startTs : Infinity;
+  const probeRows = keep.filter((k) => own.train[k].startTs < tuneFrom).length;
   const m = await trainProbMember({
     model: spec.model,
     viewIdx,
-    trainChunks: keep.map((k) => trainChunks[k]),
+    trainChunks: keep.map((k) => own.train[k]),
     predictChunks,
-    weights: Array.isArray(weights) ? keep.map((k) => weights[k]) : weights,
+    weights: Array.isArray(ownWeights) ? keep.map((k) => ownWeights[k]) : ownWeights,
     // ...and on those chunks it is asked THE UNIT'S OWN question
     labelOf,
     tuneChunks: tune,
+    probeRows,
   });
   // AND THE GATE SHUTS BOTH SETS OF VOTES, not only the predictions. A vote the
   // member was never allowed to make is a sit out on the tuning slice for the
@@ -509,11 +565,57 @@ async function trainGatedMember({ spec, viewIdx, trainChunks, predictChunks, wei
   const shut = (rows, probs) => (Array.isArray(probs)
     ? probs.map((p, k) => (gate(rows[k]) ? p : SAT_OUT))
     : probs);
-  return { ...m, probs: shut(predictChunks, m.probs), tauProbs: shut(tune, m.tauProbs) };
+  return {
+    ...m,
+    probs: shut(predictChunks, m.probs),
+    tauProbs: shut(tune, m.tauProbs),
+    // its own reading: the fitted model's votes on the rest of the history,
+    // gated the same way
+    own: { ...ownReadingOf({ saved: m.saved, spec, viewIdx, trainChunks, testChunks, holdChunks, share }), trainedOn: keep.length, ofChunks: own.train.length },
+  };
+}
+// HOW AN EXTRA MEMBER'S HISTORY IS CUT (3.202.0): everything the layout leaves
+// unsealed, in order, the first `share` percent to train on and the rest to be
+// read on. Refused, never defaulted, when the share is missing: a member
+// trained on a share nobody chose would be a record that cannot say how it was
+// made (RULE NINE), and the launch always records one.
+function ownSplitOf({ trainChunks, testChunks = [], holdChunks = [], share, at }) {
+  const pct = Number(share);
+  if (!(pct > 0 && pct < 100)) {
+    throw new Error(`extra ${(at ?? 0) + 1} has no split to train on — the launch did not say how much of the history a member added from a walk set trains on`);
+  }
+  const swath = [...trainChunks, ...testChunks, ...holdChunks];
+  const nOwn = Math.round(swath.length * pct / 100);
+  // THE SYSTEM'S TEST AND HELD-BACK WINDOWS MUST LIE IN WHAT THIS MEMBER NEVER
+  // TRAINED ON, or its votes there are votes on its own lessons. The shares on
+  // offer stop well before either layout's test window; this says so rather
+  // than assuming it, so a share added tomorrow cannot quietly cross the line.
+  if (testChunks.length && nOwn > trainChunks.length) {
+    throw new Error(`the split for extra members trains on the first ${pct}% of the history, which reaches ${nOwn - trainChunks.length} chunk(s) into the test window — it has to stop before the window layout's own test window starts`);
+  }
+  const train = swath.slice(0, nOwn);
+  const read = swath.slice(nOwn);
+  if (!read.length) throw new Error(`the split for extra members leaves nothing to read extra ${(at ?? 0) + 1} on`);
+  return { swath, train, read, share: pct, nOwn };
+}
+// A MEMBER'S OWN READING, from its saved model (3.202.0): its votes on the rest
+// of the history under its split, gated exactly as its committee votes are.
+// Stage 2 reads its parent's extra members through this from THEIR saved
+// models, so both halves of a committee are read on the same stretch.
+function ownReadingOf({ saved, spec, viewIdx, trainChunks, testChunks, holdChunks, share }) {
+  const gate = gateOf(spec);
+  if (!gate) throw new Error('only a member added from a walk set has a reading of its own');
+  const own = ownSplitOf({ trainChunks, testChunks, holdChunks, share, at: spec.at });
+  const probs = forecastRows(saved, viewIdx, own.read).map((pr, k) => (gate(own.read[k]) ? pr : SAT_OUT));
+  return { chunks: own.read, probs, share: own.share };
 }
 // FEWER THAN THIS AND THERE IS NOTHING TO FIT. The splitter's own floor for a
 // training stretch, used here for the same reason.
 const MIN_TRAIN_GATED = require('./pipeline').MIN_CHUNKS;
+// AND THE FEWEST ROWS A PROBE HAS EVER BEEN FITTED ON: what a member at that
+// floor leaves its probe once the tuning quarter is taken off. Derived, not
+// typed, so it cannot drift from the floor above.
+const MIN_PROBE_ROWS = MIN_TRAIN_GATED - Math.max(3, Math.round(MIN_TRAIN_GATED * 0.25));
 
 // AND THE TUNING SLICE CAN BE NAMED FROM OUTSIDE (3.201.1). It is the last
 // quarter of the training rows handed in, which is right for every member that
@@ -525,7 +627,14 @@ const MIN_TRAIN_GATED = require('./pipeline').MIN_CHUNKS;
 //
 // `tuneChunks` names the rows to vote on instead. Left unset it is what it
 // always was, so nothing that existed before this reads differently.
-async function trainProbMember({ model, viewIdx, trainChunks, predictChunks, weights = null, labelOf = null, tuneChunks = null }) {
+//
+// AND HOW MANY OF THE TRAINING ROWS THE PROBE MAY FIT ON (3.202.0). It is the
+// first three quarters of them, as it always was -- and no further than
+// `probeRows` says, because a member trained on its own share of the whole
+// history has rows that run past the start of the tuning slice every member
+// votes on, and a probe graded on rows it was fitted to is not a probe. Left
+// unset it is what it always was.
+async function trainProbMember({ model, viewIdx, trainChunks, predictChunks, weights = null, labelOf = null, tuneChunks = null, probeRows = null }) {
   // WHICH ANSWERS THIS MEMBER IS MARKED AGAINST (3.183.0). A base member is
   // marked against the unit's own band, as it always has been; an extra member
   // against its own. Left unset it is the unit's, so nothing that existed
@@ -535,7 +644,10 @@ async function trainProbMember({ model, viewIdx, trainChunks, predictChunks, wei
   const ytr = trainChunks.map(answer);
   const Xte = predictChunks.map((c) => viewIdx.map((i) => c.x[i]));
   const nVal = Math.max(3, Math.round(Xtr.length * 0.25));
-  const nSub = Xtr.length - nVal;
+  const nSub = probeRows == null ? Xtr.length - nVal : Math.min(Xtr.length - nVal, Math.max(0, Math.floor(Number(probeRows))));
+  if (nSub < MIN_PROBE_ROWS) {
+    throw new Error(`only ${nSub} training chunk(s) start before the tuning slice — too few to fit the probe that votes on it`);
+  }
   // the rows the probe votes on for the tuning slice: the last quarter of the
   // training rows unless the caller names another set
   const Xtu = tuneChunks ? tuneChunks.map((c) => viewIdx.map((i) => c.x[i])) : null;
@@ -798,8 +910,11 @@ async function s1UnitTask(task) {
     // the gate is applied and the direction is learned (3.201.0). labelOf stays
     // null: on the chunks it may answer, an extra is asked the unit's own
     // question, which is what the walk's two signs answer.
+    // AN EXTRA TRAINS ON ITS OWN SHARE OF THE WHOLE HISTORY (3.202.0), so it
+    // is handed all three windows and told how to weigh whatever that gives it.
     const m = await trainGatedMember({
-      spec, viewIdx: views[spec.view], trainChunks, predictChunks, weights, labelOf: null,
+      spec, viewIdx: views[spec.view], trainChunks, testChunks, holdChunks, predictChunks, weights,
+      weightsOf: (rows) => weightsFor(p, rows, fee), share: p.extraTrainShare, labelOf: null,
     });
     members.push({ spec, ...m });
   }
@@ -890,8 +1005,11 @@ async function s2UnitTask(task) {
     // the gate is applied and the direction is learned (3.201.0). labelOf stays
     // null: on the chunks it may answer, an extra is asked the unit's own
     // question, which is what the walk's two signs answer.
+    // AN EXTRA TRAINS ON ITS OWN SHARE OF THE WHOLE HISTORY (3.202.0), the
+    // parent's share, so both halves of the committee are cut the same way.
     const m = await trainGatedMember({
-      spec, viewIdx: views[spec.view], trainChunks, predictChunks, weights, labelOf: null,
+      spec, viewIdx: views[spec.view], trainChunks, testChunks, holdChunks, predictChunks, weights,
+      weightsOf: (rows) => weightsFor(p, rows, fee), share: p.extraTrainShare, labelOf: null,
     });
     members.push({ spec, ...m });
   }
@@ -960,7 +1078,18 @@ async function s2UnitTask(task) {
     // specs there is no way to know which answers a parent member was marked
     // against, and an extra member is marked against different ones.
     perMember: memberReadings({
-      members: [...s1.probs.map((pr) => ({ probs: pr })), ...members],
+      // THE PARENT'S EXTRA MEMBERS ARE READ ON THEIR OWN STRETCH TOO (3.202.0),
+      // from the saved models the parent wrote, so a LOGREG extra and the BOOST
+      // extra beside it are read on the same decisions. Read on the test slice
+      // alone, half the column would be about a different stretch from the
+      // other half, which is not a column.
+      members: [...s1.probs.map((pr, mi) => {
+        const sp = (s1.specs || [])[mi] || {};
+        if (sp.at == null) return { probs: pr };
+        const saved = (s1.saved || [])[mi];
+        if (!saved) throw new Error(`the parent's record carries no saved model for extra ${sp.at + 1}, so it cannot be read on its own stretch`);
+        return { probs: pr, own: ownReadingOf({ saved, spec: sp, viewIdx: views[sp.view], trainChunks, testChunks, holdChunks, share: p.extraTrainShare }) };
+      }), ...members],
       specs: [...(s1.specs || []), ...specs],
       testChunks,
       seed,
@@ -1031,8 +1160,14 @@ function predictMember(saved, spec, chunks, combo, geo, nExtras = 0) {
   const views = viewsFor(combo, geo, nExtras);
   const viewIdx = views[(spec || {}).view || 'full'];
   if (!viewIdx) throw new Error(`no view called '${(spec || {}).view}' on this unit`);
-  const X = chunks.map((c) => viewIdx.map((i) => c.x[i]));
   if (!saved || !saved.kind) throw new Error('a member without a saved model cannot forecast the unread window');
+  return forecastRows(saved, viewIdx, chunks);
+}
+// the same forecast, on a slice already looked up (3.202.0): what a saved
+// model says about each chunk, through the one arithmetic both callers share
+function forecastRows(saved, viewIdx, chunks) {
+  const X = chunks.map((c) => viewIdx.map((i) => c.x[i]));
+  if (!saved || !saved.kind) throw new Error('a member without a saved model cannot forecast');
   if (saved.kind === 'logreg') {
     const Z = standardizeApply(X, { mean: saved.mean, std: saved.std });
     return Z.map((z) => probsArr(predictLogreg({ W: saved.W, f: saved.f }, z).probs));
@@ -1876,7 +2011,7 @@ module.exports = {
   newTallyAcc, tallyFold, serializeTallyAcc, mergeTallyAcc,
   addNoiseRow, mergeNoise, meanNoise, cents,
   // the arithmetic, exported so the tests can pencil it
-  forecastScore, pooledAt, leadOver, dealOrder, callFromProbs, trainProbMember, trainGatedMember, gateOf, unitChunks, predictMember, unreadChunksFor, forecastHashOf, tradeMapFor,
+  forecastScore, pooledAt, leadOver, dealOrder, callFromProbs, trainProbMember, trainGatedMember, gateOf, ownSplitOf, ownReadingOf, forecastRows, memberReadings, unitChunks, predictMember, unreadChunksFor, forecastHashOf, tradeMapFor,
   directionCalls, tuningSliceOf, directionMoney, moneyAgainstNull, TUNING_TAG,
   probsArr, probsObj,
 };

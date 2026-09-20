@@ -1227,6 +1227,18 @@ function swProvenance() {
     };
     const tickBox = wantSource !== 'none';
     const geoWord = (g) => { const hit = ((VOCAB && VOCAB.geometry) || []).find((o) => o.value === g); return hit ? hit.label : String(g); };
+    // THE SPLIT FOR EXTRA MEMBERS, BY THE WORDS THE BOX OFFERS IT UNDER
+    // (3.202.0): a set made before the split existed says so rather than
+    // reading as one that matches whatever the box happens to show.
+    const shareWords = (x) => {
+      if (x === undefined || x === null || x === '' || !Number.isFinite(Number(x))) return 'unrecorded';
+      const hit = ((VOCAB && VOCAB.extraTrainShare) || []).find((o) => String(o.value) === String(x));
+      return hit ? hit.label : `${Number(x)}/${100 - Number(x)}`;
+    };
+    // extra members are in play on a side when its units come from Coins and
+    // it is not the control arm
+    const boxHasExtras = tickBox && !c('#swPlainUnits');
+    const setHasExtras = !!(p.coinsSource && p.coinsSource !== 'none' && !p.plainUnits);
     const pairWords = (list) => (Array.isArray(list) ? list : []).map((x) => `${x.coin} ${geoWord(x.geometry)}`).sort().join(', ') || 'none';
     const CHECKS = [
       // NAMED AS THE TWO SCREENS NAME THEM. The tick reads "only what is ticked
@@ -1240,6 +1252,12 @@ function swProvenance() {
       // whole reason the second one was run.
       ...(tickBox || p.plainUnits
         ? [['leave the extra members out', (c('#swPlainUnits') && tickBox) ? 'yes' : 'no', p.plainUnits ? 'yes' : 'no']]
+        : []),
+      // AND HOW THE HISTORY IS CUT FOR THEM (3.202.0), held up whenever either
+      // side has extra members to cut it for. A set with none never read it,
+      // so the box is free to show anything against such a set.
+      ...(boxHasExtras || setHasExtras
+        ? [['split for extra members', shareWords(v('#swExtraShare')), shareWords(p.extraTrainShare)]]
         : []),
       ...(tickBox || setPairs
         ? (tickBox && setPairs ? [['Candidates for Sweep', pairWords(swPassersNow[wantSource]), pairWords(setPairs)]] : [])
@@ -1695,6 +1713,9 @@ function fillStageForm(doc) {
     if (geos.length) setV('#swGeom', geos[0]);
     setC('#swPermGeom', geos.length > 1);
     setV('#swLayout', p.windowLayout || 'reserve61');
+    // the split for extra members, or the box's own default on a set made
+    // before it existed (3.202.0)
+    setV('#swExtraShare', p.extraTrainShare == null ? '60' : String(p.extraTrainShare));
     setC('#swByMoney', (p.trainOn || 'direction') === 'money');
     // WHERE THE RUN TOOK ITS UNITS FROM, AND WHETHER IT WAS THE CONTROL ARM
     // (3.197.0, owner: "if we load the settings from a sweep on boards back to
@@ -3735,8 +3756,9 @@ async function drawSweep() {
     <div class="row">
       <label class="c" title="run only the rows ticked from a walk set, at the top of Coins. A promoted row carries a look-back and a band of its own, and THAT is what this option is for: each one becomes one more member on its unit, trained on the coin's numbers over that look-back and marked at that band. Everything the unit already trains is untouched. Trade coins, chunk shape and permute are greyed."><input type="radio" name="swSource" id="swSourceWalk" value="walk"> what is ticked from a walk set</label>
     </div>
-    <div class="row">
+    <div class="row" style="align-items:flex-end">
       <label class="c" title="run EXACTLY the same coins and chunk shapes that choice gives, and leave the extra members out — so this run and the one without this tick differ in one thing only, the extra members, and can be read one against the other. Without it the only way to run those units without their extra members is to ignore what is on Coins, which builds a different list of coins and shapes altogether: two runs differing in what was traded AND in how many members voted, where neither difference can be told from the other. Greyed unless one of the two Coins choices is on, because with neither of them there are no extra members to leave out."><input type="checkbox" id="swPlainUnits"> leave the extra members out</label>
+      <label class="f" title="how the history is cut for a member added from a walk set: it trains on the first share of everything this run reads — train, test and held-back together, in order — and is read on the rest. The window layout beside is untouched: it still cuts the history for every member the unit was always going to have. The walk already set this member's look-back and band on the first half of the history and confirmed them on the second, so it needs no small test slice to be chosen on. Greyed when there are no extra members to cut it for.">split for extra members<select id="swExtraShare">${vocabOptions('extraTrainShare', '60')}</select></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <label class="c"><input type="checkbox" id="swSingles" checked> singles</label>
@@ -3908,6 +3930,8 @@ async function drawSweep() {
       // the control arm: the same units, without the extra members (3.194.0)
       plainUnits: !!($('#swPlainUnits') && $('#swPlainUnits').checked && swSourceNow() !== 'none'),
       windowLayout: $('#swLayout').value, allLoaded: $('#swAllData').checked,
+      // how the history is cut for the extra members (3.202.0)
+      extraTrainShare: Number($('#swExtraShare').value),
       startMonth: $('#swStart').value || undefined, endMonth: $('#swEnd').value || undefined,
       nullN: Number($('#swNull1').value) || 0, fee: Number($('#swFee1').value) / 100, desc: $('#swDesc1').value,
       name: $('#swName1').value,
@@ -4048,12 +4072,17 @@ async function drawSweep() {
     // only when the units come from Coins, because that is the only time there
     // are extra members to leave out.
     if ($('#swPlainUnits')) $('#swPlainUnits').disabled = !on;
+    // AND THE SPLIT FOR EXTRA MEMBERS GOES WITH THEM (3.202.0): nothing reads
+    // it unless the run has extra members, which is a Coins choice with the
+    // control arm off.
+    const plain = !!($('#swPlainUnits') && $('#swPlainUnits').checked);
+    if ($('#swExtraShare')) $('#swExtraShare').disabled = !on || plain;
   };
   for (const el of sweepControls()) {
     const onChange = () => {
       rememberSweepForm();
       swProvenance();
-      if (el.name === 'swSource') swPassersGrey();
+      if (el.name === 'swSource' || el.id === 'swPlainUnits') swPassersGrey();
       if (!NO_COUNT.has(el.id)) swCountsSoon();
     };
     el.addEventListener('change', onChange);
@@ -5108,12 +5137,13 @@ function bMembersPanel(stage, d) {
   const th = 'style="padding:.3rem .5rem;text-align:right;white-space:nowrap"';
   const td = 'style="padding:.25rem .5rem;text-align:right;white-space:nowrap"';
   const n2 = (v, dp = 1) => (v == null ? '<span class="muted">—</span>' : Number(v).toFixed(dp));
+  const day = (ts) => (Number.isFinite(Number(ts)) ? new Date(Number(ts)).toISOString().slice(0, 10) : '—');
   return `<div class="panel" style="margin-top:.5rem">
     <div class="row" style="justify-content:space-between">
       <h3 style="margin:0">Members of this unit — ${esc(unit)}</h3>
       <button data-bmemclose="${stage}">Close</button>
     </div>
-    <p class="note">${d.members} member(s)${d.nExtras ? `, of which ${d.nExtras} came from a walk set` : ', none from a walk set'}${d.bandPct == null ? '' : ` · the unit's own band ${Number(d.bandPct).toFixed(2)}%`}${d.tooEarly ? ` · <b class="warn">${Number(d.tooEarly).toLocaleString()} decision moment(s) dropped</b> because they could not reach back far enough for a member's look-back` : ''}</p>
+    <p class="note">${d.members} member(s)${d.nExtras ? `, of which ${d.nExtras} came from a walk set` : ', none from a walk set'}${d.bandPct == null ? '' : ` · the unit's own band ${Number(d.bandPct).toFixed(2)}%`}${d.nExtras ? (d.extraTrainShare == null ? ' · <b class="warn">made before the split for extra members existed</b>: its extra members trained on the window layout\'s training window alone' : ` · split for extra members ${Number(d.extraTrainShare)}/${100 - Number(d.extraTrainShare)}: they trained on the first ${Number(d.extraTrainShare)}% of the history and are read on the rest`) : ''}${d.tooEarly ? ` · <b class="warn">${Number(d.tooEarly).toLocaleString()} decision moment(s) dropped</b> because they could not reach back far enough for a member's look-back` : ''}</p>
     ${d.scored ? '' : '<p class="note warn">This record set carries no reading for each member on its own, so those columns below are blank. They are blank because nothing was stored, not because the members said nothing. Run the stage again and they are there.</p>'}
     <div class="scrollx"><table class="cgap"><thead><tr>
       <th ${th} title="its place in the list of members this unit votes with, in the order the unit was built">member</th>
@@ -5122,6 +5152,8 @@ function bMembersPanel(stage, d) {
       <th ${th} title="how far back this member measures the move it is marked against. Blank on a member that reads its chunk shape's own span, which is every member except one added from a walk set.">look-back</th>
       <th ${th} title="how big a move has to be before this member counts it as up or down rather than sitting out, as a percent of price. THE TWO KINDS OF MEMBER MEASURE A DIFFERENT MOVE. A member the unit was always going to have is marked on the chunk's own move — what price did over the trade — at the unit's own band, which is one number for the whole set. A member added from a walk set is GATED on the move over its own look-back, the stretch ending at the decision: when that clears the bar the member answers the unit's own question, and when it does not the member sits out and is not asked. That is the walk's own rule, and the bar MOVES the way the walk's does — worked out fresh at each decision from every look-back move before it, so it climbs as the coin gets wilder. The figure here is the middle of those bars over the whole set, because there is no single one. In brackets is the number the walk found, a MULTIPLE of what this coin usually moves over that same look-back — 0.90 means nine tenths of it.">band</th>
       <th ${th} title="the walk set a member was added from. Blank on a member the unit was always going to have.">from</th>
+      <th ${th} title="how many decision moments this member trained on, out of how many its training stretch held. A member the unit was always going to have trains on every moment of the window layout's training window. A member added from a walk set trains only on the moments its gate opened in the first share of the history — the split for extra members — and that count is the one held against the floor a direction can be learned from.">trained on</th>
+      <th ${th} title="the stretch of decision moments the numbers to the right are read on: the test window for a member the unit was always going to have; for one added from a walk set, the rest of the history after the share it trained on.">read on</th>
       <th ${th} title="this member's OWN forecast score, read against the answers IT was marked on — not the committee's pooled score. This is what stops a member that never speaks hiding inside the pooled number.">forecast score</th>
       <th ${th} title="of this member's own null set — the same forecasts against the same answers with only the pairing between them destroyed — how many it beat. A member that always says the same thing scores the same shuffled as unshuffled and beats none of them, so silence earns nothing here.">beat its own null set</th>
       <th ${th} title="how far above its own null set's typical forecast score the real one sits, against that null set's own spread">lead over null set</th>
@@ -5134,18 +5166,23 @@ function bMembersPanel(stage, d) {
       <td ${td}>${m.lookbackHours == null ? '<span class="muted">—</span>' : `${Number(m.lookbackHours).toLocaleString()} h`}</td>
       <td ${td}>${m.bandPct == null ? '<span class="muted">—</span>' : `${Number(m.bandPct).toFixed(2)}%`}${m.bandTimesUsual == null ? '' : ` <span class="muted">(${Number(m.bandTimesUsual).toFixed(2)}× usual)</span>`}</td>
       <td ${td}>${m.fromSet ? esc(m.fromSet) : '<span class="muted">—</span>'}</td>
+      <td ${td}>${m.trained ? `${Number(m.trained.chunks).toLocaleString()} <span class="muted">of ${Number(m.trained.of).toLocaleString()}</span>` : '<span class="muted">—</span>'}</td>
+      <td ${td}>${m.read ? `${day(m.read.fromTs)} to ${day(m.read.toTs)}` : '<span class="muted">—</span>'}</td>
       <td ${td}>${n2(m.score)}</td>
       <td ${td}>${bShare(m.deals ? m.beat / m.deals : null, m.beat, m.deals)}</td>
       <td ${td}>${bLead(m.lead)}</td>
       <td ${td}>${m.spoke == null ? '<span class="muted">—</span>' : `${Number(m.spoke).toLocaleString()} <span class="muted">of ${Number(m.chunks || 0).toLocaleString()}</span>`}</td>
       <td ${td}>${bShare(m.spoke ? m.rightWhenSpoke / m.spoke : null, m.rightWhenSpoke, m.spoke)}</td>
-    </tr>`).join('') || '<tr><td colspan="11" class="empty">nothing here</td></tr>'}</tbody></table></div>
+    </tr>`).join('') || '<tr><td colspan="13" class="empty">nothing here</td></tr>'}</tbody></table></div>
     <p class="note">A member added from a walk set is marked with a line down its left edge. Its band is a GATE, not a different question:
       on the decisions where the move over its own look-back clears the bar it is asked the unit's own question — which way will this chunk go —
       and on every other decision it sits out and is never asked. It is trained on the decisions it may answer and on no others, and the gate is
       APPLIED rather than learned, so it speaks at the same share of decisions the walk acted on. That share is the thing to hold against
-      <b>decisions</b> on the walk's own table. Its forecast score is read on the decisions its gate opened, because a sit out it was handed is not a
-      forecast it made; <b>spoke</b> beside it is over every decision, because how often it acts out of all of them is the rate.</p>
+      <b>decisions</b> on the walk's own table. It trains on the first share of the whole history — the split for extra members on Sweep — and
+      every number to the right of <b>read on</b> is read on the rest of it, not on the test window alone; it still votes in the committee on the
+      test and held-back windows like every other member, and those lie inside that rest. Its forecast score is read on the decisions its gate
+      opened, because a sit out it was handed is not a forecast it made; <b>spoke</b> beside it is over every decision it was read on, because
+      how often it acts out of all of them is the rate.</p>
   </div>`;
 }
 // THE PRESS THAT OPENS IT, and the one that closes it. Drawn into the cell that

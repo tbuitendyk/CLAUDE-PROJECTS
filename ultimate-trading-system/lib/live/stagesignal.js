@@ -64,7 +64,7 @@ async function trainStageCommittee(cfg, closed, moments, views, fee) {
   // against different thresholds the moment the training window differed.
   const extras = Array.isArray(cfg.extras) ? cfg.extras : [];
   const split = splitAndLabel(closed, { ...cfg.branch, band: cfg.branch.band }, true, extras.map((e) => e.bandPct));
-  const { trainChunks, testChunks } = split;
+  const { trainChunks, testChunks, holdChunks } = split;
   const training = cfg.training || {};
   const weights = trainingWeightsFor(training, trainChunks, fee);
   const predictChunks = [...testChunks, ...moments];
@@ -83,9 +83,15 @@ async function trainStageCommittee(cfg, closed, moments, views, fee) {
     // and forced to sit out on the rest. Built any other way the live committee
     // would speak at a different rate from the one the evidence is about, which
     // is the one thing a rebuild must never do.
+    //
+    // AND ON ITS OWN SHARE OF THE WHOLE CLOSED HISTORY (3.202.0): the split the
+    // set was trained under rides in the configuration's training block, and
+    // the rows it gives the member are weighed the same way the set weighed
+    // them. The sweep's member, rebuilt, and nothing else.
     // eslint-disable-next-line no-await-in-loop
     const m = await sw.trainGatedMember({
-      spec: { model: spec.model, at }, viewIdx, trainChunks, predictChunks, weights, labelOf: null,
+      spec: { model: spec.model, at }, viewIdx, trainChunks, testChunks, holdChunks, predictChunks, weights,
+      weightsOf: (rows) => trainingWeightsFor(training, rows, fee), share: training.extraTrainShare, labelOf: null,
     });
     members.push({ spec, ...m });
   }

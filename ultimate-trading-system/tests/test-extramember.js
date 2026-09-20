@@ -413,8 +413,13 @@ function theLivePathBuildsMarksAndTrainsTheExtraMember() {
   // different rate from the one the evidence is about.
   assert.ok(/await sw\.trainGatedMember\(\{/.test(st),
     'the live path trains the extra without its gate, so it speaks at a rate no evidence covers');
-  assert.ok(/spec: \{ model: spec\.model, at \}, viewIdx, trainChunks, predictChunks, weights, labelOf: null,/.test(st),
-    'the live extra is not asked the unit\'s own question on the chunks its gate opens');
+  assert.ok(/spec: \{ model: spec\.model, at \}, viewIdx, trainChunks, testChunks, holdChunks, predictChunks, weights,/.test(st),
+    'the live extra is not handed the whole closed history, so it cannot train on its share of it');
+  // AND ON THE SET'S OWN SPLIT (3.202.0), weighed over whatever rows that gives it
+  assert.ok(/weightsOf: \(rows\) => trainingWeightsFor\(training, rows, fee\), share: training\.extraTrainShare, labelOf: null,/.test(st),
+    'the live extra is not trained on the split the set recorded, so the live committee is not the one the evidence is about');
+  assert.ok(/extraTrainShare: p1\.extraTrainShare \?\? null,/.test(fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8')),
+    'the greenlight is never told the split, so live cannot cut the history the way the set did');
   assert.ok(!/const labelOf = at == null \? null : \(c\) => \(c\.altLabels \|\| \[\]\)\[at\];/.test(st),
     'the live path still marks an extra against a different set of answers');
 
@@ -447,7 +452,139 @@ function theLivePathBuildsMarksAndTrainsTheExtraMember() {
   assert.ok(!guarded, 'the row sits inside a branch test, so one Trade branch can show it and the other not');
 }
 
+// AN EXTRA TRAINS ON ITS OWN SHARE OF THE WHOLE HISTORY AND IS READ ON THE REST
+// (3.202.0, owner order: "trained fifty fifty or ... sixty forty using the
+// entire history swath"). Every claim the design makes, held on a real fit:
+// where it trains, where it is read, that its committee votes are the same
+// votes, that the tuning slice and the probe stay honest, that stage 2 can
+// read it again from the saved model vote for vote, and what it refuses.
+async function anExtraTrainsOnItsShareOfTheWholeHistoryAndIsReadOnTheRest() {
+  const sw = require('../lib/stagework');
+  const bw = require('../lib/bracketwork');
+  // a deterministic coin: four numbers a chunk, an outcome leaning on the
+  // first two, and a look-back move for the gate to read
+  let seed = 7;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  const N = 480;
+  const chunks = Array.from({ length: N }, (_, i) => {
+    const x = [rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1];
+    return { startTs: Date.UTC(2024, 0, 1) + i * 86400000, x, diffPct: 4 * (x[0] - x[1]) + (rnd() - 0.5), backPct: [(rnd() * 2 - 1) * 5] };
+  });
+  const { trainChunks, testChunks, holdChunks } = bw.splitAndLabel(chunks, { band: 2 }, true, [100]);
+  const predictChunks = [...testChunks, ...holdChunks];
+  const swath = [...trainChunks, ...testChunks, ...holdChunks];
+  const spec = { model: 'logreg', view: 'extra0', from: 'extra0', at: 0 };
+  const viewIdx = [0, 1, 2, 3];
+  const weightsOf = (rows) => rows.map((c) => 1 + Math.abs(c.diffPct) / 10);
+  const args = { spec, viewIdx, trainChunks, testChunks, holdChunks, predictChunks, weights: null, weightsOf, labelOf: null };
+  const m = await sw.trainGatedMember({ ...args, share: 60 });
+  const nOwn = Math.round(swath.length * 0.6);
+  assert.ok(nOwn < trainChunks.length, 'the fixture has the split reaching the test window, so it proves nothing');
+  // WHERE IT TRAINS AND WHERE IT IS READ: the first 60% of everything, the rest
+  assert.strictEqual(m.own.chunks.length, swath.length - nOwn, 'the member is not read on the rest of the whole history');
+  assert.strictEqual(m.own.chunks[0], swath[nOwn], 'its reading does not start where its training share ends');
+  assert.strictEqual(m.own.ofChunks, nOwn, 'its training share is not 60% of the whole history');
+  assert.strictEqual(m.own.trainedOn, swath.slice(0, nOwn).filter((c) => c.extraOn[0]).length, 'it did not train on exactly the gated chunks of its share');
+  assert.strictEqual(m.own.share, 60);
+  // ITS COMMITTEE VOTES ARE STILL ON THE SYSTEM'S OWN WINDOWS, and gated there
+  assert.strictEqual(m.probs.length, predictChunks.length, 'the committee votes are not over the test and held-back windows');
+  predictChunks.forEach((c, k) => { if (!c.extraOn[0]) assert.deepStrictEqual(m.probs[k], [0, 1, 0], 'a shut gate did not force a sit out on the committee vote'); });
+  m.own.chunks.forEach((c, k) => {
+    if (!c.extraOn[0]) assert.deepStrictEqual(m.own.probs[k], [0, 1, 0], 'a shut gate did not force a sit out on its own reading');
+    // (the votes are kept to four places, so the three sum to one within that)
+    else assert.ok(Math.abs(m.own.probs[k].reduce((a, b) => a + b, 0) - 1) < 1e-3 && m.own.probs[k][1] !== 1, 'an open gate did not get a real forecast');
+  });
+  // THE SAME VOTE ON THE SAME CHUNK, whichever list it is read from
+  const at = m.own.chunks.indexOf(predictChunks[0]);
+  assert.ok(at >= 0, 'the test window is not inside what the member is read on');
+  predictChunks.forEach((c, k) => assert.deepStrictEqual(m.own.probs[at + k], m.probs[k], 'the member votes one way for the committee and another for its own reading'));
+  // THE TUNING SLICE IS THE SYSTEM'S, and the probe never fitted on it
+  const nVal = Math.max(3, Math.round(trainChunks.length * 0.25));
+  assert.strictEqual(m.tauProbs.length, nVal, 'its tuning-slice votes are not on every member\'s same slice');
+  const tuneFrom = trainChunks[trainChunks.length - nVal].startTs;
+  const keep = m.own.trainedOn;
+  const before = swath.slice(0, nOwn).filter((c) => c.extraOn[0] && c.startTs < tuneFrom).length;
+  assert.ok(before < keep, 'the fixture has no gated training chunk inside the tuning slice, so the probe cut is untested');
+  assert.strictEqual(m.nSub, Math.min(keep - Math.max(3, Math.round(keep * 0.25)), before), 'the probe fitted on rows inside the slice it votes on, or on fewer than it may');
+  // STAGE 2 READS IT AGAIN FROM THE SAVED MODEL, vote for vote
+  const again = sw.ownReadingOf({ saved: m.saved, spec, viewIdx, trainChunks, testChunks, holdChunks, share: 60 });
+  assert.deepStrictEqual(again.probs, m.own.probs, 'the saved model does not give back the votes the fit gave');
+  assert.strictEqual(again.chunks.length, m.own.chunks.length);
+  // AND ITS READING IS TAKEN THERE, and says where
+  const [r] = sw.memberReadings({ members: [{ spec, ...m }], specs: [spec], testChunks, seed: 's', unitKey: 'u', nullN: 3, tag: 't' });
+  assert.strictEqual(r.chunks, m.own.chunks.length, 'its reading is still over the test window alone');
+  assert.strictEqual(r.read.share, 60);
+  assert.strictEqual(r.read.fromTs, swath[nOwn].startTs);
+  assert.strictEqual(r.read.toTs, swath[swath.length - 1].startTs);
+  assert.strictEqual(r.read.chunks, m.own.chunks.length);
+  assert.deepStrictEqual(r.trained, { chunks: keep, of: nOwn });
+  assert.ok(r.spoke <= m.own.chunks.filter((c) => c.extraOn[0]).length, 'it spoke on a decision its gate shut');
+  // A BASE MEMBER IS READ WHERE IT ALWAYS WAS
+  const base = await sw.trainProbMember({ model: 'logreg', viewIdx, trainChunks, predictChunks });
+  const bspec = { model: 'logreg', view: 'full' };
+  const [b] = sw.memberReadings({ members: [{ spec: bspec, ...base }], specs: [bspec], testChunks, seed: 's', unitKey: 'u', nullN: 3, tag: 't' });
+  assert.strictEqual(b.chunks, testChunks.length, 'a base member is no longer read on the test window');
+  assert.strictEqual(b.read.share, null);
+  assert.strictEqual(b.read.fromTs, testChunks[0].startTs);
+  assert.strictEqual(b.trained, null);
+  // THE OTHER CHOICE CUTS WHERE IT SAYS
+  const half = await sw.trainGatedMember({ ...args, share: 50 });
+  assert.strictEqual(half.own.chunks.length, swath.length - Math.round(swath.length * 0.5), '50/50 did not halve the history');
+  // AND WHAT IT REFUSES: no split, a split reaching the test window, no way to weigh its rows
+  await assert.rejects(() => sw.trainGatedMember({ ...args }), /has no split to train on/, 'a missing split trained on something anyway');
+  await assert.rejects(() => sw.trainGatedMember({ ...args, share: 90 }), /into the test window/, 'a split reaching the test window was accepted');
+  await assert.rejects(() => sw.trainGatedMember({ ...args, weightsOf: null, share: 60 }), /weightsOf/, 'an extra was trained without being told how to weigh its own rows');
+  // a base member is untouched by any of it
+  const plain = await sw.trainGatedMember({ spec: bspec, viewIdx, trainChunks, predictChunks, weights: null, labelOf: null });
+  assert.deepStrictEqual(plain.probs, base.probs, 'a base member came out different through trainGatedMember');
+  assert.strictEqual(plain.own, undefined, 'a base member grew a reading of its own');
+}
+
+// THE SPLIT IS THE OWNER'S CHOICE, IT IS REFUSED RATHER THAN COERCED, AND IT
+// RIDES ON EVERY RECORD THAT NEEDS IT (3.202.0).
+function theSplitIsTheOwnersChoiceAndRidesOnEveryRecord() {
+  const fs = require('fs');
+  const path = require('path');
+  const S = require('../lib/stages');
+  const { vocabulary } = require('../lib/vocabulary');
+  const offered = (vocabulary().extraTrainShare || []).map((o) => o);
+  assert.deepStrictEqual(offered.map((o) => o.label), ['60/40', '50/50'], 'the box does not offer 60/40 first and 50/50 second');
+  assert.deepStrictEqual(offered.map((o) => Number(o.value)), [60, 50], 'the values are not the training share in percent');
+  assert.throws(() => S.startStage1({ sizes: { singles: true }, fee: 0.05, name: 'x', extraTrainShare: 70 }),
+    /is not a split for extra members \(60\/40 or 50\/50\)/, 'a share the box does not offer was accepted');
+  assert.throws(() => S.startStage1({ sizes: { singles: true }, fee: 0.05, name: 'x', extraTrainShare: 'half' }),
+    /is not a split for extra members/, 'a word was accepted as a share');
+  assert.strictEqual(S.publicParams({ params: { extraTrainShare: 60 } }).extraTrainShare, 60, 'the split is not served to the page');
+  assert.strictEqual(S.publicParams({ params: {} }).extraTrainShare, null, 'a set made before the split reads as having one');
+  const st = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+  const launch = st.slice(st.indexOf('function startStage1(params) {'), st.indexOf('const units = unitsFor('));
+  assert.ok(/windowLayout,\n    extraTrainShare,/.test(launch), 'the split never reaches the workers, so the box does nothing');
+  assert.ok(st.includes('extraTrainShare: parent.params.extraTrainShare,'), 'stage 2 does not inherit the split, so the two halves of a committee could be cut differently');
+  assert.ok(/was made before the split for extra members existed/.test(st), 'a parent from before the split is carried to stage 2 and half its committees cut the other way');
+  assert.ok(st.includes('saved,') && /const saved = hasExtras \? rec\.specs\.map/.test(st), 'the parent\'s saved models do not ride to stage 2, so its extras cannot be read on their own stretch there');
+  // the screen: the box, the launch, the restore, the provenance row, and the
+  // tick beside it bottom-aligned (RULE FOUR-A)
+  const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  assert.ok(/<label class="f" title="[^"]*">split for extra members<select id="swExtraShare">\$\{vocabOptions\('extraTrainShare', '60'\)\}<\/select><\/label>/.test(ui),
+    'the Sweep screen has no split for extra members box, or it does not default to 60/40');
+  const row = ui.slice(ui.lastIndexOf('<div class="row"', ui.indexOf('id="swExtraShare"')), ui.indexOf('id="swExtraShare"'));
+  assert.ok(row.includes('align-items:flex-end') && row.includes('id="swPlainUnits"'), 'the split box does not share a bottom-aligned row with the tick it belongs beside');
+  assert.ok(ui.includes("extraTrainShare: Number($('#swExtraShare').value),"), 'the launch does not send the split');
+  assert.ok(ui.includes("setV('#swExtraShare', p.extraTrainShare == null ? '60' : String(p.extraTrainShare));"), 'loading a set back into the boxes drops its split');
+  assert.ok(ui.includes("['split for extra members', shareWords(v('#swExtraShare')), shareWords(p.extraTrainShare)]"), 'the stage headings do not hold the split up against the set');
+  assert.ok(/\$\('#swExtraShare'\)\.disabled = !on \|\| plain;/.test(ui), 'the split box is live when there are no extra members to cut the history for');
+  // the members panel says where each member trained and was read
+  const panel = ui.slice(ui.indexOf('function bMembersPanel('), ui.indexOf('function bMembersBtn('));
+  for (const col of ['>trained on</th>', '>read on</th>']) assert.ok(panel.includes(col), `the members table has no ${col} column`);
+  assert.ok(panel.includes('m.trained.chunks') && panel.includes('m.read.fromTs'), 'the two columns are drawn and never filled');
+  assert.ok(/colspan="13"/.test(panel), 'the empty row does not span the columns');
+  const help = fs.readFileSync(path.join(__dirname, '..', 'public', 'help-content.js'), 'utf8');
+  assert.ok(/swExtraShare: \{/.test(help), 'the split box has no help entry');
+}
+
 module.exports = {
+  anExtraTrainsOnItsShareOfTheWholeHistoryAndIsReadOnTheRest,
+  theSplitIsTheOwnersChoiceAndRidesOnEveryRecord,
   anExtrasBandIsAMultipleOfTheUsualOutcomeMove,
   theExtrasScaleIsMeasuredOnTheTrainStretchAlone,
   theLiveConfigurationCarriesWhatAWalkSetAdded,

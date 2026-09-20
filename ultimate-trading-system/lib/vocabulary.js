@@ -107,6 +107,19 @@ function vocabulary() {
       // the 80/20 layout left this list 2026-09-08 (owner order: "get rid of the
       // option and clean up any code specific to it"); no set on the box was built with it
     ],
+    // HOW THE HISTORY IS CUT FOR A MEMBER ADDED FROM A WALK SET (3.202.0, owner
+    // order: "we want a sixty forty default and the drop down for the fifty
+    // fifty option"). The value is the share it TRAINS on, in percent of the
+    // whole history the run reads; the rest is what it is read on. The window
+    // layout above is untouched by this: it still divides the history for
+    // every member the unit was always going to have, and this divides it only
+    // for the ones a walk set added -- their look-back and band were already
+    // set on the first half of that history and confirmed on the second, so
+    // they need no small test slice to be chosen on.
+    extraTrainShare: [
+      { value: '60', label: '60/40' },
+      { value: '50', label: '50/50' },
+    ],
     // THE FUNNEL'S DIALS, READ FROM THE ENGINE, never typed here. A list typed
     // into the page is a list that can quietly disagree with the record — and
     // then a dial the owner cannot pick is a dial they cannot know exists
