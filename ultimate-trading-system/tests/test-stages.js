@@ -897,9 +897,23 @@ module.exports = {
     // launch's plan, and both readers of a saved set. A reader left out would
     // build a different number of settings from the one beside it, which the
     // launch refuses on and calls a disagreement.
+    //
+    // THE FIFTH IS THE QUORUM LINE (3.195.1). The screen used to have the
+    // number 8 typed into it, which is wrong on every unit carrying a member
+    // from a walk set -- and share is a share of whatever the unit holds, so
+    // the screen was saying 50% meant 4 when on the owner's run it meant 5. It
+    // is counted now, and counted off THESE shapes on purpose: the fold and the
+    // line have to agree, or the screen names one committee and the pricing
+    // uses another.
     const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
-    assert.strictEqual((src.match(/shapesOf\(/g) || []).length, 4,
-      'a reader of the block is not handed the committee shapes, or a fifth reader was added without this test being looked at again');
+    assert.strictEqual((src.match(/shapesOf\(/g) || []).length, 5,
+      'a reader of the block is not handed the committee shapes, or a sixth reader was added without this test being looked at again');
+    assert.ok(/out\.committees = records/.test(src)
+      && /shapesOf\(records\)\.map\(\(q\) => membersForSize\(q\.size\) \+ 2 \* q\.nExtras\)/.test(src),
+      'the quorum line is counted off the same shapes the fold reads, never typed');
+    const UI2 = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    assert.ok(!/judged by 8 members/.test(UI2), 'the committee size is typed into the screen again');
+    assert.ok(/swSayQuorum\(got\.committees\)/.test(UI2), 'and the line is written from what the run will hold');
     assert.ok(/const agrees = agreementsFor\(params, sizes, shapesOf\(records\)\);/.test(src), 'the cost line does not read the shapes off its own records');
     assert.ok(/const declaredSettings = settingsFor\(params, sizes, shapesOf\(parentRecords\)\);/.test(src), 'the launch does not build its plan from the shapes it will price');
     assert.ok(/foldSameTradeSettings\(settingsFor\(doc\.params \|\| \{\}, sizes, shapesOf\(parentRecords\)\)/.test(src), 'a paused run started again rebuilds a different block from the one it paused with');

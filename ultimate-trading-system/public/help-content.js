@@ -371,8 +371,11 @@ window.HELP = {
       swPermArm: { what: 'Price every starting point as its own setting in the block. Ghosted with the arm box whenever nothing in the block can read it.' },
       swAgreeRule: {
         what: 'WHAT IS WEIGHED when the members are polled. Half of the quorum; quorum bar is the other half.',
-        more: 'Every coin is judged by 8 members, each reading a different slice of the numbers, worked out two '
-          + 'different ways. This box says what is measured when they are polled.\n\n'
+        more: 'A coin is judged by the members its own unit holds, each reading a different slice of the numbers, '
+          + 'worked out two different ways \u2014 four slices for a coin on its own and five for one read alongside '
+          + 'others, each of them twice, and one more for every member added from a walk set. The Quorum line on '
+          + 'Sweep says the number for the units about to be priced; it is counted off them, never a fixed figure. '
+          + 'This box says what is measured when they are polled.\n\n'
           + 'count is the plain head count: how many say the same thing. It is the honest baseline, and its one '
           + 'permanent weakness is that it cannot tell independent opinions from near-copies.\n\n'
           + 'conviction is how hard they lean, added up. Six members that are certain and six that barely lean are '

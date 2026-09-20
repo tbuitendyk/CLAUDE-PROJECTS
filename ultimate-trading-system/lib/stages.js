@@ -2689,6 +2689,23 @@ function stage3Declared(b) {
   out.pricings = counted.pricings;
   out.unitSettings = records ? counted.perUnit.map((held, i) => ({ u: records[i].u, held })) : [];
   out.weekdaysApply = counted.weekdaysApply;
+  // HOW MANY MEMBERS JUDGE A COIN, COUNTED (3.195.1, owner order: "fix the
+  // quorum 8 members line too").
+  //
+  // The Sweep screen had the number 8 typed into it. A unit carrying one member
+  // from a walk set is judged by 10, a double carrying one by 12, and `share`
+  // is a share of whatever that unit holds -- so the screen was telling the
+  // owner that 50% meant 4 when on their run it meant 5. A number that can be
+  // counted is never typed.
+  //
+  // IT IS READ OFF THE SAME SHAPES THE FOLD USES. agreementsFor folds two
+  // shares onto one setting when they land on the same rung, and the rung is
+  // membersForSize(size) + 2 * nExtras -- one member per extra at each of the
+  // two stages. Reading the line off anything else would let the screen say one
+  // committee and the pricing use another.
+  out.committees = records
+    ? [...new Set(shapesOf(records).map((q) => membersForSize(q.size) + 2 * q.nExtras))].sort((a, b) => a - b)
+    : [];
   return out;
 }
 function startStage3(params) {

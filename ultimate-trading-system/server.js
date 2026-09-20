@@ -1211,6 +1211,9 @@ app.post('/api/stage3-count', (req, res) => {
       // and WHICH list of Coins this chain's leans could come from (3.186.0),
       // so the screen says why Confirmation is greyed rather than only that it is
       leanUnits: d.leanUnits == null ? null : d.leanUnits, confirmWanted: !!d.confirmWanted,
+      // and how many members judge a coin on the units about to be priced, so
+      // the Quorum line says the real number instead of a typed one (3.195.1)
+      committees: d.committees || [],
       leanSource: d.leanSource || null };
     const units = d.units ?? Math.max(0, Math.floor(Number(b.units) || 0));
     const coins = d.coins ?? Math.max(1, Math.floor(Number(b.coins) || 1));

@@ -1361,6 +1361,22 @@ function swCountsSoon() {
   swCountsTimer = setTimeout(() => { swCounts(); }, 250);
 }
 
+// AND THE LINE IS WRITTEN FROM WHAT THE RUN WILL HOLD (3.195.1). With no stage
+// 2 record set chosen there is nothing to count and it says so rather than
+// standing a number in -- a count with no units behind it is the typed 8 again
+// wearing a different coat (RULE ELEVEN clause 6).
+function swSayQuorum(sizes) {
+  const el = $('#swQuorumSaid');
+  if (!el) return;
+  const list = (Array.isArray(sizes) ? sizes : []).filter((n) => Number.isFinite(n) && n > 0);
+  const how = !list.length
+    ? 'every coin is judged by the members its own unit holds'
+    : list.length === 1
+      ? `every coin here is judged by <b>${list[0]}</b> members`
+      : `the coins here are judged by <b>${list[0]}</b> to <b>${list[list.length - 1]}</b> members, and the number differs from unit to unit`;
+  el.innerHTML = `<b>Quorum</b> — ${how}. The boxes below decide when enough of them agree to act, `
+    + 'and <b>share</b> is a share of whatever its own unit holds.';
+}
 async function swCounts() {
   const ticket = ++swAskSeq;
   const current = () => ticket === swAskSeq;   // a newer ask has taken over
@@ -1469,6 +1485,15 @@ async function swCounts() {
       // set, so with only those units the box and its tick would change
       // nothing -- ghosted the way arm is under a static stop, never hidden.
       swGhostGroup('#swGrpWk', got.weekdaysApply === false);
+      // HOW MANY MEMBERS JUDGE A COIN, COUNTED, NEVER TYPED (3.195.1, owner
+      // order). The line said "8 members" in the markup. A unit carrying one
+      // member from a walk set is judged by 10 and a double carrying one by 12,
+      // and share is a share of whatever that unit holds -- so on the owner's
+      // run the screen said 50% meant 4 of 8 when it meant 5 of 10.
+      //
+      // WHERE THE UNITS DIFFER IT SAYS THE RANGE rather than picking one. Two
+      // committee sizes under one number is the same fault one step along.
+      swSayQuorum(got.committees);
       // CONFIRM IS GHOSTED WHEN NO UNIT BEING PRICED PASSES ON COINS (3.130.0,
       // COINS.md section 11): on such units the three values place the same
       // trades, so the dial and its two boxes would change nothing. Ghosted
@@ -3723,7 +3748,7 @@ async function drawSweep() {
         <label class="f">arm<select id="swArm">${vocabOptions('armMult', '0')}</select></label>
         <label class="c"><input type="checkbox" id="swPermArm"> permute</label>
       </div>
-      <p class="note" style="margin:.6rem 0 .1rem"><b>Quorum</b> — every coin is judged by 8 members. These four boxes decide when enough of them agree to act.</p>
+      <p class="note" style="margin:.6rem 0 .1rem" id="swQuorumSaid"><b>Quorum</b> — the boxes below decide when enough of a coin's members agree to act.</p>
       <div style="display:flex;align-items:flex-end;gap:.45rem">
         <label class="f" title="WHAT IS WEIGHED when the members are polled. count is how many say the same thing — the plain head count. conviction is how hard they lean, added up, so six that are certain outweigh six that barely lean. voices is a head count in which members that almost always call the same way as each other share one vote between them, so a crowd of near-copies cannot outvote a real disagreement. families is how many different KINDS of evidence agree — the members read four different slices of the numbers, and this asks that several slices line up rather than several members. trained is the way stages 1 and 2 added the members up when they scored these units: every lean added together and the winning side taken, whatever the margin and whoever the head count would have picked. It is the only choice here that reads no bar at all, because those stages had none — so quorum bar and share are left out of its name and off its records, and it is one setting however many of either are being priced. This box is only half the quorum: quorum bar decides how much of it is enough.">quorum by<select id="swAgreeRule">${vocabOptions('agreeRule', 'count')}</select></label>
         <label class="c" title="price every quorum by choice as its own setting."><input type="checkbox" id="swPermAgreeRule"> permute</label>
