@@ -1535,18 +1535,25 @@ function theWalksOwnLeanIsKeptAndSpeaksTheSameLanguageAsAPassers() {
 
   // AND STAGE 3 READS IT AT THE ROW'S OWN LOOK-BACK, which is the whole point
   const work = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stagework.js'), 'utf8');
-  assert(/windowLib\.windowMoves\(tradeMap, geometry, back \? \[back\] : \[\]\)/.test(work),
-    'the lean\'s look-back reaches windowMoves, which has taken one since 2026-09-17 and was never given it');
-  assert(/task\.lean\.lookback == null \|\| task\.lean\.lookback === 'own' \? null : Number\(task\.lean\.lookback\)/.test(work),
+  // 3.206.0: the lean is a list of rows -- one for a passer, every row of the
+  // plateau for a walk-set unit -- and every distinct look-back among them is
+  // asked for at once
+  assert(/const wm = windowLib\.windowMoves\(tradeMap, geometry, backs\);/.test(work)
+    && /const backs = \[\.\.\.new Set\(leanRows\.map\(backOf\)\.filter\(\(h\) => h\)\)\];/.test(work),
+    'the rows\' look-backs reach windowMoves, which has taken a list since 2026-09-17 and was never given one');
+  assert(/const backOf = \(row\) => \(row\.lookback == null \|\| row\.lookback === 'own' \? null : Number\(row\.lookback\)\);/.test(work),
     "`own` is a real value here — the shape's own span — so a lean without one reads exactly as it always did");
   assert(/\.some\(\(v\) => v != null\) \? wm\.moves\[String\(back\)\] : wm\.move/.test(work),
     'and a look-back the candles cannot reach falls back to the shape\'s own span rather than colouring every window from nulls');
 
-  // ONE KEY, ONE LEAN, AND NOTHING SILENT ABOUT IT
+  // COINS LENDS A LEAN TO THE PASSERS ONLY (3.206.0, owner order); a walk row's
+  // lean rides onto the extra it becomes and stage 3 folds the plateau's
   const run = fs.readFileSync(path.join(__dirname, '..', 'lib', 'coinsrun.js'), 'utf8');
   assert(/lookback: 'own', from: \{ source: 'passer' \}/.test(run), "a passer's lean says it is at the shape's own span");
-  assert(/a passer already holds this coin and chunk shape/.test(run),
-    'and a promoted row passed over for one is named, never dropped in silence');
+  assert(/function passerLeans\(\) \{ return passerOwnLeans\(\); \}/.test(run), 'Coins still lends a promoted row\'s lean');
+  assert(!/promotedLeans/.test(run), 'the first-ticked-row rule is still read');
+  const ws = fs.readFileSync(path.join(__dirname, '..', 'lib', 'walkset.js'), 'utf8');
+  assert(/lean: c\.lean \|\| null \}\);/.test(ws) && !/function promotedLeans/.test(ws), 'a row\'s lean does not ride onto its extra');
 }
 
 
