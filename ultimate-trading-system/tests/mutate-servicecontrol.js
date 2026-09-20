@@ -356,6 +356,9 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), "    setV('#swName1', doc.name || '');", '',
     'theStageTwoHeadingGoesRedWhenANewerStageOneExists',
     'Copy settings into the form fills everything but the name on a stage 1 set'],
+  [path.join(ROOT, 'public', 'construct.js'), "  if ($('#swExtraShare')) $('#swExtraShare').disabled = !walk || plain;", "  if ($('#swExtraShare')) $('#swExtraShare').disabled = !walk;",
+    'theSplitForExtraMembersStartsGhostedAfterALoadWithTheControlArmOn',
+    'the split box is live under the control arm, on a load and on a tick alike'],
   // The Funnel's closing and the scrambled copies it is compared against.
   [path.join(ROOT, 'lib', 'stages.js'),
     '  const closed = S4.ruleWithClosing(t.ranked || [], state.rule, state.closing, doc.target);\n  doc.rule = closed.rule;',

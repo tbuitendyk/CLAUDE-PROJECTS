@@ -1662,6 +1662,53 @@ module.exports = {
     }
   },
 
+  // THE SPLIT FOR EXTRA MEMBERS STARTS GHOSTED AFTER A LOAD (3.209.1, owner:
+  // "when the settings for a stage one section of sweep are loaded from
+  // boards and the checkbox 'leave the extra members out' is set, the 'split
+  // for extra members' should START ghosted, not be selectable until that
+  // checkbox is unchecked and rechecked").
+  //
+  // The greying lived as a const inside drawSweep, and fillStageForm called
+  // it from module scope -- a call to a name that is not in scope, which
+  // throws, so after a load nothing past the boxes ran: no greying, no
+  // colours, no counts, until the poll or a tick came round. A source scan
+  // saw the call and could not see the scope. This test RUNS the load
+  // against stub boxes and reads the box's state.
+  theSplitForExtraMembersStartsGhostedAfterALoadWithTheControlArmOn() {
+    const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    assert.ok(/\nfunction swPassersGrey\(\) \{/.test(UI), 'the greying is not a function of the page — a load from Boards cannot reach a const inside drawSweep');
+    assert.ok(!/const swPassersGrey = /.test(UI), 'the greying is declared twice');
+    const lift = (start, end, tail) => { const at = UI.indexOf(start); assert.ok(at >= 0, `${start} is not on the page`); return UI.slice(at, UI.indexOf(end, at) + tail); };
+    const src = [
+      lift('const swSourceNow = () => {', '\n};\n', 4),
+      lift('function swPassersGrey() {', '\n}\n', 3),
+      lift('function fillStageForm(doc) {', '\n}\n', 3),
+    ].join('\n');
+    const page = () => {
+      const els = new Map();
+      const $ = (sel) => { const id = String(sel).replace(/^#/, ''); if (!els.has(id)) els.set(id, { id, value: '', checked: false, disabled: false }); return els.get(id); };
+      for (const [id, value] of [['swSourceOff', 'none'], ['swSourcePass', 'passers'], ['swSourceWalk', 'walk']]) $(`#${id}`).value = value;
+      return $;
+    };
+    // eslint-disable-next-line no-new-func
+    const load = new Function('$', 'rememberSweepForm', 'swProvenance', 'swCounts', 'doc', `${src}\nfillStageForm(doc);`);
+    const settled = { remembered: 0, painted: 0, counted: 0 };
+    const run = ($, params) => load($, () => { settled.remembered++; }, () => { settled.painted++; }, () => { settled.counted++; },
+      { stage: 1, name: 'S1 #x', desc: '', params: { coinsSource: 'walk', sizes: { singles: true }, universe: ['LTCUSDT'], ...params } });
+    let $ = page();
+    run($, { plainUnits: true });
+    assert.strictEqual($('#swPlainUnits').checked, true, 'the fixture is wrong if the control arm did not load');
+    assert.strictEqual($('#swExtraShare').disabled, true, 'split for extra members must START ghosted after a load with leave the extra members out ticked');
+    assert.strictEqual($('#swPlainUnits').disabled, false, 'the control arm tick itself is live under the walk set');
+    assert.deepStrictEqual(settled, { remembered: 1, painted: 1, counted: 1 }, 'the load must settle the screen: remember, colours, counts — all three, after the boxes');
+    $ = page();
+    run($, { plainUnits: false });
+    assert.strictEqual($('#swExtraShare').disabled, false, 'with the control arm off, the split box is live');
+    $ = page();
+    run($, { coinsSource: 'passers', plainUnits: false });
+    assert.strictEqual($('#swExtraShare').disabled, true, 'under coins and shapes that pass the split box is ghosted');
+    assert.strictEqual($('#swPlainUnits').disabled, true, 'and so is the control arm tick');
+  },
   theStageHeadingsCompareTheTickForASetLaunchedFromCoins() {
     const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8')
       .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');

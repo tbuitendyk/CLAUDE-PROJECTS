@@ -1847,6 +1847,39 @@ const swSourceNow = () => {
   }
   return 'none';
 };
+// WITH THE PASSERS' TICK ON, the boxes the pairs replace are greyed: the
+// run's units come from Coins, not from them.
+//
+// A FUNCTION OF THE PAGE, NOT A CONST INSIDE drawSweep (3.209.1, owner: "when
+// the settings for a stage one section of sweep are loaded from boards and
+// the checkbox 'leave the extra members out' is set, the 'split for extra
+// members' should START ghosted"). It was a const local to drawSweep, and
+// fillStageForm called it from module scope: a call to a name not in scope,
+// which throws -- so after a load from Boards nothing past the boxes ran, no
+// greying, no colours, no counts, until a tick or the poll came round. The
+// source scan that guarded the call could see the call and not the scope.
+function swPassersGrey() {
+  // greyed on BOTH Coins options and not on 'ignore what is on Coins': in
+  // either of them the run's units are the ticked pairs, each at its own
+  // chunk shape, so the boxes that would name other ones cannot apply.
+  const on = swSourceNow() !== 'none';
+  for (const id of ['swUni', 'swGeom', 'swPermGeom']) if ($(`#${id}`)) $(`#${id}`).disabled = on;
+  // AND THE CONTROL ARM IS THE OTHER WAY ROUND (3.194.0): it means something
+  // only when there are extra members to leave out.
+  //
+  // WHICH IS ONLY UNDER THE WALK SET (3.204.1, owner order: "those two items
+  // ... should only be activated when the what is ticked from a walk set
+  // radio button is selected"). A row under coins and shapes that pass is a
+  // coin and a chunk shape and nothing more -- it adds no member -- so under
+  // that choice both boxes about extra members would change nothing.
+  const walk = swSourceNow() === 'walk';
+  if ($('#swPlainUnits')) $('#swPlainUnits').disabled = !walk;
+  // AND THE SPLIT FOR EXTRA MEMBERS GOES WITH THEM (3.202.0): nothing reads
+  // it unless the run has extra members, which is the walk set with the
+  // control arm off.
+  const plain = !!($('#swPlainUnits') && $('#swPlainUnits').checked);
+  if ($('#swExtraShare')) $('#swExtraShare').disabled = !walk || plain;
+}
 // THE HELD-BACK WINDOW ON BOARDS IS BEHIND A TICK (3.131.0, owner order): off
 // on every visit to the tab, never remembered, so every showing is a
 // deliberate press and each press is written on the set as a look. Kept only
@@ -4099,30 +4132,6 @@ async function drawSweep() {
   // re-asking the counts. Two walks over the same list is two lists again, and
   // the one that fell behind would be the one nobody was looking at.
   restoreSweepForm();
-  // WITH THE PASSERS' TICK ON, the boxes the pairs replace are greyed: the
-  // run's units come from Coins, not from them
-  const swPassersGrey = () => {
-    // greyed on BOTH Coins options and not on 'ignore what is on Coins': in
-    // either of them the run's units are the ticked pairs, each at its own
-    // chunk shape, so the boxes that would name other ones cannot apply.
-    const on = swSourceNow() !== 'none';
-    for (const id of ['swUni', 'swGeom', 'swPermGeom']) if ($(`#${id}`)) $(`#${id}`).disabled = on;
-    // AND THE CONTROL ARM IS THE OTHER WAY ROUND (3.194.0): it means something
-    // only when there are extra members to leave out.
-    //
-    // WHICH IS ONLY UNDER THE WALK SET (3.204.1, owner order: "those two items
-    // ... should only be activated when the what is ticked from a walk set
-    // radio button is selected"). A row under coins and shapes that pass is a
-    // coin and a chunk shape and nothing more -- it adds no member -- so under
-    // that choice both boxes about extra members would change nothing.
-    const walk = swSourceNow() === 'walk';
-    if ($('#swPlainUnits')) $('#swPlainUnits').disabled = !walk;
-    // AND THE SPLIT FOR EXTRA MEMBERS GOES WITH THEM (3.202.0): nothing reads
-    // it unless the run has extra members, which is the walk set with the
-    // control arm off.
-    const plain = !!($('#swPlainUnits') && $('#swPlainUnits').checked);
-    if ($('#swExtraShare')) $('#swExtraShare').disabled = !walk || plain;
-  };
   for (const el of sweepControls()) {
     const onChange = () => {
       rememberSweepForm();
