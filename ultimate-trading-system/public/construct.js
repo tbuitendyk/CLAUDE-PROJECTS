@@ -1270,6 +1270,18 @@ function swProvenance() {
   // was priced from, so the truth table reads exactly as it does for a launch
   // (read off the box's own value here rather than through swContinueOf, so
   // this function stays whole when a test lifts it out and runs it alone)
+  // AND WHAT THE STAGE 2 SECTION IS SHOWING, THE SAME WAY (3.197.0, owner order:
+  // "fix stage 3 the same way").
+  //
+  // Stage 3 already asked whether the stage 2 set it names came out of the
+  // stage 1 set in the stage 2 box. Make a SECOND stage 2 from that same stage
+  // 1 and that question still answers yes, so stage 3 stayed green while the
+  // section above had moved to a set it had never heard of -- the identical
+  // hole 3.196.0 closed one section up, and it is closed the same way here
+  // because the same job gets the same shape (RULE ELEVEN clause 5).
+  const s2Shown = sets
+    .filter((x) => x.stage === 2)
+    .reduce((a, b) => (a && String(a.createdAt || '') >= String(b.createdAt || '') ? a : b), null);
   const s3v = v('#swFrom3');
   const cont = s3v.startsWith('continue:') ? s3v.slice('continue:'.length) : null;
   const pausedRow = cont ? rowOf(cont) : null;
@@ -1277,7 +1289,22 @@ function swProvenance() {
   if (!v('#swFrom3')) paint('#swH3', null, 'this section names no stage 2 record set yet, so there is nothing set here to link');
   else if (cont && !pausedRow) paint('#swH3', false, 'the paused record set named here is not on this box any more');
   else if (!s2row) paint('#swH3', false, 'the stage 2 record set named here is not on this box any more');
-  else {
+  else if (!cont && s2Shown && s2Shown.id !== s2row.id) {
+    // A PAUSED RUN IS NOT OVERTAKEN, WHICH IS WHY THIS ASKS `!cont`. A paused
+    // stage 3 run was priced from its own parent and carrying on does not build
+    // anything from stage 2 -- its provenance is settled and cannot be pointed
+    // somewhere else. Reddening it would be a colour with no way back, which is
+    // the thing this whole block exists to avoid.
+    const made = s2Shown.status === 'done' ? 'has since made' : 'is making';
+    paint('#swH3', false, `the stage 2 section above ${made} ${s2Shown.name}, and this box still names ${s2row.name}`,
+      `Choose ${s2Shown.name} here and this goes green again — no box above can undo a newer stage 2 existing.`);
+    sayWhy('#swWhy3', {
+      what: 'from stage 2 record set',
+      say: `this box names ${s2row.name}, and the stage 2 section above ${made} ${s2Shown.name}. `
+        + `A record set built here would come out of ${s2row.name}, which is not what stage 2 is showing any more. `
+        + `Choose ${s2Shown.name} to go green again.`,
+    });
+  } else {
     const par = s2row.parent || {};
     const carryBox = Number(v('#swCarry')) || 0;
     const carryMatch = carryBox === 0
@@ -1669,6 +1696,25 @@ function fillStageForm(doc) {
     setC('#swPermGeom', geos.length > 1);
     setV('#swLayout', p.windowLayout || 'reserve61');
     setC('#swByMoney', (p.trainOn || 'direction') === 'money');
+    // WHERE THE RUN TOOK ITS UNITS FROM, AND WHETHER IT WAS THE CONTROL ARM
+    // (3.197.0, owner: "if we load the settings from a sweep on boards back to
+    // the set on sweep the colors should be set again properly of course").
+    //
+    // The load filled the trade coins and chunk shape boxes and left the three
+    // choices wherever they happened to be -- so a set run from a walk set
+    // loaded as though it had been run from the boxes, and the first thing the
+    // heading compares is exactly that. Every colour below it was then answering
+    // about a run that never happened.
+    //
+    // A SET RECORDED BEFORE THE CHOICE EXISTED SAYS `both`, and this screen
+    // offers three choices, not four. There is no control to put it in, so the
+    // radio is left alone rather than being forced to the nearest one -- and
+    // the heading then says the two disagree, which is true and is the honest
+    // answer (RULE ELEVEN clause 6).
+    const src = p.coinsSource || null;
+    const srcBox = { none: '#swSourceOff', passers: '#swSourcePass', walk: '#swSourceWalk' }[src] || null;
+    if (srcBox) setC(srcBox, true);
+    setC('#swPlainUnits', p.plainUnits === true);
     setV('#swCap1', p.weightCap ?? 10);
     setV('#swNull1', p.nullN ?? 19);
     setV('#swFee1', p.fee != null ? p.fee * 100 : 0.125);
@@ -1711,6 +1757,15 @@ function fillStageForm(doc) {
   // a programmatic fill never fires 'change', so remember it here — copied
   // settings must survive a screen flip exactly like typed ones
   rememberSweepForm();
+  // AND THE SCREEN SETTLES ITSELF, THE WAY IT DOES AFTER A DRAW (3.197.0). The
+  // load writes straight into the boxes, which fires no change, so none of the
+  // wiring behind them ran: the greyed boxes still matched the source that was
+  // selected BEFORE the load, and the heading colours were whatever they had
+  // been until the four-second poll came round and quietly corrected them. A
+  // colour that is right eventually is a colour the owner cannot trust at the
+  // moment they look. These are the same three calls the end of drawSweep makes.
+  swPassersGrey();
+  swProvenance();
   swCounts();
 }
 

@@ -1413,6 +1413,52 @@ module.exports = {
       'and it says why on the screen, not only in a hover');
     assert.ok(/const made = s1Shown\.status === 'done' \? 'has since made' : 'is making';/.test(body),
       'a run still going is described as going, not as finished');
+
+    // AND STAGE 3 THE SAME WAY (3.197.0, owner order: "fix stage 3 the same
+    // way"). Stage 3 asked only whether the stage 2 set it names came out of
+    // the stage 1 set in the stage 2 box -- make a SECOND stage 2 from that
+    // same stage 1 and that answers yes, so stage 3 stayed green while the
+    // section above had moved on. The reducer is run here too.
+    const m2 = /const s2Shown = sets\n([\s\S]*?);\n/.exec(UI);
+    assert.ok(m2, 'the stage 2 section no longer works out which set it is showing');
+    // eslint-disable-next-line no-new-func
+    const newest2 = new Function('sets', `return sets${m2[1]};`);
+    const s2b = { id: 's2-b', stage: 2, name: 'S2 #2', status: 'done', createdAt: at('20') };
+    const s2run = { id: 's2-c', stage: 2, name: 'S2 #3', status: 'running', createdAt: at('21') };
+    assert.strictEqual(newest2([s1a, s1b, s2]).id, 's2-a', 'only stage 2 sets are looked at');
+    assert.strictEqual(newest2([s2, s2b]).id, 's2-b', 'a newer stage 2 set is what the section shows');
+    assert.strictEqual(newest2([s2b, s2, s2run]).id, 's2-c', 'a stage 2 run that has begun is what the section is showing');
+    assert.strictEqual(newest2([s1a]), null, 'with no stage 2 set there is nothing being shown');
+    assert.ok(/else if \(!cont && s2Shown && s2Shown\.id !== s2row\.id\) \{/.test(body),
+      'the stage 3 heading does not act on a stage 2 set newer than the one its box names');
+    // A PAUSED RUN IS NOT OVERTAKEN. It was priced from its own parent and
+    // carrying on builds nothing from stage 2, so there is no other set to
+    // point it at -- reddening it would be a colour with no way back.
+    assert.ok(/else if \(!cont &&/.test(body),
+      'a paused stage 3 run is reddened by a newer stage 2 it can never be pointed at');
+    assert.ok(/Choose \$\{s2Shown\.name\} here and this goes green again/.test(body),
+      'the stage 3 red does not name the set to choose');
+
+    // AND LOADING A SET'S SETTINGS BACK SETS THE COLOURS AGAIN (3.197.0, owner:
+    // "if we load the settings from a sweep on boards back to the set on sweep
+    // the colors should be set again properly of course").
+    //
+    // Copy settings into the form writes straight into the boxes, which fires
+    // no change, so none of the wiring behind them ran. Three holes, one cause:
+    // the three choices were left wherever they were, so a set run from a walk
+    // set loaded as though it had been run from the boxes; the greyed boxes
+    // still matched the source selected BEFORE the load; and the colours stayed
+    // as they were until the four-second poll quietly corrected them.
+    const fill = UI.slice(UI.indexOf('function fillStageForm(doc) {'), UI.indexOf('\n}\n', UI.indexOf('function fillStageForm(doc) {')));
+    assert.ok(/const srcBox = \{ none: '#swSourceOff', passers: '#swSourcePass', walk: '#swSourceWalk' \}\[src\] \|\| null;/.test(fill),
+      'the load does not put back where the run took its units from');
+    assert.ok(/if \(srcBox\) setC\(srcBox, true\);/.test(fill),
+      'a source the screen has no control for is forced to the nearest one rather than left alone');
+    assert.ok(/setC\('#swPlainUnits', p\.plainUnits === true\);/.test(fill),
+      'the load does not put back whether the run was the control arm');
+    for (const call of ['swPassersGrey();', 'swProvenance();', 'swCounts();']) {
+      assert.ok(fill.includes(call), `the load does not settle the screen: ${call} is not called after it`);
+    }
   },
 
   theStageHeadingsCompareTheTickForASetLaunchedFromCoins() {
