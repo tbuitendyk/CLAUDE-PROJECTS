@@ -1280,7 +1280,7 @@ const SORT_KEYS = {
     decision: 's', bandMode: 'n', weekdaysOnly: 'n', entry: 's', gate: 's',
     dMult: 'n', tHours: 'n', trailMult: 'n', armMult: 'n',
     agreeRule: 's', avgAgreed: 'n', avgRung: 'n', avgVoices: 'n', members: 'n',
-    coins: 'n', avgTest: 'n', avgHold: 'n', avgTrades: 'n', avgVsLong: 'n',
+    coins: 'n', avgTest: 'n', testTrades: 'n', avgHold: 'n', avgTrades: 'n', avgVsLong: 'n',
     beat: 'share', avgLead: 'n', coinsInMoney: 'n', beatNoise: 'share',
     // the confirmation overlay (3.130.0): the dial's value, and the verdict
     // word in its written order (adds nothing < just leverage < adds value <
@@ -1301,7 +1301,7 @@ const SORT_WORDS = {
   decision: 'decision', bandMode: 'band', weekdaysOnly: '24/5', entry: 'entry', gate: 'gate',
   dMult: 'd', tHours: 't', trailMult: 'trail', armMult: 'arm',
   agreeRule: 'agree by', avgAgreed: 'share that agreed', avgRung: 'rung it landed on', avgVoices: 'independent voices',
-  coins: 'coins', avgTest: 'avg test $', avgHold: 'avg held-back $',
+  coins: 'coins', avgTest: 'avg test $', testTrades: 'avg test trades', avgHold: 'avg held-back $',
   avgTrades: 'avg held-back trades', avgVsLong: 'avg vs always-long $',
   avgLead: 'lead over null set', coinsInMoney: 'coins in the money',
   beatNoise: 'beat the kept null money',
@@ -1406,7 +1406,7 @@ const FILTER_DEFS = {
     decision: ['decision', 'text'], entry: ['entry', 'text'], gate: ['_gate', 'text'],
     rule: ['agreeRule', 'text'], bar: ['_bar', 'text'],
     tMin: ['tHours', 'min'], tMax: ['tHours', 'max'],
-    coinsMin: ['coins', 'min'], testMin: ['avgTest', 'min'], holdMin: ['avgHold', 'min'],
+    coinsMin: ['coins', 'min'], testMin: ['avgTest', 'min'], testTradesMin: ['testTrades', 'min'], holdMin: ['avgHold', 'min'],
     tradesMin: ['avgTrades', 'min'], vsLongMin: ['avgVsLong', 'min'],
     beatMin: ['_beatPct', 'min'], leadMin: ['avgLead', 'min'], inMoneyMin: ['coinsInMoney', 'min'],
     voicesMin: ['avgVoices', 'min'], agreedMin: ['avgAgreed', 'min'],
@@ -3640,7 +3640,7 @@ function storeBudgetFor({ rows, freeBytes = null }) {
 // Line by line, no single string is ever longer than one entry, and the size
 // of the whole stops mattering. Derived, so the old one is not migrated: it
 // reads as an older shape and is rebuilt (RULE NINE).
-const TALLY_V = 8;   // 8 (3.131.0): one coin row per value of confirm; 7 (3.130.0): the confirm dial, the lean parts and the verdict
+const TALLY_V = 9;   // 9 (3.207.0): the every-coin rows sum test trades; 8 (3.131.0): one coin row per value of confirm; 7 (3.130.0): the confirm dial, the lean parts and the verdict
 
 // ---- WHAT THE MEMBERS ACTUALLY DID -------------------------------------------
 //
@@ -4898,6 +4898,10 @@ async function buildTally(doc, pool = null, note = null) {
       avgTest: k.testN ? k.test / k.testN : null,
       avgHold: k.holdN ? k.hold / k.holdN : null,
       avgTrades: k.tradesN ? k.trades / k.tradesN : null,
+      // HOW OFTEN THIS COIN'S RECORDS ACTUALLY TRADE (3.207.0, owner: "see
+      // which ones are active enough to pursue"): test-window entries per
+      // record, the same count the ranked row averages for the Funnel's floor
+      avgTestTrades: k.ttrN ? k.ttr / k.ttrN : null,
       avgVsLong: k.vsln ? k.vsl / k.vsln : null,
       avgAgreed: k.agrN ? k.agr / k.agrN : null,
       rows: k.rows, b: [...k.b].sort((x, y) => x - y),
@@ -5500,13 +5504,13 @@ function stage2Table(id, from, n, filters = null) {
   };
 }
 
-const S3_SORTS = ['share', 'pairs', 'test', 'money', 'trades', 'vslong', 'rows', 'coin', 'setting', 'agreed', 'beatnoise', 'verdict', 'confirm'];
+const S3_SORTS = ['share', 'pairs', 'test', 'testtrades', 'money', 'trades', 'vslong', 'rows', 'coin', 'setting', 'agreed', 'beatnoise', 'verdict', 'confirm'];
 // What each floor on the every-coin table reads, in the shape spreadOf wants.
 // The table does its own filtering rather than going through FILTER_DEFS, so
 // its columns are named here — and they are named ONCE, beside the floors
 // that use them.
 const S3_COIN_FILTERS = {
-  minShare: ['_sharePct', 'min'], minPairs: ['pairs', 'min'], minTest: ['avgTest', 'min'],
+  minShare: ['_sharePct', 'min'], minPairs: ['pairs', 'min'], minTest: ['avgTest', 'min'], minTestTrades: ['avgTestTrades', 'min'],
   minHold: ['avgHold', 'min'], minTrades: ['avgTrades', 'min'], minVsLong: ['avgVsLong', 'min'],
   minAgreed: ['avgAgreed', 'min'], minBeatNoise: ['_beatNoisePct', 'min'],
 };
@@ -5536,9 +5540,11 @@ function stage3Coins(id, query) {
   // a floor of a million on it removed none of 411,600 rows on the box. Every
   // other floor on this table was measured biting, one at a time.
   const minTest = query.minTest === '' || query.minTest == null ? null : Number(query.minTest);
+  const minTestTrades = query.minTestTrades === '' || query.minTestTrades == null ? null : Number(query.minTestTrades);
   const clears = (r) => (minPairs ? r.pairs >= minPairs : true)
     && (setting == null || r.cellLabel === setting)
     && (minTest == null || (r.avgTest != null && r.avgTest >= minTest))
+    && (minTestTrades == null || (r.avgTestTrades != null && r.avgTestTrades >= minTestTrades))
     && (minAgreed == null || (r.avgAgreed != null && r.avgAgreed >= minAgreed))
     && (minShare == null || (r.share != null && r.share * 100 >= minShare))
     && (minHold == null || (r.avgHold != null && r.avgHold >= minHold))
@@ -5560,6 +5566,7 @@ function stage3Coins(id, query) {
     share: byShare,
     pairs: (a, b) => (b.pairs - a.pairs) || byShare(a, b),
     test: (a, b) => ((b.avgTest ?? -1e15) - (a.avgTest ?? -1e15)) || byShare(a, b),
+    testtrades: (a, b) => ((b.avgTestTrades ?? -1e15) - (a.avgTestTrades ?? -1e15)) || byShare(a, b),
     money: (a, b) => ((b.avgHold ?? -1e15) - (a.avgHold ?? -1e15)) || byShare(a, b),
     trades: (a, b) => ((b.avgTrades ?? -1e15) - (a.avgTrades ?? -1e15)) || byShare(a, b),
     vslong: (a, b) => ((b.avgVsLong ?? -1e15) - (a.avgVsLong ?? -1e15)) || byShare(a, b),

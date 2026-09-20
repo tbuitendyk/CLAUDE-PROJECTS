@@ -1989,7 +1989,7 @@ function tallyFold(acc, r, blockIdx, agreedAt = null) {
   let k = acc.perCoin.get(ck);
   if (!k) {
     k = { cellLabel, trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry, confirm,
-      beat: 0, pairs: 0, test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, tradesN: 0, vsl: 0, vsln: 0,
+      beat: 0, pairs: 0, test: 0, testN: 0, ttr: 0, ttrN: 0, hold: 0, holdN: 0, trades: 0, tradesN: 0, vsl: 0, vsln: 0,
       agr: 0, agrN: 0, rows: 0, b: new Set() };
     acc.perCoin.set(ck, k);
   }
@@ -1997,6 +1997,9 @@ function tallyFold(acc, r, blockIdx, agreedAt = null) {
   if (agreed && agreed.agreed != null) { k.agr += agreed.agreed; k.agrN++; }
   k.beat += r.beat || 0; k.pairs += r.pairs || 0;
   k.test += r.pnl || 0; k.testN++;
+  // the test-window trade count per coin row (3.207.0): what avg test trades
+  // on the every-coin table reads
+  if (r.trades != null) { k.ttr += Number(r.trades) || 0; k.ttrN++; }
   if (r.lean) { k.lp = confirmLib.addParts(k.lp || null, r.lean.test); if (r.lean.hold) k.hlp = confirmLib.addParts(k.hlp || null, r.lean.hold); if (k.kx == null) { k.kx = r.lean.kx; k.ux = r.lean.ux; } }
   if (r.holdout && r.holdout.pnl != null) {
     k.hold += r.holdout.pnl; k.holdN++;
@@ -2097,13 +2100,14 @@ function mergeTallyAcc(acc, part) {
     let k = acc.perCoin.get(ck);
     if (!k) {
       k = { cellLabel: add.cellLabel, trade: add.trade, ctx1: add.ctx1, ctx2: add.ctx2, geometry: add.geometry, confirm: add.confirm || 'off',
-        beat: 0, pairs: 0, test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, tradesN: 0, vsl: 0, vsln: 0,
+        beat: 0, pairs: 0, test: 0, testN: 0, ttr: 0, ttrN: 0, hold: 0, holdN: 0, trades: 0, tradesN: 0, vsl: 0, vsln: 0,
         agr: 0, agrN: 0, rows: 0, b: new Set() };
       acc.perCoin.set(ck, k);
     }
     k.rows += add.rows;
     k.beat += add.beat; k.pairs += add.pairs;
     k.test += add.test || 0; k.testN += add.testN || 0;
+    k.ttr += add.ttr || 0; k.ttrN += add.ttrN || 0;
     if (add.lp) k.lp = confirmLib.addParts(k.lp || null, add.lp);
     if (add.hlp) k.hlp = confirmLib.addParts(k.hlp || null, add.hlp);
     if (k.kx == null && add.kx != null) { k.kx = add.kx; k.ux = add.ux; }

@@ -3605,6 +3605,95 @@ module.exports = {
     }
   },
 
+  // HOW OFTEN A SETTING ACTUALLY TRADES IS ON BOTH TABLES (3.207.0, owner:
+  // "we need to be able to sort and/or filter these things somehow by a
+  // number of test trades so we can see which ones are active enough to
+  // pursue").
+  //
+  // Every record has carried its test-window entry count since 3.131.0 and the
+  // ranked row averaged it for the Funnel's trade floor, but neither table
+  // showed it: the only trades columns were held-back ones, behind the tick.
+  // Now avg test trades is a column, a sort and a floor on Table 3.A and on
+  // Table 3.B, outside the tick because it reads the test window -- and the
+  // every-coin table's held-back trades column says held-back, since two kinds
+  // of trades now sit on it (RULE ELEVEN: a label names the thing).
+  async howOftenASettingTradesIsAColumnASortAndAFloorOnBothTables() {
+    assert.strictEqual(stages.TALLY_V, 9, 'the every-coin rows sum test trades from version 9; an older table is rebuilt on open');
+    const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    assert.ok(/>avg test trades\$\{bRankSortBtn\(doc, 'testTrades', 'desc'\)\}/.test(ui), 'Table 3.A has no avg test trades column, or it does not sort');
+    assert.ok(/>avg test trades\$\{bCoinSortBtn\(view, 'testtrades', '↓'\)\}/.test(ui), 'Table 3.B has no avg test trades column, or it does not sort');
+    assert.ok(/\['testTradesMin', 'avg test trades at least', 'num'/.test(ui), 'Table 3.A has no floor on avg test trades');
+    assert.ok(/\['minTestTrades', 'avg test trades at least', 'num'/.test(ui), 'Table 3.B has no floor on avg test trades');
+    // outside the held-back tick on both tables: the column sits between avg
+    // test $ and the held-back block, never inside it
+    const a = ui.slice(ui.indexOf(">avg test $${bRankSortBtn(doc, 'avgTest', 'desc')}"), ui.indexOf(">avg test trades${bRankSortBtn(doc, 'testTrades', 'desc')}"));
+    assert.ok(a.length > 0 && !a.includes('bHeldBack ?'), 'Table 3.A hides avg test trades behind the held-back tick');
+    const b = ui.slice(ui.indexOf(">avg test $${bCoinSortBtn(view, 'test', '↓')}"), ui.indexOf(">avg test trades${bCoinSortBtn(view, 'testtrades', '↓')}"));
+    assert.ok(b.length > 0 && !b.includes('bHeldBack ?'), 'Table 3.B hides avg test trades behind the held-back tick');
+    // and the held-back trades column on Table 3.B says which trades it is
+    assert.ok(!/>avg trades\$\{/.test(ui), 'Table 3.B still has a bare avg trades column beside avg test trades');
+    assert.ok(/>avg held-back trades\$\{bCoinSortBtn\(view, 'trades', '↓'\)\}/.test(ui), "Table 3.B's held-back trades column is not named held-back");
+    assert.ok(/\['minTrades', 'avg held-back trades at least', 'num'/.test(ui), "Table 3.B's held-back trades floor is not named held-back");
+    assert.ok(/trades: 'avg held-back trades'/.test(ui), 'the set-aside sentence still calls it avg trades');
+
+    const id = `s3-test-${Date.now().toString(36)}-tt`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const doc = {
+      id, stage: 3, seq: 999975, name: 'S3 #tt', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 1, settings: 3 }, params: { nullN: 9 },
+      recordsVersion: stages.RECORDS_V,
+    };
+    const mk = (si, pct, trade, trades) => ({
+      si, label: `count ${pct}% market t65h · argmax auto 24/7`,
+      decision: 'argmax', bandMode: 'auto', weekdaysOnly: false,
+      bandPct: 2, entry: 'market', gate: 'directional', dMult: null, tHours: 65, trailMult: null, armMult: null,
+      agreeRule: 'count', agreePct: pct, agreeBoth: false, agreePersist: 0,
+      rung: 6, members: 8, voices: 8, pnl: 10, trades,
+      holdout: { pnl: 5, trades: 4, stops: 1, vsAlwaysLong: 2 },
+      beat: 5, pairs: 9, lead: 1, u: 0, trade, ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
+    });
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const w = rowstore.writer(id, 'records');
+      w.push(mk(0, 75, 'AAA', 6));   // setting 0: 6 on AAA and 2 on BBB -> 4 a coin
+      w.push(mk(0, 75, 'BBB', 2));
+      w.push(mk(1, 90, 'AAA', 12));  // setting 1: 12 on its one coin
+      w.push(mk(2, 95, 'AAA', null)); // setting 2: a record priced before the count existed
+      w.close();
+      await stages.buildTally(doc);
+
+      // Table 3.A: the number, the sort and the floor
+      const rk = stages.stage3Ranked(id, 0, 10);
+      const by = (si) => rk.rows.find((r) => r.si === si);
+      assert.deepStrictEqual([by(0).testTrades, by(1).testTrades, by(2).testTrades], [4, 12, null],
+        'avg test trades on Table 3.A is entries per coin on the test window, averaged over the coins, and absent where no record carried it');
+      assert.ok(rk.spread && rk.spread.testTradesMin && rk.spread.testTradesMin.n === 2, 'the floor has no four numbers beside it, or it counts the row with no value');
+      stages.setSetSort(id, [{ key: 'testTrades', dir: 'desc' }]);
+      assert.deepStrictEqual(stages.stage3Ranked(id, 0, 10).rows.map((r) => r.testTrades), [12, 4, null],
+        'Table 3.A does not sort by avg test trades, or a missing value does not sit last');
+      stages.setSetSort(id, []);
+      assert.deepStrictEqual(stages.stage3Ranked(id, 0, 10, { testTradesMin: 5 }).rows.map((r) => r.si), [1],
+        'the floor on avg test trades does not bite on Table 3.A');
+      // the calls above ran with the held-back window hidden (the default); it
+      // bites the same with the window shown, because it reads the test window
+      assert.strictEqual(stages.stage3Ranked(id, 0, 10, { testTradesMin: 5 }, { heldBack: true }).total, 1,
+        'the floor must bite with the held-back window shown as well as hidden');
+
+      // Table 3.B: the same per coin row
+      const cn = stages.stage3Coins(id, { sort: 'testtrades' });
+      assert.deepStrictEqual(cn.rows.map((r) => [r.trade, r.avgTestTrades]), [['AAA', 12], ['AAA', 6], ['BBB', 2], ['AAA', null]],
+        'Table 3.B does not carry avg test trades per coin row, or does not sort by it best first');
+      assert.strictEqual(stages.stage3Coins(id, { minTestTrades: 5 }).rows.length, 2, 'the floor on avg test trades does not bite on Table 3.B');
+      assert.ok(cn.spread && cn.spread.minTestTrades, 'the every-coin floor has no four numbers beside it');
+      assert.ok('avgTestTrades' in cn.rows[0], 'the column must reach the screen with the held-back window hidden');
+    } finally {
+      try { fs.unlinkSync(file); } catch (_) { /* gone */ }
+      try { fs.unlinkSync(path.join(SETS_DIR, `${id}-tally.json.gz`)); } catch (_) { /* gone */ }
+      rowstore.remove(id);
+    }
+  },
+
   // THE gate FILTER IS A DROPDOWN OF THE ENGINE'S OWN GATES (owner order,
   // 2026-08-29: "where's the drop down selector on gate on table 3.A?").
   //
@@ -3867,7 +3956,7 @@ module.exports = {
     assert.strictEqual(n(ui.slice(hs, ui.indexOf('</thead>', hs)), 'th'),
       n(ui.slice(rk, ui.indexOf('<tr><td colspan', rk)), 'td'),
       'Table 3.A has a different number of headings and cells');
-    assert.ok(/colspan="26"/.test(ui), 'the "nothing here" line no longer spans the whole of Table 3.A (26 columns since confirm and verdict, 3.130.0)');
+    assert.ok(/colspan="27"/.test(ui), 'the "nothing here" line no longer spans the whole of Table 3.A (27 columns since avg test trades, 3.207.0)');
   },
 
   // A BLOCK PRICED BEFORE IT WAS WHOLE CAN BE FILLED IN (owner order,
@@ -6415,7 +6504,7 @@ module.exports = {
     const cells = blocks.reduce((a, b) => a + (b.match(/<td /g) || []).length, 0);
     assert.deepStrictEqual(heads, [
       'avg held-back $', 'avg held-back trades', 'avg vs always-long $', 'beat its own null set', 'lead over null set', 'coins in the money',
-      'beat its own null set', 'comparisons', 'avg held-back', 'avg trades', 'avg vs always-long',
+      'beat its own null set', 'comparisons', 'avg held-back', 'avg held-back trades', 'avg vs always-long',
       'beat its own null set', 'held-back $', 'held-back trades', 'held-back stops', 'vs always-long', 'held-back verdict',
     ], 'the held-back columns inside the tick are not the seventeen of Table 3.A, Table 3.B and the records under a row');
     assert.strictEqual(cells, heads.length, 'a held-back heading and its cells are not inside the tick together');
