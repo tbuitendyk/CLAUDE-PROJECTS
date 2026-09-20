@@ -2332,20 +2332,54 @@ function coinsSourceOf(doc) {
 // the owner pressed start; and a set launched from a walk set read the OTHER
 // box's lean wherever a passer held the same coin and chunk shape. Both are a
 // fact about a different run being spent on this one's money.
+//
+// 3.206.0 (owner order): A UNIT WITH A PLATEAU LEANS THE WAY ITS PLATEAU LEANS.
+// Its extras each keep the lean of the walk row they came from, written at the
+// stage 1 launch, and every row of the plateau goes to stage 3 to be folded at
+// the setting's plateau share -- the whole point of the plateau being to take
+// the fluke out of one selected row. A unit without a plateau reads what Coins
+// lends the passers, as it did. A row walked before rows kept a lean is left
+// out; a plateau with none has no lean at all.
 function confirmLeansFor(records, source = 'both') {
   const all = require('./coinsrun').leansFrom(source);
   const out = {};
   for (const rec of records || []) {
     const key = `${rec.trade}|${rec.geometry}`;
+    const own = plateauLeanOf(rec);
+    if (own) { out[key] = own; continue; }
     if (all[key]) out[key] = all[key];
   }
   return out;
+}
+function plateauLeanOf(rec) {
+  const extras = Array.isArray((rec || {}).extras) ? rec.extras : [];
+  const plateaus = Array.isArray((rec || {}).plateaus) ? rec.plateaus : [];
+  if (!plateaus.length) return null;
+  const seen = new Set();
+  const rows = [];
+  for (const pl of plateaus) {
+    for (const i of (pl.members || [])) {
+      if (seen.has(i)) continue;
+      seen.add(i);
+      const e = extras[i];
+      if (!e || !e.lean || !(e.lean.rising || e.lean.falling)) continue;
+      rows.push({
+        lookback: e.lookbackHours, band: e.bandPct, yardstick: e.lean.yardstick ?? null,
+        rising: e.lean.rising || 0, falling: e.lean.falling || 0,
+        key: e.from && e.from.key ? e.from.key : null,
+      });
+    }
+  }
+  if (!rows.length) return null;
+  const centre = extras[plateaus[0].centre] || {};
+  return { plateau: true, rows, from: { set: centre.from ? centre.from.set : null, name: centre.from ? centre.from.name : null, rows: rows.length, of: seen.size } };
 }
 const leanOf = (leans, rec) => ((leans || {})[`${rec.trade}|${rec.geometry}`] || null);
 // the confirm dial's part of a setting's name: nothing when off, so a block
 // that never asked for the lean names its settings exactly as it always did
 function confirmLabel(confirm, kx, ux) {
   if (confirm === 'confirmed only') return ' \u00b7 confirmed only';
+  if (confirm === 'strictly confirmed') return ' \u00b7 strictly confirmed';
   if (confirm === 'sized') return ` \u00b7 sized \u00d7${kx}/\u00d7${ux}`;
   return '';
 }
@@ -2897,7 +2931,7 @@ function startStage3(params) {
     throw new Error(chainSource === 'none'
       ? 'this record set was not built from anything ticked on Coins, so no unit it prices carries a reading of how its coin moves and confirm would change nothing — set confirm to off, or price a record set built from Candidates for Sweep'
       : chainSource === 'walk'
-        ? 'none of the units this run prices is among the rows ticked from a walk set on Coins, so confirm would change nothing — set confirm to off, or pick a parent whose units are'
+        ? 'none of the units this run prices carries a plateau whose rows have a lean — the walk set they were promoted from was walked before rows kept one — so confirm would change nothing; set confirm to off, or walk the set again and promote from it'
         : 'none of the units this run prices is among the coins and shapes that pass on Coins, so confirm would change nothing — set confirm to off, or pick a parent whose units pass');
   }
   const counted = countDeclared(params, sizes, parentRecords, leans);

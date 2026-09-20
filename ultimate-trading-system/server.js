@@ -1214,6 +1214,9 @@ app.post('/api/stage3-count', (req, res) => {
       // and how many members judge a coin on the units about to be priced, so
       // the Quorum line says the real number instead of a typed one (3.195.1)
       committees: d.committees || [],
+      // and how many units being priced carry a plateau (3.205.0's dial reads
+      // it to ghost itself; 3.206.0 serves it -- 3.205.0 never did)
+      plateauUnits: d.plateauUnits == null ? null : d.plateauUnits,
       leanSource: d.leanSource || null };
     const units = d.units ?? Math.max(0, Math.floor(Number(b.units) || 0));
     const coins = d.coins ?? Math.max(1, Math.floor(Number(b.coins) || 1));

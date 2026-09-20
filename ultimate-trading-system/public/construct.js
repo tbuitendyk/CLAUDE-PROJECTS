@@ -1372,7 +1372,7 @@ const SW_NO_CONFIRM = {
   none: 'Greyed: this record set was built from trade coins and chunk shape on this screen, not from anything ticked on Coins, '
     + 'so no unit it prices carries a reading of how its coin moves. Ticking rows on Coins will not change that — only a record set built from Candidates for Sweep will.',
   passers: 'Greyed: not one unit this run prices is ticked under coins and shapes that pass on Coins, so all three values place the same trades.',
-  walk: 'Greyed: not one unit this run prices is ticked from a walk set on Coins, so all three values place the same trades.',
+  walk: 'Greyed: no unit this run prices carries a plateau whose rows have a lean — the rows ticked from a walk set on Coins were walked before rows kept one — so every value of confirm places the same trades.',
   both: 'Greyed: not one unit this run prices is ticked under Candidates for Sweep on Coins, so all three values place the same trades.',
 };
 function swSayWhyNoConfirm(source) {
@@ -3903,11 +3903,11 @@ async function drawSweep() {
           <label class="c" title="price every plateau share as its own setting. On a unit that carries no plateau every value of it places the same trades and is one setting there."><input type="checkbox" id="swPermPlateauShare"> permute</label>
         </div>
       </div>
-      <p class="note" style="margin:.6rem 0 .1rem"><b>Confirmation</b> — on a unit whose coin and chunk shape are ticked on Coins, every call the members make is checked against the way that coin itself has moved after a rising window and after a falling window, at its own sweet spot band. These boxes decide what that check changes. The reading is taken from the SAME list this record set took its units from — the one named under where this run takes its units from when its stage 1 was started — and never from the other one. Greyed when no unit being priced has one, and the line below says why.</p>
+      <p class="note" style="margin:.6rem 0 .1rem"><b>Confirmation</b> — on a unit whose coin and chunk shape came from Coins, whether under coins and shapes that pass or from a walk set, every call the members make is checked against the way that coin itself has moved after a rising window and after a falling window. For a passer that reading is its own sweet spot band on the shape's own span; for a walk-set unit it is its plateau's lean — the rows' rising and falling signs at their own look-backs and bands, folded at the plateau share. These boxes decide what that check changes. The reading comes from the list this record set took its units from when its stage 1 was started, never from the other one. Greyed when no unit being priced carries one, and the line below says why.</p>
       <p class="note warn" id="swWhyConfirm" style="margin:.1rem 0 .4rem;display:none"></p>
       <div id="swGrpConfirm" style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f" title="WHAT THE CHECK CHANGES. off: nothing, every trade at size 1, exactly as before this box existed. confirmed only: a call the coin's own lean disagrees with is not traded at all; the rest trade at size 1. sized: a call the lean agrees with trades at confirmed × the size, a call it disagrees with at unconfirmed × the size, and a call made when the coin sat inside its band trades at size 1. On a unit whose coin and chunk shape do not pass on Coins the three values place the same trades and are one setting there.">confirm<select id="swConfirm">${vocabOptions('confirm', 'off')}</select></label>
-        <label class="c" title="price all three values of confirm, each as its own setting, so the three can be read side by side on Boards."><input type="checkbox" id="swPermConfirm"> permute</label>
+        <label class="f" title="WHAT THE CHECK CHANGES. off: nothing, every trade at size 1, exactly as before this box existed. confirmed only: a call the lean disagrees with is not traded at all; a call it agrees with, and a call made when the window sat out and the lean has nothing to say, trade at size 1. strictly confirmed: only a call the lean actively agrees with is traded; the unconfirmed and the no-lean calls are both dropped. sized: a call the lean agrees with trades at confirmed × the size, a call it disagrees with at unconfirmed × the size, and a no-lean call at size 1. On a unit that carries no lean the values place the same trades and are one setting there.">confirm<select id="swConfirm">${vocabOptions('confirm', 'off')}</select></label>
+        <label class="c" title="price every value of confirm, each as its own setting, so they can be read side by side on Boards."><input type="checkbox" id="swPermConfirm"> permute</label>
         <label class="f" title="the size of a trade the coin's own lean agrees with, as a multiple of the plain size. Read by sized only. 2 doubles it; 0 drops it.">confirmed ×<input id="swConfirmedX" type="number" value="2" min="0" step="0.5" style="width:4.5rem"></label>
         <label class="f" title="the size of a trade the coin's own lean disagrees with, as a multiple of the plain size. Read by sized only. 1 leaves it as it was; 0 drops it, which is what confirmed only does.">unconfirmed ×<input id="swUnconfirmedX" type="number" value="1" min="0" step="0.5" style="width:4.5rem"></label>
       </div>
@@ -4574,9 +4574,11 @@ function bLeanNumbers(parts, confirm, kx, ux) {
   const P = (x) => (x && Number.isFinite(x.pnl) ? x.pnl : 0);
   const N = (x) => (x && Number.isFinite(x.n) ? x.n : 0);
   const at1 = P(parts.c) + P(parts.u) + P(parts.z);
-  const k = confirm === 'confirmed only' ? 1 : (confirm === 'sized' ? Number(kx ?? 2) : 1);
-  const u = confirm === 'confirmed only' ? 0 : (confirm === 'sized' ? Number(ux ?? 1) : 1);
-  const under = k * P(parts.c) + u * P(parts.u) + P(parts.z);
+  // the three multipliers as lib/confirm.js prices them: confirmed, unconfirmed, no lean
+  const k = confirm === 'sized' ? Number(kx ?? 2) : 1;
+  const u = (confirm === 'confirmed only' || confirm === 'strictly confirmed') ? 0 : (confirm === 'sized' ? Number(ux ?? 1) : 1);
+  const z = confirm === 'strictly confirmed' ? 0 : 1;
+  const under = k * P(parts.c) + u * P(parts.u) + z * P(parts.z);
   const part = (name, x) => `${name} ${money(P(x))} over ${N(x)}`;
   return `<div class="muted" style="white-space:nowrap;font-size:.85em">${part('confirmed', parts.c)} \u00b7 ${part('unconfirmed', parts.u)} \u00b7 ${part('no lean', parts.z)}`
     + ` \u00b7 at size 1 ${money(at1)}${confirm && confirm !== 'off' ? ` \u2192 ${esc(confirm)} ${money(under)}` : ''}</div>`;

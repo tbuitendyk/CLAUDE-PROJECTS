@@ -527,29 +527,15 @@ function passerOwnLeans() {
   }
   return out;
 }
-function passerLeans() {
-  const out = passerOwnLeans();
-  // AND EVERY TICKED PROMOTED ROW BRINGS ITS OWN, at its own look-back
-  // (3.171.0, owner order: "how can the signals be encoded onto those records
-  // and read by the stage three sweep to add value to the decision making").
-  //
-  // A PASSER HOLDS ITS KEY. Where a coin and shape is in both lists the
-  // passer's lean is the one stage 3 reads, because that is what it reads
-  // today and changing it quietly would move the money an existing sweep
-  // prices. The promoted row is not lost -- it is named in `passedOver`, and
-  // the two become separate units the day a unit can tell them apart.
-  let passedOver = [];
-  try {
-    const w = require('./walkset').promotedLeans();
-    passedOver = w.passedOver || [];
-    for (const [k, lean] of Object.entries(w.leans || {})) {
-      if (out[k]) { passedOver.push({ coin: k.split('|')[0], geometry: k.split('|')[1], why: 'a passer already holds this coin and chunk shape', ...lean }); continue; }
-      out[k] = lean;
-    }
-  } catch (_) { /* no walk sets is not a fault */ }
-  Object.defineProperty(out, '__passedOver', { value: passedOver, enumerable: false });
-  return out;
-}
+// WHAT COINS KNOWS ABOUT A COIN AND SHAPE'S LEAN TODAY: the passers' own, and
+// nothing else (3.206.0, owner order: "the lean is associated with the
+// automatic sweeping using read these coins"). A promoted row's lean lives on
+// the walk row and rides onto the unit's own record at the stage 1 launch,
+// where stage 3 folds it with the rest of its plateau; it is never lent from
+// here. (3.171.0 to 3.205.0 merged the ticked promoted rows in here, the first
+// of a coin and shape holding the key and the rest named as passed over; that
+// went with the plateau's lean.)
+function passerLeans() { return passerOwnLeans(); }
 
 // THE SAME LEANS, BUT ONLY FROM THE LIST A RUN ACTUALLY TOOK ITS UNITS FROM
 // (3.186.0, owner order: "fix the confirmation greying to check the set's
@@ -574,23 +560,17 @@ function passerLeans() {
 // be held to by a test with two literal maps in front of it, which is the only
 // way to prove the `walk` case: there the walk's reading must win on a coin and
 // chunk shape that a passer holds everywhere else.
-function pickLeans(source, fromPassers, fromWalks) {
+// 3.206.0: A WALK CHAIN READS NO LEAN OFF COINS. Its units' leans are their
+// plateaus' own, kept on their records from the launch, so `walk` here is
+// nothing, and `both` is the passers alone.
+function pickLeans(source, fromPassers) {
   if (!COINS_SOURCES.includes(source)) throw new Error(`there is no unit source called ${JSON.stringify(source)}`);
-  if (source === 'none') return {};
-  if (source === 'passers') return { ...(fromPassers || {}) };
-  if (source === 'walk') return { ...(fromWalks || {}) };
-  // both: the passer holds the key, which is what passerLeans does and what
-  // every set written before the choice existed actually priced with
-  return { ...(fromWalks || {}), ...(fromPassers || {}) };
+  if (source === 'none' || source === 'walk') return {};
+  return { ...(fromPassers || {}) };
 }
 function leansFrom(source = 'both') {
   if (!COINS_SOURCES.includes(source)) throw new Error(`there is no unit source called ${JSON.stringify(source)}`);
-  if (source === 'none') return {};
-  let fromWalks = {};
-  if (source !== 'passers') {
-    try { fromWalks = require('./walkset').promotedLeans().leans || {}; } catch (_) { fromWalks = {}; }
-  }
-  return pickLeans(source, source === 'walk' ? {} : passerOwnLeans(), fromWalks);
+  return pickLeans(source, source === 'none' || source === 'walk' ? {} : passerOwnLeans());
 }
 
 // ---- reading the records back -------------------------------------------------

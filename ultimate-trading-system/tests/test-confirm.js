@@ -5,12 +5,14 @@ const { assert } = require('./helpers');
 const C = require('../lib/confirm');
 
 module.exports = {
-  theDialHasThreeValuesAndTwoMultipliers() {
-    assert.deepStrictEqual([...C.CONFIRM_VALUES], ['off', 'confirmed only', 'sized']);
-    assert.deepStrictEqual(C.multipliersOf('off', 5, 5), { kx: 1, ux: 1 }, 'off prices everything at size 1 whatever the boxes say');
-    assert.deepStrictEqual(C.multipliersOf('confirmed only', 5, 5), { kx: 1, ux: 0 }, 'confirmed only drops the unconfirmed');
-    assert.deepStrictEqual(C.multipliersOf('sized', 2, 0.5), { kx: 2, ux: 0.5 });
-    assert.deepStrictEqual(C.multipliersOf('sized'), { kx: C.DEFAULT_KX, ux: C.DEFAULT_UX }, 'the defaults are 2 and 1');
+  theDialHasFourValuesAndThreeMultipliers() {
+    // 3.206.0: strictly confirmed, a fourth value, drops the no-lean trades too
+    assert.deepStrictEqual([...C.CONFIRM_VALUES], ['off', 'confirmed only', 'strictly confirmed', 'sized']);
+    assert.deepStrictEqual(C.multipliersOf('off', 5, 5), { kx: 1, ux: 1, zx: 1 }, 'off prices everything at size 1 whatever the boxes say');
+    assert.deepStrictEqual(C.multipliersOf('confirmed only', 5, 5), { kx: 1, ux: 0, zx: 1 }, 'confirmed only drops the unconfirmed and keeps the no-lean trades');
+    assert.deepStrictEqual(C.multipliersOf('strictly confirmed', 5, 5), { kx: 1, ux: 0, zx: 0 }, 'strictly confirmed drops the unconfirmed and the no-lean trades');
+    assert.deepStrictEqual(C.multipliersOf('sized', 2, 0.5), { kx: 2, ux: 0.5, zx: 1 });
+    assert.deepStrictEqual(C.multipliersOf('sized'), { kx: C.DEFAULT_KX, ux: C.DEFAULT_UX, zx: 1 }, 'the defaults are 2 and 1');
     assert.strictEqual(C.multiplierOrRefuse('', 'x', 2), 2);
     assert.strictEqual(C.multiplierOrRefuse('1.5', 'x', 2), 1.5);
     assert.throws(() => C.multiplierOrRefuse(-1, 'confirmed ×', 2), /confirmed × must be a number of zero or more/);
@@ -40,6 +42,25 @@ module.exports = {
     const sized = C.combine(parts, 2, 0.5);
     assert.deepStrictEqual([sized.pnl, sized.trades, sized.size], [20 - 3 + 2, 9, 8 + 1.5 + 2], 'sized scales money and size alike');
     assert.deepStrictEqual(sized.at1, { pnl: 6, size: 9 }, 'and carries the size-1 figures to compare against');
+    const strict = C.combine(parts, 1, 0, 0);
+    assert.deepStrictEqual([strict.pnl, strict.trades, strict.size], [10, 4, 4], 'strictly confirmed keeps the confirmed money and trades alone');
+    assert.deepStrictEqual(strict.at1, { pnl: 6, size: 9 });
+    assert.deepStrictEqual(C.combine(parts, 1, 0), C.combine(parts, 1, 0, 1), 'the no-lean multiplier is 1 unless said');
+  },
+
+  // THE PLATEAU'S LEAN, FOLDED FROM ITS ROWS' (3.206.0): a side when at least
+  // the share of the rows say it, nothing on a split or when too few speak,
+  // and a single row folds to itself at any share.
+  thePlateausLeanIsFoldedFromItsRowsAtTheShare() {
+    const rows = [[1, 1, 1, 0, -1], [1, -1, 0, 0, -1], [1, 1, 0, 0, 1]];
+    assert.deepStrictEqual(C.foldLeanSigns(rows, 50), [1, 1, 0, 0, -1], 'at half of three, two must agree: the third moment has one voice and the fourth none');
+    assert.deepStrictEqual(C.foldLeanSigns(rows, 100), [1, 0, 0, 0, 0], 'at every row, only the first moment');
+    assert.deepStrictEqual(C.foldLeanSigns(rows, 10), [1, 1, 1, 0, -1], 'at a tenth, one voice is enough where the other side is quieter');
+    assert.deepStrictEqual(C.foldLeanSigns([rows[1]], 100), rows[1], 'one row folds to itself');
+    assert.deepStrictEqual(C.foldLeanSigns([rows[1]], 10), rows[1]);
+    assert.deepStrictEqual(C.foldLeanSigns([], 50), []);
+    assert.throws(() => C.foldLeanSigns(rows, 0), /percent above 0/);
+    assert.throws(() => C.foldLeanSigns(rows, 101), /percent above 0/);
   },
 
   // THE VERDICT, in the order section 11 wrote it
@@ -117,7 +138,14 @@ module.exports = {
     assert.ok(Math.abs(only.res.pnl - (plain.pnl - u)) < 1e-9, 'confirmed only takes exactly the unconfirmed money away');
     assert.strictEqual(only.res.trades, 3, 'and the unconfirmed trade with it');
     assert.ok(only.res.maxDrawdown != null || only.res.wins != null, 'the rich pass is there on the real window');
-    assert.deepStrictEqual([only.kx, only.ux], [1, 0]);
+    assert.deepStrictEqual([only.kx, only.ux, only.zx], [1, 0, 1]);
+    // 3.206.0: strictly confirmed takes the no-lean trade away as well
+    const strict = sw.priceLeanWindow(cell, periods, calls, m, geo, 2, FEE, signs, { confirm: 'strictly confirmed' }, true);
+    assert.ok(Math.abs(strict.res.pnl - c) < 1e-9, `strictly confirmed keeps exactly the confirmed money: ${strict.res.pnl} vs ${c}`);
+    assert.strictEqual(strict.res.trades, 2, 'and only the two confirmed trades');
+    assert.deepStrictEqual([strict.kx, strict.ux, strict.zx], [1, 0, 0]);
+    assert.strictEqual(strict.size, 2);
+    assert.ok(strict.res.wins != null, 'the rich pass is taken on the confirmed trades alone');
     // no signs at all: plain, whatever the dial says
     const none = sw.priceLeanWindow(cell, periods, calls, m, geo, 2, FEE, null, { confirm: 'sized', kx: 2, ux: 1 }, false);
     assert.strictEqual(none.parts, null);

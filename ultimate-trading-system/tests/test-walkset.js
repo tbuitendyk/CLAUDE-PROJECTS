@@ -188,6 +188,9 @@ module.exports = {
     for (const h of [24, 48, 96, 168]) for (const b of [100, 150, 200, 300]) rows.push(aRow({ lookback: String(h), band: b }));
     rows.push(aRow({ lookback: 'own', band: 150 }));
     rows.push(aRow({ coin: 'XLMUSDT', lookback: '48', band: 300 }));
+    // 3.206.0: a row's lean rides onto the extra it becomes; a row with none carries none
+    rows[rows.findIndex((r) => r.lookback === '96' && r.band === 150)].lean = { rising: -1, falling: 1, yardstick: 2.5, risingN: 40, fallingN: 38 };
+    rows[rows.findIndex((r) => r.lookback === '48' && r.band === 100)].lean = { rising: 0, falling: 1, yardstick: 1.9 };
     const got = ws.saveWalk({ asked: {}, shapes: [], collapse: [], rows, startedAt: 1, finishedAt: 2, name: 'plateau set' });
     const key = (h, b, coin = 'LTCUSDT') => `${coin}|daily-1d|${h}|${b}`;
     try {
@@ -239,6 +242,12 @@ module.exports = {
       assert.deepStrictEqual(f4.missing, [ws.PLATEAU_SIDES.shorter, ws.PLATEAU_SIDES.lower]);
       assert.strictEqual(f9.from.key, key(96, 150), 'a plateau says which promoted row it is around');
       assert.ok(unit.extras.every((e) => e.from && e.from.set === got.id && e.from.key), 'every extra says which set and row it is');
+      const leanAt = (h, b) => unit.extras.find((e) => e.lookbackHours === h && e.bandPct === b).lean;
+      assert.deepStrictEqual(leanAt(96, 150), { rising: -1, falling: 1, yardstick: 2.5 }, 'the centre\'s lean does not ride onto its extra');
+      assert.deepStrictEqual(leanAt(48, 100), { rising: 0, falling: 1, yardstick: 1.9 }, 'a neighbour\'s lean does not ride onto its extra');
+      assert.strictEqual(leanAt(168, 200), null, 'a row with no lean is given one');
+      assert.deepStrictEqual(group.rows.find((r) => r.key === key(96, 150)).plateau.rows.find((c) => c.key === key(48, 100)).lean, { rising: 0, falling: 1, yardstick: 1.9 },
+        'the promoted list\'s plateau rows do not carry their leans');
       // the members are in grid order, so a full plateau reads the same way every time
       assert.deepStrictEqual(f9.members.map((i) => [unit.extras[i].lookbackHours, unit.extras[i].bandPct]),
         [[48, 100], [48, 150], [48, 200], [96, 100], [96, 150], [96, 200], [168, 100], [168, 150], [168, 200]]);

@@ -302,6 +302,29 @@ module.exports = {
     assert.ok(ui.includes('+plateau${r.plateauPct}%'), 'Boards does not say the plateau share a setting used');
   },
 
+  // THE STAGE 3 COUNT ROUTE SERVES EVERY FIELD THE SCREEN READS (3.206.0). The
+  // same hole theProvenanceCheckIsSentEveryFieldItReads closes for the stage
+  // headings: 3.205.0 had the screen ghost the plateau share off a field the
+  // route never sent, so the box was ghosted on every chain.
+  theStageThreeCountRouteServesEveryFieldTheScreenReads() {
+    const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const at = UI.indexOf("const r = await swAsk('api/stage3-count'");
+    assert.ok(at > 0, 'the screen no longer asks the stage 3 count');
+    const body = UI.slice(at, UI.indexOf('\n}\n', at));
+    const reads = [...new Set([...body.matchAll(/\bgot\.([A-Za-z][A-Za-z0-9]*)/g)].map((m) => m[1]))];
+    assert.ok(reads.length >= 6, `the screen reads only ${reads.length} fields off the count — it is not being read`);
+    const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+    const r0 = server.indexOf("app.post('/api/stage3-count'");
+    const route = server.slice(r0, server.indexOf('\n});\n', r0));
+    const served = new Set([
+      ...[...route.matchAll(/(?:^|[{,\s])([A-Za-z][A-Za-z0-9]*):/g)].map((m) => m[1]),
+      ...[...route.matchAll(/\bout\.([A-Za-z][A-Za-z0-9]*) =/g)].map((m) => m[1]),
+    ]);
+    const absent = reads.filter((k) => !served.has(k));
+    assert.deepStrictEqual(absent, [],
+      `the screen reads ${absent.join(', ')} off the stage 3 count and the route never sends ${absent.length > 1 ? 'them' : 'it'}`);
+  },
+
   // THE LAUNCH ANSWERS BEFORE THE SETTINGS ARE BUILT (owner order, 2026-09-02:
   // the press would "go away and do nothing for a minute before crashing
   // without a message", and the run had started). The gates read the count;
@@ -762,16 +785,16 @@ module.exports = {
     const lean = { 'AAAUSDT|daily-4d': { band: 140, yardstick: 3.2, rising: -1, falling: 1 } };
     const plain = same({ cell, permuteBand: true }, [1], spread, 'no confirm asked for');
     const noLean = same({ cell, permuteBand: true, permuteConfirm: true }, [1], spread, 'confirm permuted with no lean anywhere');
-    assert.strictEqual(noLean.declared, plain.declared * 3, 'three values are declared');
+    assert.strictEqual(noLean.declared, plain.declared * 4, 'four values are declared (3.206.0: strictly confirmed)');
     assert.strictEqual(noLean.kept, plain.kept, 'and with no lean on any unit they fold to one everywhere');
     assert.deepStrictEqual(noLean.perUnit, plain.perUnit, 'every unit holds exactly what it held without the dial');
     assert.strictEqual(noLean.leanUnits, 0);
     const withLean = same({ cell, permuteBand: true, permuteConfirm: true }, [1], spread, 'confirm permuted, one unit with a lean', lean);
     assert.strictEqual(withLean.leanUnits, 1, 'one of the three units carries a lean');
-    assert.strictEqual(withLean.perUnit[0], plain.perUnit[0] * 3, 'the unit with the lean prices all three values');
+    assert.strictEqual(withLean.perUnit[0], plain.perUnit[0] * 4, 'the unit with the lean prices all four values');
     assert.deepStrictEqual(withLean.perUnit.slice(1), plain.perUnit.slice(1), 'the other units price one');
-    assert.strictEqual(withLean.kept, plain.kept * 3, 'every value is kept in the block as soon as one unit prices it');
-    assert.strictEqual(withLean.pricings, plain.pricings + 2 * plain.perUnit[0], 'the pricings grow by the lean unit\'s two extra copies alone');
+    assert.strictEqual(withLean.kept, plain.kept * 4, 'every value is kept in the block as soon as one unit prices it');
+    assert.strictEqual(withLean.pricings, plain.pricings + 3 * plain.perUnit[0], 'the pricings grow by the lean unit\'s three extra copies alone');
     const sizedOnly = same({ cell, permuteBand: true, confirm: 'sized' }, [1], spread, 'sized alone, one unit with a lean', lean);
     assert.deepStrictEqual([sizedOnly.declared, sizedOnly.kept, sizedOnly.perUnit], [plain.declared, plain.kept, plain.perUnit], 'one value of confirm multiplies nothing');
     assert.strictEqual(sizedOnly.leanUnits, 1);
@@ -788,13 +811,14 @@ module.exports = {
     assert.deepStrictEqual([one[0].confirm, one[0].kx, one[0].ux], ['off', 2, 1], 'off, with the default multipliers on the record');
     assert.ok(!/confirm|sized/.test(one[0].label), `off adds nothing to the name: ${one[0].label}`);
     const three = stages.settingsFor({ cell, agreeRule: 'count', agreePct: 50, permuteConfirm: true }, [1]);
-    assert.deepStrictEqual(three.map((st) => st.confirm), ['off', 'confirmed only', 'sized'], 'the three values in the dial\'s own order');
+    assert.deepStrictEqual(three.map((st) => st.confirm), ['off', 'confirmed only', 'strictly confirmed', 'sized'], 'the values in the dial\'s own order (3.206.0: strictly confirmed)');
     assert.strictEqual(three[1].label, `${one[0].label} \u00b7 confirmed only`);
-    assert.strictEqual(three[2].label, `${one[0].label} \u00b7 sized \u00d72/\u00d71`);
+    assert.strictEqual(three[2].label, `${one[0].label} \u00b7 strictly confirmed`, 'the fourth value must reach the name, or two settings share one');
+    assert.strictEqual(three[3].label, `${one[0].label} \u00b7 sized \u00d72/\u00d71`);
     const typed = stages.settingsFor({ cell, agreeRule: 'count', agreePct: 50, confirm: 'sized', confirmedX: '3', unconfirmedX: 0.5 }, [1]);
     assert.strictEqual(typed[0].label, `${one[0].label} \u00b7 sized \u00d73/\u00d70.5`, 'the boxes as typed, in the name');
     assert.deepStrictEqual([typed[0].kx, typed[0].ux], [3, 0.5]);
-    assert.throws(() => stages.settingsFor({ cell, confirm: 'maybe' }, [1]), /"maybe" is not a value of confirm \(off \/ confirmed only \/ sized\)/);
+    assert.throws(() => stages.settingsFor({ cell, confirm: 'maybe' }, [1]), /"maybe" is not a value of confirm \(off \/ confirmed only \/ strictly confirmed \/ sized\)/);
     assert.throws(() => stages.settingsFor({ cell, confirm: 'sized', confirmedX: -1 }, [1]), /confirmed \u00d7 must be a number of zero or more/);
     assert.throws(() => stages.settingsFor({ cell, confirm: 'sized', unconfirmedX: 'two' }, [1]), /unconfirmed \u00d7 must be a number of zero or more/);
     // whether a block asks for the lean at all
@@ -802,12 +826,12 @@ module.exports = {
     assert.strictEqual(stages.confirmWanted({ cell, confirm: 'off' }), false);
     assert.strictEqual(stages.confirmWanted({ cell, confirm: 'confirmed only' }), true);
     assert.strictEqual(stages.confirmWanted({ cell, permuteConfirm: true }), true);
-    assert.deepStrictEqual([stages.confirmLabel('off', 2, 1), stages.confirmLabel('confirmed only', 2, 1), stages.confirmLabel('sized', 2, 1)],
-      ['', ' \u00b7 confirmed only', ' \u00b7 sized \u00d72/\u00d71']);
+    assert.deepStrictEqual([stages.confirmLabel('off', 2, 1), stages.confirmLabel('confirmed only', 2, 1), stages.confirmLabel('strictly confirmed', 2, 1), stages.confirmLabel('sized', 2, 1)],
+      ['', ' \u00b7 confirmed only', ' \u00b7 strictly confirmed', ' \u00b7 sized \u00d72/\u00d71']);
     // the Funnel reads it as one more dial, and every screen offers the engine's list
     assert.ok(require('../lib/funnel').CATEGORICAL_DIALS.includes('confirm'), 'the Funnel must read confirm as a dial');
     const vocab = require('../lib/vocabulary').vocabulary();
-    assert.deepStrictEqual(vocab.confirm.map((o) => o.value), ['off', 'confirmed only', 'sized'], 'the dial\'s box is filled from the engine\'s list');
+    assert.deepStrictEqual(vocab.confirm.map((o) => o.value), ['off', 'confirmed only', 'strictly confirmed', 'sized'], 'the dial\'s box is filled from the engine\'s list');
     assert.deepStrictEqual(vocab.confirmVerdict.map((o) => o.value), ['adds nothing', 'just leverage', 'adds value', 'better signal']);
     for (const o of vocab.confirmVerdict) assert.ok(o.why && o.why.length > 20, `${o.value} carries what it rests on for the hover`);
   },
@@ -1174,23 +1198,45 @@ module.exports = {
     // way. This is the only way to prove the `walk` case: there the walk's
     // reading must win on a coin and chunk shape that the passer holds
     // everywhere else, and no fixture on disk can put the box in that state.
-    assert.strictEqual(coinsrun.pickLeans('passers', { [key]: PASSER }, { [key]: WALK })[key].band, 40, 'passers reads the passer');
-    assert.strictEqual(coinsrun.pickLeans('walk', { [key]: PASSER }, { [key]: WALK })[key].band, 90, 'walk reads the walk row, not the passer that holds the key');
-    assert.strictEqual(coinsrun.pickLeans('both', { [key]: PASSER }, { [key]: WALK })[key].band, 40, 'both is what every set written before the choice priced with');
-    assert.deepStrictEqual(coinsrun.pickLeans('none', { [key]: PASSER }, { [key]: WALK }), {}, 'a run that read no list carries no reading');
-    assert.throws(() => coinsrun.pickLeans('sometimes', {}, {}), /there is no unit source called "sometimes"/, 'a name no screen offers is coerced instead of refused');
+    // 3.206.0 (owner order): COINS LENDS A LEAN TO THE PASSERS ONLY. A walk
+    // chain's units carry their plateaus' leans on their own records, so
+    // `walk` reads nothing off Coins and `both` is the passers alone.
+    assert.strictEqual(coinsrun.pickLeans('passers', { [key]: PASSER })[key].band, 40, 'passers reads the passer');
+    assert.deepStrictEqual(coinsrun.pickLeans('walk', { [key]: PASSER }), {}, 'a walk chain still reads a lean off Coins');
+    assert.strictEqual(coinsrun.pickLeans('both', { [key]: PASSER })[key].band, 40, 'both is the passers, which is what every set written before the choice priced with');
+    assert.deepStrictEqual(coinsrun.pickLeans('none', { [key]: PASSER }), {}, 'a run that read no list carries no reading');
+    assert.throws(() => coinsrun.pickLeans('sometimes', {}), /there is no unit source called "sometimes"/, 'a name no screen offers is coerced instead of refused');
+    assert.deepStrictEqual(coinsrun.leansFrom('walk'), {}, 'the real reader lends a walk chain a lean');
+    // A UNIT WITH A PLATEAU LEANS THE WAY ITS PLATEAU LEANS, off its own record
+    const withPlateau = {
+      trade: 'ZZZTESTUSDT', geometry: 'daily-4d',
+      extras: [
+        { lookbackHours: 48, bandPct: 100, from: { set: 'W-9', name: 'nine', key: 'a' }, lean: { rising: -1, falling: 1, yardstick: 3.1 } },
+        { lookbackHours: 96, bandPct: 100, from: { set: 'W-9', name: 'nine', key: 'b' }, lean: { rising: -1, falling: 0, yardstick: 4.2 } },
+        { lookbackHours: 96, bandPct: 150, from: { set: 'W-9', name: 'nine', key: 'c' }, lean: null },
+      ],
+      plateaus: [{ centre: 1, members: [0, 1, 2] }],
+    };
+    const pl = stages.confirmLeansFor([withPlateau], 'walk')[key];
+    assert.ok(pl && pl.plateau === true, 'a unit with a plateau is not handed its plateau\'s lean');
+    assert.deepStrictEqual(pl.rows.map((r) => [r.lookback, r.band, r.yardstick, r.rising, r.falling, r.key]),
+      [[48, 100, 3.1, -1, 1, 'a'], [96, 100, 4.2, -1, 0, 'b']], 'every row of the plateau with a lean, at its own look-back and band; the one without is left out');
+    assert.deepStrictEqual(pl.from, { set: 'W-9', name: 'nine', rows: 2, of: 3 });
+    assert.deepStrictEqual(stages.confirmLeansFor([{ ...withPlateau, extras: withPlateau.extras.map((e) => ({ ...e, lean: null })) }], 'walk'), {},
+      'a plateau whose rows carry no lean is given one');
     // AND THE WIRING: the chain's own source reaches the reader, and nothing
     // else does. Patched at the seam stages.js really calls.
     const wasL = coinsrun.leansFrom;
     const asked = [];
-    coinsrun.leansFrom = (src) => { asked.push(src); return src === 'walk' ? { [key]: WALK } : src === 'passers' ? { [key]: PASSER } : src === 'both' ? { [key]: PASSER } : {}; };
+    coinsrun.leansFrom = (src) => { asked.push(src); return src === 'passers' ? { [key]: PASSER } : src === 'both' ? { [key]: PASSER } : {}; };
     const ids = [];
     try {
       const recs = [{ trade: 'ZZZTESTUSDT', geometry: 'daily-4d' }];
-      assert.strictEqual(stages.confirmLeansFor(recs, 'walk')[key].band, 90, 'the named source does not reach the reader');
+      assert.deepStrictEqual(stages.confirmLeansFor(recs, 'walk'), {}, 'a walk chain without a plateau is lent a lean');
+      assert.strictEqual(stages.confirmLeansFor(recs, 'passers')[key].band, 40, 'the named source does not reach the reader');
       assert.deepStrictEqual(stages.confirmLeansFor(recs, 'none'), {}, 'a run that read no list carries no reading');
       // AND THE CHAIN ANSWERS FOR ITSELF, walked from the stage 3's parent up
-      for (const [source, band] of [['passers', 40], ['walk', 90], ['none', null]]) {
+      for (const [source, band] of [['passers', 40], ['walk', null], ['none', null]]) {
         const pid = writeLaunchParent(`src-${source}`, source === 'none' ? null : source);
         ids.push(pid);
         assert.strictEqual(stages.coinsSourceOf(stages.getSet(pid)), source, `a chain whose stage 1 says ${source} is read as something else`);
@@ -1228,7 +1274,7 @@ module.exports = {
         'a stage 1 that took its units from the boxes is read as one that read a list off Coins');
       assert.deepStrictEqual(stages.stage3Declared({ ...LAUNCH_BLOCK, from: bare, confirm: 'sized' }).leanUnits, 0,
         'a chain built from the boxes still finds a reading to price');
-      assert.deepStrictEqual(asked, ['walk', 'none', 'passers', 'walk', 'none', 'none'],
+      assert.deepStrictEqual(asked, ['walk', 'passers', 'none', 'passers', 'walk', 'none', 'none'],
         'the count asked a list the chain did not name, or failed to ask the one it did');
     } finally {
       coinsrun.leansFrom = wasL;
@@ -1354,9 +1400,10 @@ module.exports = {
     const st = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
     assert.ok(st.includes('    lean: leanOf((doc.params || {}).confirmLeans, rec),'), 'every unit is handed the lean the set wrote for it');
     assert.strictEqual(task.split('priceLean(cell,').length - 1, 5, 'five windows are priced: test, its scrambles, held-back, its scrambles, the deals');
-    assert.ok(task.includes('const tPriced = priceLean(cell, testChunks, tIdx, testCallsAll, maps.trade, leanTest, st, bandPct, true);'), 'the real test window asks for the rich pass');
-    assert.ok(task.includes('const hPriced = priceLean(cell, holdChunks, hIdx, holdCallsAll, holdTrade, leanHold, st, bandPct, true);'), 'so does the real held-back window');
-    assert.ok(task.includes("priceLean(cell, testChunks, tIdx, dt, maps.trade, leanTest, st, bandPct, false).res"), 'the kept scrambles skip it');
+    // 3.206.0: the lean is folded per setting at its plateau share, so each window asks for it by share
+    assert.ok(task.includes("const tPriced = priceLean(cell, testChunks, tIdx, testCallsAll, maps.trade, leanFor('test', st.plateauPct), st, bandPct, true);"), 'the real test window asks for the rich pass');
+    assert.ok(task.includes("const hPriced = priceLean(cell, holdChunks, hIdx, holdCallsAll, holdTrade, leanFor('hold', st.plateauPct), st, bandPct, true);"), 'so does the real held-back window');
+    assert.ok(task.includes("priceLean(cell, testChunks, tIdx, dt, maps.trade, leanFor('test', st.plateauPct), st, bandPct, false).res"), 'the kept scrambles skip it');
     assert.ok(task.includes("confirm: st.confirm || 'off',") && task.includes('lean: tPriced.parts ? {') && task.includes('verdict: tPriced.parts ? {'),
       'every record carries the dial, and a record with a lean carries its six numbers and its word');
     // the signs come from the same arithmetic Coins reads the windows with
@@ -1364,11 +1411,18 @@ module.exports = {
     // look-backs since 2026-09-17 and this called it with none, so every lean
     // coloured its windows at the chunk shape's own span -- 24 hours on Daily
     // 1-day -- while the walk found coins alive at 240 and above.
-    assert.ok(task.includes('windowLib.windowMoves(tradeMap, geometry, back ? [back] : [])')
-      && task.includes('windowLib.readingsUnderBand(series, task.lean.band, task.lean.yardstick)'),
-      'the lean is read at the unit\'s band, at Coins\' own yardstick, and at ITS OWN LOOK-BACK, by the one window arithmetic (lib/windowmove.js), not a copy of it');
-    assert.ok(task.includes("task.lean.lookback == null || task.lean.lookback === 'own' ? null : Number(task.lean.lookback)"),
+    // 3.206.0: the lean is a LIST of rows -- one for a passer, every row of the
+    // plateau for a walk-set unit -- each read at its own look-back, band and
+    // yardstick, then folded at the setting's plateau share
+    assert.ok(task.includes('const wm = windowLib.windowMoves(tradeMap, geometry, backs);')
+      && task.includes('windowLib.readingsUnderBand(series, row.band, row.yardstick)'),
+      'the lean is read at each row\'s band, at its own yardstick, and at ITS OWN LOOK-BACK, by the one window arithmetic (lib/windowmove.js), not a copy of it');
+    assert.ok(task.includes("const backOf = (row) => (row.lookback == null || row.lookback === 'own' ? null : Number(row.lookback));"),
       "and `own` is a real value here -- the shape's own span -- so a lean that names no look-back reads exactly as it always did");
+    assert.ok(task.includes("const leanRows = task.lean ? (Array.isArray(task.lean.rows) ? task.lean.rows : [task.lean]) : [];"),
+      'a passer\'s one lean and a plateau\'s rows are not read through the one list');
+    assert.ok(task.includes("if (!foldedLean.has(key)) foldedLean.set(key, confirmLib.foldLeanSigns(rows, pct));"),
+      'the plateau\'s rows are not folded through the confirmation library\'s own fold');
     assert.ok(!/require\('\.\/coins'\)/.test(sw), 'the worker must not reach lib/coins.js: through the vocabulary it would reach the orchestrator');
     const fn = sw.slice(sw.indexOf('function priceLeanWindow('), sw.indexOf('function partsCents('));
     assert.ok(fn.includes("if (!signs || confirm === 'off') return { res: bracketLib.simCell(cell, ch, calls, tradeMap, geo, bandPct, fee), parts: null };"),

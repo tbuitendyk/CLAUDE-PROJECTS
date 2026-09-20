@@ -549,18 +549,34 @@ function promoted() {
     if (head.broken) continue;
     const p = picksOrNone(head.id);
     if (!p || !p.picked.length) continue;
-    const b = rowsFor(head.id, p.picked);
+    // THE PLATEAU'S ROWS ARE FETCHED WITH THE PICKED ONES (3.206.0), because
+    // each carries the lean stage 3 folds the plateau's lean from. The plateau
+    // is worked out from the keys first, so one ask brings every row wanted.
+    const all = keysOf(head.id);
+    if (!all) continue;
+    const plateauByKey = new Map();
+    const want = new Set(p.picked);
+    for (const k of p.picked) {
+      if (!all.has(k)) continue;
+      const [coin, geometry, lookback, band] = String(k).split('|');
+      const pl = plateauOf(head.id, { key: k, coin, geometry, lookback, band: Number(band) });
+      plateauByKey.set(k, pl);
+      if (pl) for (const c of pl.rows) want.add(c.key);
+    }
+    const b = rowsFor(head.id, [...want]);
     if (!b) continue;
     const off = new Set(p.off);
     const rows = [];
     for (const k of p.picked) {
       const r = b.rowsByKey.get(k);
       if (!r) continue;                 // a key naming no row of this set
+      const pl = plateauByKey.get(k) || null;
+      const plateau = pl ? { ...pl, rows: pl.rows.map((c) => ({ ...c, lean: leanOfRow(b.rowsByKey.get(c.key)) })) } : null;
       // A FRESH OBJECT PER ROW, so a caller that writes on what it is handed
       // cannot write on the kept copy. It is a handful of rows and it costs
       // nothing; sharing them would be a fault that showed up as a wrong
       // number on some other screen an hour later.
-      rows.push({ ...r, ticked: !off.has(k), plateau: plateauOf(head.id, r) });
+      rows.push({ ...r, ticked: !off.has(k), plateau });
     }
     if (rows.length) out.push({ id: head.id, name: head.name, release: head.release, finishedAt: head.finishedAt, rows });
   }
@@ -590,6 +606,11 @@ function promoted() {
 // with three that failed. A row whose look-back is the chunk shape's own span
 // has no plateau at all, for the reason it adds no member: its numbers are the
 // ones every member already reads.
+// the lean a walk row carries, in the shape stage 3 reads, or null on a row
+// walked before rows kept one (3.171.0) -- left out rather than given one
+const leanOfRow = (r) => (r && r.lean && (r.lean.rising || r.lean.falling)
+  ? { rising: r.lean.rising || 0, falling: r.lean.falling || 0, yardstick: r.lean.yardstick ?? null }
+  : null);
 const PLATEAU_SIDES = Object.freeze({
   shorter: 'no shorter look-back in this set', longer: 'no longer look-back in this set',
   lower: 'no lower band in this set', higher: 'no higher band in this set',
@@ -639,38 +660,6 @@ function plateauOf(id, row) {
   return { centre: row.key, size: rows.length, of: 9, lookbacks, bands: bandList, rows, missing };
 }
 
-// THE LEAN EACH TICKED PROMOTED ROW CARRIES, keyed by coin and shape -- the
-// shape stage 3's confirm dial already takes, with the row's own LOOK-BACK
-// beside its band. A row from a set walked before 3.171.0 has no lean and is
-// left out rather than given one.
-//
-// ONE KEY, ONE LEAN, FOR NOW. Two promoted rows on the same coin and chunk
-// shape are two different readings of it and the owner's call is that they
-// become two units -- but a unit is `trade|ctx1|ctx2|geometry` today
-// (lib/stages.js:540) and that key is on disk in every stage 3 set. So until
-// that changes the first ticked row of a coin and shape holds the key, and
-// promotedLeans says how many were passed over so nothing is silent.
-function promotedLeans() {
-  const out = {};
-  const passedOver = [];
-  for (const set of promoted()) {
-    for (const r of set.rows) {
-      if (!r.ticked || !r.lean || !(r.lean.rising || r.lean.falling)) continue;
-      const k = `${r.coin}|${r.geometry}`;
-      if (out[k]) { passedOver.push({ ...r, set: set.id, setName: set.name }); continue; }
-      out[k] = {
-        band: r.band,
-        yardstick: r.lean.yardstick ?? null,
-        rising: r.lean.rising || 0,
-        falling: r.lean.falling || 0,
-        lookback: r.lookback == null ? 'own' : r.lookback,
-        from: { set: set.id, name: set.name, key: r.key },
-      };
-    }
-  }
-  return { leans: out, passedOver };
-}
-
 // EVERY TICKED PROMOTED ROW AS COIN AND SHAPE, deduplicated across every set --
 // the shape lib/stages.js unitsForPassers already takes.
 // AND WHAT THE WALK FOUND RIDES WITH IT (3.184.0, ADDITIONAL-MEMBER-DESIGN.md).
@@ -710,11 +699,14 @@ function promotedUnits() {
       const plat = r.plateau || plateauOf(set.id, r);
       // the plateau's rows, the centre among them; a row off its own grid is
       // carried alone, honestly, as a plateau of one
-      const cells = plat && plat.rows && plat.rows.length ? plat.rows : [{ key: r.key, lookbackHours: back, bandPct: Math.abs(band), centre: true }];
+      const cells = plat && plat.rows && plat.rows.length ? plat.rows : [{ key: r.key, lookbackHours: back, bandPct: Math.abs(band), centre: true, lean: leanOfRow(r) }];
       const indexOf = (c) => {
         const have = unit.extras.findIndex((e) => e.lookbackHours === c.lookbackHours && e.bandPct === c.bandPct);
         if (have >= 0) return have;
-        unit.extras.push({ lookbackHours: c.lookbackHours, bandPct: c.bandPct, from: { ...from, key: c.key } });
+        // AND EACH EXTRA KEEPS ITS ROW'S LEAN (3.206.0), so the record says it
+        // and stage 3 folds the plateau's lean off the record rather than off
+        // whatever is ticked on Coins the day it is priced
+        unit.extras.push({ lookbackHours: c.lookbackHours, bandPct: c.bandPct, from: { ...from, key: c.key }, lean: c.lean || null });
         return unit.extras.length - 1;
       };
       const members = cells.map(indexOf);
@@ -812,7 +804,7 @@ module.exports = {
   V, DIR, walkFile, rowKey, nextId, nextName, saveWalk, saveWalkAs, listWalks, readWalk, renameWalk,
   // a walk keeps what it has done, and can be carried on (3.189.0)
   PARTS, partFile, startPart, appendPart, readPart, removePart, unfinishedWalks, partKeys, sealPart,
-  setPicked, setPickedMany, setRowOff, clearPicks, pickedUnits, promoted, promotedUnits, promotedLeans, deleteWalk,
+  setPicked, setPickedMany, setRowOff, clearPicks, pickedUnits, promoted, promotedUnits, deleteWalk,
   // the nine around a promoted row, read off its set (3.203.0)
   plateauOf, PLATEAU_SIDES,
   // one parse per file, and only when the file changes (3.191.0)

@@ -1503,32 +1503,47 @@ async function s3UnitTask(task) {
   // is exactly twice the money, fees included, because the fee is a share of
   // the position. The rich figures (drawdown, wins, thirds) are read at size 1
   // from one pass over the trades actually taken.
-  const leanSignsFor = (chunksArr, tradeMap) => {
-    if (!task.lean || !chunksArr.length) return null;
-    // THE LEAN'S OWN LOOK-BACK (3.171.0, owner order). windowMoves has taken a
-    // list of look-backs since 2026-09-17 and this called it with none, so
-    // every lean coloured its windows at the chunk shape's own span -- 24
-    // hours on Daily 1-day, while the walk found coins alive at 240 and above.
-    //
-    // `own` IS A REAL VALUE in this vocabulary, not a missing one: it is the
-    // shape's own span, which is exactly what wm.move is. So a lean that does
-    // not name a look-back is an `own` lean and reads as it always did. That
-    // is a default, not a branch for old records.
-    const back = task.lean.lookback == null || task.lean.lookback === 'own' ? null : Number(task.lean.lookback);
-    const wm = windowLib.windowMoves(tradeMap, geometry, back ? [back] : []);
-    // A LOOK-BACK THE CANDLES CANNOT REACH IS NOT GUESSED. windowMoves leaves a
-    // null where a decision has no candle that far behind it, and a whole
-    // column of nulls means this unit cannot be read at that distance -- so it
-    // falls back to the shape's own span and the run says which it used.
-    const series = back && wm.moves && Array.isArray(wm.moves[String(back)])
-      && wm.moves[String(back)].some((v) => v != null) ? wm.moves[String(back)] : wm.move;
-    const { reading } = windowLib.readingsUnderBand(series, task.lean.band, task.lean.yardstick);
-    const byTs = new Map();
-    for (let i = 0; i < wm.ts.length; i++) byTs.set(wm.ts[i], reading[i]);
-    return confirmLib.leanSigns(chunksArr.map((c) => byTs.get(c.startTs) || 's'), task.lean);
+  // THE LEAN IS A LIST OF ROWS (3.206.0): one for a unit whose coin and shape
+  // pass on Coins, and every row of its plateau for a unit promoted from a
+  // walk set -- each read at its own look-back and band against its own
+  // yardstick, then folded at the setting's plateau share the way the vote is.
+  const leanRows = task.lean ? (Array.isArray(task.lean.rows) ? task.lean.rows : [task.lean]) : [];
+  const rowSignsFor = (chunksArr, tradeMap) => {
+    if (!leanRows.length || !chunksArr.length) return null;
+    // THE ROWS' OWN LOOK-BACKS (3.171.0, owner order). windowMoves has taken a
+    // list of look-backs since 2026-09-17; every distinct one the rows name is
+    // asked for at once. `own` IS A REAL VALUE here, not a missing one: it is
+    // the shape's own span, which is exactly what wm.move is.
+    const backOf = (row) => (row.lookback == null || row.lookback === 'own' ? null : Number(row.lookback));
+    const backs = [...new Set(leanRows.map(backOf).filter((h) => h))];
+    const wm = windowLib.windowMoves(tradeMap, geometry, backs);
+    const at = new Map();
+    for (let i = 0; i < wm.ts.length; i++) at.set(wm.ts[i], i);
+    const idx = chunksArr.map((c) => at.get(c.startTs));
+    return leanRows.map((row) => {
+      const back = backOf(row);
+      // A LOOK-BACK THE CANDLES CANNOT REACH IS NOT GUESSED. windowMoves leaves
+      // a null where a decision has no candle that far behind it, and a whole
+      // column of nulls means this unit cannot be read at that distance -- so
+      // it falls back to the shape's own span.
+      const series = back && wm.moves && Array.isArray(wm.moves[String(back)])
+        && wm.moves[String(back)].some((v) => v != null) ? wm.moves[String(back)] : wm.move;
+      const { reading } = windowLib.readingsUnderBand(series, row.band, row.yardstick);
+      return confirmLib.leanSigns(idx.map((i) => (i == null ? 's' : reading[i])), row);
+    });
   };
-  const leanTest = leanSignsFor(testChunks, maps.trade);
-  const leanHold = leanSignsFor(holdChunks, holdTrade);
+  const rowSignsTest = rowSignsFor(testChunks, maps.trade);
+  const rowSignsHold = rowSignsFor(holdChunks, holdTrade);
+  // the unit's lean on a window at a plateau share, folded once per share
+  const foldedLean = new Map();
+  const leanFor = (slice, share) => {
+    const rows = slice === 'hold' ? rowSignsHold : rowSignsTest;
+    if (!rows) return null;
+    const pct = rows.length > 1 ? (share == null ? 50 : Number(share)) : 100;
+    const key = `${slice}|${pct}`;
+    if (!foldedLean.has(key)) foldedLean.set(key, confirmLib.foldLeanSigns(rows, pct));
+    return foldedLean.get(key);
+  };
   // price a window under a setting: plain when the setting is off or the unit
   // has no lean; split three ways otherwise. `wantRich` adds the one pass at
   // size 1 the rich figures are read from.
@@ -1666,7 +1681,7 @@ async function s3UnitTask(task) {
     const tHours = bracketLib.tHoursOn(st.tHours, geometry);
     const cell = { entry: st.entry, gate: st.gate, dMult: st.dMult, tHours, trailMult: st.trailMult ?? null, armMult: st.armMult ?? null };
     const testCallsAll = streamFor(stream.decision, agr, -1, 'test');
-    const tPriced = priceLean(cell, testChunks, tIdx, testCallsAll, maps.trade, leanTest, st, bandPct, true);
+    const tPriced = priceLean(cell, testChunks, tIdx, testCallsAll, maps.trade, leanFor('test', st.plateauPct), st, bandPct, true);
     const tRes = tPriced.res;
     // THE KEPT SCRAMBLES ON THE TEST WINDOW (FUNNEL-DESIGN.md 4.5). Together
     // these build a complete second copy of Table 3.A and Table 3.B out of
@@ -1686,7 +1701,7 @@ async function s3UnitTask(task) {
     const noiseTest = [];
     for (let d = from; d < keep; d++) {
       const dt = streamFor(stream.decision, agr, d, 'test');
-      const dRes = priceLean(cell, testChunks, tIdx, dt, maps.trade, leanTest, st, bandPct, false).res;
+      const dRes = priceLean(cell, testChunks, tIdx, dt, maps.trade, leanFor('test', st.plateauPct), st, bandPct, false).res;
       noiseTest.push(cents(dRes.pnl));
     }
     // THE KEPT SCRAMBLES ON THE HELD-BACK WINDOW. In a normal run these cost
@@ -1697,7 +1712,7 @@ async function s3UnitTask(task) {
     if (noiseOnly) {
       for (let d = from; d < keep && holdChunks.length; d++) {
         const dh = streamFor(stream.decision, agr, d, 'hold');
-        noiseHold.push(cents(priceLean(cell, holdChunks, hIdx, dh, holdTrade, leanHold, st, bandPct, false).res.pnl));
+        noiseHold.push(cents(priceLean(cell, holdChunks, hIdx, dh, holdTrade, leanFor('hold', st.plateauPct), st, bandPct, false).res.pnl));
       }
       // The label rides along so the merge joins on a name, never on a position.
       // Setting indexes are per block and two blocks both start at zero.
@@ -1713,7 +1728,7 @@ async function s3UnitTask(task) {
     let holdLean = null;
     if (holdChunks.length) {
       const holdCallsAll = streamFor(stream.decision, agr, -1, 'hold');
-      const hPriced = priceLean(cell, holdChunks, hIdx, holdCallsAll, holdTrade, leanHold, st, bandPct, true);
+      const hPriced = priceLean(cell, holdChunks, hIdx, holdCallsAll, holdTrade, leanFor('hold', st.plateauPct), st, bandPct, true);
       const hRes = hPriced.res;
       if (hPriced.parts) holdLean = { parts: hPriced.parts, size: hPriced.size };
       const hc = holdControlsFor(holdChunks, hIdx, tHours, stream.weekdaysOnly ? 'wk' : 'all');
@@ -1738,7 +1753,7 @@ async function s3UnitTask(task) {
       const dealPnls = [];
       for (let d = 0; d < nullN; d++) {
         const dh = streamFor(stream.decision, agr, d, 'hold');
-        const dRes = priceLean(cell, holdChunks, hIdx, dh, holdTrade, leanHold, st, bandPct, false).res;
+        const dRes = priceLean(cell, holdChunks, hIdx, dh, holdTrade, leanFor('hold', st.plateauPct), st, bandPct, false).res;
         dealPnls.push(dRes.pnl);
         // FREE, unlike the test ones above: this pricing happens either way to
         // work out beat, and today its money is dropped the moment the count is
@@ -1784,8 +1799,8 @@ async function s3UnitTask(task) {
         hold: holdLean ? partsCents(holdLean.parts) : null, holdSize: holdLean ? holdLean.size : null,
       } : null,
       verdict: tPriced.parts ? {
-        test: confirmLib.verdictOf(tPriced.parts, tPriced.kx, tPriced.ux),
-        hold: holdLean ? confirmLib.verdictOf(holdLean.parts, tPriced.kx, tPriced.ux) : null,
+        test: confirmLib.verdictOf(tPriced.parts, tPriced.kx, tPriced.ux, tPriced.zx),
+        hold: holdLean ? confirmLib.verdictOf(holdLean.parts, tPriced.kx, tPriced.ux, tPriced.zx) : null,
       } : null,
       beat, pairs: holdChunks.length ? nullN : 0, lead,
       // ALWAYS PRESENT, null when nothing was kept. The row store's columns
@@ -1982,15 +1997,19 @@ function priceLeanWindow(cell, ch, calls, tradeMap, geo, bandPct, fee, signs, st
   const ru = bracketLib.simCell(cell, ch, u, tradeMap, geo, bandPct, fee);
   const rz = bracketLib.simCell(cell, ch, z, tradeMap, geo, bandPct, fee);
   const parts = { c: { pnl: rc.pnl, n: rc.trades }, u: { pnl: ru.pnl, n: ru.trades }, z: { pnl: rz.pnl, n: rz.trades } };
-  const { kx, ux } = confirmLib.multipliersOf(confirm, st.kx, st.ux);
-  const g = confirmLib.combine(parts, kx, ux);
+  const { kx, ux, zx } = confirmLib.multipliersOf(confirm, st.kx, st.ux);
+  const g = confirmLib.combine(parts, kx, ux, zx);
   let res = { pnl: g.pnl, trades: g.trades, stops: (rc.stops || 0) + (ru.stops || 0) + (rz.stops || 0) };
   if (wantRich) {
     // a part priced at size 0 was not taken: it leaves the rich pass too
-    const taken = calls.map((v, i) => (ux === 0 && signs[i] !== 0 && signs[i] !== v ? 0 : (kx === 0 && signs[i] !== 0 && signs[i] === v ? 0 : v)));
+    // (3.206.0: the no-lean part as well, under strictly confirmed)
+    const taken = calls.map((v, i) => {
+      if (signs[i] === 0) return zx === 0 ? 0 : v;
+      return (ux === 0 && signs[i] !== v) ? 0 : ((kx === 0 && signs[i] === v) ? 0 : v);
+    });
     res = { ...bracketLib.simCell(cell, ch, taken, tradeMap, geo, bandPct, fee), pnl: g.pnl, trades: g.trades };
   }
-  return { res, parts, size: g.size, kx, ux };
+  return { res, parts, size: g.size, kx, ux, zx };
 }
 // the parts of a window, to the cent, so a row stores what a reader can add
 function partsCents(parts) {
@@ -2008,11 +2027,12 @@ function leanSumOf(cells) {
 function verdictOfCells(cells, st) {
   if (!st || !st.confirm || st.confirm === 'off') return null;
   const sum = leanSumOf(cells);
-  return sum ? confirmLib.verdictOf(sum, st.kx ?? confirmLib.DEFAULT_KX, st.ux ?? confirmLib.DEFAULT_UX) : null;
+  return sum ? confirmLib.verdictOf(sum, st.kx ?? confirmLib.DEFAULT_KX, st.ux ?? confirmLib.DEFAULT_UX, confirmLib.multipliersOf(st.confirm, st.kx, st.ux).zx) : null;
 }
 function verdictOfCoin(k) {
   if (!k || !k.lp) return null;
-  return confirmLib.verdictOf(k.lp, k.kx ?? confirmLib.DEFAULT_KX, k.ux ?? confirmLib.DEFAULT_UX);
+  // the no-lean multiplier follows the value of confirm the coin was priced under (3.206.0)
+  return confirmLib.verdictOf(k.lp, k.kx ?? confirmLib.DEFAULT_KX, k.ux ?? confirmLib.DEFAULT_UX, confirmLib.multipliersOf(k.confirm || 'off', k.kx, k.ux).zx);
 }
 function serializeTallyAcc(acc) {
   return {
