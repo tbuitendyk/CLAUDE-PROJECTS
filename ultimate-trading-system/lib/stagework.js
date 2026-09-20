@@ -154,10 +154,23 @@ function memberReadings({ members, specs, testChunks, seed, unitKey, nullN, tag 
   return members.map((m, mi) => {
     const at = specs[mi] ? specs[mi].at : null;
     const labels = testChunks.map((c) => (at == null ? c.label : c.altLabels[at]));
-    const probs = [m.probs.slice(0, n)];
-    const score = forecastScore(probs, labels);
+    // A FORCED SIT OUT IS NOT A FORECAST (3.201.0). An extra's gate shuts it on
+    // most chunks, and both its answer and its call are `sit out` there -- so
+    // scoring those would hand it every one of them right while its shuffled
+    // copies, which do not know where the gate shut, get them wrong. It would
+    // beat its own null set on moments it was never asked about.
+    //
+    // So the forecast SCORE is read on the moments it was allowed to speak on.
+    // `spoke` and `chunks` below stay over every chunk, because how often it
+    // acts out of all decisions is the rate, and that is the number being held
+    // against the walk.
+    const open = at == null ? testChunks.map((_, i) => i)
+      : testChunks.map((c, i) => ((c.extraOn && c.extraOn[at]) ? i : -1)).filter((i) => i >= 0);
+    const onLabels = open.map((i) => labels[i]);
+    const probs = [open.map((i) => m.probs[i])];
+    const score = forecastScore(probs, onLabels);
     const nulls = [];
-    for (let d = 0; d < nullN; d++) nulls.push(forecastScore(probs, labels, dealOrder(seed, unitKey, `${tag}m${mi}#${d}`, n)));
+    for (let d = 0; d < nullN; d++) nulls.push(forecastScore(probs, onLabels, dealOrder(seed, unitKey, `${tag}m${mi}#${d}`, open.length)));
     let beat = 0;
     for (const s of nulls) if (score > s) beat++;
     let spoke = 0;
@@ -427,6 +440,70 @@ function weightReadingFor(p, trainChunks, fee) {
   return trainOnOf(p) === 'money' ? moneyWeightReading(trainChunks, fee, capOf(p)) : null;
 }
 
+// AN EXTRA MEMBER IS A GATE AND A DIRECTION, AND ONLY THE DIRECTION IS LEARNED
+// (3.201.0, owner order: "I want the training to be tuned properly to be able to
+// make decisions at the same rate and accuracy as the history walk procedure").
+//
+// The walk does not LEARN its gate. It computes one: is the look-back move
+// bigger than the yardstick times the band. Then it acts in the direction the
+// history leans. A threshold and two signs.
+//
+// We were asking a fitted member to rediscover that threshold from twenty
+// compressed columns, on answers that are sit out on all but a few percent of
+// chunks -- and a fit can be right on 97 of every 100 by never speaking at all.
+// It took that deal, spoke once in 441, and no amount of tuning changes it:
+// the gate is a comparison, not something there is anything to learn.
+//
+// So the rule is split the way the walk splits it.
+//
+//   THE GATE IS APPLIED, NEVER LEARNED. A chunk that does not clear gets a
+//   forced sit out -- not a prediction. The member's rate is then the gate's
+//   rate BY CONSTRUCTION, which is the whole of "the same rate".
+//
+//   THE MEMBER TRAINS ONLY ON WHAT IT IS ALLOWED TO ANSWER. It never sees the
+//   chunks it is meant to sit out, so its answers there are the unit's own and
+//   roughly balanced: a real question instead of a silent one. It also puts
+//   `weigh each trade by the money it was worth` back beside the answers --
+//   those weights come off the outcome, and with the gate on the look-back a
+//   heavy chunk could otherwise be teaching silence.
+//
+//   WHAT IT LEARNS IS THE DIRECTION, the job the walk's two signs do, with
+//   twenty columns rather than two sums. That is the only part worth learning
+//   and the only part where it can beat the walk instead of merely matching it.
+const gateOf = (spec) => (spec && spec.at != null
+  ? (c) => !!(c && c.extraOn && c.extraOn[spec.at])
+  : null);
+// a sit out the member did not choose: certain, and read as 0 by argmaxCall
+const SAT_OUT = [0, 1, 0];
+// TRAINED ON WHAT IT MAY ANSWER, GATED ON WHAT IT MAY SAY. The weights are cut
+// exactly as the rows are, or the fit is graded against a different objective
+// than it was trained on.
+async function trainGatedMember({ spec, viewIdx, trainChunks, predictChunks, weights, labelOf }) {
+  const gate = gateOf(spec);
+  if (!gate) return trainProbMember({ model: spec.model, viewIdx, trainChunks, predictChunks, weights, labelOf });
+  const keep = trainChunks.map((c, k) => (gate(c) ? k : -1)).filter((k) => k >= 0);
+  if (keep.length < MIN_TRAIN_GATED) {
+    throw new Error(`extra ${spec.at + 1} clears its band on only ${keep.length} training chunk(s) — too few to learn a direction from. `
+      + 'A lower band on the walk row would open the gate more often.');
+  }
+  const m = await trainProbMember({
+    model: spec.model,
+    viewIdx,
+    trainChunks: keep.map((k) => trainChunks[k]),
+    predictChunks,
+    weights: Array.isArray(weights) ? keep.map((k) => weights[k]) : weights,
+    // ...and on those chunks it is asked THE UNIT'S OWN question
+    labelOf,
+  });
+  const shut = (rows, probs) => (Array.isArray(probs)
+    ? probs.map((p, k) => (gate(rows[k]) ? p : SAT_OUT))
+    : probs);
+  return { ...m, probs: shut(predictChunks, m.probs), tauProbs: m.tauProbs };
+}
+// FEWER THAN THIS AND THERE IS NOTHING TO FIT. The splitter's own floor for a
+// training stretch, used here for the same reason.
+const MIN_TRAIN_GATED = require('./pipeline').MIN_CHUNKS;
+
 async function trainProbMember({ model, viewIdx, trainChunks, predictChunks, weights = null, labelOf = null }) {
   // WHICH ANSWERS THIS MEMBER IS MARKED AGAINST (3.183.0). A base member is
   // marked against the unit's own band, as it always has been; an extra member
@@ -686,9 +763,11 @@ async function s1UnitTask(task) {
   const weightReading = weightReadingFor(p, trainChunks, fee);
   const members = [];
   for (const spec of specs) {
-    const m = await trainProbMember({
-      model: spec.model, viewIdx: views[spec.view], trainChunks, predictChunks, weights,
-      labelOf: spec.at == null ? null : (c) => c.altLabels[spec.at],
+    // the gate is applied and the direction is learned (3.201.0). labelOf stays
+    // null: on the chunks it may answer, an extra is asked the unit's own
+    // question, which is what the walk's two signs answer.
+    const m = await trainGatedMember({
+      spec, viewIdx: views[spec.view], trainChunks, predictChunks, weights, labelOf: null,
     });
     members.push({ spec, ...m });
   }
@@ -776,9 +855,11 @@ async function s2UnitTask(task) {
   const weightReading = weightReadingFor(p, trainChunks, fee);
   const members = [];
   for (const spec of specs) {
-    const m = await trainProbMember({
-      model: spec.model, viewIdx: views[spec.view], trainChunks, predictChunks, weights,
-      labelOf: spec.at == null ? null : (c) => c.altLabels[spec.at],
+    // the gate is applied and the direction is learned (3.201.0). labelOf stays
+    // null: on the chunks it may answer, an extra is asked the unit's own
+    // question, which is what the walk's two signs answer.
+    const m = await trainGatedMember({
+      spec, viewIdx: views[spec.view], trainChunks, predictChunks, weights, labelOf: null,
     });
     members.push({ spec, ...m });
   }
@@ -1763,7 +1844,7 @@ module.exports = {
   newTallyAcc, tallyFold, serializeTallyAcc, mergeTallyAcc,
   addNoiseRow, mergeNoise, meanNoise, cents,
   // the arithmetic, exported so the tests can pencil it
-  forecastScore, pooledAt, leadOver, dealOrder, callFromProbs, trainProbMember, unitChunks, predictMember, unreadChunksFor, forecastHashOf, tradeMapFor,
+  forecastScore, pooledAt, leadOver, dealOrder, callFromProbs, trainProbMember, trainGatedMember, gateOf, unitChunks, predictMember, unreadChunksFor, forecastHashOf, tradeMapFor,
   directionCalls, tuningSliceOf, directionMoney, moneyAgainstNull, TUNING_TAG,
   probsArr, probsObj,
 };

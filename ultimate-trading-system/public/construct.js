@@ -5120,7 +5120,7 @@ function bMembersPanel(stage, d) {
       <th ${th} title="which of the two ways of working out a forecast this member uses. Both read the same prices; they disagree about how to turn them into a lean, which is why a committee holds some of each.">kind</th>
       <th ${th} title="which slice of the numbers this member reads. The name the record stores is in brackets — it is on no other screen, and it is here so nothing about the member is hidden.">reads</th>
       <th ${th} title="how far back this member measures the move it is marked against. Blank on a member that reads its chunk shape's own span, which is every member except one added from a walk set.">look-back</th>
-      <th ${th} title="how big a move has to be before this member counts it as up or down rather than sitting out, as a percent of price. THE TWO KINDS OF MEMBER MEASURE A DIFFERENT MOVE. A member the unit was always going to have is marked on the chunk's own move — what price did over the trade — at the unit's own band. A member added from a walk set is marked on the move over ITS look-back, the stretch ending at the decision: when that clears this figure the member answers the unit's own question, and when it does not the member sits out. That is the walk's own rule. The second figure in brackets is the number the walk found, a MULTIPLE of what this coin usually moves over that same look-back — 0.90 means nine tenths of it — and the percent is that multiple worked out against the training stretch.">band</th>
+      <th ${th} title="how big a move has to be before this member counts it as up or down rather than sitting out, as a percent of price. THE TWO KINDS OF MEMBER MEASURE A DIFFERENT MOVE. A member the unit was always going to have is marked on the chunk's own move — what price did over the trade — at the unit's own band, which is one number for the whole set. A member added from a walk set is GATED on the move over its own look-back, the stretch ending at the decision: when that clears the bar the member answers the unit's own question, and when it does not the member sits out and is not asked. That is the walk's own rule, and the bar MOVES the way the walk's does — worked out fresh at each decision from every look-back move before it, so it climbs as the coin gets wilder. The figure here is the middle of those bars over the whole set, because there is no single one. In brackets is the number the walk found, a MULTIPLE of what this coin usually moves over that same look-back — 0.90 means nine tenths of it.">band</th>
       <th ${th} title="the walk set a member was added from. Blank on a member the unit was always going to have.">from</th>
       <th ${th} title="this member's OWN forecast score, read against the answers IT was marked on — not the committee's pooled score. This is what stops a member that never speaks hiding inside the pooled number.">forecast score</th>
       <th ${th} title="of this member's own null set — the same forecasts against the same answers with only the pairing between them destroyed — how many it beat. A member that always says the same thing scores the same shuffled as unshuffled and beats none of them, so silence earns nothing here.">beat its own null set</th>
@@ -5140,12 +5140,12 @@ function bMembersPanel(stage, d) {
       <td ${td}>${m.spoke == null ? '<span class="muted">—</span>' : `${Number(m.spoke).toLocaleString()} <span class="muted">of ${Number(m.chunks || 0).toLocaleString()}</span>`}</td>
       <td ${td}>${bShare(m.spoke ? m.rightWhenSpoke / m.spoke : null, m.rightWhenSpoke, m.spoke)}</td>
     </tr>`).join('') || '<tr><td colspan="11" class="empty">nothing here</td></tr>'}</tbody></table></div>
-    <p class="note">A member added from a walk set is marked with a line down its left edge. It is trained on the same
-      prices as the rest and asked the unit's own question — which way will this chunk go — but only on the decisions where the
-      move over its own look-back cleared its own band; on every other decision the answer it is trained to give is <b>sit out</b>.
-      That is what the walk did: act when the last stretch moved more than usual, stand aside otherwise. Everything the unit already
-      trains is untouched, and this is one more voice beside it. Each member is read against the answers IT was marked on, so a
-      member asked a different question is neither flattered nor punished for it.</p>
+    <p class="note">A member added from a walk set is marked with a line down its left edge. Its band is a GATE, not a different question:
+      on the decisions where the move over its own look-back clears the bar it is asked the unit's own question — which way will this chunk go —
+      and on every other decision it sits out and is never asked. It is trained on the decisions it may answer and on no others, and the gate is
+      APPLIED rather than learned, so it speaks at the same share of decisions the walk acted on. That share is the thing to hold against
+      <b>decisions</b> on the walk's own table. Its forecast score is read on the decisions its gate opened, because a sit out it was handed is not a
+      forecast it made; <b>spoke</b> beside it is over every decision, because how often it acts out of all of them is the rate.</p>
   </div>`;
 }
 // THE PRESS THAT OPENS IT, and the one that closes it. Drawn into the cell that

@@ -77,9 +77,16 @@ async function trainStageCommittee(cfg, closed, moments, views, fee) {
     const at = spec.at == null ? null : Number(spec.at);
     const viewIdx = views[spec.view];
     if (!viewIdx) throw new Error(`live signal: this unit has no slice called '${spec.view}' for a member to read`);
-    const labelOf = at == null ? null : (c) => (c.altLabels || [])[at];
+    // THE GATE IS APPLIED HERE TOO, AND THE SAME WAY (3.201.0). Live rebuilds
+    // the whole committee from the configuration, so a member built here has to
+    // be the member the sweep priced -- trained on the chunks its band opens
+    // and forced to sit out on the rest. Built any other way the live committee
+    // would speak at a different rate from the one the evidence is about, which
+    // is the one thing a rebuild must never do.
     // eslint-disable-next-line no-await-in-loop
-    const m = await sw.trainProbMember({ model: spec.model, viewIdx, trainChunks, predictChunks, weights, labelOf });
+    const m = await sw.trainGatedMember({
+      spec: { model: spec.model, at }, viewIdx, trainChunks, predictChunks, weights, labelOf: null,
+    });
     members.push({ spec, ...m });
   }
   const nTest = testChunks.length;

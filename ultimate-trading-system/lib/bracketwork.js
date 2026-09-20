@@ -102,43 +102,65 @@ function extraBandsOrRefuse(bands) {
 // `auto` already uses for a unit's own band (balancedBandPct, training chunks
 // only) -- the multiple is declared in advance by the walk and only the scale
 // is measured, so this is not a fitted band.
-// THE THRESHOLD AN EXTRA'S BAND SETS, ON THE MOVE IT IS ACTUALLY ABOUT
-// (3.198.0, owner order: "apply the correct scaling to the decision band and
-// training to match what was walked").
+// THE GATE AN EXTRA'S BAND SETS, ON A YARDSTICK THAT MOVES (3.201.0, owner
+// order: "trailing").
 //
-// The walk's band is a multiple of the coin's typical move OVER THAT
-// LOOK-BACK, and it gates the look-back move: act when the last h hours moved
-// more than that, sit out otherwise. This read the median of the OUTCOME
-// instead -- the chunk's own diffPct -- so a band of 4.90x came out as a
-// threshold on what the price was about to do rather than on what it had just
-// done. Same number, other side of the decision.
+// The band is a MULTIPLE -- 4.90x say -- and a multiple of what decides the
+// threshold it comes to. That "what" is the coin's usual move over the
+// look-back, and the walk works it out FRESH AT EVERY DECISION from every move
+// before it (lib/coinscan.js usualMoveAt, 'trailing'). This took one median
+// over the train stretch and held it still for train, test, held and reserve
+// alike, which had two faults:
 //
-// ONE MEDIAN PER EXTRA, because each reads its own look-back and their typical
-// moves are not the same number: 192 hours travels further than 72.
-function extraBandPctsFor(trainChunks, extraBands) {
+//   * IT COULD NOT FOLLOW THE COIN. A calm train stretch in front of a wild
+//     test stretch leaves the threshold too low, so the gate fires far more
+//     often in test than the band asked for -- and the rate measured there is
+//     not the rate the band specified.
+//   * IT MOVED WITH THE SPLIT. The median was over train, so changing window
+//     layout changed train, changed the threshold, and changed the answer on
+//     EVERY chunk -- including ones that were in train both times. A trailing
+//     yardstick does not care where the split falls: a chunk's threshold comes
+//     from the chunks before it in time and from nothing else.
+//
+// AND IT STILL DOES NOT CHEAT. At any chunk the yardstick reads only what came
+// before it. That is the standard the walk holds itself to and the standard the
+// live side will have.
+//
+// THE FIRST FEW CHUNKS ARE NEVER GATED ON, because a median of a handful of
+// moves is not a yardstick. MIN_CHUNKS is this file's own floor for "enough to
+// say anything" and it is used here for the same reason rather than a new
+// number being invented. Those chunks are at the start of train, so test and
+// held are untouched by it.
+function markExtraGates(chunks, extraBands) {
   const multiples = extraBandsOrRefuse(extraBands);
+  const rows = chunks || [];
+  for (const c of rows) c.extraOn = [];
   if (!multiples.length) return [];
-  return multiples.map((m, i) => {
-    const usual = medianAbsMove((trainChunks || []).map((c) => (Array.isArray(c.backPct) ? c.backPct[i] : null)));
-    if (!(usual > 0)) {
-      throw new Error(`this unit's training chunks show no typical move at all over extra ${i + 1}'s look-back, so a band `
-        + 'given as a multiple of it cannot be worked out — an extra member cannot be marked here');
+  const typical = [];
+  for (let i = 0; i < multiples.length; i++) {
+    const behind = [];                   // every look-back move BEFORE the chunk in hand
+    const thresholds = [];
+    for (const c of rows) {
+      const m = Array.isArray(c.backPct) ? c.backPct[i] : null;
+      // the yardstick, off what came before and nothing else
+      const yard = behind.length >= MIN_CHUNKS ? medianAbsMove(behind) : null;
+      const t = yard > 0 ? yard * (multiples[i] / 100) : null;
+      c.extraOn[i] = t != null && m != null && Math.abs(m) > t;
+      if (t != null) thresholds.push(t);
+      if (m != null) behind.push(m);
     }
-    return usual * (m / 100);
-  });
+    if (!thresholds.length) {
+      throw new Error(`this unit shows no typical move at all over extra ${i + 1}'s look-back, so a band given as a multiple of it `
+        + 'cannot be worked out — an extra member cannot be marked here');
+    }
+    // WHAT THE SCREEN SHOWS is the middle of those thresholds, because there is
+    // no longer one number: it moves with the coin, and picking the first or
+    // the last would name a moment rather than the setting.
+    typical.push(medianAbsMove(thresholds));
+  }
+  return typical;
 }
 
-// THE COMMITTEE, AS A LIST THE UNIT CARRIES (3.183.0, owner order 2026-09-19:
-// "code it in such a way that if we add another voting member in the future ...
-// then we can add another voting member when we need to").
-//
-// The base members are what they have always been, one per slice of the
-// numbers. Each extra adds ONE more, reading its own block and marked against
-// its own labels. A second extra is one more entry in the unit's list -- there
-// is no branch here that knows how many there are, which is the whole point.
-//
-// `from` says which numbers a member reads; a spec without one is a base
-// member, which is how every record written before this reads correctly.
 // WHAT AN EXTRA MEMBER IS ASKED (3.198.0, owner order). The walk's rule is:
 // when the look-back move clears the band, act in the direction the history
 // leans; otherwise sit out. So the extra is asked THE UNIT'S OWN QUESTION --
@@ -155,10 +177,8 @@ function extraBandPctsFor(trainChunks, extraBands) {
 // A LOOK-BACK THAT CANNOT BE READ AT THIS CHUNK IS A SIT OUT, never a guess:
 // there is no move to hold up to the threshold, so the walk would not have
 // acted either.
-const altLabelsFor = (c, thresholds) => thresholds.map((t, i) => {
-  const m = Array.isArray(c.backPct) ? c.backPct[i] : null;
-  return (m != null && Math.abs(m) > t) ? c.label : 0;
-});
+const altLabelsFor = (c, nExtras) => Array.from({ length: nExtras },
+  (_, i) => (c.extraOn && c.extraOn[i] ? c.label : 0));
 
 const memberSpecs = (model, size, nExtras = 0) => [
   ...slimViewsFor(size).map((view) => ({ model, view, from: 'own' })),
@@ -328,9 +348,9 @@ function splitAndLabel(chunks, branch, holdout, extraBands = []) {
   // be fitted from train because it is the engine choosing for itself; an
   // extra's band arrives from the walk, fixed in advance and held across train,
   // test and held alike, which is what the typed band % has always been.
-  const extraBandPcts = extraBandPctsFor(trainChunks, extraBands);
+  const extraBandPcts = markExtraGates(chunks, extraBands);
   if (extraBandPcts.length) {
-    for (const c of chunks) c.altLabels = altLabelsFor(c, extraBandPcts);
+    for (const c of chunks) c.altLabels = altLabelsFor(c, extraBandPcts.length);
   }
   return { trainChunks, testChunks, holdChunks, bandPct, extraBandPcts };
 }
@@ -370,9 +390,9 @@ function splitAndLabelPass(chunks, branch, nTrain, nJudge, extraBands = []) {
   // be fitted from train because it is the engine choosing for itself; an
   // extra's band arrives from the walk, fixed in advance and held across train,
   // test and held alike, which is what the typed band % has always been.
-  const extraBandPcts = extraBandPctsFor(trainChunks, extraBands);
+  const extraBandPcts = markExtraGates(chunks, extraBands);
   if (extraBandPcts.length) {
-    for (const c of chunks) c.altLabels = altLabelsFor(c, extraBandPcts);
+    for (const c of chunks) c.altLabels = altLabelsFor(c, extraBandPcts.length);
   }
   return { trainChunks, testChunks, holdChunks, bandPct, extraBandPcts };
 }
@@ -382,4 +402,4 @@ function splitAndLabelPass(chunks, branch, nTrain, nJudge, extraBands = []) {
 // test. Nothing can run them; lib/rng.js keeps the one function that outlived
 // their module.)
 
-module.exports = { quorumCall, declaredQuorumFor, slimViewsFor, memberSpecs, altLabelsFor, extraBandsOrRefuse, extraBandPctsFor, buildCombo, splitAndLabel, splitAndLabelPass, splitBounds, reserveChunks, RESERVE_SHARE };
+module.exports = { quorumCall, declaredQuorumFor, slimViewsFor, memberSpecs, altLabelsFor, extraBandsOrRefuse, markExtraGates, buildCombo, splitAndLabel, splitAndLabelPass, splitBounds, reserveChunks, RESERVE_SHARE };

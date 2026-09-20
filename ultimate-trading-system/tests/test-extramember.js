@@ -235,107 +235,100 @@ function aSpanThatCannotBeHalvedOrQuarteredIsRefused() {
 function anExtrasBandIsAMultipleOfTheUsualOutcomeMove() {
   const bw = require('../lib/bracketwork');
   const { medianAbsMove } = require('../lib/windowmove');
-  // THE MOVE THE BAND IS ABOUT IS THE LOOK-BACK'S, NOT THE OUTCOME'S (3.198.0).
-  // The walk's band gates how far price travelled BEFORE the decision; it was
-  // being scaled off how far it travelled after, which is the other side of the
-  // decision. The fixture gives the two different scales so they cannot be
-  // mistaken for each other: the outcome moves about 10% and the look-back
-  // about 2%, and only the second may reach the answer.
+  // THE MOVE THE BAND IS ABOUT IS THE LOOK-BACK'S, NOT THE OUTCOME'S (3.198.0),
+  // AND THE YARDSTICK TRAILS (3.201.0). The fixture gives the two moves
+  // deliberately different scales -- the outcome about 10% and the look-back
+  // about 2% -- so neither can be mistaken for the other.
   const backs = [0.5, -1, 2, -2.5, 3, -1.5, 1, -4, 2.2, -0.8];
-  const train = backs.map((d, i) => ({ backPct: [d], diffPct: (i % 2 ? 10 : -10) }));
+  const wide = backs.concat(backs, backs);     // 30 chunks: past MIN_CHUNKS, so the gate can fire
+  const chunks = () => wide.map((d, i) => ({ backPct: [d], diffPct: (i % 2 ? 10 : -10), label: (i % 2 ? 1 : -1) }));
   const usual = medianAbsMove(backs);
   assert.ok(usual > 1 && usual < 3, `the fixture's usual look-back move is ${usual}%, which is not the scale this test is written around`);
-  assert.strictEqual(medianAbsMove(train.map((c) => c.diffPct)), 10, 'the fixture no longer tells the two moves apart');
-  // the multiple times the usual move, and nothing else
+
+  // the multiple times the usual look-back move, and nothing else
   for (const m of [10, 90, 300]) {
-    assert.ok(Math.abs(bw.extraBandPctsFor(train, [m])[0] - usual * (m / 100)) < 1e-12,
-      `a multiple of ${m} does not come out as ${m / 100} times the usual move`);
+    const t = bw.markExtraGates(chunks(), [m])[0];
+    assert.ok(Math.abs(t - usual * (m / 100)) < 0.35,
+      `a multiple of ${m} came out at ${t} and the usual look-back move is ${usual}`);
   }
-  // AND IT IS NOT THE RAW NUMBER ANY MORE. This is the whole defect: read as a
-  // percent of price, a multiple of 90 is a 90% move and nothing is ever up or down.
-  assert.notStrictEqual(bw.extraBandPctsFor(train, [90])[0], 90, 'the walk\'s multiple is still being read as a percent of price');
-  assert.ok(bw.extraBandPctsFor(train, [90])[0] < 5, 'a nine-tenths-of-usual band came out bigger than any move this coin makes');
-  // several at once, in the unit's own order
-  // TWO EXTRAS MEASURE TWO LOOK-BACKS, and each is scaled off its own. A
-  // second column that moves twice as far must come out twice as wide at the
-  // same multiple, or the two are sharing one median.
-  const twoBacks = backs.map((d) => ({ backPct: [d, d * 2] }));
-  assert.deepStrictEqual(bw.extraBandPctsFor(twoBacks, [100, 100]).map((b) => Number(b.toFixed(6))),
-    [Number(usual.toFixed(6)), Number((usual * 2).toFixed(6))], 'two extras are not each scaled off their own look-back');
-  assert.deepStrictEqual(bw.extraBandPctsFor(twoBacks, [100, 200]).map((b) => Number(b.toFixed(6))),
-    [Number(usual.toFixed(6)), Number((usual * 4).toFixed(6))], 'two extras do not come out in the order the unit carries them');
-  assert.deepStrictEqual(bw.extraBandPctsFor(train, []), [], 'a unit with no extras is given a band it did not ask for');
-  // A COIN WITH NO TYPICAL MOVE AT ALL REFUSES rather than marking everything
-  // as up or down on a band of nought
-  assert.throws(() => bw.extraBandPctsFor([{ backPct: [0] }, { backPct: [0] }], [90]), /no typical move at all/);
-  // and a unit whose chunks carry no look-back move at all refuses too, rather
-  // than falling back on the outcome
-  assert.throws(() => bw.extraBandPctsFor([{ diffPct: 3 }, { diffPct: -3 }], [90]), /no typical move at all/);
+  // AND IT IS NOT THE RAW NUMBER. Read as a percent of price, a multiple of 90
+  // is a 90% move and nothing is ever up or down.
+  assert.ok(bw.markExtraGates(chunks(), [90])[0] < 5, 'a nine-tenths-of-usual band came out bigger than any move this coin makes');
+  assert.deepStrictEqual(bw.markExtraGates(chunks(), []), [], 'a unit with no extras is given a band it did not ask for');
+
+  // TWO EXTRAS MEASURE TWO LOOK-BACKS, each scaled off its own
+  const two = wide.map((d, i) => ({ backPct: [d, d * 2], diffPct: (i % 2 ? 10 : -10), label: 1 }));
+  const got = bw.markExtraGates(two, [100, 100]);
+  assert.ok(Math.abs(got[1] / got[0] - 2) < 0.05, 'a look-back that moves twice as far did not come out twice as wide');
+
+  // A COIN WITH NO TYPICAL MOVE AT ALL REFUSES rather than gating on nought
+  assert.throws(() => bw.markExtraGates(wide.map(() => ({ backPct: [0] })), [90]), /no typical move at all/);
+  assert.throws(() => bw.markExtraGates(wide.map(() => ({ diffPct: 3 })), [90]), /no typical move at all/);
   // and the refusals that were already there still are
-  assert.throws(() => bw.extraBandPctsFor(train, ['auto']), /never auto/);
-  assert.throws(() => bw.extraBandPctsFor(train, [0]), /above nought/);
+  assert.throws(() => bw.markExtraGates(chunks(), ['auto']), /never auto/);
+  assert.throws(() => bw.markExtraGates(chunks(), [0]), /above nought/);
 }
 
-// AND THE SCALE COMES OFF THE TRAIN STRETCH ALONE (3.188.0). Test, held and
-// reserve are all marked with a number none of them had any part in choosing --
-// the same discipline `auto` already uses for a unit's own band. The multiple
-// is declared in advance by the walk, so this is not a fitted band.
+// THE YARDSTICK TRAILS, AND THAT IS THE WHOLE POINT (3.201.0, owner: "trailing").
+//
+// It was one median over the train stretch, held still for train, test, held
+// and reserve alike. Two faults, and the second is the one that was invisible:
+// it could not follow a coin whose moves grew or shrank, and it moved with the
+// SPLIT -- change window layout and every chunk's answer changed, including
+// chunks that were in train both times.
 function theExtrasScaleIsMeasuredOnTheTrainStretchAlone() {
   const bw = require('../lib/bracketwork');
-  const { medianAbsMove } = require('../lib/windowmove');
-  // THE FIXTURE HAS TO TELL THE TWO APART, and a median is robust, so "calm
-  // then wild" does not: with train the larger stretch its median IS the whole
-  // set's median and a check on it proves nothing. The mutation guard found
-  // this test passing while the scale was read off every chunk.
-  //
-  // So: train is half at 1 and half at 3, and the later stretch is all 1.
-  // Train's own median is 2; every chunk's median is 1. One number cannot be
-  // mistaken for the other.
-  const at = (i) => (i < 140 ? 1 : (i < 280 ? 3 : 1));
-  const chunks = Array.from({ length: 400 }, (_, i) => ({
-    startTs: i,
-    // the outcome is always a big clean move, so the unit's own answer is never
-    // `sit out` and anything that IS a sit out came from the look-back gate
-    diffPct: 8 * ((i % 2) ? 1 : -1),
-    backPct: [at(i) * ((i % 2) ? 1 : -1)],
+  // a coin that gets four times wilder halfway through
+  const at = (i) => (i < 200 ? 1 : 4);
+  const mk = () => Array.from({ length: 400 }, (_, i) => ({
+    startTs: i, diffPct: 8 * ((i % 2) ? 1 : -1), label: ((i % 2) ? 1 : -1),
+    backPct: [at(i) * (((i % 5) - 2) || 1)],
   }));
-  const split = bw.splitAndLabel(chunks, { band: 2 }, true, [100]);
-  assert.strictEqual(split.trainChunks.length, 280, 'the fixture no longer splits where this test is written around');
-  assert.strictEqual(medianAbsMove(split.trainChunks.map((c) => c.backPct[0])), 2, 'train\'s own usual look-back move is not 2, so this proves nothing');
-  assert.strictEqual(medianAbsMove(chunks.map((c) => c.backPct[0])), 1, 'every chunk\'s usual look-back move is not 1, so the two cannot be told apart');
-  assert.ok(Math.abs(split.extraBandPcts[0] - 2) < 1e-9,
-    `the band came out at ${split.extraBandPcts[0]} and train's own usual look-back move is 2 — a later window helped choose the threshold it is then judged at`);
-  // and every chunk IS marked, train, test and held alike, at that one number
-  assert.ok(chunks.every((c) => Array.isArray(c.altLabels) && c.altLabels.length === 1), 'not every chunk carries the extra\'s answer');
-  // THE WALK'S RULE, TRAINED (3.198.0): where the look-back move clears the
-  // band the extra is asked the unit's own question, and where it does not the
-  // answer is sit out. The outcome is a clean 8% on every chunk here, so the
-  // unit's own answer is never sit out and every sit out below came from the
-  // gate — which is the whole point.
-  assert.ok(chunks.every((c) => c.label !== 0), 'the fixture\'s outcome is being read as sit out, so the gate cannot be seen');
-  assert.ok(chunks.slice(140, 280).every((c) => c.altLabels[0] === c.label),
-    'a look-back move of 3 at a band of 2 did not let the member answer the unit\'s own question');
-  assert.ok(chunks.slice(0, 140).every((c) => c.altLabels[0] === 0),
-    'a look-back move of 1 at a band of 2 did not sit the member out');
-  assert.ok(chunks.slice(280).every((c) => c.altLabels[0] === 0),
-    'the gate stops applying past the train stretch');
-  // A CHUNK WITH NO LOOK-BACK MOVE SITS OUT rather than being guessed at
-  assert.strictEqual(bw.altLabelsFor({ label: 1, backPct: [null] }, [2])[0], 0, 'a look-back that cannot be read is guessed at');
-  assert.strictEqual(bw.altLabelsFor({ label: 1 }, [2])[0], 0, 'a chunk carrying no look-back move at all is guessed at');
-  // a multiple that puts the band under the moves marks them, so the band is
-  // really being read and not just returned
-  const marked = Array.from({ length: 400 }, (_, i) => ({
-    startTs: i, diffPct: 8 * ((i % 2) ? 1 : -1), backPct: [at(i) * ((i % 2) ? 1 : -1)],
-  }));
-  bw.splitAndLabel(marked, { band: 2 }, true, [10]);
-  assert.ok(marked.every((c) => c.altLabels[0] !== 0), 'at a fifth of the usual move every chunk still came out as sit out');
-  // the same through the pass splitter, which the five passes use
-  const forPass = Array.from({ length: 400 }, (_, i) => ({
-    startTs: i, diffPct: 8 * ((i % 2) ? 1 : -1), backPct: [at(i) * ((i % 2) ? 1 : -1)],
-  }));
-  const passed = bw.splitAndLabelPass(forPass, { band: 2 }, 280, 40, [100]);
-  assert.ok(Math.abs(passed.extraBandPcts[0] - 2) < 1e-9,
-    `the pass splitter resolved the extra's band as ${passed.extraBandPcts[0]}, not off its own train stretch`);
+
+  // IT MOVES, AND IT MOVES THE WAY THE WALK'S DOES. The yardstick is the median
+  // of every look-back move before the chunk, so it CLIMBS as the coin gets
+  // wilder -- and it climbs SLOWLY, because the calm half stays in the median
+  // for a long time. That lag is not a fault to fix here: it is exactly what
+  // lib/coinscan.js usualMoveAt does with 'trailing', and matching the walk is
+  // the whole reason this is trailing at all. A frozen yardstick would not move
+  // at all.
+  const chunks = mk();
+  bw.markExtraGates(chunks, [150]);
+  const early = chunks.slice(12, 200).filter((c) => c.extraOn[0]).length / 188;
+  const late = chunks.slice(200).filter((c) => c.extraOn[0]).length / 200;
+  assert.ok(late > early, `the wild half fired on ${(late * 100).toFixed(0)}% and the calm half on ${(early * 100).toFixed(0)}% — a bigger move is not clearing a bigger bar`);
+  assert.ok(early > 0 || late > 0, 'the gate never fires at all, so this proves nothing');
+  // and the threshold itself really is a moving number, not one held still
+  const seen = [];
+  const bars = [];
+  for (const c of chunks) {
+    const yard = seen.length >= 12 ? require('../lib/windowmove').medianAbsMove(seen) : null;
+    if (yard > 0) bars.push(yard * 1.5);
+    seen.push(c.backPct[0]);
+  }
+  assert.ok(bars[bars.length - 1] > bars[0] * 1.2,
+    'the yardstick ended where it started, so it is not trailing anything');
+
+  // AND IT DOES NOT CARE WHERE THE SPLIT FALLS. A chunk's threshold comes from
+  // the chunks before it in time and from nothing else, so cutting train in a
+  // different place cannot change one answer.
+  const a = mk(); bw.markExtraGates(a, [150]);
+  const b = mk(); bw.markExtraGates(b, [150]);
+  assert.deepStrictEqual(a.map((c) => c.extraOn[0]), b.map((c) => c.extraOn[0]), 'the gate is not the same twice on the same chunks');
+  assert.ok(a.every((c, i) => c.extraOn[0] === b[i].extraOn[0]), 'the answers moved');
+
+  // THE FIRST FEW ARE NEVER GATED ON, because a median of a handful is not a
+  // yardstick. They sit at the start of train, so test and held are untouched.
+  assert.ok(a.slice(0, 12).every((c) => c.extraOn[0] === false), 'a chunk with almost no history behind it was gated on anyway');
+
+  // and the answer is the unit's own on a chunk the gate opens, sit out on one
+  // it shuts -- which is the walk's rule
+  const split = bw.splitAndLabel(mk(), { band: 2 }, true, [150]);
+  const all = split.trainChunks.concat(split.testChunks, split.holdChunks);
+  assert.ok(all.every((c) => Array.isArray(c.altLabels) && c.altLabels.length === 1), 'not every chunk carries the extra\'s answer');
+  assert.ok(all.every((c) => (c.extraOn[0] ? c.altLabels[0] === c.label : c.altLabels[0] === 0)),
+    'the extra is not asked the unit\'s own question where its gate opens, and sit out where it shuts');
+  assert.ok(all.some((c) => c.extraOn[0]) && all.some((c) => !c.extraOn[0]), 'the fixture no longer has the gate both open and shut');
 }
 
 // THE LIVE PATH CAN TRAIN A UNIT THAT TOOK A MEMBER FROM A WALK SET (3.188.0,
@@ -411,10 +404,20 @@ function theLivePathBuildsMarksAndTrainsTheExtraMember() {
   const st = read('stagesignal.js');
   assert.ok(/splitAndLabel\(closed, \{ \.\.\.cfg\.branch, band: cfg\.branch\.band \}, true, extras\.map\(\(e\) => e\.bandPct\)\)/.test(st),
     'the live splitter is not given the extras\' bands, so no member has its own answers to learn');
-  assert.ok(/const labelOf = at == null \? null : \(c\) => \(c\.altLabels \|\| \[\]\)\[at\];/.test(st),
-    'every live member is marked against the unit\'s own band, so the walk\'s finding is thrown away');
-  assert.ok(/trainProbMember\(\{ model: spec\.model, viewIdx, trainChunks, predictChunks, weights, labelOf \}\)/.test(st),
-    'the live training is not handed the member\'s own answers');
+  // THE GATE IS APPLIED LIVE TOO, AND THE SAME WAY (3.201.0). The walk's finding
+  // is no longer a different set of answers to learn -- it is a gate on WHEN the
+  // member may speak, applied and never learned. Live rebuilds the whole
+  // committee from the configuration, so a member built here has to be the
+  // member the sweep priced: trained on the chunks its band opens and forced to
+  // sit out on the rest. Built any other way the live committee speaks at a
+  // different rate from the one the evidence is about.
+  assert.ok(/await sw\.trainGatedMember\(\{/.test(st),
+    'the live path trains the extra without its gate, so it speaks at a rate no evidence covers');
+  assert.ok(/spec: \{ model: spec\.model, at \}, viewIdx, trainChunks, predictChunks, weights, labelOf: null,/.test(st),
+    'the live extra is not asked the unit\'s own question on the chunks its gate opens');
+  assert.ok(!/const labelOf = at == null \? null : \(c\) => \(c\.altLabels \|\| \[\]\)\[at\];/.test(st),
+    'the live path still marks an extra against a different set of answers');
+
   assert.ok(/if \(!viewIdx\) throw new Error\(`live signal: this unit has no slice called/.test(st),
     'a member naming a slice this unit does not have trains on nothing instead of refusing');
   // THE MULTIPLE TRAVELS, NOT THE PERCENT. Live resolves it against its own
