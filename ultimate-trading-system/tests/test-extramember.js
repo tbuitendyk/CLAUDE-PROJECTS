@@ -672,7 +672,8 @@ function theSplitIsTheOwnersChoiceAndRidesOnEveryRecord() {
   assert.ok(ui.includes("extraTrainShare: Number($('#swExtraShare').value),"), 'the launch does not send the split');
   assert.ok(ui.includes("setV('#swExtraShare', p.extraTrainShare == null ? '60' : String(p.extraTrainShare));"), 'loading a set back into the boxes drops its split');
   assert.ok(ui.includes("['split for extra members', shareWords(v('#swExtraShare')), shareWords(p.extraTrainShare)]"), 'the stage headings do not hold the split up against the set');
-  assert.ok(/\$\('#swExtraShare'\)\.disabled = !on \|\| plain;/.test(ui), 'the split box is live when there are no extra members to cut the history for');
+  assert.ok(/\$\('#swExtraShare'\)\.disabled = !walk \|\| plain;/.test(ui) && /\$\('#swPlainUnits'\)\.disabled = !walk;/.test(ui) && /const walk = swSourceNow\(\) === 'walk';/.test(ui),
+    'the split box and the control arm are live under a Coins choice that adds no extra members (3.204.1: only the walk set does)');
   // the members panel says where each member trained and was read
   const panel = ui.slice(ui.indexOf('function bMembersPanel('), ui.indexOf('function bMembersBtn('));
   for (const col of ['>trained on</th>', '>read on</th>']) assert.ok(panel.includes(col), `the members table has no ${col} column`);

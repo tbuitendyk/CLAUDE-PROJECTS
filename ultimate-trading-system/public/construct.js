@@ -1235,10 +1235,10 @@ function swProvenance() {
       const hit = ((VOCAB && VOCAB.extraTrainShare) || []).find((o) => String(o.value) === String(x));
       return hit ? hit.label : `${Number(x)}/${100 - Number(x)}`;
     };
-    // extra members are in play on a side when its units come from Coins and
-    // it is not the control arm
-    const boxHasExtras = tickBox && !c('#swPlainUnits');
-    const setHasExtras = !!(p.coinsSource && p.coinsSource !== 'none' && !p.plainUnits);
+    // extra members are in play on a side when its units come from a walk set
+    // and it is not the control arm (3.204.1: a passer adds no member)
+    const boxHasExtras = wantSource === 'walk' && !c('#swPlainUnits');
+    const setHasExtras = !!(p.coinsSource && p.coinsSource !== 'none' && p.coinsSource !== 'passers' && !p.plainUnits);
     const pairWords = (list) => (Array.isArray(list) ? list : []).map((x) => `${x.coin} ${geoWord(x.geometry)}`).sort().join(', ') || 'none';
     const CHECKS = [
       // NAMED AS THE TWO SCREENS NAME THEM. The tick reads "only what is ticked
@@ -1250,8 +1250,8 @@ function swProvenance() {
       // coins and shapes, one with the extra members and one without, are
       // DIFFERENT runs and the screen has to say so -- that difference is the
       // whole reason the second one was run.
-      ...(tickBox || p.plainUnits
-        ? [['leave the extra members out', (c('#swPlainUnits') && tickBox) ? 'yes' : 'no', p.plainUnits ? 'yes' : 'no']]
+      ...(wantSource === 'walk' || p.plainUnits
+        ? [['leave the extra members out', (c('#swPlainUnits') && wantSource === 'walk') ? 'yes' : 'no', p.plainUnits ? 'yes' : 'no']]
         : []),
       // AND HOW THE HISTORY IS CUT FOR THEM (3.202.0), held up whenever either
       // side has extra members to cut it for. A set with none never read it,
@@ -1510,7 +1510,7 @@ async function swCounts() {
       geometry: $('#swGeom').value, permuteGeometry: $('#swPermGeom').checked,
       coinsSource: swSourceNow(),
       // the control arm: the same units, without the extra members (3.194.0)
-      plainUnits: !!($('#swPlainUnits') && $('#swPlainUnits').checked && swSourceNow() !== 'none'),
+      plainUnits: !!($('#swPlainUnits') && $('#swPlainUnits').checked && swSourceNow() === 'walk'),
     };
     if (!body.universe.length) delete body.universe;
     if (!body.compare.length) delete body.compare;
@@ -3757,7 +3757,7 @@ async function drawSweep() {
       <label class="c" title="run only the rows ticked from a walk set, at the top of Coins. A promoted row carries a look-back and a band of its own, and THAT is what this option is for: each one becomes one more member on its unit, trained on the coin's numbers over that look-back and marked at that band. Everything the unit already trains is untouched. Trade coins, chunk shape and permute are greyed."><input type="radio" name="swSource" id="swSourceWalk" value="walk"> what is ticked from a walk set</label>
     </div>
     <div class="row" style="align-items:flex-end">
-      <label class="c" title="run EXACTLY the same coins and chunk shapes that choice gives, and leave the extra members out — so this run and the one without this tick differ in one thing only, the extra members, and can be read one against the other. Without it the only way to run those units without their extra members is to ignore what is on Coins, which builds a different list of coins and shapes altogether: two runs differing in what was traded AND in how many members voted, where neither difference can be told from the other. Greyed unless one of the two Coins choices is on, because with neither of them there are no extra members to leave out."><input type="checkbox" id="swPlainUnits"> leave the extra members out</label>
+      <label class="c" title="run EXACTLY the same coins and chunk shapes that choice gives, and leave the extra members out — so this run and the one without this tick differ in one thing only, the extra members, and can be read one against the other. Without it the only way to run those units without their extra members is to ignore what is on Coins, which builds a different list of coins and shapes altogether: two runs differing in what was traded AND in how many members voted, where neither difference can be told from the other. Greyed unless what is ticked from a walk set is on, because only a walk set adds extra members to leave out."><input type="checkbox" id="swPlainUnits"> leave the extra members out</label>
       <label class="f" title="how the history is cut for a member added from a walk set: it trains on the first share of everything this run reads — train, test and held-back together, in order — and is read on the rest. The window layout beside is untouched: it still cuts the history for every member the unit was always going to have. The walk already set this member's look-back and band on the first half of the history and confirmed them on the second, so it needs no small test slice to be chosen on. Greyed when there are no extra members to cut it for.">split for extra members<select id="swExtraShare">${vocabOptions('extraTrainShare', '60')}</select></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
@@ -3928,7 +3928,7 @@ async function drawSweep() {
       geometry: $('#swGeom').value, permuteGeometry: $('#swPermGeom').checked,
       coinsSource: swSourceNow(),
       // the control arm: the same units, without the extra members (3.194.0)
-      plainUnits: !!($('#swPlainUnits') && $('#swPlainUnits').checked && swSourceNow() !== 'none'),
+      plainUnits: !!($('#swPlainUnits') && $('#swPlainUnits').checked && swSourceNow() === 'walk'),
       windowLayout: $('#swLayout').value, allLoaded: $('#swAllData').checked,
       // how the history is cut for the extra members (3.202.0)
       extraTrainShare: Number($('#swExtraShare').value),
@@ -4069,14 +4069,20 @@ async function drawSweep() {
     const on = swSourceNow() !== 'none';
     for (const id of ['swUni', 'swGeom', 'swPermGeom']) if ($(`#${id}`)) $(`#${id}`).disabled = on;
     // AND THE CONTROL ARM IS THE OTHER WAY ROUND (3.194.0): it means something
-    // only when the units come from Coins, because that is the only time there
-    // are extra members to leave out.
-    if ($('#swPlainUnits')) $('#swPlainUnits').disabled = !on;
+    // only when there are extra members to leave out.
+    //
+    // WHICH IS ONLY UNDER THE WALK SET (3.204.1, owner order: "those two items
+    // ... should only be activated when the what is ticked from a walk set
+    // radio button is selected"). A row under coins and shapes that pass is a
+    // coin and a chunk shape and nothing more -- it adds no member -- so under
+    // that choice both boxes about extra members would change nothing.
+    const walk = swSourceNow() === 'walk';
+    if ($('#swPlainUnits')) $('#swPlainUnits').disabled = !walk;
     // AND THE SPLIT FOR EXTRA MEMBERS GOES WITH THEM (3.202.0): nothing reads
-    // it unless the run has extra members, which is a Coins choice with the
+    // it unless the run has extra members, which is the walk set with the
     // control arm off.
     const plain = !!($('#swPlainUnits') && $('#swPlainUnits').checked);
-    if ($('#swExtraShare')) $('#swExtraShare').disabled = !on || plain;
+    if ($('#swExtraShare')) $('#swExtraShare').disabled = !walk || plain;
   };
   for (const el of sweepControls()) {
     const onChange = () => {
