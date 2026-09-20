@@ -124,18 +124,18 @@ function validateConfig(cfg) {
   }
   const nExtras = Array.isArray(extras) ? extras.length : 0;
   // WHICH EXTRAS BELONG TOGETHER AROUND A PROMOTED ROW (3.203.0). Absent or
-  // empty is a unit whose extras stand alone. A family names its extras by
+  // empty is a unit whose extras stand alone. A plateau names its extras by
   // their place in the list above, and one of them is its centre.
-  const families = cfg.families == null ? [] : cfg.families;
-  if (!Array.isArray(families)) {
-    fail(errors, 'families: must be an array of {centre, members}, or absent when no extra belongs to a family');
+  const plateaus = cfg.plateaus == null ? [] : cfg.plateaus;
+  if (!Array.isArray(plateaus)) {
+    fail(errors, 'plateaus: must be an array of {centre, members}, or absent when no extra belongs to a plateau');
   } else {
-    families.forEach((f, j) => {
+    plateaus.forEach((f, j) => {
       const members = f && Array.isArray(f.members) ? f.members : null;
       if (!members || !members.length || members.some((i) => !Number.isInteger(i) || i < 0 || i >= nExtras)) {
-        fail(errors, `families[${j}].members: must name extras 0 to ${nExtras - 1} of this unit`);
+        fail(errors, `plateaus[${j}].members: must name extras 0 to ${nExtras - 1} of this unit`);
       } else if (!Number.isInteger(f.centre) || !members.includes(f.centre)) {
-        fail(errors, `families[${j}].centre: must be one of its own members`);
+        fail(errors, `plateaus[${j}].centre: must be one of its own members`);
       }
     });
   }

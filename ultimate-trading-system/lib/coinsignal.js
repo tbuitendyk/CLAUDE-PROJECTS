@@ -110,12 +110,22 @@ function setSweepBands(raw) {
 }
 // WHAT THE THREE BOXES MAKE. The screen presses Apply and gets a list back; it
 // is not stored until the owner is happy with it, and they may edit it first.
-function bandsFromRange(from, to, step) {
+// AND, WHEN ASKED, ONE STEP BEYOND EACH END (3.204.0, owner: "I think we would
+// allow by default walking one step beyond the range ... not necessarily near
+// zero"). The walk's Apply asks for it, because a pick at the end of what was
+// walked has no neighbour on that side and the nine around it come up short.
+// The lower one is left out rather than clamped when it would reach zero or
+// below: a band of nought sits out on nothing and is not a neighbour.
+function bandsFromRange(from, to, step, { beyond = false } = {}) {
   const f = Number(from); const t = Number(to); const p = Number(step);
   if (!Number.isFinite(f) || f < 0) throw new Error(`the lowest sit-out band is 0 or more — not ${JSON.stringify(from)}`);
   if (!Number.isFinite(t) || t <= f) throw new Error(`the highest sit-out band is above the lowest (${f}) — not ${JSON.stringify(to)}`);
   if (!Number.isFinite(p) || p <= 0) throw new Error(`the step is above zero — not ${JSON.stringify(step)}`);
   const list = rangeBands(f, t, p);
+  if (beyond) {
+    if (f - p > 0) list.unshift(Number((f - p).toFixed(10)));
+    list.push(Number((list[list.length - 1] + p).toFixed(10)));
+  }
   if (list.length > MAX_SWEEP_BANDS) {
     throw new Error(`that is ${list.length} sit-out bands to sweep on every coin and chunk shape, and ${MAX_SWEEP_BANDS} is the most — widen the step, or narrow the range`);
   }

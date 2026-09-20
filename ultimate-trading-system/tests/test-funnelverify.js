@@ -1021,7 +1021,7 @@ module.exports = {
     // alone and cannot train such a member without its look-back and its band.
     // Empty is a unit that took nothing, which is what this fixture is.
     // 3.203.0: and which extras belong together, empty on a unit whose extras stand alone
-    assert.deepStrictEqual(src.unit, { trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-1d', extras: [], families: [] });
+    assert.deepStrictEqual(src.unit, { trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-1d', extras: [], plateaus: [] });
       assert.strictEqual(src.survivors.length, 2, 'every survivor, with its depth');
       assert.ok(src.survivors.every((x) => x.worst === 0), 'a rule of word dials puts every survivor at the middle');
       assert.deepStrictEqual({ by: src.pick.by, index: src.pick.index, label: src.pick.label, of: src.pick.of }, { by: 'depth', index: 0, label: src.survivors[0].label, of: 2 }, 'equal in depth: the first in the set\'s own order');

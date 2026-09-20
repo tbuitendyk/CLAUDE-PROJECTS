@@ -219,23 +219,23 @@ function memberReadings({ members, specs, testChunks, seed, unitKey, nullN, tag 
   });
 }
 // WHICH EXTRAS BELONG TOGETHER, checked against the extras they index (3.203.0).
-// A family naming an extra the unit does not carry is refused: the record it
+// A plateau naming an extra the unit does not carry is refused: the record it
 // would write could not be read back.
-function familiesOf(p, extras) {
-  const fams = Array.isArray(p && p.families) ? p.families : [];
+function plateausOf(p, extras) {
+  const plats = Array.isArray(p && p.plateaus) ? p.plateaus : [];
   const n = (extras || []).length;
-  return fams.map((f, j) => {
+  return plats.map((f, j) => {
     const members = Array.isArray(f && f.members) ? f.members.map(Number) : [];
     const centre = Number(f && f.centre);
     if (!members.length || members.some((i) => !Number.isInteger(i) || i < 0 || i >= n) || !members.includes(centre)) {
-      throw new Error(`family ${j + 1} names extras this unit does not carry (${JSON.stringify(f)}, ${n} extra(s))`);
+      throw new Error(`plateau ${j + 1} names extras this unit does not carry (${JSON.stringify(f)}, ${n} extra(s))`);
     }
     return { ...f, centre, members };
   });
 }
-// how a member that is too thin to train is handled: a family's centre refuses
+// how a member that is too thin to train is handled: a plateau's centre refuses
 // the unit, a neighbour goes silent; a lone extra is its own centre
-const whenThinFor = (spec, families) => (spec.at != null && families.length && !families.some((f) => f.centre === spec.at) ? 'silent' : 'refuse');
+const whenThinFor = (spec, plateaus) => (spec.at != null && plateaus.length && !plateaus.some((f) => f.centre === spec.at) ? 'silent' : 'refuse');
 
 // HOW MANY EXTRA BLOCKS A COMMITTEE WAS BUILT WITH, read off its own members
 // (3.183.0). Never recomputed from the combo size: that is the assumption this
@@ -546,10 +546,10 @@ const SAT_OUT = [0, 1, 0];
 // nine around a promoted row include bands a step higher than the one the walk
 // liked, and a band a step higher opens the gate a step less often -- often
 // enough to fall under the floor a direction can be learned from. The CENTRE
-// of a family is what the owner promoted, so a centre that cannot be trained
+// of a plateau is what the owner promoted, so a centre that cannot be trained
 // still refuses the unit, as one extra always has. A NEIGHBOUR that cannot be
 // trained becomes a SILENT member: it sits out on every decision, its record
-// says why, and the family it belongs to is read as that many fewer voices.
+// says why, and the plateau it belongs to is read as that many fewer voices.
 // `whenThin` is 'refuse' unless the caller says 'silent'.
 async function trainGatedMember({ spec, viewIdx, trainChunks, testChunks = [], holdChunks = [], predictChunks, weights = null, weightsOf = null, labelOf, share = null, whenThin = 'refuse' }) {
   const gate = gateOf(spec);
@@ -951,7 +951,7 @@ async function s1UnitTask(task) {
   const p = { ...task.params, pinnedFiles: pinnedFilesFor(task.pin) };
   const { geo, maps, split, reserve, windows, extras, tooEarly } = await unitChunks(combo, geometry, p);
   const { trainChunks, testChunks, holdChunks, bandPct, extraBandPcts } = split;
-  const families = familiesOf(p, extras);
+  const plateaus = plateausOf(p, extras);
   const views = viewsFor(combo, geo, extras.length);
   const predictChunks = holdChunks.length ? [...testChunks, ...holdChunks] : testChunks;
   const specs = require('./bracketwork').memberSpecs('logreg', combo.size, extras.length);
@@ -971,7 +971,7 @@ async function s1UnitTask(task) {
     const m = await trainGatedMember({
       spec, viewIdx: views[spec.view], trainChunks, testChunks, holdChunks, predictChunks, weights,
       weightsOf: (rows) => weightsFor(p, rows, fee), share: p.extraTrainShare, labelOf: null,
-      whenThin: whenThinFor(spec, families),
+      whenThin: whenThinFor(spec, plateaus),
     });
     members.push({ spec, ...m });
   }
@@ -1023,7 +1023,7 @@ async function s1UnitTask(task) {
     // its own deals, and how often it actually spoke.
     extras, extraBandPcts, tooEarly,
     // and which extras belong together around a promoted row (3.203.0)
-    families,
+    plateaus,
     perMember: memberReadings({ members, specs, testChunks, seed, unitKey, nullN, tag: 's1' }),
     tuning,
     trainedOn: weightsSaid(p, weights, weightReading),
@@ -1050,7 +1050,7 @@ async function s2UnitTask(task) {
     || tsH.length !== s1.ts.hold.length || tsH.some((t, i) => t !== s1.ts.hold[i])) {
     throw new Error('stage 1 votes do not line up with the rebuilt chunks — the price files changed underneath the set');
   }
-  const families = familiesOf(p, extras);
+  const plateaus = plateausOf(p, extras);
   const views = viewsFor(combo, geo, extras.length);
   const predictChunks = holdChunks.length ? [...testChunks, ...holdChunks] : testChunks;
   const specs = require('./bracketwork').memberSpecs('boost', combo.size, extras.length);
@@ -1070,7 +1070,7 @@ async function s2UnitTask(task) {
     const m = await trainGatedMember({
       spec, viewIdx: views[spec.view], trainChunks, testChunks, holdChunks, predictChunks, weights,
       weightsOf: (rows) => weightsFor(p, rows, fee), share: p.extraTrainShare, labelOf: null,
-      whenThin: whenThinFor(spec, families),
+      whenThin: whenThinFor(spec, plateaus),
     });
     members.push({ spec, ...m });
   }
@@ -1161,7 +1161,7 @@ async function s2UnitTask(task) {
     tuning3, tuning,
     trainedOn: weightsSaid(p, weights, weightReading),
     windows,
-    families,
+    plateaus,
   };
 }
 
@@ -2075,7 +2075,7 @@ module.exports = {
   newTallyAcc, tallyFold, serializeTallyAcc, mergeTallyAcc,
   addNoiseRow, mergeNoise, meanNoise, cents,
   // the arithmetic, exported so the tests can pencil it
-  forecastScore, pooledAt, leadOver, dealOrder, callFromProbs, trainProbMember, trainGatedMember, gateOf, ownSplitOf, ownReadingOf, forecastRows, memberReadings, familiesOf, whenThinFor, silentMember, unitChunks, predictMember, unreadChunksFor, forecastHashOf, tradeMapFor,
+  forecastScore, pooledAt, leadOver, dealOrder, callFromProbs, trainProbMember, trainGatedMember, gateOf, ownSplitOf, ownReadingOf, forecastRows, memberReadings, plateausOf, whenThinFor, silentMember, unitChunks, predictMember, unreadChunksFor, forecastHashOf, tradeMapFor,
   directionCalls, tuningSliceOf, directionMoney, moneyAgainstNull, TUNING_TAG,
   probsArr, probsObj,
 };

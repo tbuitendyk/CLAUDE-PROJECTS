@@ -115,4 +115,80 @@ function committeeOn({ specs, memberProbsTest, taus = null }) {
   return { nTest, models, families, testCalls, voicesFor, ctxOf, cutoffFor, denomFor, rungFor, levelFor, streamOf, agreedOn };
 }
 
-module.exports = { committeeOn, callsOf, callFromProbs, probsObj, CLASSES };
+// ---- THE PLATEAU, FOLDED TO ONE VOICE PER KIND (3.204.0) ----------------------
+//
+// The nine around a promoted row are one piece of evidence read nine times,
+// not nine pieces of evidence, so they do not get nine votes. Each plateau
+// folds to ONE voter per kind (LOGREG, BOOST) with two faces, as the owner
+// asked -- "that strength of signal from the combined nine to actually read
+// forward in that single new member ... to each of the two sides":
+//
+//   * its LEAN is the trained members' votes added and shared out, so a way of
+//     weighing that reads how hard a member leans (conviction, trained) sees
+//     how firmly the region agrees;
+//   * its CALL is the side at least `share` percent of the trained members
+//     called, so a way of weighing that counts (count, voices, families) sees
+//     one vote that is cast only when enough of the nine agree.
+//
+// A member that could not be trained (kind 'silent') is left out of both: it
+// has no opinion, which is not the same as a neutral one. A member the unit
+// carries outside every plateau is a voter on its own, as it always was.
+//
+// plateauVoters says WHO votes; foldPlateaus says WHAT each voter says at each
+// moment, from the members' own votes and calls. Pure, like everything here.
+function plateauVoters(specs, plateaus, speaking = null) {
+  const list = Array.isArray(specs) ? specs : [];
+  const inPlateau = new Set();
+  const groups = [];
+  (plateaus || []).forEach((pl, j) => {
+    const members = new Set((pl && pl.members) || []);
+    for (const model of ['logreg', 'boost']) {
+      const idx = [];
+      list.forEach((s, mi) => { if (s && s.at != null && members.has(s.at) && s.model === model) idx.push(mi); });
+      if (!idx.length) continue;
+      idx.forEach((mi) => inPlateau.add(mi));
+      const centre = idx.find((mi) => list[mi].at === pl.centre);
+      groups.push({
+        kind: 'plateau', plateau: j, model, members: idx,
+        speaking: speaking ? idx.filter((mi) => speaking.has(mi)) : idx,
+        centre: centre == null ? null : centre,
+        spec: { model, view: `plateau${j}`, at: null, plateau: j },
+      });
+    }
+  });
+  const voters = [];
+  list.forEach((s, mi) => { if (!inPlateau.has(mi)) voters.push({ kind: 'member', mi, spec: s }); });
+  return voters.concat(groups);
+}
+// what each voter says at each moment: a member as itself, a plateau folded
+function foldPlateaus({ voters, probsPerMember, callsPerMember, share }) {
+  const pct = Number(share);
+  if (!(pct > 0 && pct <= 100)) throw new Error(`a plateau's share is a percent above 0 up to 100, not ${JSON.stringify(share)}`);
+  const n = probsPerMember.length ? probsPerMember[0].length : 0;
+  const probs = [];
+  const calls = [];
+  for (const v of voters) {
+    if (v.kind !== 'plateau') { probs.push(probsPerMember[v.mi]); calls.push(callsPerMember[v.mi]); continue; }
+    const sp = v.speaking;
+    const need = Math.max(1, Math.ceil((pct / 100) * sp.length));
+    const pr = new Array(n);
+    const cl = new Array(n);
+    for (let i = 0; i < n; i++) {
+      if (!sp.length) { pr[i] = [0, 1, 0]; cl[i] = 0; continue; }
+      let d = 0; let m = 0; let u = 0; let up = 0; let down = 0;
+      for (const mi of sp) {
+        const p = probsPerMember[mi][i];
+        d += p[0]; m += p[1]; u += p[2];
+        const c = callsPerMember[mi][i];
+        if (c === 1) up++; else if (c === -1) down++;
+      }
+      pr[i] = [d / sp.length, m / sp.length, u / sp.length];
+      cl[i] = (up >= need && up > down) ? 1 : ((down >= need && down > up) ? -1 : 0);
+    }
+    probs.push(pr);
+    calls.push(cl);
+  }
+  return { probs, calls };
+}
+
+module.exports = { committeeOn, callsOf, callFromProbs, probsObj, CLASSES, plateauVoters, foldPlateaus };

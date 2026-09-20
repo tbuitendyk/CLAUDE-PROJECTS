@@ -102,7 +102,7 @@ function configFromStage4(src) {
     // to -- live resolves it against its own training stretch, the same way.
     extras: ((src.unit || {}).extras || []).map((e) => ({ lookbackHours: Number(e.lookbackHours), bandPct: Number(e.bandPct) })),
     // and which of those belong together around a promoted row (3.203.0)
-    families: ((src.unit || {}).families || []).map((f) => ({ centre: Number(f.centre), members: (f.members || []).map(Number) })),
+    plateaus: ((src.unit || {}).plateaus || []).map((f) => ({ centre: Number(f.centre), members: (f.members || []).map(Number) })),
     members: src.members.map((m) => ({ model: m.model, view: m.view, at: m.at ?? null })),
     cell: {
       quorum: null, entry: sv.entry, gate: sv.gate,

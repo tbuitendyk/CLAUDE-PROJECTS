@@ -283,7 +283,7 @@ app.post('/api/coins/sweep-bands', (req, res) => {
     // nothing; given a list, it stores it. The list is the truth of the matter,
     // and the range is only one way of filling it in.
     if (b.from !== undefined || b.to !== undefined || b.step !== undefined) {
-      return res.json({ bands: sg.bandsFromRange(b.from, b.to, b.step), applied: true });
+      return res.json({ bands: sg.bandsFromRange(b.from, b.to, b.step, { beyond: b.beyond === true }), applied: true });
     }
     return res.json(sg.setSweepBands(b.bands));
   } catch (err) { return res.status(400).json({ error: err.message }); }

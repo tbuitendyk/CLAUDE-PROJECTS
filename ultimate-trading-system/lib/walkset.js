@@ -560,14 +560,14 @@ function promoted() {
       // cannot write on the kept copy. It is a handful of rows and it costs
       // nothing; sharing them would be a fault that showed up as a wrong
       // number on some other screen an hour later.
-      rows.push({ ...r, ticked: !off.has(k), family: familyOf(head.id, r) });
+      rows.push({ ...r, ticked: !off.has(k), plateau: plateauOf(head.id, r) });
     }
     if (rows.length) out.push({ id: head.id, name: head.name, release: head.release, finishedAt: head.finishedAt, rows });
   }
   return out;
 }
 
-// THE FAMILY OF NINE AROUND A PROMOTED ROW (3.203.0, owner order: "the plateau
+// THE PLATEAU OF NINE AROUND A PROMOTED ROW (3.203.0, owner order: "the plateau
 // of nine ... those increments are not necessarily equally dispersed ... that
 // would just be inherited in that plateau of nine").
 //
@@ -580,21 +580,21 @@ function promoted() {
 //
 // IT IS WORKED OUT FROM THE SET'S ROWS EVERY TIME IT IS ASKED, never written
 // down beside the pick. A promoted row is a reference to its set (owner
-// decision, 2026-09-18), and its family is the same kind of thing: nine
+// decision, 2026-09-18), and its plateau is the same kind of thing: nine
 // references into the same rows. Stored, it could go stale against a re-walk;
 // derived, it cannot.
 //
-// AT AN EDGE THE FAMILY IS SMALLER, AND IT SAYS SO. A pick at the longest
+// AT AN EDGE THE PLATEAU IS SMALLER, AND IT SAYS SO. A pick at the longest
 // look-back the set ran has no longer neighbour; `missing` names each side
-// that is not there, so a family of six is never mistaken for a family of nine
+// that is not there, so a plateau of six is never mistaken for a plateau of nine
 // with three that failed. A row whose look-back is the chunk shape's own span
-// has no family at all, for the reason it adds no member: its numbers are the
+// has no plateau at all, for the reason it adds no member: its numbers are the
 // ones every member already reads.
-const FAMILY_SIDES = Object.freeze({
+const PLATEAU_SIDES = Object.freeze({
   shorter: 'no shorter look-back in this set', longer: 'no longer look-back in this set',
   lower: 'no lower band in this set', higher: 'no higher band in this set',
 });
-function familyOf(id, row) {
+function plateauOf(id, row) {
   const back = row.lookback == null || row.lookback === 'own' ? null : Number(row.lookback);
   const band = Number(row.band);
   if (!Number.isFinite(back) || !(back > 0) || !Number.isFinite(band) || !(band > 0)) return null;
@@ -619,15 +619,15 @@ function familyOf(id, row) {
   if (li < 0 || bi < 0) return null;             // the row is not on its own set's grid
   const missing = [];
   const lookbacks = [];
-  if (li > 0) lookbacks.push(lbs[li - 1]); else missing.push(FAMILY_SIDES.shorter);
+  if (li > 0) lookbacks.push(lbs[li - 1]); else missing.push(PLATEAU_SIDES.shorter);
   lookbacks.push(back);
-  if (li < lbs.length - 1) lookbacks.push(lbs[li + 1]); else missing.push(FAMILY_SIDES.longer);
+  if (li < lbs.length - 1) lookbacks.push(lbs[li + 1]); else missing.push(PLATEAU_SIDES.longer);
   const bandList = [];
-  if (bi > 0) bandList.push(bds[bi - 1]); else missing.push(FAMILY_SIDES.lower);
+  if (bi > 0) bandList.push(bds[bi - 1]); else missing.push(PLATEAU_SIDES.lower);
   bandList.push(band);
-  if (bi < bds.length - 1) bandList.push(bds[bi + 1]); else missing.push(FAMILY_SIDES.higher);
+  if (bi < bds.length - 1) bandList.push(bds[bi + 1]); else missing.push(PLATEAU_SIDES.higher);
   // every cell of the three by three that the set actually walked, look-back
-  // first and band within it, so a full family reads in one fixed order
+  // first and band within it, so a full plateau reads in one fixed order
   const rows = [];
   for (const h of lookbacks) {
     for (const b of bandList) {
@@ -683,12 +683,12 @@ function promotedLeans() {
 // extras, in the order they are met. That is the list the design asks for, and
 // it is why this collects rather than skipping the second.
 //
-// AND EACH ROW BRINGS ITS FAMILY (3.203.0). A promoted row is nine extras, not
-// one: the row and the eight around it on its set's grid (familyOf), so the
+// AND EACH ROW BRINGS ITS PLATEAU (3.203.0). A promoted row is nine extras, not
+// one: the row and the eight around it on its set's grid (plateauOf), so the
 // sweep trains all nine and the committee can read how firmly the region
-// agrees rather than how one point in it happened to land. `families` says
+// agrees rather than how one point in it happened to land. `plateaus` says
 // which extras belong together and which is the centre; two rows whose
-// families overlap share the extras they have in common, because the same
+// plateaus overlap share the extras they have in common, because the same
 // look-back and band on the same coin is the same numbers, and one member
 // trained twice would be one member counted twice.
 function promotedUnits() {
@@ -697,7 +697,7 @@ function promotedUnits() {
     for (const r of set.rows) {
       if (!r.ticked) continue;
       const k = `${r.coin}|${r.geometry}`;
-      if (!at.has(k)) at.set(k, { coin: r.coin, geometry: r.geometry, extras: [], families: [] });
+      if (!at.has(k)) at.set(k, { coin: r.coin, geometry: r.geometry, extras: [], plateaus: [] });
       const back = r.lookback == null || r.lookback === 'own' ? null : Number(r.lookback);
       const band = Number(r.band);
       // A ROW WITH NO LOOK-BACK OF ITS OWN ADDS NO MEMBER. `own` means the
@@ -707,10 +707,10 @@ function promotedUnits() {
       if (!Number.isFinite(back) || !(back > 0) || !Number.isFinite(band) || !(band > 0)) continue;
       const unit = at.get(k);
       const from = { set: set.id, name: set.name, key: r.key };
-      const fam = r.family || familyOf(set.id, r);
-      // the family's rows, the centre among them; a row off its own grid is
-      // carried alone, honestly, as a family of one
-      const cells = fam && fam.rows && fam.rows.length ? fam.rows : [{ key: r.key, lookbackHours: back, bandPct: Math.abs(band), centre: true }];
+      const plat = r.plateau || plateauOf(set.id, r);
+      // the plateau's rows, the centre among them; a row off its own grid is
+      // carried alone, honestly, as a plateau of one
+      const cells = plat && plat.rows && plat.rows.length ? plat.rows : [{ key: r.key, lookbackHours: back, bandPct: Math.abs(band), centre: true }];
       const indexOf = (c) => {
         const have = unit.extras.findIndex((e) => e.lookbackHours === c.lookbackHours && e.bandPct === c.bandPct);
         if (have >= 0) return have;
@@ -719,10 +719,10 @@ function promotedUnits() {
       };
       const members = cells.map(indexOf);
       const centre = members[cells.findIndex((c) => c.centre)];
-      unit.families.push({
+      unit.plateaus.push({
         centre, members, from,
-        lookbacks: fam ? fam.lookbacks : [back], bands: fam ? fam.bands : [Math.abs(band)],
-        of: fam ? fam.of : 1, missing: fam ? fam.missing : [],
+        lookbacks: plat ? plat.lookbacks : [back], bands: plat ? plat.bands : [Math.abs(band)],
+        of: plat ? plat.of : 1, missing: plat ? plat.missing : [],
       });
     }
   }
@@ -814,7 +814,7 @@ module.exports = {
   PARTS, partFile, startPart, appendPart, readPart, removePart, unfinishedWalks, partKeys, sealPart,
   setPicked, setPickedMany, setRowOff, clearPicks, pickedUnits, promoted, promotedUnits, promotedLeans, deleteWalk,
   // the nine around a promoted row, read off its set (3.203.0)
-  familyOf, FAMILY_SIDES,
+  plateauOf, PLATEAU_SIDES,
   // one parse per file, and only when the file changes (3.191.0)
   briefOf, forgetBrief,
   // the picks beside the set, not inside it (3.194.0)

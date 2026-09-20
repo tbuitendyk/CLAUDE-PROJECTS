@@ -679,9 +679,9 @@ function unitsForPassers(pairs, sizes, compare = null) {
     // alongside other coins becomes several units and each one is the same
     // coin and chunk shape, so each one carries the same extras.
     const extras = Array.isArray(p.extras) ? p.extras : [];
-    // and the families over those extras (3.203.0), which index into them
-    const families = Array.isArray(p.families) ? p.families : [];
-    units.push(...unitsFor([coin], sizes, [p.geometry], compare).map((u) => (extras.length ? { ...u, extras, families } : u)));
+    // and the plateaus over those extras (3.203.0), which index into them
+    const plateaus = Array.isArray(p.plateaus) ? p.plateaus : [];
+    units.push(...unitsFor([coin], sizes, [p.geometry], compare).map((u) => (extras.length ? { ...u, extras, plateaus } : u)));
   }
   return units;
 }
@@ -711,7 +711,7 @@ function startStage1(params) {
   // read off the other. Ticked, the unit list is identical, coin for coin and
   // shape for shape, and the extra members are the only thing that changed.
   const plain = params.plainUnits === true;
-  const dropExtras = (list) => (plain && Array.isArray(list) ? list.map((u) => ({ ...u, extras: [], families: [] })) : list);
+  const dropExtras = (list) => (plain && Array.isArray(list) ? list.map((u) => ({ ...u, extras: [], plateaus: [] })) : list);
   // ONE PLACE, so what is RUN and what is RECORDED are the same list. The
   // record is what a relaunch and every child stage rebuild from, and a record
   // that carried extras a run did not use would grow members on the relaunch --
@@ -727,7 +727,7 @@ function startStage1(params) {
         coin: String((x || {}).coin || '').trim().toUpperCase(),
         geometry: (x || {}).geometry,
         extras: Array.isArray((x || {}).extras) ? (x || {}).extras : [],
-        families: Array.isArray((x || {}).families) ? (x || {}).families : [],
+        plateaus: Array.isArray((x || {}).plateaus) ? (x || {}).plateaus : [],
       })).filter((x) => x.coin && GEOMETRIES[x.geometry])
       : null);
   // THE REFUSAL QUOTES THE TICK BY ITS LABEL, so it has to be the label the
@@ -877,7 +877,7 @@ function startStage1(params) {
       // PER UNIT, NOT PER RUN (3.184.0). `p` is one object shared by the whole
       // launch; a unit's extras are its own, so they ride beside it. Units with
       // none get `p` exactly as before.
-      geometry: u.geometry, params: (u.extras || []).length ? { ...p, extras: u.extras, families: u.families || [] } : p,
+      geometry: u.geometry, params: (u.extras || []).length ? { ...p, extras: u.extras, plateaus: u.plateaus || [] } : p,
       seed: doc.seed, unitKey: unitKeyOf(u), nullN, fee, pin: pinOf(doc),
     }));
     const records = new Array(units.length).fill(null);
@@ -899,7 +899,7 @@ function startStage1(params) {
           // of every label. tooEarly is what the extras' warm-up cost.
           extras: res.extras && res.extras.length ? res.extras : null,
           // and which of them belong together around a promoted row (3.203.0)
-          families: res.families && res.families.length ? res.families : null,
+          plateaus: res.plateaus && res.plateaus.length ? res.plateaus : null,
           extraBandPcts: res.extraBandPcts && res.extraBandPcts.length ? res.extraBandPcts : null,
           tooEarly: res.tooEarly || 0,
           // AND EACH MEMBER READ ON THE QUESTION IT WAS ASKED, with its own
@@ -1729,7 +1729,7 @@ function startStage2(params) {
         // committee looking at columns the other half never saw, and a chunk
         // count that would not even line up, because the extras' warm-up
         // dropped the earliest chunks at stage 1.
-        geometry: rec.geometry, params: (rec.extras || []).length ? { ...p, extras: rec.extras, families: rec.families || [] } : p,
+        geometry: rec.geometry, params: (rec.extras || []).length ? { ...p, extras: rec.extras, plateaus: rec.plateaus || [] } : p,
         pin: pinOf(doc),
         s1: {
           probs,
@@ -1819,7 +1819,7 @@ function startStage2(params) {
           // so every stage 2 set read as a committee with no extra members and
           // no member readings at all, which is what the owner saw.
           extras: (rec.extras || []).length ? rec.extras : null,
-          families: (rec.families || []).length ? rec.families : null,
+          plateaus: (rec.plateaus || []).length ? rec.plateaus : null,
           extraBandPcts: res.extraBandPcts && res.extraBandPcts.length ? res.extraBandPcts : null,
           tooEarly: res.tooEarly || rec.tooEarly || 0,
           // AND EACH MEMBER READ ON THE QUESTION IT WAS ASKED, both halves of
@@ -2800,14 +2800,14 @@ function startStage3(params) {
   const { records: parentRecords, savedS2, selected } = chosen;
   const carry = selected ? 0 : chosen.carry;
   if (!parentRecords.length) throw new Error(`${parent.name} holds no records — nothing to price`);
-  // A UNIT WHOSE EXTRA MEMBERS COME IN FAMILIES CANNOT BE PRICED BY THIS
+  // A UNIT WHOSE EXTRA MEMBERS COME IN PLATEAUS CANNOT BE PRICED BY THIS
   // RELEASE (3.203.0). The nine around a promoted row are meant to fold to ONE
   // vote per kind, by a bar this screen does not yet carry; priced as nine
   // votes they would outvote the committee they were added to. Refused by
   // name rather than priced wrong.
-  const withFamilies = parentRecords.filter((r) => Array.isArray(r.families) && r.families.length).length;
-  if (withFamilies) {
-    throw new Error(`${withFamilies} of the units in ${parent.name} carry families of extra members, and this release does not fold a family to one vote — stage 3 cannot price them yet`);
+  const withPlateaus = parentRecords.filter((r) => Array.isArray(r.plateaus) && r.plateaus.length).length;
+  if (withPlateaus) {
+    throw new Error(`${withPlateaus} of the units in ${parent.name} carry plateaus of extra members, and this release does not fold a plateau to one vote — stage 3 cannot price them yet`);
   }
   // The committee sizes actually being priced decide which agreement shares
   // can be told apart: two shares landing on the same rung for every unit in
@@ -5153,6 +5153,7 @@ function unitMembers(id, u) {
   const per = Array.isArray(rec.perMember) ? rec.perMember : [];
   const extras = Array.isArray(rec.extras) ? rec.extras : [];
   const bands = Array.isArray(rec.extraBandPcts) ? rec.extraBandPcts : [];
+  const plateaus = Array.isArray(rec.plateaus) ? rec.plateaus : [];
   const members = specs.map((sp, i) => {
     const r = per[i] || null;
     // AN EXTRA MEMBER IS THE ONE WHOSE SPEC CARRIES A PLACE IN THE EXTRAS LIST.
@@ -5186,6 +5187,12 @@ function unitMembers(id, u) {
       spoke: r ? r.spoke : null,
       chunks: r ? r.chunks : null,
       rightWhenSpoke: r ? r.rightWhenSpoke : null,
+      // WHICH PLATEAU IT BELONGS TO (3.204.0), and whether it is the row
+      // that was promoted or one of the eight around it
+      plateau: at == null ? null : (() => { const j = plateaus.findIndex((pl) => (pl.members || []).includes(at)); return j < 0 ? null : j; })(),
+      centre: at != null && plateaus.some((pl) => pl.centre === at),
+      // and why it never speaks, when it could not be trained (3.203.0)
+      silent: r && r.silent ? r.silent : null,
       // WHERE IT WAS READ, AND WHAT IT TRAINED ON (3.202.0). An extra is read
       // on its own rest of the history under the set's split; every other
       // member on the test window. Both are stored, so both are said.
@@ -5211,10 +5218,59 @@ function unitMembers(id, u) {
     scored: per.length > 0,
     // the split the set's extra members trained under, or null before it existed
     extraTrainShare: (doc.params || {}).extraTrainShare ?? null,
-    // the families the extras belong to (3.203.0), indexing the members by `at`
-    families: Array.isArray(rec.families) ? rec.families : [],
+    // the plateaus the extras belong to (3.203.0), indexing the members by `at`
+    plateaus,
+    // and each of them read on the test window from the stored votes (3.204.0)
+    plateauRows: plateauReadings(id, rec, specs, plateaus, extras),
     rows: members,
   };
+}
+// THE PLATEAUS READ ON THE TEST WINDOW, FROM THE STORED VOTES (3.204.0). Folded
+// through the one definition stage 3 will price them by (lib/committee.js), at
+// a share of half, so what the owner reads here is what the pricing reads. A
+// member that could not be trained is left out, as the fold leaves it out.
+function plateauReadings(id, rec, specs, plateaus, extras) {
+  if (!plateaus.length || !rec.blocks || !rec.blocks.votes) return [];
+  const committee = require('./committee');
+  const sw = require('./stagework');
+  const votes = unitRows(id, 'votes', rec.blocks.votes, rec.u).filter((v) => v.w === 0);
+  if (!votes.length) return [];
+  const labels = votes.map((v) => v.y);
+  const probsPerMember = specs.map((_, mi) => votes.map((v) => v.m[mi]));
+  const models = rec.blocks.models ? unitRows(id, 'models', rec.blocks.models, rec.u) : [];
+  const speaking = new Set(specs.map((_, mi) => mi).filter((mi) => {
+    const md = models.find((m) => m.mi === mi);
+    return !(md && md.saved && md.saved.kind === 'silent');
+  }));
+  const callsPerMember = committee.callsOf(probsPerMember, 'argmax', null);
+  const voters = committee.plateauVoters(specs, plateaus, speaking).filter((v) => v.kind === 'plateau');
+  const { probs, calls } = committee.foldPlateaus({ voters, probsPerMember, callsPerMember, share: 50 });
+  return voters.map((v, k) => {
+    let spoke = 0; let unanimous = 0; let split = 0; let called = 0; let right = 0;
+    const leanOn = []; const centreOn = []; const labOn = [];
+    for (let i = 0; i < votes.length; i++) {
+      let up = 0; let down = 0;
+      for (const mi of v.speaking) { const c = callsPerMember[mi][i]; if (c === 1) up++; else if (c === -1) down++; }
+      if (!up && !down) continue;
+      spoke++;
+      if (up && down) split++; else unanimous++;
+      if (calls[k][i]) { called++; if (calls[k][i] === labels[i]) right++; }
+      leanOn.push(probs[k][i]); labOn.push(labels[i]);
+      if (v.centre != null) centreOn.push(probsPerMember[v.centre][i]);
+    }
+    const pl = plateaus[v.plateau] || {};
+    const centreExtra = extras[pl.centre] || null;
+    return {
+      plateau: v.plateau, model: v.model,
+      members: v.members.length, trained: v.speaking.length, silent: v.members.length - v.speaking.length,
+      of: pl.of ?? null, lookbacks: pl.lookbacks || [], bands: pl.bands || [], missing: pl.missing || [],
+      centreLookbackHours: centreExtra ? centreExtra.lookbackHours ?? null : null,
+      centreBandPct: centreExtra ? centreExtra.bandPct ?? null : null,
+      chunks: votes.length, spoke, unanimous, split, called, rightWhenCalled: right,
+      leanScore: leanOn.length ? sw.forecastScore([leanOn], labOn) : null,
+      centreScore: centreOn.length ? sw.forecastScore([centreOn], labOn) : null,
+    };
+  });
 }
 
 function stage1Table(id, from, n, filters = null) {
@@ -8249,8 +8305,8 @@ async function stage4GreenlightSource(setId, asked = {}) {
       // against its own training stretch, exactly as stage 1 did against its.
       extras: (rec.extras || []).map((e) => ({ lookbackHours: e.lookbackHours, bandPct: e.bandPct })),
       // and which of them belong together around a promoted row (3.203.0),
-      // so live folds a family the way the set was priced
-      families: (rec.families || []).map((f) => ({ centre: f.centre, members: (f.members || []).slice() })) },
+      // so live folds a plateau the way the set was priced
+      plateaus: (rec.plateaus || []).map((f) => ({ centre: f.centre, members: (f.members || []).slice() })) },
     survivor: { ...survivor, bandPct: survivor.bandMode === 'auto' || survivor.bandMode == null ? rec.bandPct : Math.abs(Number(survivor.bandMode)), halfLife: hl ? hl.halfLife : null },
     // THE STOP AND THE LADDER AS THE SET FROZE THEM AT ITS PRESS (3.149.0): the survivor's own choice on record, or none
     stop: ((doc.stopChoices || {})[survivor.label]) ? JSON.parse(JSON.stringify(doc.stopChoices[survivor.label])) : null,

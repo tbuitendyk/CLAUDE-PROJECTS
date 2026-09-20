@@ -175,12 +175,12 @@ module.exports = {
       'deleting the walk set takes its promoted rows with it');
   },
 
-  // THE FAMILY OF NINE AROUND A PROMOTED ROW (3.203.0, owner order: "the
+  // THE PLATEAU OF NINE AROUND A PROMOTED ROW (3.203.0, owner order: "the
   // plateau of nine ... those increments are not necessarily equally dispersed
   // ... that would just be inherited in that plateau of nine"). Read off the
   // set's own rows, in the set's own spacing; smaller at an edge and it says
   // which side is missing; nothing for a row at the chunk shape's own span.
-  aPromotedRowBringsItsFamilyOfNineOffItsOwnSet() {
+  aPromotedRowBringsItsPlateauOfNineOffItsOwnSet() {
     const ws = require('../lib/walkset');
     // LTC daily-1d walked at four look-backs and four bands, unevenly spaced,
     // plus the shape's own span; XLM walked at one look-back only
@@ -188,58 +188,58 @@ module.exports = {
     for (const h of [24, 48, 96, 168]) for (const b of [100, 150, 200, 300]) rows.push(aRow({ lookback: String(h), band: b }));
     rows.push(aRow({ lookback: 'own', band: 150 }));
     rows.push(aRow({ coin: 'XLMUSDT', lookback: '48', band: 300 }));
-    const got = ws.saveWalk({ asked: {}, shapes: [], collapse: [], rows, startedAt: 1, finishedAt: 2, name: 'family set' });
+    const got = ws.saveWalk({ asked: {}, shapes: [], collapse: [], rows, startedAt: 1, finishedAt: 2, name: 'plateau set' });
     const key = (h, b, coin = 'LTCUSDT') => `${coin}|daily-1d|${h}|${b}`;
     try {
       // a row in the middle of the grid: nine, look-back first and band within it
-      const mid = ws.familyOf(got.id, { key: key(96, 150), coin: 'LTCUSDT', geometry: 'daily-1d', lookback: '96', band: 150 });
+      const mid = ws.plateauOf(got.id, { key: key(96, 150), coin: 'LTCUSDT', geometry: 'daily-1d', lookback: '96', band: 150 });
       assert.strictEqual(mid.size, 9); assert.strictEqual(mid.of, 9);
       assert.deepStrictEqual(mid.lookbacks, [48, 96, 168], 'the set\'s own neighbours, in the set\'s own spacing');
       assert.deepStrictEqual(mid.bands, [100, 150, 200]);
       assert.deepStrictEqual(mid.missing, []);
       assert.deepStrictEqual(mid.rows.map((r) => [r.lookbackHours, r.bandPct, r.centre]),
         [[48, 100, false], [48, 150, false], [48, 200, false], [96, 100, false], [96, 150, true], [96, 200, false], [168, 100, false], [168, 150, false], [168, 200, false]]);
-      assert.ok(mid.rows.every((r) => r.key === key(r.lookbackHours, r.bandPct)), 'every family row is a key of the set');
+      assert.ok(mid.rows.every((r) => r.key === key(r.lookbackHours, r.bandPct)), 'every plateau row is a key of the set');
       // a row in the corner: four, and both missing sides are named
-      const corner = ws.familyOf(got.id, { key: key(24, 100), coin: 'LTCUSDT', geometry: 'daily-1d', lookback: '24', band: 100 });
+      const corner = ws.plateauOf(got.id, { key: key(24, 100), coin: 'LTCUSDT', geometry: 'daily-1d', lookback: '24', band: 100 });
       assert.strictEqual(corner.size, 4);
       assert.deepStrictEqual(corner.lookbacks, [24, 48]); assert.deepStrictEqual(corner.bands, [100, 150]);
-      assert.deepStrictEqual(corner.missing, [ws.FAMILY_SIDES.shorter, ws.FAMILY_SIDES.lower]);
+      assert.deepStrictEqual(corner.missing, [ws.PLATEAU_SIDES.shorter, ws.PLATEAU_SIDES.lower]);
       // an edge on one axis only: six
-      const edge = ws.familyOf(got.id, { key: key(168, 200), coin: 'LTCUSDT', geometry: 'daily-1d', lookback: '168', band: 200 });
-      assert.strictEqual(edge.size, 6); assert.deepStrictEqual(edge.missing, [ws.FAMILY_SIDES.longer]);
-      // the shape's own span has no family; a coin walked at one look-back has a family of three
-      assert.strictEqual(ws.familyOf(got.id, { key: key('own', 150), coin: 'LTCUSDT', geometry: 'daily-1d', lookback: 'own', band: 150 }), null);
-      const lone = ws.familyOf(got.id, { key: key(48, 300, 'XLMUSDT'), coin: 'XLMUSDT', geometry: 'daily-1d', lookback: '48', band: 300 });
-      assert.strictEqual(lone.size, 1, 'XLM was walked at one look-back and one band, so its family is itself');
-      assert.deepStrictEqual(lone.missing, [ws.FAMILY_SIDES.shorter, ws.FAMILY_SIDES.longer, ws.FAMILY_SIDES.lower, ws.FAMILY_SIDES.higher]);
+      const edge = ws.plateauOf(got.id, { key: key(168, 200), coin: 'LTCUSDT', geometry: 'daily-1d', lookback: '168', band: 200 });
+      assert.strictEqual(edge.size, 6); assert.deepStrictEqual(edge.missing, [ws.PLATEAU_SIDES.longer]);
+      // the shape's own span has no plateau; a coin walked at one look-back has a plateau of three
+      assert.strictEqual(ws.plateauOf(got.id, { key: key('own', 150), coin: 'LTCUSDT', geometry: 'daily-1d', lookback: 'own', band: 150 }), null);
+      const lone = ws.plateauOf(got.id, { key: key(48, 300, 'XLMUSDT'), coin: 'XLMUSDT', geometry: 'daily-1d', lookback: '48', band: 300 });
+      assert.strictEqual(lone.size, 1, 'XLM was walked at one look-back and one band, so its plateau is itself');
+      assert.deepStrictEqual(lone.missing, [ws.PLATEAU_SIDES.shorter, ws.PLATEAU_SIDES.longer, ws.PLATEAU_SIDES.lower, ws.PLATEAU_SIDES.higher]);
 
-      // PROMOTED: each row says its family, and the units carry nine extras per
-      // row with overlapping families sharing the extras they have in common
+      // PROMOTED: each row says its plateau, and the units carry nine extras per
+      // row with overlapping plateaus sharing the extras they have in common
       ws.setPickedMany(got.id, [key(96, 150), key(24, 100), key('own', 150)], true);
       const group = ws.promoted().find((g) => g.id === got.id);
-      assert.strictEqual(group.rows.find((r) => r.key === key(96, 150)).family.size, 9, 'the promoted list does not say the family');
-      assert.strictEqual(group.rows.find((r) => r.key === key('own', 150)).family, null);
+      assert.strictEqual(group.rows.find((r) => r.key === key(96, 150)).plateau.size, 9, 'the promoted list does not say the plateau');
+      assert.strictEqual(group.rows.find((r) => r.key === key('own', 150)).plateau, null);
       const [unit] = ws.promotedUnits();
       assert.strictEqual(unit.coin, 'LTCUSDT');
-      // 9 + 4 minus the two rows the families share: (48,100) and (48,150)
+      // 9 + 4 minus the two rows the plateaus share: (48,100) and (48,150)
       assert.strictEqual(unit.extras.length, 11, `nine and four with two shared should be eleven extras, got ${unit.extras.length}`);
       assert.strictEqual(new Set(unit.extras.map((e) => `${e.lookbackHours}|${e.bandPct}`)).size, 11, 'an extra is carried twice');
-      assert.strictEqual(unit.families.length, 2, 'one family per promoted row with a look-back of its own');
+      assert.strictEqual(unit.plateaus.length, 2, 'one plateau per promoted row with a look-back of its own');
       // found by the row each is around, because the picks file keeps its own order
-      const f9 = unit.families.find((f) => f.from.key === key(96, 150));
-      const f4 = unit.families.find((f) => f.from.key === key(24, 100));
-      assert.ok(f9 && f4, 'each promoted row has a family around it');
+      const f9 = unit.plateaus.find((f) => f.from.key === key(96, 150));
+      const f4 = unit.plateaus.find((f) => f.from.key === key(24, 100));
+      assert.ok(f9 && f4, 'each promoted row has a plateau around it');
       assert.strictEqual(f9.members.length, 9); assert.strictEqual(f4.members.length, 4);
       assert.deepStrictEqual([unit.extras[f9.centre].lookbackHours, unit.extras[f9.centre].bandPct], [96, 150], 'the centre is the promoted row');
       assert.deepStrictEqual([unit.extras[f4.centre].lookbackHours, unit.extras[f4.centre].bandPct], [24, 100]);
       assert.ok(f9.members.includes(f9.centre) && f4.members.includes(f4.centre));
       const shared = f9.members.filter((i) => f4.members.includes(i));
-      assert.deepStrictEqual(shared.map((i) => [unit.extras[i].lookbackHours, unit.extras[i].bandPct]).sort(), [[48, 100], [48, 150]], 'the two families do not share the rows they have in common');
-      assert.deepStrictEqual(f4.missing, [ws.FAMILY_SIDES.shorter, ws.FAMILY_SIDES.lower]);
-      assert.strictEqual(f9.from.key, key(96, 150), 'a family says which promoted row it is around');
+      assert.deepStrictEqual(shared.map((i) => [unit.extras[i].lookbackHours, unit.extras[i].bandPct]).sort(), [[48, 100], [48, 150]], 'the two plateaus do not share the rows they have in common');
+      assert.deepStrictEqual(f4.missing, [ws.PLATEAU_SIDES.shorter, ws.PLATEAU_SIDES.lower]);
+      assert.strictEqual(f9.from.key, key(96, 150), 'a plateau says which promoted row it is around');
       assert.ok(unit.extras.every((e) => e.from && e.from.set === got.id && e.from.key), 'every extra says which set and row it is');
-      // the members are in grid order, so a full family reads the same way every time
+      // the members are in grid order, so a full plateau reads the same way every time
       assert.deepStrictEqual(f9.members.map((i) => [unit.extras[i].lookbackHours, unit.extras[i].bandPct]),
         [[48, 100], [48, 150], [48, 200], [96, 100], [96, 150], [96, 200], [168, 100], [168, 150], [168, 200]]);
     } finally { try { ws.deleteWalk(got.id, got.id); } catch (_) { /* already gone */ } }

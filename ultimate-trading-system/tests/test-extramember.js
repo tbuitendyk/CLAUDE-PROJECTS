@@ -384,22 +384,22 @@ function theLiveConfigurationCarriesWhatAWalkSetAdded() {
   // marked at, which is the whole defect this release is closing.
   bad({ members: [{ model: 'logreg', view: 'full', at: null }, { model: 'boost', view: 'extra0', at: null }] }, /members\[1\]\.at: must be 0/);
   bad({ members: [{ model: 'logreg', view: 'full', at: 0 }] }, /must be null for a member that reads no extra/);
-  // AND WHICH EXTRAS BELONG TOGETHER (3.203.0): absent is no family; a family
+  // AND WHICH EXTRAS BELONG TOGETHER (3.203.0): absent is no plateau; a plateau
   // names extras the unit carries and its centre is one of them
-  assert.ok(validateConfig({ ...withOne, families: [] }).ok, 'an empty families list is refused');
-  assert.ok(validateConfig({ ...withOne, families: [{ centre: 0, members: [0] }] }).ok, 'a family of one around the only extra is refused');
-  bad({ families: 'nine' }, /families: must be an array/);
-  bad({ families: [{ centre: 0, members: [0, 1] }] }, /families\[0\]\.members: must name extras 0 to 0/);
-  bad({ families: [{ centre: 1, members: [0] }] }, /families\[0\]\.centre: must be one of its own members/);
-  bad({ families: [{ centre: 0, members: [] }] }, /families\[0\]\.members/);
+  assert.ok(validateConfig({ ...withOne, plateaus: [] }).ok, 'an empty plateaus list is refused');
+  assert.ok(validateConfig({ ...withOne, plateaus: [{ centre: 0, members: [0] }] }).ok, 'a plateau of one around the only extra is refused');
+  bad({ plateaus: 'nine' }, /plateaus: must be an array/);
+  bad({ plateaus: [{ centre: 0, members: [0, 1] }] }, /plateaus\[0\]\.members: must name extras 0 to 0/);
+  bad({ plateaus: [{ centre: 1, members: [0] }] }, /plateaus\[0\]\.centre: must be one of its own members/);
+  bad({ plateaus: [{ centre: 0, members: [] }] }, /plateaus\[0\]\.members/);
 }
 
 // A NEIGHBOUR TOO THIN TO TRAIN GOES SILENT, A CENTRE STILL REFUSES (3.203.0).
 // The nine include a band a step higher than the walk liked, and a higher band
-// opens the gate less often -- so a family will sometimes have a member with
+// opens the gate less often -- so a plateau will sometimes have a member with
 // too few decisions to learn a direction from. Held on a real fit: what such
 // a member becomes, that everything reads it without a branch, and that the
-// centre of a family, being what the owner promoted, refuses as one extra
+// centre of a plateau, being what the owner promoted, refuses as one extra
 // always has.
 async function aNeighbourTooThinToTrainGoesSilentAndACentreStillRefuses() {
   const sw = require('../lib/stagework');
@@ -452,38 +452,38 @@ async function aNeighbourTooThinToTrainGoesSilentAndACentreStillRefuses() {
   const b = await sw.trainGatedMember({ ...args, spec: wide, whenThin: 'refuse' });
   assert.strictEqual(a.saved.kind, 'logreg'); assert.deepStrictEqual(a.probs, b.probs);
   assert.strictEqual(a.silent, undefined);
-  // WHICH MEMBERS MAY GO SILENT: a family's neighbours, never its centre, and
+  // WHICH MEMBERS MAY GO SILENT: a plateau's neighbours, never its centre, and
   // never a lone extra
-  const fams = [{ centre: 0, members: [0, 1] }];
-  assert.strictEqual(sw.whenThinFor(wide, fams), 'refuse', 'a family\'s centre may go silent');
-  assert.strictEqual(sw.whenThinFor(thinSpec, fams), 'silent', 'a neighbour is refused rather than silent');
+  const plats = [{ centre: 0, members: [0, 1] }];
+  assert.strictEqual(sw.whenThinFor(wide, plats), 'refuse', 'a plateau\'s centre may go silent');
+  assert.strictEqual(sw.whenThinFor(thinSpec, plats), 'silent', 'a neighbour is refused rather than silent');
   assert.strictEqual(sw.whenThinFor(thinSpec, []), 'refuse', 'a lone extra may go silent');
-  assert.strictEqual(sw.whenThinFor({ model: 'logreg', view: 'full' }, fams), 'refuse');
-  // and a family is checked against the extras it indexes
+  assert.strictEqual(sw.whenThinFor({ model: 'logreg', view: 'full' }, plats), 'refuse');
+  // and a plateau is checked against the extras it indexes
   const ex = [{ lookbackHours: 24, bandPct: 100 }, { lookbackHours: 24, bandPct: 900 }];
-  assert.deepStrictEqual(sw.familiesOf({ families: fams }, ex).map((f) => f.members), [[0, 1]]);
-  assert.deepStrictEqual(sw.familiesOf({}, ex), []);
-  assert.throws(() => sw.familiesOf({ families: [{ centre: 0, members: [0, 2] }] }, ex), /names extras this unit does not carry/);
-  assert.throws(() => sw.familiesOf({ families: [{ centre: 2, members: [0, 1] }] }, ex), /names extras this unit does not carry/);
-  // AND THE FAMILIES RIDE ON EVERY RECORD THAT NEEDS THEM: the launch, both
+  assert.deepStrictEqual(sw.plateausOf({ plateaus: plats }, ex).map((f) => f.members), [[0, 1]]);
+  assert.deepStrictEqual(sw.plateausOf({}, ex), []);
+  assert.throws(() => sw.plateausOf({ plateaus: [{ centre: 0, members: [0, 2] }] }, ex), /names extras this unit does not carry/);
+  assert.throws(() => sw.plateausOf({ plateaus: [{ centre: 2, members: [0, 1] }] }, ex), /names extras this unit does not carry/);
+  // AND THE PLATEAUS RIDE ON EVERY RECORD THAT NEEDS THEM: the launch, both
   // stages' records, the greenlight, the live rebuild, the stage 3 refusal
   const fs = require('fs');
   const path = require('path');
   const st = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
-  assert.ok(st.includes("{ ...p, extras: u.extras, families: u.families || [] }"), 'a stage 1 unit is not told its families');
-  assert.ok(st.includes("{ ...p, extras: rec.extras, families: rec.families || [] }"), 'a stage 2 unit is not told its families');
-  assert.ok(st.includes('families: res.families && res.families.length ? res.families : null,'), 'the stage 1 record drops the families');
-  assert.ok(st.includes('families: (rec.families || []).length ? rec.families : null,'), 'the stage 2 record drops the families');
-  assert.ok(/families: \(rec\.families \|\| \[\]\)\.map\(\(f\) => \(\{ centre: f\.centre, members: \(f\.members \|\| \[\]\)\.slice\(\) \}\)\) \}/.test(st), 'the greenlight is never told the families');
-  assert.ok(/carry families of extra members, and this release does not fold a family to one vote/.test(st), 'stage 3 prices a family as nine votes');
-  assert.ok(st.includes("families: Array.isArray((x || {}).families) ? (x || {}).families : [],"), 'a relaunch from a record drops the families');
-  assert.ok(st.includes("({ ...u, extras: [], families: [] })"), 'the control arm keeps the families it dropped the extras of');
+  assert.ok(st.includes("{ ...p, extras: u.extras, plateaus: u.plateaus || [] }"), 'a stage 1 unit is not told its plateaus');
+  assert.ok(st.includes("{ ...p, extras: rec.extras, plateaus: rec.plateaus || [] }"), 'a stage 2 unit is not told its plateaus');
+  assert.ok(st.includes('plateaus: res.plateaus && res.plateaus.length ? res.plateaus : null,'), 'the stage 1 record drops the plateaus');
+  assert.ok(st.includes('plateaus: (rec.plateaus || []).length ? rec.plateaus : null,'), 'the stage 2 record drops the plateaus');
+  assert.ok(/plateaus: \(rec\.plateaus \|\| \[\]\)\.map\(\(f\) => \(\{ centre: f\.centre, members: \(f\.members \|\| \[\]\)\.slice\(\) \}\)\) \}/.test(st), 'the greenlight is never told the plateaus');
+  assert.ok(/carry plateaus of extra members, and this release does not fold a plateau to one vote/.test(st), 'stage 3 prices a plateau as nine votes');
+  assert.ok(st.includes("plateaus: Array.isArray((x || {}).plateaus) ? (x || {}).plateaus : [],"), 'a relaunch from a record drops the plateaus');
+  assert.ok(st.includes("({ ...u, extras: [], plateaus: [] })"), 'the control arm keeps the plateaus it dropped the extras of');
   const live = fs.readFileSync(path.join(__dirname, '..', 'lib', 'live', 'stagesignal.js'), 'utf8');
-  assert.ok(/whenThin: sw\.whenThinFor\(\{ at \}, families\),/.test(live), 'the live rebuild refuses a thin neighbour the set priced as silent');
+  assert.ok(/whenThin: sw\.whenThinFor\(\{ at \}, plateaus\),/.test(live), 'the live rebuild refuses a thin neighbour the set priced as silent');
   const gl = fs.readFileSync(path.join(__dirname, '..', 'lib', 'live', 'greenlight.js'), 'utf8');
-  assert.ok(/families: \(\(src\.unit \|\| \{\}\)\.families \|\| \[\]\)\.map/.test(gl), 'a greenlight drops which extras belong together');
+  assert.ok(/plateaus: \(\(src\.unit \|\| \{\}\)\.plateaus \|\| \[\]\)\.map/.test(gl), 'a greenlight drops which extras belong together');
   const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
-  assert.ok(/>family<\/th>/.test(ui) && ui.includes('${r.family ? `${r.family.size} of ${r.family.of}` : '), 'Coins does not say how big each promoted row\'s family is');
+  assert.ok(/>plateau<\/th>/.test(ui) && ui.includes('${r.plateau ? `${r.plateau.size} of ${r.plateau.of}` : '), 'Coins does not say how big each promoted row\'s plateau is');
 }
 
 // AND THE THREE PLACES THAT REBUILD IT ARE WIRED (3.188.0). Source-scanned,
@@ -677,7 +677,7 @@ function theSplitIsTheOwnersChoiceAndRidesOnEveryRecord() {
   const panel = ui.slice(ui.indexOf('function bMembersPanel('), ui.indexOf('function bMembersBtn('));
   for (const col of ['>trained on</th>', '>read on</th>']) assert.ok(panel.includes(col), `the members table has no ${col} column`);
   assert.ok(panel.includes('m.trained.chunks') && panel.includes('m.read.fromTs'), 'the two columns are drawn and never filled');
-  assert.ok(/colspan="13"/.test(panel), 'the empty row does not span the columns');
+  assert.ok(/colspan="14"/.test(panel), 'the empty row does not span the columns');
   const help = fs.readFileSync(path.join(__dirname, '..', 'public', 'help-content.js'), 'utf8');
   assert.ok(/swExtraShare: \{/.test(help), 'the split box has no help entry');
 }

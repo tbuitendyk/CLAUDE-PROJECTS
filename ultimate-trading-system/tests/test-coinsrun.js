@@ -120,12 +120,12 @@ module.exports = {
     // the promoted row is no longer thrown away when a passer already holds it
     // — it carries a look-back and a band now, and those are what the sweep
     // turns into an extra member. One unit, and its extras merged onto it.
-    // 3.203.0: and the families over those extras come with them, their
+    // 3.203.0: and the plateaus over those extras come with them, their
     // indices moved along by however many extras the unit already carried
     assert.ok(/have\.extras\.push\(\.\.\.\(u\.extras \|\| \[\]\)\);/.test(fn),
       'a coin and shape in both lists is one unit, not two entries, and the promoted row\u2019s extras are kept');
     assert.ok(/centre: f\.centre \+ base, members: f\.members\.map\(\(i\) => i \+ base\)/.test(fn),
-      'a merged family still points at its own extras after the merge');
+      'a merged plateau still points at its own extras after the merge');
     assert.ok(/promoted: \(\(\) => \{ try \{ return require\('\.\/walkset'\)\.promoted\(\); \}/.test(run),
       'and the answer carries the promoted rows, grouped per walk set, for the screen to draw');
 
@@ -601,7 +601,7 @@ module.exports = {
         served = runner.coinsRecords();
         assert.deepStrictEqual(served.passers.rows.filter((r) => r.coin.startsWith('ZZZPASS')).map((r) => [r.coin, r.ticked]), [['ZZZPASSAUSDT', false], ['ZZZPASSBUSDT', true]]);
         const units = runner.passingUnits().filter((u) => u.coin.startsWith('ZZZPASS'));
-        assert.deepStrictEqual(units, [{ coin: 'ZZZPASSBUSDT', geometry: 'daily-3d', extras: [], families: [] }],
+        assert.deepStrictEqual(units, [{ coin: 'ZZZPASSBUSDT', geometry: 'daily-3d', extras: [], plateaus: [] }],
           'the units Sweep runs are the ticked passers, and a passer brings no extra of its own');
         runner.setPasserTicked('ZZZPASSAUSDT', 'daily-3d', true);
         assert.deepStrictEqual(readSettings()[runner.PASS_OFF_KEY], []);

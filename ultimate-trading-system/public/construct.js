@@ -5129,6 +5129,50 @@ function bMemberReads(m) {
   if (m.at != null) return 'everything, over its own look-back';
   return B_VIEW_WORDS[m.view] || String(m.view || '—');
 }
+// THE PLATEAUS, READ ON THE TEST WINDOW (3.204.0). Each is the nine around one
+// promoted row, folded to one voice per kind the way stage 3 folds it: the
+// lean is the members' votes added and shared out, the call is the side at
+// least half the trained members called. Read here from the stored votes so
+// the owner can see, before pricing anything, whether the nine speak together
+// or pull apart.
+function bPlateausTable(d) {
+  const rows = Array.isArray(d.plateauRows) ? d.plateauRows : [];
+  if (!rows.length) return '';
+  const th = 'style="padding:.3rem .5rem;text-align:right;white-space:nowrap"';
+  const td = 'style="padding:.25rem .5rem;text-align:right;white-space:nowrap"';
+  const n1 = (v) => (v == null ? '<span class="muted">—</span>' : Number(v).toFixed(1));
+  const of = (a, b) => (a == null ? '<span class="muted">—</span>' : `${Number(a).toLocaleString()} <span class="muted">of ${Number(b || 0).toLocaleString()}</span>`);
+  return `<h4 style="margin:.6rem 0 .2rem">The plateaus, read on the test window</h4>
+    <div class="scrollx"><table class="cgap"><thead><tr>
+      <th ${th} title="the plateau's number in the table above, and the promoted row it is around: its look-back and its band">plateau</th>
+      <th ${th} title="which of the two ways of working out a forecast this row folds — each plateau is one voice of each kind">kind</th>
+      <th ${th} title="how many members the plateau has out of the nine it could have, and how many of those could be trained. A member that could not be trained is silent: it is left out of the plateau's lean and its count, because a member with no opinion is not a neutral one.">members</th>
+      <th ${th} title="the look-backs the plateau spans, in hours, in the walk set's own spacing">look-backs</th>
+      <th ${th} title="the bands the plateau spans, as multiples of the coin's usual move">bands</th>
+      <th ${th} title="which sides of the nine are missing because the promoted row sits at an edge of what the set walked">missing</th>
+      <th ${th} title="how many decision moments of the test window at least one trained member of the plateau leaned up or down on">spoke</th>
+      <th ${th} title="of the moments it spoke on, how many where every member that leaned leaned the same way">of one mind</th>
+      <th ${th} title="of the moments it spoke on, how many where some members leaned up and others down — the nine pulling apart">pulled apart</th>
+      <th ${th} title="how many moments the plateau's own call was up or down: the side at least half of its trained members called. This is the call stage 3 will read when its plateau share is 50%.">called at half</th>
+      <th ${th} title="of the moments it called, how many were right against the unit's own answers">right when called</th>
+      <th ${th} title="the forecast score of the plateau's lean — the members' votes added and shared out — on the moments it spoke on. Held against the next column, it says whether the nine together read the window better than the promoted row alone.">lean forecast score</th>
+      <th ${th} title="the forecast score of the promoted row's own member on the same moments, for the comparison">centre's forecast score</th>
+    </tr></thead><tbody>${rows.map((r) => `<tr>
+      <td ${td}>${r.plateau + 1}${r.centreLookbackHours == null ? '' : ` <span class="muted">around ${Number(r.centreLookbackHours).toLocaleString()} h at band ${Number(r.centreBandPct).toFixed(0)}</span>`}</td>
+      <td ${td}>${esc(String(r.model || '—').toUpperCase())}</td>
+      <td ${td}>${r.members} <span class="muted">of ${r.of == null ? '?' : r.of}</span>, ${r.trained} trained${r.silent ? ` <b class="warn">${r.silent} silent</b>` : ''}</td>
+      <td ${td}>${(r.lookbacks || []).map((h) => `${Number(h).toLocaleString()} h`).join(', ') || '—'}</td>
+      <td ${td}>${(r.bands || []).join(', ') || '—'}</td>
+      <td ${td}>${(r.missing || []).length ? esc((r.missing || []).join('; ')) : '<span class="muted">none</span>'}</td>
+      <td ${td}>${of(r.spoke, r.chunks)}</td>
+      <td ${td}>${of(r.unanimous, r.spoke)}</td>
+      <td ${td}>${of(r.split, r.spoke)}</td>
+      <td ${td}>${of(r.called, r.chunks)}</td>
+      <td ${td}>${bShare(r.called ? r.rightWhenCalled / r.called : null, r.rightWhenCalled, r.called)}</td>
+      <td ${td}>${n1(r.leanScore)}</td>
+      <td ${td}>${n1(r.centreScore)}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
 function bMembersPanel(stage, d) {
   if (!d) return '';
   if (d.error) return `<p class="note warn">${esc(d.error)}</p>`;
@@ -5152,6 +5196,7 @@ function bMembersPanel(stage, d) {
       <th ${th} title="how far back this member measures the move it is marked against. Blank on a member that reads its chunk shape's own span, which is every member except one added from a walk set.">look-back</th>
       <th ${th} title="how big a move has to be before this member counts it as up or down rather than sitting out, as a percent of price. THE TWO KINDS OF MEMBER MEASURE A DIFFERENT MOVE. A member the unit was always going to have is marked on the chunk's own move — what price did over the trade — at the unit's own band, which is one number for the whole set. A member added from a walk set is GATED on the move over its own look-back, the stretch ending at the decision: when that clears the bar the member answers the unit's own question, and when it does not the member sits out and is not asked. That is the walk's own rule, and the bar MOVES the way the walk's does — worked out fresh at each decision from every look-back move before it, so it climbs as the coin gets wilder. The figure here is the middle of those bars over the whole set, because there is no single one. In brackets is the number the walk found, a MULTIPLE of what this coin usually moves over that same look-back — 0.90 means nine tenths of it.">band</th>
       <th ${th} title="the walk set a member was added from. Blank on a member the unit was always going to have.">from</th>
+      <th ${th} title="which plateau this member belongs to — the nine around one promoted row, numbered in the order the unit carries them and read together in the table below. centre marks the row that was promoted; the others are its neighbours on the walk set's own grid. A member can belong to two plateaus when two promoted rows sit next to each other.">plateau</th>
       <th ${th} title="how many decision moments this member trained on, out of how many its training stretch held. A member the unit was always going to have trains on every moment of the window layout's training window. A member added from a walk set trains only on the moments its gate opened in the first share of the history — the split for extra members — and that count is the one held against the floor a direction can be learned from.">trained on</th>
       <th ${th} title="the stretch of decision moments the numbers to the right are read on: the test window for a member the unit was always going to have; for one added from a walk set, the rest of the history after the share it trained on.">read on</th>
       <th ${th} title="this member's OWN forecast score, read against the answers IT was marked on — not the committee's pooled score. This is what stops a member that never speaks hiding inside the pooled number.">forecast score</th>
@@ -5166,6 +5211,7 @@ function bMembersPanel(stage, d) {
       <td ${td}>${m.lookbackHours == null ? '<span class="muted">—</span>' : `${Number(m.lookbackHours).toLocaleString()} h`}</td>
       <td ${td}>${m.bandPct == null ? '<span class="muted">—</span>' : `${Number(m.bandPct).toFixed(2)}%`}${m.bandTimesUsual == null ? '' : ` <span class="muted">(${Number(m.bandTimesUsual).toFixed(2)}× usual)</span>`}</td>
       <td ${td}>${m.fromSet ? esc(m.fromSet) : '<span class="muted">—</span>'}</td>
+      <td ${td}>${m.plateau == null ? '<span class="muted">—</span>' : `${m.plateau + 1}${m.centre ? ' <span class="muted">(centre)</span>' : ''}`}</td>
       <td ${td}>${m.trained ? `${Number(m.trained.chunks).toLocaleString()} <span class="muted">of ${Number(m.trained.of).toLocaleString()}</span>` : '<span class="muted">—</span>'}</td>
       <td ${td}>${m.read ? `${day(m.read.fromTs)} to ${day(m.read.toTs)}` : '<span class="muted">—</span>'}</td>
       <td ${td}>${n2(m.score)}</td>
@@ -5173,7 +5219,8 @@ function bMembersPanel(stage, d) {
       <td ${td}>${bLead(m.lead)}</td>
       <td ${td}>${m.spoke == null ? '<span class="muted">—</span>' : `${Number(m.spoke).toLocaleString()} <span class="muted">of ${Number(m.chunks || 0).toLocaleString()}</span>`}</td>
       <td ${td}>${bShare(m.spoke ? m.rightWhenSpoke / m.spoke : null, m.rightWhenSpoke, m.spoke)}</td>
-    </tr>`).join('') || '<tr><td colspan="13" class="empty">nothing here</td></tr>'}</tbody></table></div>
+    </tr>`).join('') || '<tr><td colspan="14" class="empty">nothing here</td></tr>'}</tbody></table></div>
+    ${bPlateausTable(d)}
     <p class="note">A member added from a walk set is marked with a line down its left edge. Its band is a GATE, not a different question:
       on the decisions where the move over its own look-back clears the bar it is asked the unit's own question — which way will this chunk go —
       and on every other decision it sits out and is never asked. It is trained on the decisions it may answer and on no others, and the gate is
@@ -10314,13 +10361,13 @@ function cWalkPanel() {
       <label class="f" title="how much history has to sit behind the first window before anything is priced. The signs are learned from it, so too little and the first windows are guesses.">history before the first window, months<input${off} id="wWarm" type="number" min="1" step="1" value="${esc(String(cState.wWarm))}" style="width:5rem"></label>
     </div>
     <div class="row" style="align-items:flex-end">
-      <label class="f" title="the lowest sit-out band this walk starts from. Filling these three in and pressing Apply writes a list into the box below; that list is what is walked.">lowest sit-out band<input${off} id="wBandFrom" type="number" min="0" step="1" value="${esc(String(cState.wBandFrom))}" style="width:9rem"></label>
+      <label class="f" title="the lowest sit-out band this walk starts from. Filling these three in and pressing Apply writes a list into the box below, with one more band a step below this one (unless that would reach zero) and one more a step above the highest, so a pick at either end still has a neighbour on that side; that list is what is walked.">lowest sit-out band<input${off} id="wBandFrom" type="number" min="0" step="1" value="${esc(String(cState.wBandFrom))}" style="width:9rem"></label>
       <label class="f" title="the highest sit-out band this walk reaches.">highest sit-out band<input${off} id="wBandTo" type="number" min="1" step="1" value="${esc(String(cState.wBandTo))}" style="width:9rem"></label>
       <label class="f" title="how far apart the bands are. Every band in the list below is walked on every coin, every chunk shape and every look-back, so halving this doubles the walk.">step<input${off} id="wBandStep" type="number" min="1" step="1" value="${esc(String(cState.wBandStep))}" style="width:6rem"></label>
     </div>
     <div class="row">
       <button id="wBandApply"${off}>Apply</button>
-      <span id="wBandOut" class="muted">puts the three boxes above into the list below.</span>
+      <span id="wBandOut" class="muted">puts the three boxes above into the list below, one step beyond each end.</span>
     </div>
     <div class="row" style="align-items:flex-end">
       <label class="f" title="the sit-out bands this walk tries, comma separated, and the only thing that decides them. Apply fills it from the three boxes above; after that it is yours to edit — leave gaps, add one band on its own, take one out. Every one of them is walked and every one is reported, never only the best.">sit-out bands to try<input${off} id="wBands" value="${esc(String(cState.wBands))}" style="width:70rem"></label>
@@ -10479,14 +10526,16 @@ function cWalkBind() {
     $('#wBandApply').onclick = async () => {
       let got = null;
       try {
+        // one step beyond each end (3.204.0), so a pick at the end of the
+        // range still has a neighbour on that side for the nine around it
         got = await post('api/coins/sweep-bands', {
-          from: Number($('#wBandFrom').value), to: Number($('#wBandTo').value), step: Number($('#wBandStep').value),
+          from: Number($('#wBandFrom').value), to: Number($('#wBandTo').value), step: Number($('#wBandStep').value), beyond: true,
         });
       } catch (err) { $('#wBandOut').innerHTML = `<span class="warn">${esc(err.message)}</span>`; return; }
       $('#wBands').value = got.bands.join(',');
       cState.wBands = $('#wBands').value;
       cRemember();
-      $('#wBandOut').innerHTML = esc(`${got.bands.length} band(s) put in the box below — edit them if you like, then walk`);
+      $('#wBandOut').innerHTML = esc(`${got.bands.length} band(s) put in the box below, one step beyond each end so a pick at the end of the range still has neighbours — edit them if you like, then walk`);
       cWalkRepaint();
     };
   }
@@ -10911,7 +10960,7 @@ function cPromotedBoxes(sets) {
         <th></th><th title="the coin">coin</th><th title="the chunk shape">chunk shape</th>
         <th title="how far back the move was measured from, ending at the decision">look-back</th>
         <th title="how big a move had to be before it counted, as a percentage of the coin's usual move">band</th>
-        <th title="how many rows of this walk set go to Sweep with this one: the row itself and the eight around it on the set's own grid — the look-back one step shorter and one step longer, the band one step lower and one step higher, and the four corners. Each becomes one more member on the unit, trained the same way, and the family is read together. Fewer than nine means the row sits at an edge of what the set walked; hover for which side is missing.">family</th>
+        <th title="how many rows of this walk set go to Sweep with this one: the row itself and the eight around it on the set's own grid — the look-back one step shorter and one step longer, the band one step lower and one step higher, and the four corners. Each becomes one more member on the unit, trained the same way, and the plateau is read together. Fewer than nine means the row sits at an edge of what the set walked; hover for which side is missing.">plateau</th>
         <th title="how many trades the walk placed">trades</th>
         <th title="how many decision moments this row was read over, and the share of them it placed a trade on. It is what trades has to be read against, and it is the figure to hold against a member's spoke on Boards \u2014 those two counts are over different stretches and are not comparable, and the two shares are. A row promoted before this was recorded shows a dash.">decisions</th>
         <th title="what it made on each trade, before the round trip">per trade</th>
@@ -10926,7 +10975,7 @@ function cPromotedBoxes(sets) {
         <td><input type="checkbox" class="cprom" data-set="${esc(g.id)}" data-key="${esc(r.key)}"${r.ticked ? ' checked' : ''}></td>
         <td>${esc(r.coin)}</td><td>${esc(shapeLabelOf(r.geometry))}</td>
         <td>${r.lookback === 'own' ? 'own' : `${esc(String(r.lookback))}h`}</td><td>${r.band}</td>
-        <td title="${r.family ? esc([`look-backs ${r.family.lookbacks.map((h) => `${h}h`).join(', ')}`, `bands ${r.family.bands.join(', ')}`, ...(r.family.missing || [])].join(' · ')) : 'a row at the chunk shape\'s own span adds no member, so it has no family'}">${r.family ? `${r.family.size} of ${r.family.of}` : '—'}</td>
+        <td title="${r.plateau ? esc([`look-backs ${r.plateau.lookbacks.map((h) => `${h}h`).join(', ')}`, `bands ${r.plateau.bands.join(', ')}`, ...(r.plateau.missing || [])].join(' · ')) : 'a row at the chunk shape\'s own span adds no member, so it has no plateau'}">${r.plateau ? `${r.plateau.size} of ${r.plateau.of}` : '—'}</td>
         <td>${r.trades}</td><td>${cActedCell(r)}</td><td class="${cls(r.perTrade)}">${pc3(r.perTrade)}</td>
         <td>${r.windowsUp} of ${r.windows}</td>
         <td>${cPaid(r) == null ? '—' : `${cPaid(r)} of ${r.windows}`}</td>

@@ -68,9 +68,9 @@ async function trainStageCommittee(cfg, closed, moments, views, fee) {
   const training = cfg.training || {};
   const weights = trainingWeightsFor(training, trainChunks, fee);
   const predictChunks = [...testChunks, ...moments];
-  // the families the extras belong to (3.203.0): a family's centre that is too
+  // the plateaus the extras belong to (3.203.0): a plateau's centre that is too
   // thin to train refuses, a neighbour goes silent -- as the set was priced
-  const families = Array.isArray(cfg.families) ? cfg.families : [];
+  const plateaus = Array.isArray(cfg.plateaus) ? cfg.plateaus : [];
   const members = [];
   for (const spec of cfg.members) {
     // AND EACH MEMBER IS MARKED ON THE QUESTION IT WAS ASKED. A member added
@@ -95,7 +95,7 @@ async function trainStageCommittee(cfg, closed, moments, views, fee) {
     const m = await sw.trainGatedMember({
       spec: { model: spec.model, at }, viewIdx, trainChunks, testChunks, holdChunks, predictChunks, weights,
       weightsOf: (rows) => trainingWeightsFor(training, rows, fee), share: training.extraTrainShare, labelOf: null,
-      whenThin: sw.whenThinFor({ at }, families),
+      whenThin: sw.whenThinFor({ at }, plateaus),
     });
     members.push({ spec, ...m });
   }

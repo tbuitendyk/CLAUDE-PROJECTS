@@ -81,6 +81,50 @@ module.exports = {
   // pricing shapes its committee through committeeOn and takes its calls,
   // level and agreement from it; the live path does the same; and the closures
   // the pricing used to keep of its own are gone.
+  // THE PLATEAU FOLDS TO ONE VOICE PER KIND (3.204.0): its lean is the trained
+  // members' votes shared out, its call the side enough of them called, a
+  // silent member is left out of both, and a member outside every plateau
+  // votes as itself.
+  aPlateauFoldsToOneVoicePerKindWithALeanAndACall() {
+    const S = [
+      { model: 'logreg', view: 'full', at: null }, { model: 'boost', view: 'full', at: null },
+      { model: 'logreg', view: 'extra0', at: 0 }, { model: 'logreg', view: 'extra1', at: 1 }, { model: 'logreg', view: 'extra2', at: 2 },
+      { model: 'boost', view: 'extra0', at: 0 }, { model: 'boost', view: 'extra1', at: 1 }, { model: 'boost', view: 'extra2', at: 2 },
+      { model: 'logreg', view: 'extra3', at: 3 },
+    ];
+    const plateaus = [{ centre: 1, members: [0, 1, 2] }];
+    const voters = committee.plateauVoters(S, plateaus, new Set([0, 1, 2, 3, 5, 6, 7, 8]));   // member 4 (logreg extra2) is silent
+    assert.deepStrictEqual(voters.map((v) => (v.kind === 'member' ? `m${v.mi}` : `p${v.plateau}:${v.model}`)), ['m0', 'm1', 'm8', 'p0:logreg', 'p0:boost'],
+      'the base members and the loose extra vote as themselves, and each plateau is one voice per kind');
+    const pl = voters[3];
+    assert.deepStrictEqual([pl.members, pl.speaking, pl.centre], [[2, 3, 4], [2, 3], 3], 'the fold does not know who is trained or which is the centre');
+    assert.deepStrictEqual(pl.spec, { model: 'logreg', view: 'plateau0', at: null, plateau: 0 });
+    // three moments: all up; two up one down; one up and the silent one down
+    const probs = S.map(() => [up, up, flat]);
+    probs[4] = [up, dn, dn];             // silent: must not count
+    probs[3] = [up, dn, up];
+    probs[2] = [up, up, flat];
+    const calls = committee.callsOf(probs, 'argmax', null);
+    const at50 = committee.foldPlateaus({ voters, probsPerMember: probs, callsPerMember: calls, share: 50 });
+    assert.strictEqual(at50.probs.length, 5);
+    assert.deepStrictEqual(at50.probs[0], probs[0], 'a member as itself keeps its own votes');
+    assert.deepStrictEqual(at50.calls[0], calls[0]);
+    // the plateau's lean: the two trained members' votes shared out, the silent one left out
+    assert.deepStrictEqual(at50.probs[3][0].map((x) => Number(x.toFixed(6))), up.map((x) => Number(x.toFixed(6))));
+    assert.deepStrictEqual(at50.probs[3][1].map((x) => Number(x.toFixed(6))), [0.4, 0.2, 0.4], 'one up and one down do not share out to a level lean');
+    // the call at half: 1 of 2 is enough only when the other side is smaller
+    assert.deepStrictEqual(at50.calls[3], [1, 0, 1], 'at half, both up calls, a tie sits out, one up against a flat calls up');
+    const at100 = committee.foldPlateaus({ voters, probsPerMember: probs, callsPerMember: calls, share: 100 });
+    assert.deepStrictEqual(at100.calls[3], [1, 0, 0], 'at every member, one up against a flat is not enough');
+    const boost = at50.calls[4];
+    assert.deepStrictEqual(boost, [1, 1, 0], 'the boost plateau folds its own three members');
+    assert.throws(() => committee.foldPlateaus({ voters, probsPerMember: probs, callsPerMember: calls, share: 0 }), /percent above 0/);
+    // a plateau with nobody trained sits out on everything
+    const none = committee.plateauVoters(S, plateaus, new Set([0, 1, 8]));
+    const out = committee.foldPlateaus({ voters: none, probsPerMember: probs, callsPerMember: calls, share: 50 });
+    assert.deepStrictEqual(out.calls[3], [0, 0, 0]); assert.deepStrictEqual(out.probs[3][0], [0, 1, 0]);
+  },
+
   bothPathsReadTheOneDefinitionAndNeitherKeepsACopy() {
     const sw = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
     const task = sw.slice(sw.indexOf('async function s3UnitTask(task) {'), sw.indexOf('\n}\n', sw.indexOf('async function s3UnitTask(task) {')));

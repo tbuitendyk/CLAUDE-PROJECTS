@@ -80,6 +80,17 @@ module.exports = {
   theThreeBoxesMakeAListAndStoreNothing() {
     assert.deepStrictEqual(S.bandsFromRange(100, 300, 50), [100, 150, 200, 250, 300]);
     assert.deepStrictEqual(S.bandsFromRange(0, 10, 2.5), [0, 2.5, 5, 7.5, 10], 'a step need not be whole');
+    // AND ONE STEP BEYOND EACH END WHEN ASKED (3.204.0), the lower one left out
+    // rather than clamped when it would reach zero
+    assert.deepStrictEqual(S.bandsFromRange(100, 300, 50, { beyond: true }), [50, 100, 150, 200, 250, 300, 350]);
+    assert.deepStrictEqual(S.bandsFromRange(50, 150, 50, { beyond: true }), [50, 100, 150, 200], 'a band of nought was put in as a neighbour');
+    assert.deepStrictEqual(S.bandsFromRange(0, 10, 2.5, { beyond: true }), [0, 2.5, 5, 7.5, 10, 12.5]);
+    assert.throws(() => S.bandsFromRange(0, 500, 2.5, { beyond: true }), /sit-out bands .* 200 is the most/, 'the extra band is not held to the ceiling');
+    const ui = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    assert.ok(/step: Number\(\$\('#wBandStep'\)\.value\), beyond: true,/.test(ui), 'the walk\'s Apply does not ask for the step beyond');
+    assert.ok(/one step beyond each end so a pick at the end of the range still has neighbours/.test(ui), 'and does not say so');
+    const server = require('fs').readFileSync(require('path').join(__dirname, '..', 'server.js'), 'utf8');
+    assert.ok(server.includes("sg.bandsFromRange(b.from, b.to, b.step, { beyond: b.beyond === true })"), 'the door does not pass the ask through');
     const bad = [
       [[-1, 500, 10], /lowest sit-out band is 0 or more/],
       [[300, 300, 10], /highest sit-out band is above the lowest/],
