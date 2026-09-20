@@ -1609,9 +1609,9 @@ const GUARDS = [
   // ---- SWEEP: a set launched from the Coins list is held up to the tick (3.130.3) ----
   [path.join(ROOT, 'public', 'construct.js'), "      ['only what is ticked on Coins', tickBox ? 'on' : 'off', setPairs ? 'on' : 'off'],\n", "",
     'theStageHeadingsCompareTheTickForASetLaunchedFromCoins', 'the tick is never compared, so a set launched with it and a box without it read as one'],
-  [path.join(ROOT, 'public', 'construct.js'), "        ? (tickBox && setPairs ? [['Candidates for Sweep', pairWords(swPassersNow), pairWords(setPairs)]] : [])", "        ? []",
+  [path.join(ROOT, 'public', 'construct.js'), "        ? (tickBox && setPairs ? [['Candidates for Sweep', pairWords(swPassersNow[wantSource]), pairWords(setPairs)]] : [])", "        ? []",
     'theStageHeadingsCompareTheTickForASetLaunchedFromCoins', 'the pairs are never compared, so un-ticking a coin on Coins leaves Stage 2 green'],
-  [path.join(ROOT, 'server.js'), "  passersTicked: (() => { try { return require('./lib/coinsrun').passingUnits(); } catch (_) { return []; } })(),", "  passersTicked: [],",
+  [path.join(ROOT, 'server.js'), "      try { out[src] = require('./lib/coinsrun').passingUnits(src); } catch (_) { out[src] = []; }", "      out[src] = [];",
     'theStageHeadingsCompareTheTickForASetLaunchedFromCoins', 'the screen is handed no pairs, so every set launched from Coins reads as run with none'],
   [path.join(ROOT, 'lib', 'coinsrun.js'), "  for (const u of unreadable) {\n    try { fs.unlinkSync(path.join(DIR, u.file)); removed.push(u.file); }", "  for (const u of []) {\n    try { fs.unlinkSync(path.join(DIR, u.file)); removed.push(u.file); }",
     'theCleanupRemovesExactlyWhatCannotBeDrawnAndNothingElse', 'the control the owner presses to remove the files removes nothing and reports nothing failed'],

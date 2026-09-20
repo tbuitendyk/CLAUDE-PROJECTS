@@ -920,7 +920,7 @@ async function swProgress() {
   // cost line are both judged off it, so a stale copy would answer for a box
   // that has just moved.
   swSetsCache = st.sets || [];
-  if (Array.isArray(st.passersTicked)) swPassersNow = st.passersTicked;
+  if (st.passersTicked && typeof st.passersTicked === 'object') swPassersNow = st.passersTicked;
   const swMoved = swRefillParents(swSetsCache);
   // THE HEADING COLOURS ARE REPAINTED ON EVERY TICK, NOT ONLY WHEN A BOX MOVED
   // (3.76.2, owner order 2026-09-06: "JUST THINK ABOUT IT AND CODE IT RIGHT SO
@@ -1199,7 +1199,7 @@ function swProvenance() {
         ? [['leave the extra members out', (c('#swPlainUnits') && tickBox) ? 'yes' : 'no', p.plainUnits ? 'yes' : 'no']]
         : []),
       ...(tickBox || setPairs
-        ? (tickBox && setPairs ? [['Candidates for Sweep', pairWords(swPassersNow), pairWords(setPairs)]] : [])
+        ? (tickBox && setPairs ? [['Candidates for Sweep', pairWords(swPassersNow[wantSource]), pairWords(setPairs)]] : [])
         : [['trade coins', wantUni.split(',').join(', '), setUni.split(',').join(', ')],
           ['chunk shape', shape(c('#swPermGeom'), v('#swGeom')), shape(geos.length > 1, geos[0] || 'unrecorded')]]),
       ['compare coins', wantCmp ? wantCmp.split(',').join(', ') : 'none', setCmp ? setCmp.split(',').join(', ') : 'none'],
@@ -1655,7 +1655,9 @@ function fillStageForm(doc) {
 
 let swSetsCache = null;
 let swDefaultCoins = [];   // every coin downloaded, which is what a blank coin box means
-let swPassersNow = [];     // the coins and shapes ticked on Coins now, off the same answer (3.130.3)
+// the coins and shapes ticked on Coins now, one list per source, off the same
+// answer the launch resolves (3.130.3; one list per source since 3.194.2)
+let swPassersNow = {};
 // WHICH OF THE THREE IS CHOSEN (3.185.0). Read from the radios themselves, so
 // there is one answer and the launch, the cost line and the greying cannot
 // disagree about it. Nothing chosen reads as 'none', which is the option that
@@ -3553,7 +3555,7 @@ async function drawSweep() {
   // stage headings compare a blank box the way the launch resolves it, so they
   // need the names and not just how many there are.
   swDefaultCoins = st.coinsDownloaded || [];
-  swPassersNow = st.passersTicked || [];
+  swPassersNow = st.passersTicked || {};
   // the next free name per stage, shown greyed in each name box as the
   // suggestion an empty box takes
   const nextNames = st.nextNames || {};

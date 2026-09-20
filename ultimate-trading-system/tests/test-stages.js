@@ -1363,8 +1363,8 @@ module.exports = {
       assert.ok(UI.includes(`> ${w}</label>`), `that label is not on the screen: ${w}`);
     }
     assert.ok(fn.includes("['where this run takes its units from', sourceWords[wantSource] || wantSource, sourceWords[setSource] || setSource],"), 'the source is compared, name against name');
-    assert.ok(fn.includes("? (tickBox && setPairs ? [['Candidates for Sweep', pairWords(swPassersNow), pairWords(setPairs)]] : [])"),
-      'with both on, the pairs ticked now are held up to the pairs the set recorded');
+    assert.ok(fn.includes("? (tickBox && setPairs ? [['Candidates for Sweep', pairWords(swPassersNow[wantSource]), pairWords(setPairs)]] : [])"),
+      'with both on, the pairs ticked now are held up to the pairs the set recorded — for the source the screen has chosen');
     assert.ok(/: \[\['trade coins', wantUni\.split/.test(fn) && /\['chunk shape', shape\(c\('#swPermGeom'\), v\('#swGeom'\)\)/.test(fn),
       'without the tick on either side the two boxes are compared as before');
     // the launch records the pairs on the set, which is what the screen reads
@@ -1372,10 +1372,19 @@ module.exports = {
     assert.ok(LIB.includes('passers: passers || null, campaign:'), 'the launch writes the pairs it ran, or null, on the set');
     // and the pairs ticked now ride on the same answer the headings already read the downloaded coins off
     const SRV = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-    assert.ok(SRV.includes("passersTicked: (() => { try { return require('./lib/coinsrun').passingUnits(); } catch (_) { return []; } })(),"),
-      'the stagesets answer carries the pairs ticked on Coins now');
-    assert.ok(UI.includes('swPassersNow = st.passersTicked || [];') && UI.includes('if (Array.isArray(st.passersTicked)) swPassersNow = st.passersTicked;'),
+    // ONE LIST PER SOURCE, AND THE HEADING READS THE ONE THE SCREEN CHOSE
+    // (3.194.2). Served as a single list resolved with no argument -- which is
+    // `both` -- a run launched from the walk list alone was held up to both
+    // lists, so with anything ticked under coins and shapes that pass the
+    // heading was red for ever and no box could change it.
+    assert.ok(SRV.includes("for (const src of ['passers', 'walk', 'both']) {")
+      && SRV.includes("out[src] = require('./lib/coinsrun').passingUnits(src);"),
+      'the stagesets answer carries the pairs ticked on Coins now, resolved once per source');
+    assert.ok(UI.includes('swPassersNow = st.passersTicked || {};')
+      && UI.includes("if (st.passersTicked && typeof st.passersTicked === 'object') swPassersNow = st.passersTicked;"),
       'the screen keeps them on the draw and on every poll');
+    assert.ok(/pairWords\(swPassersNow\[wantSource\]\)/.test(fn),
+      'and the heading compares the list for the source the screen has chosen, never a different one');
   },
 
   // THE CEILING BOX AND ITS COLUMN NAME EACH OTHER EXACTLY (3.130.2, owner
