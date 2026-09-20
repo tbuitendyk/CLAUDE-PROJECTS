@@ -486,6 +486,13 @@ async function trainGatedMember({ spec, viewIdx, trainChunks, predictChunks, wei
     throw new Error(`extra ${spec.at + 1} clears its band on only ${keep.length} training chunk(s) — too few to learn a direction from. `
       + 'A lower band on the walk row would open the gate more often.');
   }
+  // THE TUNING SLICE IS EVERY MEMBER'S SAME SLICE (3.201.1). It is the last
+  // quarter of the WHOLE training window -- worked out here exactly as
+  // trainProbMember works it out for a member handed all of it -- because the
+  // tuning-slice money pools every member together, and a member voting on a
+  // different stretch would be added into a total about somewhere else.
+  const nVal = Math.max(3, Math.round(trainChunks.length * 0.25));
+  const tune = trainChunks.slice(trainChunks.length - nVal);
   const m = await trainProbMember({
     model: spec.model,
     viewIdx,
@@ -494,17 +501,31 @@ async function trainGatedMember({ spec, viewIdx, trainChunks, predictChunks, wei
     weights: Array.isArray(weights) ? keep.map((k) => weights[k]) : weights,
     // ...and on those chunks it is asked THE UNIT'S OWN question
     labelOf,
+    tuneChunks: tune,
   });
+  // AND THE GATE SHUTS BOTH SETS OF VOTES, not only the predictions. A vote the
+  // member was never allowed to make is a sit out on the tuning slice for the
+  // same reason it is one on the test window.
   const shut = (rows, probs) => (Array.isArray(probs)
     ? probs.map((p, k) => (gate(rows[k]) ? p : SAT_OUT))
     : probs);
-  return { ...m, probs: shut(predictChunks, m.probs), tauProbs: m.tauProbs };
+  return { ...m, probs: shut(predictChunks, m.probs), tauProbs: shut(tune, m.tauProbs) };
 }
 // FEWER THAN THIS AND THERE IS NOTHING TO FIT. The splitter's own floor for a
 // training stretch, used here for the same reason.
 const MIN_TRAIN_GATED = require('./pipeline').MIN_CHUNKS;
 
-async function trainProbMember({ model, viewIdx, trainChunks, predictChunks, weights = null, labelOf = null }) {
+// AND THE TUNING SLICE CAN BE NAMED FROM OUTSIDE (3.201.1). It is the last
+// quarter of the training rows handed in, which is right for every member that
+// is handed the whole training window -- and wrong for one that is handed only
+// the rows its gate opens. Such a member's slice came out a different LENGTH
+// from everyone else's (tuningSliceOf refused: "468 against 11") and, matched,
+// would have been different CHUNKS: gated moments scattered through history
+// rather than the last quarter of the window the money is pooled over.
+//
+// `tuneChunks` names the rows to vote on instead. Left unset it is what it
+// always was, so nothing that existed before this reads differently.
+async function trainProbMember({ model, viewIdx, trainChunks, predictChunks, weights = null, labelOf = null, tuneChunks = null }) {
   // WHICH ANSWERS THIS MEMBER IS MARKED AGAINST (3.183.0). A base member is
   // marked against the unit's own band, as it always has been; an extra member
   // against its own. Left unset it is the unit's, so nothing that existed
@@ -515,6 +536,9 @@ async function trainProbMember({ model, viewIdx, trainChunks, predictChunks, wei
   const Xte = predictChunks.map((c) => viewIdx.map((i) => c.x[i]));
   const nVal = Math.max(3, Math.round(Xtr.length * 0.25));
   const nSub = Xtr.length - nVal;
+  // the rows the probe votes on for the tuning slice: the last quarter of the
+  // training rows unless the caller names another set
+  const Xtu = tuneChunks ? tuneChunks.map((c) => viewIdx.map((i) => c.x[i])) : null;
   let saved;
   let picked;
   let probs;
@@ -541,13 +565,21 @@ async function trainProbMember({ model, viewIdx, trainChunks, predictChunks, wei
     probs = Zte.map((z) => probsArr(predictLogreg(m, z).probs));
     const probe = await trainSoftmax(Ztr.slice(0, nSub), ytr.slice(0, nSub), chosenLambda, { weights: wSub });
     tauProbs = [];
-    for (let i = nSub; i < Ztr.length; i++) tauProbs.push(probsArr(predictLogreg(probe, Ztr[i]).probs));
+    if (Xtu) {
+      for (const z of standardizeApply(Xtu, scaler)) tauProbs.push(probsArr(predictLogreg(probe, z).probs));
+    } else {
+      for (let i = nSub; i < Ztr.length; i++) tauProbs.push(probsArr(predictLogreg(probe, Ztr[i]).probs));
+    }
   } else {
     const probe = await trainBoost(Xtr.slice(0, nSub), ytr.slice(0, nSub), {
       Xval: Xtr.slice(nSub), yval: ytr.slice(nSub), weights: wSub, valWeights: wVal,
     });
     tauProbs = [];
-    for (let i = nSub; i < Xtr.length; i++) tauProbs.push(probsArr(predictBoost(probe, Xtr[i]).probs));
+    if (Xtu) {
+      for (const x of Xtu) tauProbs.push(probsArr(predictBoost(probe, x).probs));
+    } else {
+      for (let i = nSub; i < Xtr.length; i++) tauProbs.push(probsArr(predictBoost(probe, Xtr[i]).probs));
+    }
     const m = await trainBoost(Xtr, ytr, { rounds: probe.bestRound, weights: wAll });
     saved = { kind: 'boost', rounds: m.bestRound, priors: m.priors, trees: m.trees };
     picked = `rounds=${m.bestRound}`;
