@@ -122,15 +122,6 @@ list follow.
 
 ## Parked (for the owner, not done)
 
-- **Owner's to-do (2026-09-21, after 3.215.0)**: the `scrambles / slides as
-  good at fill` column is taken once, on the day the window first filled, and
-  never again. The owner wants the null sets (the scrambled copies and the
-  slid copies) recomputed for the CURRENT window when `Build the field` is
-  used, and recomputed whenever another process consults them. Not started;
-  waits for a `GO NOW!` of its own. Cost to note before it starts: the
-  scrambles roll every copy from the start of the window to the day asked
-  for, so a recompute at the last day costs about what the fill-day pass
-  costs, once per pair.
 - **Found in passing, not touched (RULE ZERO)**: on Trade, the decision
   table's `outcome` heading is drawn with the key `fate`, and the column key
   describes it under `outcome`, so that one heading carries no hover text.
@@ -170,6 +161,25 @@ list follow.
   one folds the eight into one. Test-only: nothing on the box changes and
   the release does not move (RULE EIGHT, a guard that misses is a test-only
   follow-up). All eight new guards and every other field guard were caught.
+- **3.216.0 -- the null sets are read over the current window** (owner order,
+  2026-09-21, `GO NOW!`): the scrambled copies were rolled once, to the day the
+  window first filled, and the column read that day for ever. Now every build
+  rolls them to the last day, and `scrambles / slides as good now` is what the
+  current window says; `nullSetsAt` gives any process the same reading on the
+  day it asks about, never off the fill day. A pair built before this reads
+  `build again` in that column until it is built again; nothing translates the
+  old figure (RULE NINE). Cost: one roll per scrambled copy to the last day
+  instead of to the fill day.
+- **Buy the field, as the owner meant it** (three corrections the same
+  morning): one button; one buy per field, a press replacing the field's
+  earlier seven; shown under the button only while that field is on the
+  screen; no picker, no open, no delete -- deleting the field takes its buy
+  along. `Put away` un-opens the field on the screen and sits beside `Open
+  this field`; the section fold it was first drawn as is gone.
+- **Layout rules the owner set in the same sitting**, now in the stylesheet
+  for every screen and in CLAUDE.md: two buttons in one row never touch; rows
+  never rest on each other; the seven and the table of pairs are separated by
+  a rule and a heading line.
 - **3.213.1 -- the owner found 3.212.1's freshness order not delivered**
   ("why does this show 09/19 as the last day" on the Coins grid, with Data
   through the 20th). The reader (`windowMoves`, `lib/windowmove.js`) was

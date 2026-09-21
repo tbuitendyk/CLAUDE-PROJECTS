@@ -250,9 +250,12 @@ explained).** The gate's certainty is ranked against slid copies only. A
 scramble deals the outcomes into a random order and breaks up the coin's own
 runs, so on a trending coin the real field beats its scrambles even when the
 readings mean nothing; a slide keeps the runs and moves only which reading
-each outcome sits under. The scrambles count is taken once, when the field
-first fills, and shown on the state beside the slides count the way Coins
-shows `scrambles as good` beside `slides as good`; the gate never reads it.
+each outcome sits under. The scrambles count was taken once, when the field
+first filled, until 3.216.0; since then (owner order, 2026-09-21) the null
+sets are read over the CURRENT window on every build -- on the last day --
+and any process that consults them reads them on the day it asks about,
+never off the fill day. Coins shows `scrambles / slides as good now`; the
+gate never reads it.
 
 ### How the field gates the members (point 11, answer 4)
 

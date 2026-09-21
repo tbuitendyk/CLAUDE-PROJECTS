@@ -27,7 +27,7 @@ function aPair(coin, geometry, lastTs, state) {
   return {
     key: `${coin}|${geometry}`, coin, geometry, standsFor: [],
     decisions: 40, firstTs: lastTs - 39 * 24 * HOUR, lastTs, windowDays: 30, capDays: 30, fullAt: lastTs - 9 * 24 * HOUR,
-    fill: { copies: 2, slidesAsGood: 0, scramblesAsGood: 0 },
+    now: { ts: lastTs, copies: 2, full: true, slidesAsGood: 0, scramblesAsGood: 0 },
     state: { ts: lastTs, sign: 1, agreement: 60, size: 1, certainty: 70, speaking: 2, evidence: 4, full: true, daysInWindow: 30, decisionsInWindow: 30, yardsticks: [1], pointsWithEvidence: { rising: 1, falling: 1, of: 2 }, ...state },
     range: { days: 30, silentDays: 0, agreement: { lowest: 0, quarter: 30, median: 60, threeQuarters: 60, highest: 60 }, certainty: null },
     grid: [[{ rising: { avg: 1, evidence: 2 }, falling: null }, { rising: null, falling: { avg: -1, evidence: 2 } }]],
@@ -159,10 +159,14 @@ module.exports.theBuysAreListedNewestFirstAndDeletedOnce = function () {
   const a = fb.buyField(id, { now: 1_800_000_000_000 }); made.buys.push(a.id);
   const b = fb.buyField(id, { now: 1_800_000_500_000 }); made.buys.push(b.id);
   const list = fb.listBuys().filter((x) => x.field.id === id);
-  assert.deepStrictEqual(list.map((x) => x.id), [b.id, a.id], 'newest press first');
+  assert.deepStrictEqual(list.map((x) => x.id), [b.id], 'one buy per field: the second press replaced the first');
+  assert.strictEqual(fb.readBuy(b.id).pressedAt, 1_800_000_500_000, 'what is on disk is the second press (its id may be the first\'s, reused)');
+  assert.strictEqual(fb.listBuys().filter((x) => x.field.id === id).length, 1);
   assert.deepStrictEqual({ rows: list[0].rows, candidates: list[0].candidates, pairs: list[0].pairs, pressedAt: list[0].pressedAt }, { rows: 7, candidates: 10, pairs: 15, pressedAt: 1_800_000_500_000 });
-  assert.deepStrictEqual(fb.deleteBuy(a.id), { deleted: true, id: a.id });
-  assert.strictEqual(fb.readBuy(a.id), null);
+  assert.strictEqual(fb.buyOf(id).id, b.id, 'the field\'s own buy');
+  assert.strictEqual(fb.deleteBuysOf(id), 1, 'deleting the field takes its buy along');
+  assert.strictEqual(fb.buyOf(id), null);
+  assert.strictEqual(fb.readBuy(b.id), null);
   assert.throws(() => fb.deleteBuy(a.id), /there is no buy/);
   assert.throws(() => fb.buyNow(a.id), /there is no buy/);
   assert.throws(() => fb.buyField('F-nope'), /there is no field/);
@@ -185,18 +189,27 @@ module.exports.theScreenHasTheButtonThePickerAndTheTableAboveThePairs = function
   assert.ok(iRun > 0 && iBuy > iRun && iPairs > iBuy, 'Build the field, then Buy the field and its table, then the table of pairs');
   const block = ui.slice(ui.indexOf('function cFieldBuyBlock(st, off) {'), ui.indexOf('\n}\n', ui.indexOf('function cFieldBuyBlock(st, off) {')));
   assert.ok(block.includes('<button id="fBuy" class="pri"') && block.includes('>Buy the field</button>'), 'the button');
-  assert.ok(block.includes('id="fBuyPick"') && block.includes('<button id="fBuyOpen">Open this buy</button>') && block.includes('<button id="fBuyDel" class="danger">Delete it</button>'), 'the picker, the re-read and the delete');
+  assert.ok(block.includes("  if (!saved) return '';"), 'no field on the screen: nothing of the buy is shown (owner, 2026-09-21)');
+  assert.ok(block.includes('const buys = cBuysOfOpenField();') && ui.includes("return (cBuysNow || []).filter((b) => b && b.field && b.field.id === saved.id);"), 'a buy belongs to its field: only the open field\'s buys');
+  assert.ok(!ui.includes('fBuyPick') && !ui.includes('fBuyDel') && !ui.includes('fBuyOpen'), 'one button and the field\'s own seven under it: no picker, no open, no delete (owner, 2026-09-21)');
+  assert.ok(block.includes('${buys.length && shown ? cFieldBuyTable(shown) : `<p class="note">no buy of ${esc(saved.id)} yet'), 'the open field\'s seven, or the note');
+  assert.ok(ui.includes("  return list.length ? list[0].id : null;   // the open field's own buy, its newest press"), 'the field\'s newest press is the one shown');
+  assert.ok(block.includes('<div class="row" style="margin-top:1rem">\n      <button id="fBuy" class="pri"'), 'space between Build the field and Buy the field');
   const table = ui.slice(ui.indexOf('function cFieldBuyTable(b) {'), ui.indexOf('\n}\n', ui.indexOf('function cFieldBuyTable(b) {')));
   for (const h of ['>coin<', '>chunk shape<', '>decision (UTC)<', '>the field says<', '>agreement<', '>certainty<', '>points speaking<', '>score<', '>opened at<', '>price now / closed<', '>performance, %<', '>state<']) {
     assert.ok(table.includes(h), `the table has ${h}`);
   }
   assert.ok(table.includes("${r.closed ? 'closed' : 'running'}"), 'running until the exit candle is on file, then closed');
-  assert.ok(table.includes('<div class="cwbox" style="margin-bottom:1.2rem"><table class="cgap cpassers">'), 'room between the buy\'s table and the table of pairs (owner, 2026-09-21)');
+  assert.ok(table.includes('<div class="cwbox" style="margin-bottom:1.6rem"><table class="cgap cpassers">'), 'room under the seven (owner, 2026-09-21)');
+  assert.ok(panel.includes('<hr style="border:0;border-top:1px solid var(--line);margin:1.8rem 0 1.2rem">\n    <p class="note"><b>Every pair of '), 'and a rule with a heading line before the table of pairs: visual separation (owner, 2026-09-21)');
   // the routes and the help
   const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  for (const r of ["app.post('/api/coins/fields/:id/buy'", "app.get('/api/coins/buys'", "app.get('/api/coins/buys/:id'", "app.post('/api/coins/buys/:id/delete'", "app.post('/api/coins/field/close'"]) assert.ok(server.includes(r), r);
+  for (const r of ["app.post('/api/coins/fields/:id/buy'", "app.get('/api/coins/buys'", "app.get('/api/coins/buys/:id'", "app.post('/api/coins/field/close'"]) assert.ok(server.includes(r), r);
+  assert.ok(!server.includes("/api/coins/buys/:id/delete"), 'no delete door for a buy: a press replaces it, and the field takes it along');
+  assert.ok(server.includes("    if (got && got.deleted) got.buysGone = require('./lib/fieldbuy').deleteBuysOf(req.params.id);"), 'a deleted field takes its buy with it');
   const help = fs.readFileSync(path.join(ROOT, 'public', 'help-content.js'), 'utf8');
-  for (const k of ['fBuy:', 'fBuyPick:', 'fBuyOpen:', 'fBuyDel:', 'fSetClose:']) assert.ok(help.includes(`      ${k} '`), `help for ${k}`);
+  for (const k of ['fBuy:', 'fSetClose:']) assert.ok(help.includes(`      ${k} '`), `help for ${k}`);
+  assert.ok(!help.includes('fBuyOpen') && !help.includes('fBuyPick') && !help.includes('fBuyDel'), 'nothing described that is not there');
 };
 
 module.exports.zzz_cleanupTheFabricatedFieldAndCoins = function () {

@@ -1877,6 +1877,7 @@ function twoButtonsInOneRowNeverTouch() {
   const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.html'), 'utf8');
   assert.ok(/\.row \{ display:flex; align-items:center; gap:\.8rem; flex-wrap:wrap; \}/.test(html), 'the row keeps its gap');
   assert.ok(html.includes('  .row > button + button { margin-left:.8rem; }'), 'a button that follows a button in a row stands off it by the gap again');
+  assert.ok(html.includes('  .row + .row { margin-top:.55rem; }'), 'and a row that follows a row stands off it: rows never rest on each other');
 }
 
 module.exports = {

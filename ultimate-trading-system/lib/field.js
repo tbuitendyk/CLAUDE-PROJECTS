@@ -417,34 +417,19 @@ function buildField(input, dialsIn) {
   const outcomeOf = (k, i) => (k === 0 ? out[i] : (posOf[i] < 0 ? null : out[closed[(posOf[i] + offsets[k - 1]) % m]]));
   const rolled = rollPoints(input, dials, R, outcomeOf, K, null);
   const { days, fullAt, points, scale } = rolled;
-  // THE SCRAMBLES, ONCE, ON THE FILL DAY: the same readings, the outcomes
-  // dealt into a seeded order, each copy rolled from the start to that day
-  let scramblesAsGood = null;
-  if (fullAt != null && K > 0) {
-    const realThen = days[fullAt].size;
-    scramblesAsGood = 0;
-    for (let c = 0; c < K; c++) {
-      const order = seededOrder(m, hashOf(`${dials.seedText}|scramble|${c}`));
-      const dealt = new Array(n).fill(null);
-      for (let j = 0; j < m; j++) dealt[closed[j]] = out[closed[order[j]]];
-      const got = rollPoints(input, dials, R, (k, i) => dealt[i], 0, fullAt);
-      const day = got.days[got.days.length - 1];
-      if (day && day.size >= realThen - 1e-12) scramblesAsGood++;
-    }
-  }
   const last = days[days.length - 1];
   const tsLast = decisionTs[n - 1];
+  // THE NULL SETS ON THE LAST DAY -- the current window -- on every build
+  // (owner order, 2026-09-21; until 3.216.0 the scrambles were taken once, on
+  // the day the window first filled, and never again)
+  const now = last && K > 0 ? nullSetsOn(input, dials, R, closed, K, days.length - 1, last) : null;
   return {
     dials,
     decisions: n,
     days,
     fullAt: fullAt == null ? null : decisionTs[fullAt],
     fullAtDay: fullAt,
-    fill: fullAt == null || K === 0 ? null : {
-      copies: K,
-      slidesAsGood: Math.round((100 - days[fullAt].certainty) / 100 * K),
-      scramblesAsGood,
-    },
+    now,
     state: last ? {
       ts: last.ts, sign: last.sign, agreement: last.agreement, size: last.size, certainty: last.certainty,
       speaking: last.speaking, evidence: last.evidence, full: last.full,
@@ -456,6 +441,54 @@ function buildField(input, dialsIn) {
     grid: points.grid(scale),
     readingToday: last ? readingsOf(R, n - 1) : null,
   };
+}
+// THE NULL SETS ON ONE DAY (owner order, 2026-09-21: recomputed for the
+// current window when the field is built, and for the day any other process
+// consults them on -- never read off the fill day). The scrambled copies:
+// the same readings, the outcomes dealt into a seeded order, each copy rolled
+// from the start to the day asked for; how many did at least as well as the
+// real field's size there. The slid copies: the ones the day's certainty
+// already ranked the real field against; how many did at least as well.
+// `day` is the real field's day, rolled with its slid copies. Costs one roll
+// per scrambled copy up to that day.
+function nullSetsOn(input, dials, R, closed, K, dayIdx, day) {
+  const { out } = input;
+  const n = R.n;
+  const m = closed.length;
+  let scramblesAsGood = 0;
+  for (let c = 0; c < K; c++) {
+    const order = seededOrder(m, hashOf(`${dials.seedText}|scramble|${c}`));
+    const dealt = new Array(n).fill(null);
+    for (let j = 0; j < m; j++) dealt[closed[j]] = out[closed[order[j]]];
+    const got = rollPoints(input, dials, R, (k, i) => dealt[i], 0, dayIdx);
+    const then = got.days[got.days.length - 1];
+    if (then && then.size >= day.size - 1e-12) scramblesAsGood++;
+  }
+  return {
+    ts: day.ts, copies: K, full: !!day.full,
+    slidesAsGood: day.certainty == null ? null : Math.round((100 - day.certainty) / 100 * K),
+    scramblesAsGood,
+  };
+}
+// THE SAME, FOR ANY PROCESS THAT CONSULTS THE NULL SETS: the field rolled from
+// the input to the day asked for (an index into its days, or the last day
+// when none is given), and the null sets compared on that day
+function nullSetsAt(input, dialsIn, dayIdx = null) {
+  const dials = checkDials(dialsIn);
+  const R = readingsFor(input, dials);
+  const { n } = R;
+  const { out } = input;
+  const closed = [];
+  const posOf = new Int32Array(n).fill(-1);
+  for (let i = 0; i < n; i++) if (out[i] != null && Number.isFinite(Number(out[i]))) { posOf[i] = closed.length; closed.push(i); }
+  const m = closed.length;
+  const K = Math.min(dials.copies, Math.max(0, m - 2));
+  const offsets = slidOffsets(m, K, hashOf(`${dials.seedText}|slide`));
+  const outcomeOf = (k, i) => (k === 0 ? out[i] : (posOf[i] < 0 ? null : out[closed[(posOf[i] + offsets[k - 1]) % m]]));
+  const at = dayIdx == null ? n - 1 : Math.min(n - 1, Math.max(0, Number(dayIdx)));
+  const rolled = rollPoints(input, dials, R, outcomeOf, K, at);
+  const day = rolled.days[rolled.days.length - 1];
+  return day && K > 0 ? nullSetsOn(input, dials, R, closed, K, at, day) : null;
 }
 function readingsOf(R, d) {
   const out = [];
@@ -510,7 +543,7 @@ function fieldTask({ input, dials }) {
     cols.speaking.push(d.speaking); cols.evidence.push(Number(d.evidence.toFixed(3))); cols.full.push(d.full ? 1 : 0);
   }
   return {
-    dials: got.dials, fullAt: got.fullAt, fullAtDay: got.fullAtDay, fill: got.fill, state: got.state,
+    dials: got.dials, fullAt: got.fullAt, fullAtDay: got.fullAtDay, now: got.now, state: got.state,
     grid: got.grid, readingToday: got.readingToday, range: agreementRange(got.days, got.dials.windowDays),
     days: cols,
   };
@@ -518,5 +551,5 @@ function fieldTask({ input, dials }) {
 
 module.exports = {
   DAY_MS, checkDials, weightAt, seededOrder, hashOf, slidOffsets, weightedMedianSorted, Points,
-  readingsFor, rollPoints, buildField, readAt, agreementRange, fieldTask,
+  readingsFor, rollPoints, buildField, nullSetsOn, nullSetsAt, readAt, agreementRange, fieldTask,
 };

@@ -65,7 +65,7 @@ function pairBrief(p) {
     key: p.key, coin: p.coin, geometry: p.geometry, standsFor: p.standsFor || [],
     decisions: p.decisions, firstTs: p.firstTs, lastTs: p.lastTs,
     windowDays: p.windowDays, capDays: p.capDays ?? null,
-    fullAt: p.fullAt, fill: p.fill || null, state: p.state || null, range: p.range || null,
+    fullAt: p.fullAt, now: p.now || null, state: p.state || null, range: p.range || null,
     error: p.error || null,
   };
 }

@@ -34,6 +34,11 @@
      buttons against each other. fail due to ugliness"): a button that follows
      a button in a row stands off it by the row's gap again, on every screen */
   .row > button + button { margin-left:.8rem; }
+  /* AND ROWS NEVER REST ON EACH OTHER (owner, 2026-09-21: "since when do
+     buttons that are vertically spaced above and below each other REST on
+     each other?!? not in this universe"): a row that follows a row stands
+     off it, on every screen */
+  .row + .row { margin-top:.55rem; }
   .spacer { flex:1; }
   .muted { color:var(--muted); } .pos{color:var(--pos);} .neg{color:var(--neg);} .warn{color:var(--warn);}
   .tabs { display:flex; gap:.25rem; border-bottom:1px solid var(--line); margin:.4rem 0 .9rem; flex-wrap:wrap; }

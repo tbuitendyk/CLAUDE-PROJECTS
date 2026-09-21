@@ -177,9 +177,9 @@ function theFieldTellsASignalFromNoise() {
   const rn = F.agreementRange(noise.days, 200);
   assert(rf.certainty.median > rn.certainty.median + 20, `certainty: signal median ${rf.certainty.median} should sit well above noise median ${rn.certainty.median}`);
   assert(rf.agreement.median > rn.agreement.median, `agreement: signal median ${rf.agreement.median} above noise median ${rn.agreement.median}`);
-  assert(follow.fill && follow.fill.copies === 30, 'the fill records the copies it was checked against');
-  assert(follow.fill.slidesAsGood < noise.fill.slidesAsGood || follow.fill.slidesAsGood <= 3, `slides as good at fill: signal ${follow.fill.slidesAsGood}, noise ${noise.fill.slidesAsGood}`);
-  assert(follow.fill.scramblesAsGood != null, 'the scrambles are taken once at fill');
+  assert(follow.now && follow.now.copies === 30, 'the null sets record the copies they were read against');
+  assert(follow.now.slidesAsGood < noise.now.slidesAsGood || follow.now.slidesAsGood <= 3, `slides as good now: signal ${follow.now.slidesAsGood}, noise ${noise.now.slidesAsGood}`);
+  assert(follow.now.scramblesAsGood != null, 'the scrambles are read on the last day');
   assert(follow.days.every((d) => d.certainty != null), 'certainty is on every day');
   // the state and the grid say what the screen will show
   assert.strictEqual(follow.grid.length, 3, 'one grid row per look-back');
@@ -205,7 +205,41 @@ function theBuildIsDeterministic() {
   const a = F.buildField(coin, dials);
   const b = F.buildField(coin, dials);
   assert.deepStrictEqual(a.days, b.days, 'two builds of one coin agree on every day');
-  assert.deepStrictEqual(a.fill, b.fill, 'and on the fill');
+  assert.deepStrictEqual(a.now, b.now, 'and on the null sets');
+}
+
+// THE NULL SETS ARE READ OVER THE CURRENT WINDOW ON EVERY BUILD (owner order,
+// 2026-09-21): on the last day, not the day the window first filled; and any
+// process that consults them reads them on the day it asks about.
+function theNullSetsAreReadOverTheCurrentWindowOnEveryBuild() {
+  const dials = { windowDays: 120, halfLifeDays: 60, floor: 0.1, bands: [20, 60, 100], lookbackHours: [24, 48], evidenceCap: 30, leastEvidence: 2, copies: 12, seedText: 'now' };
+  // a coin of noise, so certainty moves from day to day and two days can be told apart
+  const coin = coinOf(400, { seed: 11, outcome: (m, rnd) => (rnd() - 0.5) * 2, extraMoves: { 48: (i, rnd) => (rnd() - 0.5) * 5 } });
+  const built = F.buildField(coin, dials);
+  const last = built.days[built.days.length - 1];
+  assert(built.now, 'the null sets are read');
+  assert.strictEqual(built.now.ts, last.ts, 'on the last day');
+  assert.strictEqual(built.now.full, true);
+  assert.strictEqual(built.now.copies, 12);
+  assert.strictEqual(built.now.slidesAsGood, Math.round((100 - last.certainty) / 100 * 12), 'the slid copies as the last day ranked them');
+  assert(built.now.scramblesAsGood >= 0 && built.now.scramblesAsGood <= 12);
+  // an earlier full day whose certainty differs from the last day's, so the two cannot be confused
+  assert(built.fullAtDay != null && built.fullAtDay < built.days.length - 1);
+  const other = built.days.findIndex((d, i) => i >= built.fullAtDay && d.certainty !== last.certainty);
+  assert(other >= 0, 'the check needs a day whose certainty differs from the last day\'s');
+  // any process that consults them gets the same answer for the same day ...
+  assert.deepStrictEqual(F.nullSetsAt(coin, dials), built.now, 'the last day, asked for on its own');
+  assert.deepStrictEqual(F.nullSetsAt(coin, dials, built.days.length - 1), built.now);
+  // ... and a different day is read on that day, with its own copies rolled to it
+  const then = F.nullSetsAt(coin, dials, other);
+  assert.strictEqual(then.ts, built.days[other].ts);
+  assert.strictEqual(then.slidesAsGood, Math.round((100 - built.days[other].certainty) / 100 * 12));
+  assert.notStrictEqual(then.slidesAsGood, built.now.slidesAsGood, 'a different day reads differently');
+  // a scrambled copy exactly as good as the real field counts as good: with
+  // no history in reach, every copy ties the real field at nothing
+  const early = F.nullSetsAt(coin, dials, 0);
+  assert.strictEqual(early.scramblesAsGood, 12, 'on the first day nothing has entered any point, so every scrambled copy ties the real field');
+  assert.strictEqual(early.full, false);
 }
 
 module.exports = {
@@ -216,4 +250,5 @@ module.exports = {
   theFieldTellsASignalFromNoise,
   theReadingOnADayIsLookedUpByItsInstant,
   theBuildIsDeterministic,
+  theNullSetsAreReadOverTheCurrentWindowOnEveryBuild,
 };

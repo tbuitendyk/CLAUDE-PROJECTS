@@ -123,12 +123,29 @@ function buyField(fieldId, { now = Date.now(), take = TAKE } = {}) {
     return { ...c, ...t, entryPrice: priceOf(map, t.entryTs, t.entryHours, t.mode) };
   });
   ensureDir();
+  // ONE BUY PER FIELD (owner, 2026-09-21: "one job ... which makes seven
+  // entries. They're connected to an open field"): a press replaces the
+  // field's earlier buy, so the field always shows its newest seven
+  deleteBuysOf(head.id);
   const doc = {
     v: V, id: nextId(), field: { id: head.id, name: head.name || head.id }, pressedAt: now,
     rule: RULE, take, candidates: ranked.length, pairs: (head.briefs || []).length, rows,
   };
   fs.writeFileSync(file(doc.id), JSON.stringify(doc));
   return doc;
+}
+// the buy of one field, or null; and every buy of a field removed (a re-press,
+// or the field itself deleted)
+function buyOf(fieldId) {
+  return listBuys().find((b) => b.field && b.field.id === String(fieldId)) || null;
+}
+function deleteBuysOf(fieldId) {
+  let gone = 0;
+  for (const id of idsOnDisk()) {
+    const d = readBuy(id);
+    if (d && d.field && d.field.id === String(fieldId)) { try { fs.unlinkSync(file(id)); gone++; } catch (_) { /* already gone */ } }
+  }
+  return gone;
 }
 
 function readBuy(id) {
@@ -175,4 +192,4 @@ function buyNow(id) {
   return { ...doc, rows };
 }
 
-module.exports = { DIR, V, TAKE, RULE, tradeOf, priceOf, candlesBetween, candidatesOf, buyField, readBuy, listBuys, deleteBuy, buyNow };
+module.exports = { DIR, V, TAKE, RULE, tradeOf, priceOf, candlesBetween, candidatesOf, buyField, readBuy, listBuys, buyOf, deleteBuy, deleteBuysOf, buyNow };

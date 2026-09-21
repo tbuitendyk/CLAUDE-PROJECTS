@@ -9075,7 +9075,7 @@ const cState = (() => {
     fWindow: '', fEachOwn: false, fHalf: 500, fFloor: 0.1, fCap: 30, fLeast: 3, fCopies: 50,
     fBandFrom: 10, fBandTo: 300, fBandStep: 10, fBands: '',
     fBackFrom: 1, fBackTo: 60, fBackStep: 2, fBacks: '',
-    fCoins: '', fGeom: 'daily-1d', fPermGeom: true, fName: '', fSetPick: '', fBuyPick: '',
+    fCoins: '', fGeom: 'daily-1d', fPermGeom: true, fName: '', fSetPick: '',
     fSorts: [{ key: 'certainty', dir: 'desc' }], fFrom: 0,
   };
   try { return { ...d, ...(JSON.parse(localStorage.getItem(C_KEY) || 'null') || {}) }; } catch (_) { return d; }
@@ -11095,8 +11095,8 @@ const C_FIELD_OF = {
   withEvidence: (p) => (p.state && p.state.pointsWithEvidence ? p.state.pointsWithEvidence.rising + p.state.pointsWithEvidence.falling : null),
   agrMedian: (p) => (p.range && p.range.agreement ? p.range.agreement.median : null),
   certMedian: (p) => (p.range && p.range.certainty ? p.range.certainty.median : null),
-  scrambles: (p) => (p.fill ? p.fill.scramblesAsGood : null),
-  slides: (p) => (p.fill ? p.fill.slidesAsGood : null),
+  scrambles: (p) => (p.now ? p.now.scramblesAsGood : null),
+  slides: (p) => (p.now ? p.now.slidesAsGood : null),
 };
 const cFieldTie = (x, y) => String(`${x.coin}${x.geometry}`).localeCompare(`${y.coin}${y.geometry}`);
 function cFieldSortBtn(key, firstDir) { return cSortBtn('fSorts', 'fsort', key, firstDir); }
@@ -11193,7 +11193,7 @@ function cFieldLine() {
 }
 function cFieldPairRow(p, shapes) {
   const label = (k) => (shapes.find((x) => x.key === k) || {}).label || k;
-  const s = p.state || null; const r = p.range || null; const f = p.fill || null;
+  const s = p.state || null; const r = p.range || null; const f = p.now || null;
   const ev = s && s.pointsWithEvidence ? s.pointsWithEvidence : null;
   const open = cFieldGridOpen.get(p.key) || null;
   const setId = cFieldSt && cFieldSt.saved && cFieldSt.saved.id;
@@ -11215,7 +11215,7 @@ function cFieldPairRow(p, shapes) {
       <td>${ev ? `${ev.rising} / ${ev.falling} of ${ev.of}` : '—'}</td>
       <td>${r && r.agreement ? `${cFieldNum(r.agreement.lowest, 0)} · ${cFieldNum(r.agreement.quarter, 0)} · <b>${cFieldNum(r.agreement.median, 0)}</b> · ${cFieldNum(r.agreement.threeQuarters, 0)} · ${cFieldNum(r.agreement.highest, 0)}` : '—'}</td>
       <td>${r && r.certainty ? `${cFieldNum(r.certainty.lowest, 0)} · ${cFieldNum(r.certainty.quarter, 0)} · <b>${cFieldNum(r.certainty.median, 0)}</b> · ${cFieldNum(r.certainty.threeQuarters, 0)} · ${cFieldNum(r.certainty.highest, 0)}` : '—'}</td>
-      <td>${f ? `${f.scramblesAsGood == null ? '—' : f.scramblesAsGood} / ${f.slidesAsGood == null ? '—' : f.slidesAsGood} of ${f.copies}` : '—'}</td>
+      <td>${f ? `${f.scramblesAsGood == null ? '—' : f.scramblesAsGood} / ${f.slidesAsGood == null ? '—' : f.slidesAsGood} of ${f.copies}` : (s ? '<span class="muted" title="this pair was built before 3.216.0, when the null sets were taken once on the fill day and never again; press Build the field to have them read over the current window">build again</span>' : '—')}</td>
       <td><button data-fgrid="${esc(p.key)}"${setId ? '' : ' disabled'} title="${setId ? 'opens the grid under this row: every look-back down the side, every sit-out band across the top, and in each square the average outcome after rising and after falling with the evidence behind each' : 'the grid opens once the field is written to disk'}">${open ? 'close the grid' : 'the grid'}</button></td>
     </tr>${open ? `<tr><td colspan="16">${cFieldGridHtml(open)}</td></tr>` : ''}`;
 }
@@ -11266,11 +11266,19 @@ function cFieldCollapseLine() {
 // best candidates of the field on screen for their newest decision, with the
 // price each trade opened at; the table sits ABOVE the table of pairs and
 // moves only in its price and performance columns. Nothing here trades.
+// A BUY BELONGS TO ITS FIELD (owner, 2026-09-21: "if a buy has been created
+// for a field, it's connected to the field, and it displays when you open the
+// field. And if the field is not open, it does not display"). The buys on
+// screen are the open field's own, newest press first; none while no field
+// is on the screen.
+function cBuysOfOpenField() {
+  const saved = cFieldSt && cFieldSt.saved ? cFieldSt.saved : null;
+  if (!saved) return [];
+  return (cBuysNow || []).filter((b) => b && b.field && b.field.id === saved.id);
+}
 function cBuyPicked() {
-  const list = cBuysNow || [];
-  if (!list.length) return null;
-  const want = String(cState.fBuyPick || '');
-  return (list.find((b) => b.id === want) || list[0]).id;
+  const list = cBuysOfOpenField();
+  return list.length ? list[0].id : null;   // the open field's own buy, its newest press
 }
 async function cBuysLoad() {
   const got = await apiOr('api/coins/buys', { buys: [] });
@@ -11296,9 +11304,9 @@ function cFieldBuyTable(b) {
       <td>${esc(when(r.decisionTs))}</td><td>${word}</td><td>${cFieldNum(r.agreement, 0)}</td><td>${cFieldNum(r.certainty, 0)}</td><td>${r.speaking ?? '—'}</td><td><b>${cFieldNum(r.score, 1)}</b></td>
       <td>${cBuyPx(r.entryPrice)}${r.entryPrice == null ? ' <span class="muted">(no candle at the opening)</span>' : ''}</td><td>${now}</td><td>${perf}</td><td>${r.closed ? 'closed' : 'running'}</td></tr>`;
   }).join('');
-  return `<p class="note"><b>${esc(b.id)}</b>, pressed ${esc(when(b.pressedAt))} UTC from <b>${esc(b.field.id)} &middot; ${esc(String(b.field.name || ''))}</b>: the ${(b.rows || []).length} best of ${Number(b.candidates || 0).toLocaleString()} candidate(s) among ${Number(b.pairs || 0).toLocaleString()} pair(s).
+  return `<p class="note">The seven of <b>${esc(b.field.id)} &middot; ${esc(String(b.field.name || ''))}</b>, pressed ${esc(when(b.pressedAt))} UTC: the ${(b.rows || []).length} best of ${Number(b.candidates || 0).toLocaleString()} candidate(s) among ${Number(b.pairs || 0).toLocaleString()} pair(s).
     The rule: ${esc(b.rule || '')}. Fixed as pressed; only the price and the performance move.</p>
-    <div class="cwbox" style="margin-bottom:1.2rem"><table class="cgap cpassers"><thead><tr>
+    <div class="cwbox" style="margin-bottom:1.6rem"><table class="cgap cpassers"><thead><tr>
       <th title="the coin">coin</th>
       <th title="the chunk shape the field was built on, and the shapes it stands for">chunk shape</th>
       <th title="the decision the field read, UTC. The trade opens at this instant.">decision (UTC)</th>
@@ -11315,25 +11323,16 @@ function cFieldBuyTable(b) {
 }
 function cFieldBuyBlock(st, off) {
   const saved = st && st.saved ? st.saved : null;
-  const buys = cBuysNow || [];
+  if (!saved) return '';                      // no field on the screen: nothing of the buy is shown
+  const buys = cBuysOfOpenField();
   const picked = cBuyPicked();
   const when = (t) => (t ? cWhen(new Date(t).toISOString()) : '?');
   const shown = cBuyOpen && picked && cBuyOpen.id === picked ? cBuyOpen : null;
-  return `<div class="row">
-      <button id="fBuy" class="pri"${off || !saved ? ' disabled' : ''} title="reads every pair of the field on this screen and writes down the seven best candidates for their newest decision, with the price each trade opened at. Nothing is traded.">Buy the field</button>
-      <span id="fBuyOut" class="muted">${saved ? esc(`reads every pair of ${saved.id} · ${saved.name} and writes down the seven best for their newest decision`) : 'open or build a field first'}</span>
+  return `<div class="row" style="margin-top:1rem">
+      <button id="fBuy" class="pri"${off ? ' disabled' : ''} title="reads every pair of the field on this screen and writes down its seven best candidates for their newest decision, with the price each trade opened at. A press replaces the field's earlier seven. Nothing is traded.">Buy the field</button>
+      <span id="fBuyOut" class="muted">${esc(`reads every pair of ${saved.id} · ${saved.name} and writes down its seven best for their newest decision`)}</span>
     </div>
-    ${buys.length ? `<div class="row">
-      <label class="f" title="every buy on this box, newest press first">buys on this box<select id="fBuyPick" style="min-width:26rem">
-        ${buys.map((b) => `<option value="${esc(b.id)}"${b.id === picked ? ' selected' : ''}>${esc(b.id)} &middot; ${esc(b.field.id)} ${esc(String(b.field.name || ''))} &middot; pressed ${esc(when(b.pressedAt))} UTC &middot; ${b.rows} of ${Number(b.candidates || 0).toLocaleString()} candidate(s)</option>`).join('')}
-      </select></label>
-    </div>
-    <div class="row">
-      <button id="fBuyOpen">Open this buy</button>
-      <button id="fBuyDel" class="danger">Delete it</button>
-      <span id="fBuyMsg" class="muted"></span>
-    </div>
-    ${shown ? cFieldBuyTable(shown) : ''}` : '<p class="note">no buy on this box yet &mdash; press <b>Buy the field</b> to write one down</p>'}`;
+    ${buys.length && shown ? cFieldBuyTable(shown) : `<p class="note">no buy of ${esc(saved.id)} yet &mdash; press <b>Buy the field</b> to write one down</p>`}`;
 }
 function cFieldPanel() {
   const st = cFieldSt;
@@ -11417,6 +11416,8 @@ function cFieldPanel() {
     ${(st && st.error) ? `<p class="note warn">the build stopped: ${esc(st.error)}</p>` : ''}
     ${cFieldBuyBlock(st, off)}
     ${!pairs ? (building ? '' : C_FIELD_NONE_YET) : (!pairs.length ? C_FIELD_NO_PAIRS : `
+    <hr style="border:0;border-top:1px solid var(--line);margin:1.8rem 0 1.2rem">
+    <p class="note"><b>Every pair of ${esc(String((st && st.saved && st.saved.id) || ''))}</b>${st && st.saved && st.saved.name ? ` &middot; ${esc(String(st.saved.name))}` : ''}: one row per coin and chunk shape, read on its last day.</p>
     <div class="cwbox cwtall"><table class="cgap cpassers"><thead><tr>
       <th title="the coin">coin${cFieldSortBtn('coin', 'asc')}</th>
       <th title="the chunk shape, and the shapes this field stands for">chunk shape${cFieldSortBtn('geometry', 'asc')}</th>
@@ -11432,7 +11433,7 @@ function cFieldPanel() {
       <th title="how many points carry at least the least evidence after rising, and after falling, of all the points">points with evidence${cFieldSortBtn('withEvidence', 'desc')}</th>
       <th title="agreement over the days in the window that had a speaking point: lowest, a quarter of the way up, the middle, three quarters, highest. This is the realistic range a minimum on stage 3 has to be read against.">agreement range${cFieldSortBtn('agrMedian', 'desc')}</th>
       <th title="certainty over the same days: lowest, a quarter, the middle, three quarters, highest">certainty range${cFieldSortBtn('certMedian', 'desc')}</th>
-      <th title="on the day the window first filled: how many scrambled copies (outcomes dealt into a random order) did at least as well as the real field, and how many slid copies did, of the copies built. Low is the result; the scrambles count is taken once and nothing but this column reads it.">scrambles / slides as good at fill${cFieldSortBtn('slides', 'asc')}</th>
+      <th title="on the last day, over the current window: how many scrambled copies (outcomes dealt into a random order, each rolled from the start to the last day) did at least as well as the real field, and how many slid copies did, of the copies built. Low is the result. Read again on every build.">scrambles / slides as good now${cFieldSortBtn('scrambles', 'asc')}</th>
       <th></th>
     </tr></thead>
     <tbody>${page.map((p) => cFieldPairRow(p, shapes)).join('')}</tbody></table></div>
@@ -11511,7 +11512,6 @@ function cFieldBind() {
   apply('fBandApply', 'fBandFrom', 'fBandTo', 'fBandStep', 'fBands', 'fBandOut', 'band');
   apply('fBackApply', 'fBackFrom', 'fBackTo', 'fBackStep', 'fBacks', 'fBackOut', 'look-back');
   // BUY THE FIELD: the press, the picker, the re-read, the delete
-  const bsay = (t, warn) => { const el = $('#fBuyMsg'); if (el) el.innerHTML = warn ? `<b class="warn">${esc(t)}</b>` : esc(t); };
   const buy = $('#fBuy');
   if (buy) buy.onclick = async () => {
     const id = cFieldSt && cFieldSt.saved && cFieldSt.saved.id;
@@ -11519,25 +11519,9 @@ function cFieldBind() {
     buy.disabled = true;
     const o = $('#fBuyOut'); if (o) o.textContent = 'reading every pair…';
     try {
-      const got = await post(`api/coins/fields/${encodeURIComponent(id)}/buy`, {});
-      cState.fBuyPick = got.id; cRemember();
+      await post(`api/coins/fields/${encodeURIComponent(id)}/buy`, {});
       await cBuysLoad();
     } catch (err) { if (o) o.innerHTML = `<span class="warn">${esc(String(err && err.message ? err.message : err))}</span>`; buy.disabled = false; }
-  };
-  const bp = $('#fBuyPick');
-  if (bp) bp.onchange = () => { cState.fBuyPick = bp.value; cRemember(); cBuysLoad(); };
-  const bo = $('#fBuyOpen');
-  if (bo) bo.onclick = () => { bsay('reading…'); cBuysLoad(); };
-  const bd = $('#fBuyDel');
-  if (bd) bd.onclick = async () => {
-    const id = cBuyPicked();
-    if (!id) return;
-    if (!confirm(`Delete ${id}?\n\nThe record of that press cannot be made again once the data has moved on.`)) return;
-    try {
-      await post(`api/coins/buys/${encodeURIComponent(id)}/delete`, {});
-      cState.fBuyPick = ''; cRemember(); cBuyOpen = null;
-      await cBuysLoad();
-    } catch (err) { bsay(String(err && err.message ? err.message : err), true); }
   };
   const run = $('#fRun');
   if (run) run.onclick = async () => {

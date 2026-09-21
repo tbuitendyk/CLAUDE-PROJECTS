@@ -493,8 +493,12 @@ app.post('/api/coins/fields/:id/name', (req, res) => {
   catch (err) { return res.status(400).json({ error: err.message }); }
 });
 app.post('/api/coins/fields/:id/delete', (req, res) => {
-  try { return res.json(require('./lib/fieldset').deleteField(req.params.id, (req.body || {}).confirm)); }
-  catch (err) { return res.status(400).json({ error: err.message }); }
+  try {
+    const got = require('./lib/fieldset').deleteField(req.params.id, (req.body || {}).confirm);
+    // a field's buy belongs to it and goes with it (3.216.0)
+    if (got && got.deleted) got.buysGone = require('./lib/fieldbuy').deleteBuysOf(req.params.id);
+    return res.json(got);
+  } catch (err) { return res.status(400).json({ error: err.message }); }
 });
 app.post('/api/coins/fields/:id/drop-part', (req, res) => {
   try {
@@ -533,10 +537,6 @@ app.get('/api/coins/buys', (req, res) => {
 });
 app.get('/api/coins/buys/:id', (req, res) => {
   try { return res.json(require('./lib/fieldbuy').buyNow(req.params.id)); }
-  catch (err) { return res.status(400).json({ error: err.message }); }
-});
-app.post('/api/coins/buys/:id/delete', (req, res) => {
-  try { return res.json(require('./lib/fieldbuy').deleteBuy(req.params.id)); }
   catch (err) { return res.status(400).json({ error: err.message }); }
 });
 // THE PASSERS' ONE DOOR: the bar, and a row's tick. Both live beside the band.

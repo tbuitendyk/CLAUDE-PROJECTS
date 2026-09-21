@@ -392,8 +392,6 @@ module.exports = {
       // and the fields on this box (3.211.0), the same shape: every option is a
       // field id the box itself listed
       'fSet',
-      // the buys on this box (3.215.0): filled from the box's own list of buys, the same way as fSet
-      'fBuyPick',
       // and the field a stage 3 run names (3.212.0): none, or a field id the box listed
       'swField',
       // AND ITS NAMED SCREENS (3.180.0). Its values are the names of screens

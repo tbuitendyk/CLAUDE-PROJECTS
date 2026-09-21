@@ -469,6 +469,11 @@ aligned, which makes the two that were not a mistake, not a choice.
   (`.row > button + button` in `public/construct.html`), and
   `tests/test-coinscan.js :: twoButtonsInOneRowNeverTouch` holds the rule.
   A button row is designed with that space counted in, never packed.
+- **AND ROWS NEVER REST ON EACH OTHER** (owner order, 2026-09-21: "since
+  when do buttons that are vertically spaced above and below each other REST
+  on each other?!? not in this universe", on `Build the field` over `Buy the
+  field`). A row that follows a row stands off it (`.row + .row` in
+  `public/construct.html`), on every screen; the same test holds it.
 
 
 ## RULE FIVE — functionality targeted to the final system is never based on non-accessible

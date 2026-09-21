@@ -4623,7 +4623,7 @@ function writeFieldSidecar(id, fieldDoc, fieldPairs) {
   const pairs = {};
   for (const key of new Set(Object.values(fieldPairs || {}))) {
     const pr = (fieldDoc.pairs || []).find((x) => x.key === key);
-    if (pr) pairs[key] = { days: pr.days, fullAt: pr.fullAt ?? null, copies: pr.fill ? pr.fill.copies : ((fieldDoc.dials || {}).copies || 0), windowDays: pr.windowDays ?? null };
+    if (pr) pairs[key] = { days: pr.days, fullAt: pr.fullAt ?? null, copies: pr.now ? pr.now.copies : ((fieldDoc.dials || {}).copies || 0), windowDays: pr.windowDays ?? null };
   }
   const tmp = `${fieldFile(id)}.tmp${process.pid}-${++tmpSeq}`;
   fs.writeFileSync(tmp, zlib.gzipSync(Buffer.from(JSON.stringify({ v: FIELD_V, at: new Date().toISOString(), field: fieldDoc.id, name: fieldDoc.name, dials: fieldDoc.dials, pairs }))));

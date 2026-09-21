@@ -11,7 +11,7 @@ const path = require('path');
 const aPair = (over = {}) => ({
   key: 'ZZZQAUSDT|daily-1d', coin: 'ZZZQAUSDT', geometry: 'daily-1d', standsFor: ['daily-2d'],
   decisions: 5, firstTs: 1, lastTs: 5, windowDays: 3, capDays: 3, fullAt: 4,
-  fill: { copies: 2, slidesAsGood: 1, scramblesAsGood: 0 },
+  now: { ts: 5, copies: 2, full: true, slidesAsGood: 1, scramblesAsGood: 0 },
   state: { ts: 5, sign: 1, agreement: 60, size: 1.2, certainty: 50, speaking: 2, evidence: 4, full: true, daysInWindow: 3, decisionsInWindow: 3, yardsticks: [1], pointsWithEvidence: { rising: 1, falling: 1, of: 2 } },
   range: { days: 3, silentDays: 0, agreement: { lowest: 0, quarter: 30, median: 60, threeQuarters: 60, highest: 60 }, certainty: null },
   grid: [[{ rising: { avg: 1, evidence: 2 }, falling: null }, { rising: null, falling: { avg: -1, evidence: 2 } }]],
@@ -156,7 +156,7 @@ function theTaskPacksTheSeriesIntoColumns() {
   assert.strictEqual(packed.days.ts.length, n);
   assert.deepStrictEqual(packed.days.sign, plain.days.map((d) => d.sign));
   assert.strictEqual(packed.days.full[n - 1], 1);
-  assert(packed.state && packed.grid && packed.range && packed.fill, 'the state, the grid, the range and the fill ride with it');
+  assert(packed.state && packed.grid && packed.range && packed.now, 'the state, the grid, the range and the null sets ride with it');
   assert.strictEqual(packed.range.days, plain.days.filter((d) => d.ts >= plain.days[n - 1].ts - 10 * 86400000 && d.speaking > 0).length);
 }
 
