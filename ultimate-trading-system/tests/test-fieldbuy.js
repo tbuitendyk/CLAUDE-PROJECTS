@@ -67,6 +67,7 @@ function aField() {
   pairs.push(aPair('ZZZBOUSDT', 'daily-3d', D - 24 * HOUR, { certainty: 99, agreement: 99 }));            // a day behind its shape
   const got = fset.saveField({ asked: { name: 'zzz buy test' }, dials: DIALS, cap: { days: 30, coin: COINS[0] }, collapse: [], pairs, startedAt: 1, finishedAt: 2, name: 'zzz buy test' });
   made.fields.push(got.id);
+  fb.deleteBuysOf(got.id);        // a buy left behind under this id by an earlier run is not this field's
   return got.id;
 }
 
@@ -92,7 +93,7 @@ module.exports.theCandidatesAreTheFreshFullSpeakingPairsRankedByCertaintyTimesAg
   cleanup();
 };
 
-module.exports.theBuyIsFixedAsPressedAndItsPriceMovesUntilTheExitCandleIsOnFile = function () {
+module.exports.theBuyIsFixedAsPressedAndItsPriceMovesUntilTheExitCandleIsOnFile = async function () {
   cleanup();
   const id = aField();
   const buy = fb.buyField(id, { now: 1_800_000_000_000 });
@@ -104,9 +105,14 @@ module.exports.theBuyIsFixedAsPressedAndItsPriceMovesUntilTheExitCandleIsOnFile 
   assert.strictEqual(first.entryPrice, 101, 'the open of the 01:00 candle on the decision day');
   // running: the newest candle on file (05:00, close 105.25) and the move in the field's direction
   const rowOf = (out, coin) => out.rows.find((x) => x.coin === coin);
-  let now = fb.buyNow(buy.id);
+  // the closing has not passed: running, and nothing is fetched
+  let asked = [];
+  const NOW_RUNNING = Date.UTC(2026, 8, 21, 6, 35);
+  let now = await fb.buyNow(buy.id, { now: NOW_RUNNING, fetchRecent: async (coin) => { asked.push(coin); } });
+  assert.deepStrictEqual(asked, [], 'a closing that has not passed fetches nothing');
   let r = rowOf(now, COINS[0]);
   assert.strictEqual(r.closed, false);
+  assert.strictEqual(r.passed, false);
   assert.strictEqual(r.price, 105.25);
   assert.strictEqual(r.priceTs, Date.UTC(2026, 8, 21, 5));
   assert.ok(Math.abs(r.movePct - (105.25 - 101) / 101 * 100) < 1e-9);
@@ -116,7 +122,7 @@ module.exports.theBuyIsFixedAsPressedAndItsPriceMovesUntilTheExitCandleIsOnFile 
   assert.ok(Math.abs(down.performancePct + down.movePct) < 1e-9, 'the field said down: a rise counts against it');
   // the exit candle lands: closed at its open, and nothing else about the row moved
   binance.writeDayFile(COINS[0], Date.UTC(2026, 8, 22), dayRows(200, Date.UTC(2026, 8, 22), 0, 23));
-  now = fb.buyNow(buy.id);
+  now = await fb.buyNow(buy.id, { now: NOW_RUNNING });
   r = rowOf(now, COINS[0]);
   assert.strictEqual(r.closed, true);
   assert.strictEqual(r.price, 218, 'the open of the exit candle, 18:00 on the 22nd');
@@ -125,10 +131,28 @@ module.exports.theBuyIsFixedAsPressedAndItsPriceMovesUntilTheExitCandleIsOnFile 
   assert.strictEqual(r.entryPrice, 101, 'the opening price never moves');
   assert.strictEqual(r.score, first.score);
   assert.strictEqual(rowOf(now, COINS[1]).closed, false, 'a coin whose exit candle is not on file is still running');
+  // CHECKED AND CLOSED: the closing price is written into the record, and the candles can go
+  assert.strictEqual(rowOf(fb.readBuy(buy.id), COINS[0]).closedPrice, 218, 'written down');
+  fs.rmSync(path.join(CACHE, `${COINS[0]}-1h-2026-09-22.json`), { force: true });
+  r = rowOf(await fb.buyNow(buy.id, { now: NOW_RUNNING }), COINS[0]);
+  assert.deepStrictEqual({ closed: r.closed, price: r.price, priceTs: r.priceTs }, { closed: true, price: 218, priceTs: EXIT }, 'closed for good, from the record');
+  // the closing has passed for a coin whose closing candle is not on file: it is fetched, then closed
+  const AFTER = EXIT + 2 * HOUR;
+  asked = [];
+  now = await fb.buyNow(buy.id, { now: AFTER, fetchRecent: async (coin) => { asked.push(coin); if (coin === COINS[1]) binance.writeDayFile(COINS[1], Date.UTC(2026, 8, 22), dayRows(300, Date.UTC(2026, 8, 22), 0, 23)); } });
+  assert.ok(asked.includes(COINS[1]) && !asked.includes(COINS[0]), `the hours are fetched for the coins whose closing has passed and are not closed yet: ${asked.join(' ')}`);
+  r = rowOf(now, COINS[1]);
+  assert.deepStrictEqual({ closed: r.closed, passed: r.passed, price: r.price }, { closed: true, passed: true, price: 318 }, 'closed at the closing candle the fetch brought');
+  assert.strictEqual(rowOf(fb.readBuy(buy.id), COINS[1]).closedPrice, 318, 'and written down');
+  // a closing that has passed with no candle to be had, or no fetch allowed, reads so -- never as running
+  const stuck = rowOf(await fb.buyNow(buy.id, { now: AFTER }), COINS[2]);
+  assert.deepStrictEqual({ closed: stuck.closed, passed: stuck.passed }, { closed: false, passed: true });
+  const stuck2 = rowOf(await fb.buyNow(buy.id, { now: AFTER, fetchRecent: async () => { throw new Error('mirror down'); } }), COINS[2]);
+  assert.deepStrictEqual({ closed: stuck2.closed, passed: stuck2.passed }, { closed: false, passed: true }, 'a failed fetch leaves it open and says the closing passed');
   // a coin with no candle at the opening: nothing is invented
-  const bare = rowOf(fb.buyNow(buy.id), COINS[5]);
+  const bare = rowOf(await fb.buyNow(buy.id, { now: NOW_RUNNING }), COINS[5]);
   fs.rmSync(path.join(CACHE, `${COINS[5]}-1h-2026-09-21.json`), { force: true });
-  const again = rowOf(fb.buyNow(buy.id), COINS[5]);
+  const again = rowOf(await fb.buyNow(buy.id, { now: NOW_RUNNING }), COINS[5]);
   assert.strictEqual(bare.entryPrice, 106);
   assert.strictEqual(again.entryPrice, 106, 'the opening price was written down at the press');
   assert.strictEqual(again.price, null, 'no candle on file: no price');
@@ -153,7 +177,7 @@ module.exports.aWeeklyShapeIsPricedByItsRunsAndAnInventedCandleIsNeverAPrice = f
   assert.throws(() => fb.tradeOf('hourly-9x', dec), /is not a chunk shape/);
 };
 
-module.exports.theBuysAreListedNewestFirstAndDeletedOnce = function () {
+module.exports.theBuysAreListedNewestFirstAndDeletedOnce = async function () {
   cleanup();
   const id = aField();
   const a = fb.buyField(id, { now: 1_800_000_000_000 }); made.buys.push(a.id);
@@ -173,7 +197,7 @@ module.exports.theBuysAreListedNewestFirstAndDeletedOnce = function () {
   assert.strictEqual(fb.readBuy(a.id), null);
   assert.strictEqual(fb.buyOf(id2).id, c.id, 'and not another field\'s');
   assert.throws(() => fb.deleteBuy(a.id), /there is no buy/);
-  assert.throws(() => fb.buyNow(a.id), /there is no buy/);
+  await assert.rejects(fb.buyNow(a.id), /there is no buy/);
   assert.throws(() => fb.buyField('F-nope'), /there is no field/);
   cleanup();
 };
@@ -203,14 +227,15 @@ module.exports.theScreenHasTheButtonThePickerAndTheTableAboveThePairs = function
   assert.ok(block.includes("has its seven — a new day needs Build the field again"), 'and the line beside it says why');
   assert.ok(block.includes('<div class="row" style="margin-top:1rem">\n      <button id="fBuy" class="pri"'), 'space between Build the field and Buy the field');
   const table = ui.slice(ui.indexOf('function cFieldBuyTable(b) {'), ui.indexOf('\n}\n', ui.indexOf('function cFieldBuyTable(b) {')));
+  const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
   for (const h of ['>coin<', '>chunk shape<', '>decision (UTC)<', '>the field says<', '>agreement<', '>certainty<', '>points speaking<', '>score<', '>opened at<', '>price now / closed<', '>performance, %<', '>state<']) {
     assert.ok(table.includes(h), `the table has ${h}`);
   }
-  assert.ok(table.includes("${r.closed ? 'closed' : 'running'}"), 'running until the exit candle is on file, then closed');
+  assert.ok(table.includes("${r.closed ? 'closed' : (r.passed ? '<span class=\"warn\">closing passed, no closing candle on file yet</span>' : 'running')}"), 'running, closed, or closing passed with no candle');
+  assert.ok(server.includes("    const fetchRecent = require('./lib/jobs').anyJobRunning() ? null : (coin) => require('./lib/datarefresh').fillRecent(coin);"), 'the read fetches a missing closing candle, unless a data job holds the cache');
   assert.ok(table.includes('<div class="cwbox" style="margin-bottom:1.6rem"><table class="cgap cpassers">'), 'room under the seven (owner, 2026-09-21)');
   assert.ok(panel.includes('<hr style="border:0;border-top:1px solid var(--line);margin:1.8rem 0 1.2rem">\n    <p class="note"><b>Every pair of '), 'and a rule with a heading line before the table of pairs: visual separation (owner, 2026-09-21)');
   // the routes and the help
-  const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
   for (const r of ["app.post('/api/coins/fields/:id/buy'", "app.get('/api/coins/buys'", "app.get('/api/coins/buys/:id'", "app.post('/api/coins/field/close'"]) assert.ok(server.includes(r), r);
   assert.ok(!server.includes("/api/coins/buys/:id/delete"), 'no delete door for a buy: a press replaces it, and the field takes it along');
   assert.ok(server.includes("    if (got && got.deleted) got.buysGone = require('./lib/fieldbuy').deleteBuysOf(req.params.id);"), 'a deleted field takes its buy with it');

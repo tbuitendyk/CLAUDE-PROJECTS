@@ -11302,7 +11302,7 @@ function cFieldBuyTable(b) {
     const now = r.price == null ? '<span class="muted">no candle after the opening yet</span>' : `${cBuyPx(r.price)} <span class="muted">at ${esc(when(r.priceTs))}</span>`;
     return `<tr><td>${esc(r.coin)}</td><td>${esc(label(r.geometry))}${(r.standsFor || []).length ? ` <span class="muted">(stands for ${esc(r.standsFor.map(label).join(', '))})</span>` : ''}</td>
       <td>${esc(when(r.decisionTs))}</td><td>${word}</td><td>${cFieldNum(r.agreement, 0)}</td><td>${cFieldNum(r.certainty, 0)}</td><td>${r.speaking ?? '—'}</td><td><b>${cFieldNum(r.score, 1)}</b></td>
-      <td>${cBuyPx(r.entryPrice)}${r.entryPrice == null ? ' <span class="muted">(no candle at the opening)</span>' : ''}</td><td>${now}</td><td>${perf}</td><td>${r.closed ? 'closed' : 'running'}</td></tr>`;
+      <td>${cBuyPx(r.entryPrice)}${r.entryPrice == null ? ' <span class="muted">(no candle at the opening)</span>' : ''}</td><td>${now}</td><td>${perf}</td><td>${r.closed ? 'closed' : (r.passed ? '<span class="warn">closing passed, no closing candle on file yet</span>' : 'running')}</td></tr>`;
   }).join('');
   return `<p class="note">The seven of <b>${esc(b.field.id)} &middot; ${esc(String(b.field.name || ''))}</b>, pressed ${esc(when(b.pressedAt))} UTC: the ${(b.rows || []).length} best of ${Number(b.candidates || 0).toLocaleString()} candidate(s) among ${Number(b.pairs || 0).toLocaleString()} pair(s).
     The rule: ${esc(b.rule || '')}. Fixed as pressed; only the price and the performance move.</p>
@@ -11316,9 +11316,9 @@ function cFieldBuyTable(b) {
       <th title="how many points spoke on that decision">points speaking</th>
       <th title="certainty times agreement, each as a share, 0 to 100: the rank">score</th>
       <th title="the price the trade opened at: the open of the decision candle (01:00 UTC on a daily shape), or the mean of the Tuesday run on the weekly shape">opened at</th>
-      <th title="while the trade runs, the newest candle on file and its close; once the exit candle is on file, the exit price and its instant">price now / closed</th>
+      <th title="while the trade runs, the newest candle on file and its close; once the closing has passed, the closing candle's price, fetched if it is not on file, written into the record and never read from the candles again">price now / closed</th>
       <th title="the move from the opening price in the field's own direction, in percent">performance, %</th>
-      <th title="running until the exit candle is on file, then closed">state</th>
+      <th title="running until the closing has passed; closed, at the closing price, once it has and the candle could be had; closing passed with no candle means neither the box nor the exchange had the hour yet, or a data job held the cache — read the field again later">state</th>
     </tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 function cFieldBuyBlock(st, off) {

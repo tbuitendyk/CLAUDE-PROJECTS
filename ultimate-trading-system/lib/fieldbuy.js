@@ -176,22 +176,50 @@ function deleteBuy(id) {
 }
 
 // THE BUY AS IT STANDS: the record as pressed, and each trade's price so far.
-// Until the exit candle is on file the price is the newest candle's close and
-// the trade is running; from then on it is the exit price and the trade is
-// closed. The performance is the move in the field's own direction.
-function buyNow(id) {
+// Until the closing candle is on file the price is the newest candle's close
+// and the trade is running; the performance is the move in the field's own
+// direction.
+//
+// CHECKED AND CLOSED (owner, 2026-09-21: "if there are still selections in a
+// running state, they need to be checked and closed with the closing price,
+// if the date of closing has passed"). A trade whose closing has passed --
+// its closing candle has ended -- is closed at that candle's price. When the
+// candle is not on file the hours since the last whole day are fetched for
+// that coin, the way Refresh to latest fetches them (`fetchRecent`, handed
+// in by the service, and withheld while a data job holds the cache). Once
+// closed, the closing price is WRITTEN INTO THE RECORD and never read from
+// the candles again, whatever happens to them on disk. A closing that has
+// passed with no candle to be had reads so, never as running.
+const HOLD_CLOSED = (r, price) => {
+  const movePct = r.entryPrice > 0 && price != null ? (price - r.entryPrice) / r.entryPrice * 100 : null;
+  return { ...r, closed: true, passed: true, price, priceTs: r.exitTs, movePct, performancePct: movePct == null ? null : movePct * r.sign };
+};
+async function buyNow(id, { now = Date.now(), fetchRecent = null } = {}) {
   const doc = readBuy(id);
   if (!doc) throw new Error(`there is no buy ${JSON.stringify(String(id))} on this box`);
-  const rows = (doc.rows || []).map((r) => {
-    const map = candlesBetween(r.coin, r.exitTs - HOUR_MS, r.exitTs + (r.exitHours + 1) * HOUR_MS);
-    const exitPrice = priceOf(map, r.exitTs, r.exitHours, r.mode);
+  let changed = false;
+  const rows = [];
+  for (const r of (doc.rows || [])) {
+    if (r.closedPrice != null) { rows.push(HOLD_CLOSED(r, r.closedPrice)); continue; }   // closed for good, as written down
+    const passed = now >= r.exitTs + r.exitHours * HOUR_MS;
+    const exitOn = () => priceOf(candlesBetween(r.coin, r.exitTs - HOUR_MS, r.exitTs + (r.exitHours + 1) * HOUR_MS), r.exitTs, r.exitHours, r.mode);
+    let exitPrice = exitOn();
+    if (exitPrice == null && passed && fetchRecent) {
+      try { await fetchRecent(r.coin); } catch (_) { /* the newest on file stands, and the state says the closing has passed */ }
+      exitPrice = exitOn();
+    }
+    if (exitPrice != null) {
+      r.closedPrice = exitPrice; r.closedTs = r.exitTs; changed = true;
+      rows.push(HOLD_CLOSED(r, exitPrice));
+      continue;
+    }
     const newest = binance.newestCandle(r.coin);
-    const closed = exitPrice != null;
-    const price = closed ? exitPrice : (newest && newest.ts >= r.entryTs && newest.close > 0 ? newest.close : null);
-    const priceTs = closed ? r.exitTs : (newest && newest.ts >= r.entryTs ? newest.ts : null);
+    const price = newest && newest.ts >= r.entryTs && newest.close > 0 ? newest.close : null;
+    const priceTs = newest && newest.ts >= r.entryTs ? newest.ts : null;
     const movePct = r.entryPrice > 0 && price != null ? (price - r.entryPrice) / r.entryPrice * 100 : null;
-    return { ...r, closed, price, priceTs, movePct, performancePct: movePct == null ? null : movePct * r.sign };
-  });
+    rows.push({ ...r, closed: false, passed, price, priceTs, movePct, performancePct: movePct == null ? null : movePct * r.sign });
+  }
+  if (changed) fs.writeFileSync(file(doc.id), JSON.stringify(doc));   // the closing prices, written down once
   return { ...doc, rows };
 }
 

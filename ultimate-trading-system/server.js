@@ -535,9 +535,14 @@ app.get('/api/coins/buys', (req, res) => {
   try { return res.json({ buys: require('./lib/fieldbuy').listBuys() }); }
   catch (err) { return res.status(400).json({ error: err.message }); }
 });
-app.get('/api/coins/buys/:id', (req, res) => {
-  try { return res.json(require('./lib/fieldbuy').buyNow(req.params.id)); }
-  catch (err) { return res.status(400).json({ error: err.message }); }
+app.get('/api/coins/buys/:id', async (req, res) => {
+  try {
+    // a selection whose closing has passed is closed at its closing price; the
+    // closing candle is fetched when it is not on file, the way Refresh to
+    // latest fetches it, unless a data job holds the cache right now
+    const fetchRecent = require('./lib/jobs').anyJobRunning() ? null : (coin) => require('./lib/datarefresh').fillRecent(coin);
+    return res.json(await require('./lib/fieldbuy').buyNow(req.params.id, { fetchRecent }));
+  } catch (err) { return res.status(400).json({ error: err.message }); }
 });
 // THE PASSERS' ONE DOOR: the bar, and a row's tick. Both live beside the band.
 app.post('/api/coins/passers', (req, res) => {
