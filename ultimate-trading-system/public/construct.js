@@ -11368,13 +11368,38 @@ const C_FIELD_NAME = {
   sign: 'sign today', agreement: 'agreement today', size: 'size today', certainty: 'certainty today', speaking: 'points speaking',
   withEvidence: 'points with evidence', agrMedian: 'agreement range', certMedian: 'certainty range', slides: 'scrambles / slides as good at fill',
 };
-function cFieldRepaint() {
+// THE BOX SCROLLS ON ITS OWN, AND A REPAINT BUILDS A NEW ONE (owner,
+// 2026-09-21: "the one that we picked should be on the screen. It shouldn't
+// be scrolling back up to the top"). The table of pairs sits in a box about
+// 38 lines tall with a scroll of its own; replacing the section put the page
+// back where it was and left the new box at its top, so the row just opened
+// sat somewhere down inside it. The box's place is taken before the section
+// is replaced and put back after, and on a grid open the row pressed is
+// brought to the top of the box, under its sticky heading, so the grid under
+// it has the box's height to show in. Every repaint of the section comes
+// through here -- a sort, a page turn, a build finishing -- and keeps its
+// place the same way.
+function cFieldRepaint(showKey) {
   const wrap = $('#cFieldWrap');
   if (!wrap) return;
   const y = window.scrollY;
+  const box = wrap.querySelector('div.cwbox');
+  const boxTop = box ? box.scrollTop : 0;
+  const boxLeft = box ? box.scrollLeft : 0;
   wrap.innerHTML = cFieldPanel();
   cFieldBind();
   window.scrollTo(0, y);
+  const again = wrap.querySelector('div.cwbox');
+  if (!again) return;
+  again.scrollTop = boxTop;
+  again.scrollLeft = boxLeft;
+  if (showKey == null) return;
+  const btn = Array.from(again.querySelectorAll('[data-fgrid]')).find((x) => x.dataset.fgrid === String(showKey));
+  const row = btn ? btn.closest('tr') : null;
+  if (!row) return;
+  const head = again.querySelector('thead');
+  const headH = head ? head.getBoundingClientRect().height : 0;
+  again.scrollTop += row.getBoundingClientRect().top - again.getBoundingClientRect().top - headH;
 }
 function cFieldBind() {
   const say = (t, warn) => { const el = $('#fOut'); if (el) el.innerHTML = warn ? `<span class="warn">${esc(t)}</span>` : esc(t); };
@@ -11520,7 +11545,7 @@ function cFieldBind() {
         if (!got) throw new Error('the grid could not be read');
         cFieldGridOpen.set(key, got);
       } catch (err) { say(err.message, true); b.disabled = false; b.textContent = 'the grid'; return; }
-      cFieldRepaint();
+      cFieldRepaint(key);   // and bring the row just opened into view, its grid under it
     };
   }
   for (const b of document.querySelectorAll('[data-fsort]')) {

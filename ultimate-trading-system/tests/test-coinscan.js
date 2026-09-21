@@ -1844,6 +1844,32 @@ function unselectAllIsOnEveryRowSetUnderCandidatesForSweep() {
   assert(/if \(body\.untickAll === true\) unticked = coinsrun\.setAllPassersOff\(\)\.unticked;/.test(server), 'the passers door does not take untickAll');
 }
 
+// THE TABLE OF PAIRS KEEPS ITS PLACE THROUGH A REPAINT (owner, 2026-09-21:
+// "the one that we picked should be on the screen. It shouldn't be scrolling
+// back up to the top"). The box the table sits in scrolls on its own, and a
+// repaint builds a new one: its place is taken before and put back after, and
+// a grid open brings the row pressed to the top of the box, under the heading.
+function theTableOfPairsKeepsItsPlaceAndAnOpenedGridComesIntoView() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const fn = src.slice(src.indexOf('function cFieldRepaint(showKey) {'), src.indexOf('\n}\n', src.indexOf('function cFieldRepaint(showKey) {')));
+  assert.ok(fn.length > 0, 'the repaint takes the pair to show');
+  assert.ok(fn.includes("  const box = wrap.querySelector('div.cwbox');\n  const boxTop = box ? box.scrollTop : 0;\n  const boxLeft = box ? box.scrollLeft : 0;\n  wrap.innerHTML = cFieldPanel();"),
+    'the box\'s place is taken before the section is replaced');
+  assert.ok(fn.includes("  again.scrollTop = boxTop;\n  again.scrollLeft = boxLeft;"), 'and put back after');
+  assert.ok(fn.includes("  again.scrollTop += row.getBoundingClientRect().top - again.getBoundingClientRect().top - headH;"),
+    'a grid open brings the row pressed to the top of the box, under its sticky heading');
+  assert.ok(fn.indexOf('window.scrollTo(0, y)') > fn.indexOf('wrap.innerHTML = cFieldPanel()'), 'the page itself still goes back where it was');
+  assert.ok(src.includes("      cFieldRepaint(key);   // and bring the row just opened into view, its grid under it"), 'the grid button asks for its row');
+  // every other repaint of the section keeps its place the same way, through the one function
+  const calls = src.match(/cFieldRepaint\([^)]*\)/g) || [];
+  assert.ok(calls.length >= 8, `the section repaints through the one function (${calls.length} calls)`);
+  assert.ok(calls.every((c) => c === 'cFieldRepaint()' || c === 'cFieldRepaint(key)' || c === 'cFieldRepaint(showKey)'), calls.join(' '));
+  // the box is the one the table sits in, and it scrolls on its own
+  const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.html'), 'utf8');
+  assert.ok(/div\.cwbox \{ overflow:auto; max-height:24rem; \}/.test(html) && /div\.cwbox\.cwtall \{ max-height:38\.4rem; \}/.test(html), 'the table of pairs sits in a box that scrolls on its own');
+  assert.ok(src.includes('<div class="cwbox cwtall"><table class="cgap cpassers"><thead><tr>\n      <th title="the coin">coin'), 'and that box is the one the pairs table sits in');
+}
+
 module.exports = {
   theSplitReadingPromotesTheWholeHistoryPickOfEveryRowShown,
   theWindowsStartAfterTheWarmUpAndTheShortTailIsDropped,
@@ -1895,4 +1921,5 @@ module.exports = {
   theBasketOpensTheCoinsScreenAsOneSectionWithOneCount,
   noCoinsTableIsStyledSoWideItNeedsASidewaysBar,
   unselectAllIsOnEveryRowSetUnderCandidatesForSweep,
+  theTableOfPairsKeepsItsPlaceAndAnOpenedGridComesIntoView,
 };
