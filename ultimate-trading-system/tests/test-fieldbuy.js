@@ -172,10 +172,12 @@ module.exports.theBuysAreListedNewestFirstAndDeletedOnce = function () {
 module.exports.theScreenHasTheButtonThePickerAndTheTableAboveThePairs = function () {
   const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
   const panel = ui.slice(ui.indexOf('function cFieldPanel() {'), ui.indexOf('\n}\n', ui.indexOf('function cFieldPanel() {')));
-  // the section can be put away and brought back, with the one control every section has
-  assert.ok(panel.includes("${putAwayBtn('ffold', 'field', cState.fOpen !== false, 'the decision field')}"), 'the put away button, the same one Boards draws');
-  assert.ok(panel.includes('${cState.fOpen === false ? putAwayNote : `'), 'put away leaves the note where the section was');
-  assert.ok(ui.includes("if (fold) fold.onclick = () => { cState.fOpen = cState.fOpen === false; cRemember(); cFieldRepaint(); };"), 'and the press is remembered');
+  // PUT AWAY un-opens the field on the screen, and sits beside Open this field, its opposite
+  const row = ui.slice(ui.indexOf('<button id="fSetOpen">Open this field</button>'), ui.indexOf('<span id="fSetMsg"'));
+  assert.ok(row.includes('<button id="fSetClose"${open ? \'\' : \' disabled\'}'), 'Put away beside Open this field, live only while a field is on the screen');
+  assert.ok(row.includes('>Put away</button>'), 'and it says Put away, as Boards does');
+  assert.ok(!panel.includes("putAwayBtn('ffold'"), 'the section itself is not folded');
+  assert.ok(ui.includes("      const got = await post('api/coins/field/close', {});"), 'the press puts the field away through the service');
   // Buy the field sits under Build the field, and its table sits BEFORE the rows of the table of pairs
   const iRun = panel.indexOf('id="fRun"');
   const iBuy = panel.indexOf('${cFieldBuyBlock(st, off)}');
@@ -192,9 +194,9 @@ module.exports.theScreenHasTheButtonThePickerAndTheTableAboveThePairs = function
   assert.ok(table.includes('<div class="cwbox" style="margin-bottom:1.2rem"><table class="cgap cpassers">'), 'room between the buy\'s table and the table of pairs (owner, 2026-09-21)');
   // the routes and the help
   const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  for (const r of ["app.post('/api/coins/fields/:id/buy'", "app.get('/api/coins/buys'", "app.get('/api/coins/buys/:id'", "app.post('/api/coins/buys/:id/delete'"]) assert.ok(server.includes(r), r);
+  for (const r of ["app.post('/api/coins/fields/:id/buy'", "app.get('/api/coins/buys'", "app.get('/api/coins/buys/:id'", "app.post('/api/coins/buys/:id/delete'", "app.post('/api/coins/field/close'"]) assert.ok(server.includes(r), r);
   const help = fs.readFileSync(path.join(ROOT, 'public', 'help-content.js'), 'utf8');
-  for (const k of ['fBuy:', 'fBuyPick:', 'fBuyOpen:', 'fBuyDel:']) assert.ok(help.includes(`      ${k} '`), `help for ${k}`);
+  for (const k of ['fBuy:', 'fBuyPick:', 'fBuyOpen:', 'fBuyDel:', 'fSetClose:']) assert.ok(help.includes(`      ${k} '`), `help for ${k}`);
 };
 
 module.exports.zzz_cleanupTheFabricatedFieldAndCoins = function () {

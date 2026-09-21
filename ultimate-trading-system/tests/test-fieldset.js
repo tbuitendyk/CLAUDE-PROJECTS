@@ -160,6 +160,30 @@ function theTaskPacksTheSeriesIntoColumns() {
   assert.strictEqual(packed.range.days, plain.days.filter((d) => d.ts >= plain.days[n - 1].ts - 10 * 86400000 && d.speaking > 0).length);
 }
 
+// PUT AWAY (owner order, 2026-09-21): the field on the screen -- opened, or
+// just built -- leaves it, nothing on disk is touched, and Open this field
+// brings it back.
+function aFieldOnTheScreenIsPutAwayAndOpenedAgain() {
+  const fset = require('../lib/fieldset');
+  const run = require('../lib/fieldrun');
+  const got = fset.saveField({ asked: { name: 'x' }, dials: DIALS, cap: { days: 3, coin: 'ZZZQAUSDT' }, collapse: [], pairs: [aPair()], startedAt: 1, finishedAt: 2, name: 'zzz put away test' });
+  try {
+    run.fieldOpen(got.id);
+    let st = run.fieldStatus();
+    assert.strictEqual(st.saved && st.saved.id, got.id, 'opened: the field is on the screen');
+    assert.strictEqual(st.pairs.length, 1);
+    assert.deepStrictEqual(run.fieldClose(), { closed: { id: got.id, name: 'zzz put away test' } }, 'put away names what left');
+    st = run.fieldStatus();
+    assert.strictEqual(st.none, true, 'nothing is on the screen');
+    assert.strictEqual(st.saved, null);
+    assert.ok(fset.readField(got.id), 'and the field is still on disk');
+    assert.deepStrictEqual(run.fieldClose(), { closed: null }, 'putting nothing away is nothing');
+    run.fieldOpen(got.id);
+    assert.strictEqual(run.fieldStatus().saved.id, got.id, 'Open this field brings it back');
+    run.fieldClose();
+  } finally { fset.deleteField(got.id, got.id); }
+}
+
 module.exports = {
   aFinishedBuildIsWrittenDownAndReadsBackWhole,
   deletingTakesTwoStepsAndTheSecondNeedsTheId,
@@ -168,4 +192,5 @@ module.exports = {
   theCapIsReadOffTheRecordsUnderTheSealedLayout,
   thePoolKnowsTheFieldOnBothItsPaths,
   theTaskPacksTheSeriesIntoColumns,
+  aFieldOnTheScreenIsPutAwayAndOpenedAgain,
 };

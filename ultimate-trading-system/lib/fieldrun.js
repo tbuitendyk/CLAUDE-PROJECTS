@@ -160,6 +160,17 @@ function fieldOpen(id) {
   return { id: doc.id, name: doc.name, pairs: (doc.pairs || []).length };
 }
 
+// PUT AWAY (owner order, 2026-09-21: "that's supposed to UNOPEN an open
+// field. you know, like CLOSE?"): the field on the screen -- opened, or just
+// built -- leaves it, and nothing on disk is touched. Open this field brings
+// it back. A build that is going is not put away; it is stopped first.
+function fieldClose() {
+  if (fieldRun && fieldRun.running) throw new Error('a build is going — stop it first');
+  const was = fieldRun && fieldRun.saved ? { id: fieldRun.saved.id, name: fieldRun.saved.name } : null;
+  fieldRun = null;
+  return { closed: was };
+}
+
 // one pair in full: the grid, the yardsticks, today's readings and the series
 function fieldPair(id, key) {
   const fset = require('./fieldset');
@@ -307,4 +318,4 @@ function fieldStart(opts = {}) {
   return { started: true, of: listed.pairs.length, workers: size, missing: listed.missing };
 }
 
-module.exports = { fieldStart, fieldStatus, fieldStop, fieldOpen, fieldPair, fieldOwnBusy, capOf, trainDaysOf, dialsFrom, pairsFor, inputFor };
+module.exports = { fieldStart, fieldStatus, fieldStop, fieldOpen, fieldClose, fieldPair, fieldOwnBusy, capOf, trainDaysOf, dialsFrom, pairsFor, inputFor };

@@ -9075,7 +9075,7 @@ const cState = (() => {
     fWindow: '', fEachOwn: false, fHalf: 500, fFloor: 0.1, fCap: 30, fLeast: 3, fCopies: 50,
     fBandFrom: 10, fBandTo: 300, fBandStep: 10, fBands: '',
     fBackFrom: 1, fBackTo: 60, fBackStep: 2, fBacks: '',
-    fCoins: '', fGeom: 'daily-1d', fPermGeom: true, fName: '', fSetPick: '', fOpen: true, fBuyPick: '',
+    fCoins: '', fGeom: 'daily-1d', fPermGeom: true, fName: '', fSetPick: '', fBuyPick: '',
     fSorts: [{ key: 'certainty', dir: 'desc' }], fFrom: 0,
   };
   try { return { ...d, ...(JSON.parse(localStorage.getItem(C_KEY) || 'null') || {}) }; } catch (_) { return d; }
@@ -11154,6 +11154,7 @@ function cFieldSetsRow() {
     </div>
     <div class="row">
       <button id="fSetOpen">Open this field</button>
+      <button id="fSetClose"${open ? '' : ' disabled'} title="puts the field on this screen away: its table leaves the screen and nothing on disk is touched. Open this field brings it back.">Put away</button>
       <button id="fSetName">Rename it</button>
       <button id="fSetDel" class="danger">Delete it</button>
       <span id="fSetMsg" class="muted">${open ? esc(`${open.opened ? 'This field is open' : 'Written'}: ${open.id}, ${open.name}`) : ''}</span>
@@ -11351,11 +11352,8 @@ function cFieldPanel() {
   const from = Math.min(Math.max(0, Number(cState.fFrom) || 0), Math.max(0, (Math.ceil(sorted.length / C_FIELD_PER) - 1) * C_FIELD_PER));
   const page = sorted.slice(from, from + C_FIELD_PER);
   return `<div class="panel">
-    <div class="row" style="align-items:flex-end">
-      ${putAwayBtn('ffold', 'field', cState.fOpen !== false, 'the decision field')}
-      <h3 style="margin:0">The decision field</h3>
-    </div>
-    ${cState.fOpen === false ? putAwayNote : `<p class="note">For each coin and chunk shape, a grid of points &mdash; one per sit-out band and look-back &mdash; filled one decision a day
+    <h3 style="margin-top:0">The decision field</h3>
+    <p class="note">For each coin and chunk shape, a grid of points &mdash; one per sit-out band and look-back &mdash; filled one decision a day
       over a sliding window and read on every decision day. Each point keeps what the coin did, entry to exit, after a <b>rising</b>
       reading at that band and look-back, and after a <b>falling</b> one; a reading that sat out records nothing. A decision enters the
       points only once its chunk has closed, so a day's field holds nothing from that day or after it, whatever stretch of history it
@@ -11439,7 +11437,7 @@ function cFieldPanel() {
     </tr></thead>
     <tbody>${page.map((p) => cFieldPairRow(p, shapes)).join('')}</tbody></table></div>
     ${bPager(sorted.length, from, C_FIELD_PER, 'F')}
-    <p class="note">${(cState.fSorts || []).length ? `sorted by ${cSortWords(cState.fSorts, C_FIELD_NAME)}` : 'unsorted'}. Every heading sorts: click to add it, again to flip it, once more to drop it.</p>`)}`}
+    <p class="note">${(cState.fSorts || []).length ? `sorted by ${cSortWords(cState.fSorts, C_FIELD_NAME)}` : 'unsorted'}. Every heading sorts: click to add it, again to flip it, once more to drop it.</p>`)}
   </div>`;
 }
 const C_FIELD_NAME = {
@@ -11512,9 +11510,6 @@ function cFieldBind() {
   };
   apply('fBandApply', 'fBandFrom', 'fBandTo', 'fBandStep', 'fBands', 'fBandOut', 'band');
   apply('fBackApply', 'fBackFrom', 'fBackTo', 'fBackStep', 'fBacks', 'fBackOut', 'look-back');
-  // put away and open, the one control every section has (3.215.0)
-  const fold = document.querySelector('[data-ffold]');
-  if (fold) fold.onclick = () => { cState.fOpen = cState.fOpen === false; cRemember(); cFieldRepaint(); };
   // BUY THE FIELD: the press, the picker, the re-read, the delete
   const bsay = (t, warn) => { const el = $('#fBuyMsg'); if (el) el.innerHTML = warn ? `<b class="warn">${esc(t)}</b>` : esc(t); };
   const buy = $('#fBuy');
@@ -11612,6 +11607,18 @@ function cFieldBind() {
       cState.fFrom = 0; cRemember();
       await cFieldTick();
     } catch (err) { sayS(String(err && err.message ? err.message : err), true); ob.disabled = false; }
+  };
+  // PUT AWAY: the field on the screen leaves it; nothing on disk is touched
+  const cb = $('#fSetClose');
+  if (cb) cb.onclick = async () => {
+    cb.disabled = true; sayS('putting away…');
+    try {
+      const got = await post('api/coins/field/close', {});
+      cFieldGridOpen.clear();
+      cState.fFrom = 0; cRemember();
+      await cFieldTick();
+      const m = $('#fSetMsg'); if (m && got && got.closed) m.textContent = `put away: ${got.closed.id}, ${got.closed.name}`;
+    } catch (err) { sayS(String(err && err.message ? err.message : err), true); cb.disabled = false; }
   };
   const nb = $('#fSetName');
   if (nb) nb.onclick = async () => {

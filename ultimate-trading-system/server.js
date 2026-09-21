@@ -476,6 +476,10 @@ app.post('/api/coins/field/stop', (req, res) => {
   try { return res.json(require('./lib/fieldrun').fieldStop()); }
   catch (err) { return res.status(400).json({ error: err.message }); }
 });
+app.post('/api/coins/field/close', (req, res) => {
+  try { return res.json(require('./lib/fieldrun').fieldClose()); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
 app.get('/api/coins/fields', (req, res) => {
   try { return res.json({ fields: require('./lib/fieldset').listFields(), nextName: require('./lib/fieldset').nextName() }); }
   catch (err) { return res.status(400).json({ error: err.message }); }
