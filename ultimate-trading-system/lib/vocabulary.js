@@ -61,6 +61,10 @@ function vocabulary() {
     // the four verdict words Boards prints beside a setting and a coin, each
     // with the rule it rests on for the hover -- one home, lib/confirm.js
     confirmVerdict: require('./confirm').VERDICTS.map((w) => ({ value: w, label: w, why: require('./confirm').verdictWhy(w) })),
+    // THE FIELD'S GATE (FIELD-DESIGN.md section F): what it reads, and the
+    // four verdict words with the field's own rule under each
+    fieldRead: asChoices(require('./fieldgate').READS),
+    fieldVerdict: require('./fieldgate').VERDICTS.map((w) => ({ value: w, label: w, why: require('./fieldgate').verdictWhy(w) })),
     entry: asChoices(bracket.ENTRIES),
     // the engine's own gate list (lib/bracket.js GATES): active and
     // directional, the same two the live side accepts

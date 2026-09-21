@@ -1390,6 +1390,12 @@ const SW_NO_CONFIRM = {
   walk: 'Greyed: no unit this run prices carries a plateau whose rows have a lean — the rows ticked from a walk set on Coins were walked before rows kept one — so every value of confirm places the same trades.',
   both: 'Greyed: not one unit this run prices is ticked under Candidates for Sweep on Coins, so all three values place the same trades.',
 };
+function swSayWhyNoField(said) {
+  const e = $('#swWhyField');
+  if (!e) return;
+  e.textContent = said || '';
+  e.style.display = said ? '' : 'none';
+}
 function swSayWhyNoConfirm(source) {
   const e = $('#swWhyConfirm');
   if (!e) return;
@@ -1619,6 +1625,13 @@ async function swCounts() {
       const noLean = Array.isArray(got.unitSettings) && got.unitSettings.length > 0 && !got.leanUnits;
       swGhostGroup('#swGrpConfirm', noLean);
       swSayWhyNoConfirm(noLean ? got.leanSource : null);
+      // THE FIELD (FIELD-DESIGN.md section F): the dials grey when the field
+      // named covers no unit being priced, and the reason is said beside them;
+      // the field box itself stays live so another can be named
+      const noField = !!got.fieldId && Array.isArray(got.unitSettings) && got.unitSettings.length > 0 && !got.fieldUnits;
+      swGhostGroup('#swGrpField', noField || !!got.fieldError);
+      { const fb = $('#swField'); if (fb) fb.disabled = false; }
+      swSayWhyNoField(got.fieldError ? got.fieldError : (noField ? `Greyed: not one unit this run prices has a pair in ${got.fieldId}, so every value of the gate places the same trades — build that field for these coins and shapes on Coins, or name another.` : ''));
       // the budget verdict comes from the SAME arithmetic the launch enforces:
       // a refusal is said here, before the button is pressed
       const refuse = (got.heap && got.heap.band === 'refuse' && got.heap) || (got.disk && got.disk.band === 'refuse' && got.disk) || null;
@@ -1650,7 +1663,9 @@ async function swCounts() {
       const leanSaid = !Array.isArray(got.unitSettings) || !got.unitSettings.length ? ''
         : noLean ? ' <span class="muted">(no unit being priced is among the coins and shapes that pass on Coins, so confirm is greyed)</span>'
           : got.confirmWanted ? ` <span class="muted">(confirm reads a lean on ${Number(got.leanUnits).toLocaleString()} of the ${got.unitSettings.length.toLocaleString()} units; on the rest its values are one setting)</span>` : '';
-      html = `declared: <b>${got.settings.toLocaleString()} settings</b>${fold}${leanSaid}${units && perUnit.length ? ` — ${perUnit.length.toLocaleString()} units hold ${pricings.toLocaleString()} between them`
+      const fieldSaid = !got.fieldId || !Array.isArray(got.unitSettings) || !got.unitSettings.length ? ''
+        : ` <span class="muted">(the field ${esc(String(got.fieldId))} covers ${Number(got.fieldUnits || 0).toLocaleString()} of the ${got.unitSettings.length.toLocaleString()} units with ${Number(got.fieldGates || 1).toLocaleString()} gate value(s); on the rest the gate is one setting)</span>`;
+      html = `declared: <b>${got.settings.toLocaleString()} settings</b>${fold}${leanSaid}${fieldSaid}${units && perUnit.length ? ` — ${perUnit.length.toLocaleString()} units hold ${pricings.toLocaleString()} between them`
         + (fewer ? ` <span class="muted">(${fewer.toLocaleString()} of them hold fewer than the block: a setting that places the same orders on a unit as another is priced there once)</span>` : '')
         + ` × ${per3().toLocaleString()} readings ≈ ${(pricings * per3()).toLocaleString()} pricings — no trainings` : ''}`
         + cut
@@ -1696,6 +1711,14 @@ function swBlockParams() {
     // multipliers sent as typed -- the engine refuses a bad one in words
     confirm: $('#swConfirm').value, permuteConfirm: $('#swPermConfirm').checked,
     confirmedX: $('#swConfirmedX').value, unconfirmedX: $('#swUnconfirmedX').value,
+    // THE FIELD'S GATE (FIELD-DESIGN.md section F): the field named and its
+    // dials, sent as typed -- the engine refuses a bad one in words
+    fieldId: $('#swField') ? $('#swField').value : '',
+    fieldRead: $('#swFieldRead') ? $('#swFieldRead').value : 'agreement', fieldPermuteRead: !!($('#swPermFieldRead') && $('#swPermFieldRead').checked),
+    fieldMinimum: $('#swFieldMin') ? $('#swFieldMin').value : '', fieldPermuteMinimum: !!($('#swPermFieldMin') && $('#swPermFieldMin').checked),
+    fieldSignOnly: !!($('#swFieldSignOnly') && $('#swFieldSignOnly').checked), fieldPermuteSignOnly: !!($('#swPermFieldSignOnly') && $('#swPermFieldSignOnly').checked),
+    fieldRungs: $('#swFieldRungs') ? $('#swFieldRungs').value : '', fieldPermuteRungs: !!($('#swPermFieldRungs') && $('#swPermFieldRungs').checked),
+    fieldSilent: $('#swFieldSilent') ? $('#swFieldSilent').value : '1',
     // the agreement is its own dimension now, never part of the trade shape
     agreeRule: $('#swAgreeRule').value,
     agreeBar: $('#swAgreeBar').value,
@@ -1792,6 +1815,12 @@ function fillStageForm(doc) {
     setC('#swWk', p.weekdaysOnly); setC('#swPermWk', p.permuteWeekdays);
     setV('#swConfirm', p.confirm || 'off'); setC('#swPermConfirm', p.permuteConfirm);
     setV('#swConfirmedX', p.confirmedX ?? 2); setV('#swUnconfirmedX', p.unconfirmedX ?? 1);
+    // the field's gate, as the set carries it
+    setV('#swField', p.fieldId || ''); setV('#swFieldRead', p.fieldRead || 'agreement'); setC('#swPermFieldRead', p.fieldPermuteRead);
+    setV('#swFieldMin', p.fieldMinimum == null ? '20' : p.fieldMinimum); setC('#swPermFieldMin', p.fieldPermuteMinimum);
+    setC('#swFieldSignOnly', p.fieldSignOnly); setC('#swPermFieldSignOnly', p.fieldPermuteSignOnly);
+    setV('#swFieldRungs', p.fieldRungs == null ? '20:0.5,50:1,80:1.5,100:2' : p.fieldRungs); setC('#swPermFieldRungs', p.fieldPermuteRungs);
+    setV('#swFieldSilent', p.fieldSilent == null ? 1 : p.fieldSilent);
     const c = p.cell || {};
     setV('#swEntry', c.entry); setV('#swGate', c.gate); setV('#swD', c.dMult); setV('#swT', c.tHours);
     setV('#swTrail', c.trailMult == null ? '' : c.trailMult);
@@ -3755,10 +3784,11 @@ async function drawGreenlight() {
 // next one reads, and every set names its parent.
 async function drawSweep() {
   if (swPoll) { clearInterval(swPoll); swPoll = null; }
-  const [st, camp, names] = await Promise.all([
+  const [st, camp, names, fieldsOnBox] = await Promise.all([
     apiOr('api/stagesets', ({ running: null, sets: [] })),
     apiOr('api/campaign', ({ name: '' })),
     apiOr('api/campaigns', ({ names: [] })),
+    apiOr('api/coins/fields', ({ fields: [] })),
   ]);
   const sets = st.sets || [];
   swSetsCache = sets;
@@ -3965,6 +3995,22 @@ async function drawSweep() {
         <label class="c" title="price every value of confirm, each as its own setting, so they can be read side by side on Boards."><input type="checkbox" id="swPermConfirm"> permute</label>
         <label class="f" title="the size of a trade the coin's own lean agrees with, as a multiple of the plain size. Read by sized only. 2 doubles it; 0 drops it.">confirmed ×<input id="swConfirmedX" type="number" value="2" min="0" step="0.5" style="width:4.5rem"></label>
         <label class="f" title="the size of a trade the coin's own lean disagrees with, as a multiple of the plain size. Read by sized only. 1 leaves it as it was; 0 drops it, which is what confirmed only does.">unconfirmed ×<input id="swUnconfirmedX" type="number" value="1" min="0" step="0.5" style="width:4.5rem"></label>
+      </div>
+      <p class="note" style="margin:.6rem 0 .1rem"><b>The field</b> — a field built on Coins is read on every decision the members make, on that decision's own day, and the trade is blocked when the field's sign is against the members' call, blocked when the read is below the minimum unless sign only is ticked, and otherwise sized by the rung the read falls in. A day the field says nothing on trades at the silent multiple. The field takes confirm's place: a run names one or the other, never both. Greyed when no unit being priced has a pair in the field named, and the line below says why.</p>
+      <p class="note warn" id="swWhyField" style="margin:.1rem 0 .4rem;display:none"></p>
+      <div id="swGrpField" style="display:flex;align-items:flex-end;gap:.45rem;flex-wrap:wrap">
+        <label class="f" title="which built field this run reads, or none. A field is built on Coins, under The decision field, for a set of coins and chunk shapes; a unit whose coin and shape has no pair in it prices plain, and every value of the gate is one setting there.">field<select id="swField">
+          <option value="">— none —</option>
+          ${((fieldsOnBox && fieldsOnBox.fields) || []).map((f) => `<option value="${esc(f.id)}">${esc(f.id)} &middot; ${esc(String(f.name || ''))}</option>`).join('')}</select></label>
+        <label class="f" title="which of the field's two numbers the minimum and the rungs read. agreement: how much of the field's pull pointed one way on that day, 0 to 100. certainty: how the field's size ranked against its slid copies that day, 0 to 100 — only on a field built with copies.">read<select id="swFieldRead">${vocabOptions('fieldRead', 'agreement')}</select></label>
+        <label class="c" title="price both reads, each as its own setting."><input type="checkbox" id="swPermFieldRead"> permute</label>
+        <label class="f" title="the least the read must reach for a trade to be placed, 0 to 100. Type one number, or a comma-separated list and tick permute to price each as its own setting. 0 blocks nothing on the read.">minimum<input id="swFieldMin" value="20" style="width:7rem"></label>
+        <label class="c" title="price every minimum in the box, each as its own setting."><input type="checkbox" id="swPermFieldMin"> permute</label>
+        <label class="c" title="ignore the minimum: block only when the field's sign is against the members' call, and size every other trade by its rung."><input type="checkbox" id="swFieldSignOnly"> sign only</label>
+        <label class="c" title="price both with and without sign only."><input type="checkbox" id="swPermFieldSignOnly"> permute</label>
+        <label class="f" title="the ladder of sizes, as rungs of &quot;up to this read:multiple&quot;, comma separated: 20:0.5, 50:1, 80:1.5, 100:2 trades a read up to 20 at half the standard size, up to 50 at the standard size, up to 80 at one and a half, and up to 100 at double. The last rung must reach 100. Several ladders separated by semicolons, with permute ticked, are each their own setting.">size rungs<input id="swFieldRungs" value="20:0.5,50:1,80:1.5,100:2" style="width:16rem"></label>
+        <label class="c" title="price every ladder in the box, each as its own setting."><input type="checkbox" id="swPermFieldRungs"> permute</label>
+        <label class="f" title="the size of a trade on a day the field says nothing — no point spoke, or they cancelled, or the field has no day for it — as a multiple of the standard size. 1 trades it as if there were no gate; 0 drops it.">silent ×<input id="swFieldSilent" type="number" value="1" min="0" step="0.5" style="width:4.5rem"></label>
       </div>
     </div>
     <div class="row" style="margin-top:.4rem"><span class="note" id="swCount">…</span></div>
@@ -4613,6 +4659,25 @@ function bLeanNumbers(parts, confirm, kx, ux) {
   const part = (name, x) => `${name} ${money(P(x))} over ${N(x)}`;
   return `<div class="muted" style="white-space:nowrap;font-size:.85em">${part('confirmed', parts.c)} \u00b7 ${part('unconfirmed', parts.u)} \u00b7 ${part('no lean', parts.z)}`
     + ` \u00b7 at size 1 ${money(at1)}${confirm && confirm !== 'off' ? ` \u2192 ${esc(confirm)} ${money(under)}` : ''}</div>`;
+}
+// THE FIELD'S GATE ON A ROW (FIELD-DESIGN.md section F): the gate in words,
+// and the numbers its verdict rests on printed under the word, as confirm's are
+function bFieldGate(r) {
+  const g = r && r.field;
+  if (!g) return '<span class="muted">none</span>';
+  return `${esc(g.read)} \u2265${esc(String(g.minimum))}${g.signOnly ? ' <span class="muted">sign only</span>' : ''} <span class="muted">\u00d7${esc(String(g.rungs))} silent\u00d7${esc(String(g.silent))}</span>`;
+}
+function bFieldNumbers(t) {
+  if (!t) return '';
+  const N = (x) => Number(x || 0).toLocaleString();
+  return `<div class="muted" style="white-space:nowrap;font-size:.85em">placed ${N(t.placed)} \u00b7 blocked by sign ${N(t.blockedSign)} \u00b7 by minimum ${N(t.blockedMin)} \u00b7 silent ${N(t.silent)}`
+    + ` \u00b7 sized ${money(t.pnl)} over size ${Number(t.size || 0).toFixed(1)} \u00b7 at size 1 ${money(t.at1)} \u00b7 blocked at size 1 ${money(t.blockedAt1)}</div>`;
+}
+function bFieldVerdict(word, totals) {
+  if (!word) return '<span class="muted">—</span>';
+  const list = (VOCAB && VOCAB.fieldVerdict) || [];
+  const hit = list.find((o) => o.value === word);
+  return `<span${hit && hit.why ? ` title="${esc(hit.why)}"` : ''}>${esc(word)}</span>${bFieldNumbers(totals)}`;
 }
 function bVerdict(word, parts = null, confirm = null, kx = null, ux = null) {
   if (!word) return '<span class="muted">—</span>';
@@ -5583,8 +5648,10 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     heldBack: bHeldBack ? '1' : '',
     sort: coinsQ.sort || (bHeldBack ? 'share' : 'beatnoise'), flip: coinsQ.flip ? '1' : '',
     minPairs: coinF.minPairs ?? '', minShare: coinF.minShare ?? '', minTest: coinF.minTest ?? '',
+    minTestTrades: coinF.minTestTrades ?? '', minBeatNoise: coinF.minBeatNoise ?? '',
     minHold: coinF.minHold ?? '', minTrades: coinF.minTrades ?? '', minVsLong: coinF.minVsLong ?? '',
     minAgreed: coinF.minAgreed ?? '', setting: coinF.setting ?? '',
+    minFieldSized: coinF.minFieldSized ?? '', maxFieldBlocked: coinF.maxFieldBlocked ?? '', minFieldRead: coinF.minFieldRead ?? '',
     offset: coinsQ.offset || 0, limit: 100,
   }).toString();
   const rankQs = new URLSearchParams({ from, n: 100, heldBack: bHeldBack ? '1' : '', ...bFilters('S3R') }).toString();
@@ -5615,7 +5682,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   }
   const rr = (ranked && ranked.rows) || [];
   const cr = (coins && coins.rows) || [];
-  const keyOf = (r) => [r.cellLabel, r.trade, r.ctx1 || '', r.ctx2 || '', r.geometry, r.confirm || 'off'].join('|');
+  const keyOf = (r) => [r.cellLabel, r.trade, r.ctx1 || '', r.ctx2 || '', r.geometry, r.confirm || 'off', r.fieldLabel || ''].join('|');
   // 'all' means every row the table is showing: set by show in 3.B, which
   // cannot know the keys until the rows come back from the service. Declared
   // after keyOf on purpose — a const read before its own line throws.
@@ -5652,6 +5719,9 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ['coinsMin', 'coins at least', 'num', 'hides settings priced on fewer coins than this. Empty hides nothing.'],
     ['testMin', 'avg test $ at least', 'num', 'hides settings whose average test money is below this. Empty hides nothing.'],
     ['testTradesMin', 'avg test trades at least', 'num', 'hides settings that traded fewer times than this per coin on the test window, on average. Empty hides nothing.'],
+    ['fieldSizedMin', 'field sized $ at least', 'num', 'hides settings whose average test money under the field\'s gate is below this. Empty hides nothing; a setting priced with no gate has no value here and is hidden by any floor.'],
+    ['fieldBlockedMax', 'field blocked at most, %', 'num', 'hides settings whose gate blocked more than this share of the calls the members made. Empty hides nothing.'],
+    ['fieldReadMin', 'field read at least', 'num', 'hides settings whose average read on the trades placed is below this. Empty hides nothing.'],
     ...(bHeldBack ? [
     ['holdMin', 'avg held-back $ at least', 'num', 'hides settings whose average held-back money is below this. Empty hides nothing.'],
     ['tradesMin', 'avg held-back trades at least', 'num', 'hides settings with fewer average entries than this. Empty hides nothing.'],
@@ -5675,6 +5745,10 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <th ${bth} title="whether this setting trades weekdays only.">24/5${bRankSortBtn(doc, 'weekdaysOnly', 'asc')}</th>
         <th ${bth} title="what the coin's own lean changed about the trades, on units whose coin and chunk shape pass on Coins. off: nothing. confirmed only: calls the lean disagreed with were not traded. sized: calls the lean agreed with traded at the confirmed × multiple and calls it disagreed with at the unconfirmed × multiple, printed after it. A dash means no unit of this setting carried a lean.">confirm${bRankSortBtn(doc, 'confirm', 'asc')}</th>
         <th ${bth} title="what the lean was worth, judged from six numbers summed over this setting's coins on the test window: money and count of the confirmed, the unconfirmed and the no-lean trades. adds nothing: the money with the lean is not above the money at size 1. just leverage: more money, but not more per unit of size deployed — a bigger bet, not a better one. adds value: more money and more per unit of size. better signal: adds value, and the confirmed trades made more per trade than the unconfirmed and than the no-lean ones. Hover the word for the rule it rests on. Empty on a setting with confirm off or with no lean on any of its units.">verdict${bRankSortBtn(doc, 'verdict', 'desc')}</th>
+        <th ${bth} title="the field's gate this setting was priced under: what it read (agreement or certainty), the minimum the read had to reach, sign only where the minimum was ignored, the ladder of size rungs and the silent multiple. none on a run that named no field.">field${bRankSortBtn(doc, 'fieldVerdict', 'desc')}</th>
+        <th ${bth} title="what the field's gate was worth, judged from the numbers summed over this setting's coins on the test window and printed under the word: calls placed, blocked by sign, blocked by the minimum, silent; the money at the sizes the rungs gave, the same trades at size 1, and the blocked calls at size 1. adds nothing: the sized money is not above every call at size 1 with no gate. just leverage: more money, but not more per unit of size deployed. adds value: more money and more per unit of size. better signal: adds value, and the blocked calls lost money at size 1 — the blocks were right. Hover the word for the rule it rests on. Empty on a setting priced with no gate.">field verdict${bRankSortBtn(doc, 'fieldVerdict', 'desc')}</th>
+        <th ${bth} title="average test-window money per coin at the sizes the field's rungs gave, in dollars. Empty on a setting priced with no gate.">field sized $${bRankSortBtn(doc, 'fieldSized', 'desc')}</th>
+        <th ${bth} title="of the calls the members made on the test window, the share the field's gate blocked — by sign or by the minimum — as a percentage. Empty on a setting priced with no gate.">field blocked, %${bRankSortBtn(doc, 'fieldBlocked', 'asc')}</th>
         <th ${bth} title="how the position is opened.">entry${bRankSortBtn(doc, 'entry', 'asc')}</th>
         <th ${bth} title="when a position may be opened at all. A dash means the box does not apply to this setting.">gate${bRankSortBtn(doc, 'gate', 'asc')}</th>
         <th ${bth} title="how far from the starting price the opening level sits. A dash means it does not apply.">d${bRankSortBtn(doc, 'dMult', 'asc')}</th>
@@ -5705,6 +5779,10 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}>${r.weekdaysOnly ? 'yes' : 'no'}</td>
         <td ${btd}>${bConfirm(r)}</td>
         <td ${btd}>${bVerdict(r.verdict, r.lean, r.confirm, r.kx, r.ux)}</td>
+        <td ${btd}>${bFieldGate(r)}</td>
+        <td ${btd}>${bFieldVerdict(r.fieldVerdict, r.fieldTotals)}</td>
+        <td ${btd}>${r.fieldSized == null ? '<span class="muted">—</span>' : bMoney(r.fieldSized)}</td>
+        <td ${btd}>${r.fieldBlocked == null ? '<span class="muted">—</span>' : `${r.fieldBlocked.toFixed(1)}%`}</td>
         <td ${btd}>${esc(r.entry)}</td>
         <td ${btd}${r.entry === 'market' ? ' class="muted"' : ''}>${r.entry === 'market' ? '—' : esc(r.gate)}</td>
         <td ${btd}${r.dMult == null ? ' class="muted"' : ''}>${r.dMult == null ? '—' : `${r.dMult}×`}</td>
@@ -5724,7 +5802,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>` : ''}
         <td ${btd}>${r.noisePairs ? bShare(r.beatNoise / r.noisePairs, r.beatNoise, r.noisePairs) : '<span class="muted">—</span>'}</td>
         ${bHeldBack ? `<td ${btd}>${bLead(r.avgLead)}</td>
-        <td ${btd}${r.coinsInMoney > r.coins / 2 ? ' class="pos"' : ''}>${r.coinsInMoney} of ${r.coins}</td>` : ''}</tr>`).join('') || '<tr><td colspan="27" class="empty">nothing here</td></tr>'}</tbody></table></div>
+        <td ${btd}${r.coinsInMoney > r.coins / 2 ? ' class="pos"' : ''}>${r.coinsInMoney} of ${r.coins}</td>` : ''}</tr>`).join('') || '<tr><td colspan="31" class="empty">nothing here</td></tr>'}</tbody></table></div>
     ${ranked && ranked.agreedError ? `<p class="note warn">share that agreed is empty on this set — ${esc(ranked.agreedError)}</p>` : ''}
     ${bShown(ranked)}
     ${bPager((ranked && ranked.total) || 0, from, 100, 'S3R')}
@@ -5748,12 +5826,16 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ] : []),
     ['minBeatNoise', 'beat the kept null money at least, %', 'num', 'hides rows that beat less than this share of the kept scrambled copies of the whole table. Empty hides nothing.'],
     ['minAgreed', 'share that agreed at least, %', 'num', 'hides rows whose records agreed by less than this on average. Empty hides nothing.'],
+    ['minFieldSized', 'field sized $ at least', 'num', 'hides rows whose average test money under the field\'s gate is below this. Empty hides nothing; a row priced with no gate has no value here and is hidden by any floor.'],
+    ['maxFieldBlocked', 'field blocked at most, %', 'num', 'hides rows whose gate blocked more than this share of the calls. Empty hides nothing.'],
+    ['minFieldRead', 'field read at least', 'num', 'hides rows whose average read on the trades placed is below this. Empty hides nothing.'],
     ['setting', 'Table 3.A selection setting', 'text', 'shows only the coins of the setting named here, matched whole. Show in 3.B on a row of Table 3.A fills this in for you and takes every other filter off. Empty shows every setting.', 'wide'],
   ], coins && coins.spread)}
     <div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-bcoinhead style="text-align:left;border-bottom:1px solid var(--line)">
         <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting with decision, band and 24/5 taken out of its name, so one of these stands for all its decision, band and 24/5 variants at once — they are the records underneath, and the rows column counts them. Table 3.A holds the full settings, which is why it has more rows than this column has values.">SHORT SETTING: DECISION, BAND, 24/5 FACTORED OUT${bCoinSortBtn(view, 'setting', '↑')}</th>
         <th ${bth} title="the traded coin and the chunk shape it was priced at, and under them the one or two coins it is read alongside, on rows that have any. All of it is in this one cell, and the row is one setting on one coin at one chunk shape. What is listed after alongside is context only — read against, never bought or sold. Same word, same meaning, as the alongside column on the two tables above.">coin + chunk shape + alongside${bCoinSortBtn(view, 'coin', '↑')}</th>
         <th ${bth} title="what the coin's own lean changed about this coin's trades: off, confirmed only, or sized with its multipliers. One row per value, so the six numbers under verdict are this value's alone.">confirm${bCoinSortBtn(view, 'confirm', '↑')}</th>
+        <th ${bth} title="the field's gate this coin's records were priced under: what it read, the minimum, sign only, the ladder of size rungs and the silent multiple. One row per gate value, so the numbers under field verdict are this value's alone. none on a run that named no field, or on a unit the field has no pair for.">field${bCoinSortBtn(view, 'fieldverdict', '↓')}</th>
         ${bHeldBack ? `<th ${bth} title="of the head-to-heads between this coin's held-back money and its null-set deals, the share it won.">beat its own null set${bCoinSortBtn(view, 'share', '↓')}</th>` : ''}
         <th ${bth} title="of the kept scrambled copies of this whole table, how many this row's avg test $ beat. Two things make it different from beat its own null set: it reads TEST money, not held-back, so nothing here opens the sealed window; and each copy is the WHOLE table scrambled the same way, so a row has to beat what the shuffle managed across every setting, not just its own scrambled twins. Empty on a set that kept none - set null set money kept on Sweep before the run.">beat the kept null money${bCoinSortBtn(view, 'beatnoise', '↓')}</th>
         ${bHeldBack ? `<th ${bth} title="how many head-to-heads the share rests on.">comparisons${bCoinSortBtn(view, 'pairs', '↓')}</th>` : ''}
@@ -5764,6 +5846,9 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <th ${bth} title="average held-back money minus just holding the coin over the same window.">avg vs always-long${bCoinSortBtn(view, 'vslong', '↓')}</th>` : ''}
         <th ${bth} title="what ACTUALLY agreed at the moments this coin's records spoke, averaged over the records underneath. Every rule fires at or above its bar, so this sits at the share or above it. Measured on the test window.">share that agreed${bCoinSortBtn(view, 'agreed', '↓')}</th>
         <th ${bth} title="what the coin's own lean was worth on this coin, judged from six numbers summed over the records underneath that carried a lean, on the test window: money and count of the confirmed, the unconfirmed and the no-lean trades. adds nothing: the money with the lean is not above the money at size 1. just leverage: more money, but not more per unit of size deployed. adds value: more money and more per unit of size. better signal: adds value, and the confirmed trades made more per trade than the unconfirmed and than the no-lean ones. Hover the word for the rule it rests on. Empty where no record underneath carried a lean.">verdict${bCoinSortBtn(view, 'verdict', '↓')}</th>
+        <th ${bth} title="what the field's gate was worth on this coin, judged from the numbers summed over the records underneath on the test window and printed under the word: calls placed, blocked by sign, blocked by the minimum, silent; the money at the rungs' sizes, the same trades at size 1, and the blocked calls at size 1. adds nothing, just leverage, adds value, better signal — hover the word for the rule. Empty where no record underneath was priced under a gate.">field verdict${bCoinSortBtn(view, 'fieldverdict', '↓')}</th>
+        <th ${bth} title="average test-window money per record at the sizes the field's rungs gave, in dollars. Empty with no gate.">field sized $${bCoinSortBtn(view, 'fieldsized', '↓')}</th>
+        <th ${bth} title="of the calls the members made on the test window, the share the field's gate blocked, as a percentage. Empty with no gate.">field blocked, %${bCoinSortBtn(view, 'fieldblocked', '↑')}</th>
         <th ${bth} title="how many records this row averages — one per decision, band and 24/5 variant of the setting that this coin's units hold; a unit holds only the variants that place different orders on it.">rows${bCoinSortBtn(view, 'rows', '↓')}</th>
         <th ${bth} title="opens the records themselves below the row.">records</th></tr></thead>
       <tbody id="bCoinBody">${cr.map((r) => {
@@ -5772,6 +5857,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd0}>${esc(r.cellLabel)}</td>
         <td ${btd}>${bCoin(r)} <span class="muted">${esc(bGeo(r.geometry))}</span>${bAlso(r)}</td>
         <td ${btd}>${bConfirm(r)}</td>
+        <td ${btd}>${bFieldGate(r)}</td>
         ${bHeldBack ? `<td ${btd}>${bShare(r.share, r.beat, r.pairs)}</td>` : ''}
         <td ${btd}>${r.noisePairs ? bShare(r.beatNoise / r.noisePairs, r.beatNoise, r.noisePairs) : '<span class="muted">—</span>'}</td>
         ${bHeldBack ? `<td ${btd}>${Number(r.pairs).toLocaleString()}</td>` : ''}
@@ -5782,9 +5868,12 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}>${bMoney(r.avgVsLong)}</td>` : ''}
         <td ${btd}>${r.avgAgreed == null ? '<span class="muted">—</span>' : `${r.avgAgreed.toFixed(1)}%`}</td>
         <td ${btd}>${bVerdict(r.verdict, r.lean ? r.lean.test : null, r.confirm, r.kx, r.ux)}</td>
+        <td ${btd}>${bFieldVerdict(r.fieldVerdict, r.fieldTotals)}</td>
+        <td ${btd}>${r.fieldSized == null ? '<span class="muted">—</span>' : bMoney(r.fieldSized)}</td>
+        <td ${btd}>${r.fieldBlocked == null ? '<span class="muted">—</span>' : `${r.fieldBlocked.toFixed(1)}%`}</td>
         <td ${btd}>${r.rows}</td>
         <td ${btd}><button data-brec="${esc(k)}">${openKeys.has(k) ? '▾ Records' : 'Records'}</button></td></tr>`;
-  }).join('') || '<tr><td colspan="15" class="empty">nothing cleared the floors</td></tr>'}</tbody></table></div>
+  }).join('') || '<tr><td colspan="19" class="empty">nothing cleared the floors</td></tr>'}</tbody></table></div>
     ${bShown({ total: (coins && coins.total) || 0, of: ((coins && coins.total) || 0) + ((coins && coins.removed) || 0) })}
     ${bPager((coins && coins.total) || 0, coinsQ.offset || 0, 100, 'S3C')}
   </div>`)) return;
@@ -5923,8 +6012,8 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   for (const k of openKeys) {
     const tr = $(mount).querySelector(`tr[data-bkey="${CSS.escape(k)}"]`);
     if (!tr) continue;
-    const [cellLabel, trade, ctx1, ctx2, geometry, confirm] = k.split('|');
-    const q = new URLSearchParams({ cellLabel, trade, ctx1, ctx2, geometry, confirm: confirm || 'off' }).toString();
+    const [cellLabel, trade, ctx1, ctx2, geometry, confirm, fieldLabel] = k.split('|');
+    const q = new URLSearchParams({ cellLabel, trade, ctx1, ctx2, geometry, confirm: confirm || 'off', fieldLabel: fieldLabel || '' }).toString();
     const got = await apiOr(`api/stageset/${doc.id}/coin-rows?${q}`, null);
     const cell = document.createElement('tr');
     const td = document.createElement('td');

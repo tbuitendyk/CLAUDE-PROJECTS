@@ -475,6 +475,23 @@ window.HELP = {
       swPermConfirm: { what: 'Price every value of confirm, each as its own setting, so off, confirmed only, strictly confirmed and sized sit side by side on Boards. Only a unit that carries a lean prices them apart.' },
       swConfirmedX: { what: 'The size of a trade the coin\u2019s own lean agrees with, as a multiple of the plain size. Read by sized only. 2 doubles it, 0 drops it.' },
       swUnconfirmedX: { what: 'The size of a trade the coin\u2019s own lean disagrees with, as a multiple of the plain size. Read by sized only. 1 leaves it as it was; 0 drops it, which is what confirmed only does.' },
+      // THE FIELD'S GATE ON STAGE 3 (FIELD-DESIGN.md section F)
+      swField: {
+        what: 'Which built field this run reads on every decision the members make, or none. A field is built on Coins, under The decision field, for a set of coins and chunk shapes.',
+        more: 'On each decision the field is read on that decision\u2019s own day, and the trade is blocked when the field\u2019s sign is against the members\u2019 call, blocked when the read is below the minimum unless sign only is ticked, and otherwise sized by the rung the read falls in. A unit whose coin and shape has no pair in the field prices plain, and every value of the gate is one setting there. The field takes confirm\u2019s place: a run names one or the other, never both, and the launch refuses the pair in words. What the run read is frozen beside the record set at the launch, so deleting or rebuilding the field on Coins afterwards changes nothing about what was priced.',
+      },
+      swFieldRead: { what: 'Which of the field\u2019s two numbers the minimum and the rungs read. agreement: how much of the field\u2019s pull pointed one way on that day, 0 to 100. certainty: how the field\u2019s size ranked against its slid copies that day, 0 to 100 \u2014 only on a field built with copies; the launch refuses it otherwise.' },
+      swPermFieldRead: { what: 'Price both reads, each as its own setting, so agreement and certainty sit side by side on Boards.' },
+      swFieldMin: { what: 'The least the read must reach for a trade to be placed, 0 to 100. One number, or a comma-separated list with permute ticked to price each as its own setting. 0 blocks nothing on the read; the sign block still applies.' },
+      swPermFieldMin: { what: 'Price every minimum in the box, each as its own setting.' },
+      swFieldSignOnly: { what: 'Ignore the minimum: block only when the field\u2019s sign is against the members\u2019 call, and size every other trade by its rung. The owner\u2019s override, so a field that rarely reaches the minimum can still steer size.' },
+      swPermFieldSignOnly: { what: 'Price both with and without sign only, each as its own setting.' },
+      swFieldRungs: {
+        what: 'The ladder of sizes, as rungs of \u201cup to this read:multiple\u201d, comma separated. 20:0.5, 50:1, 80:1.5, 100:2 trades a read up to 20 at half the standard size, up to 50 at the standard size, up to 80 at one and a half, and up to 100 at double.',
+        more: 'The last rung must reach 100, so every read lands on one. A multiple of 0 on a rung drops the trades that land there. Several ladders separated by semicolons, with permute ticked, are each their own setting. The standard size is size 1 here and the clip on Trade; a trade at twice the size is exactly twice the money, fees included.',
+      },
+      swPermFieldRungs: { what: 'Price every ladder in the box, each as its own setting.' },
+      swFieldSilent: { what: 'The size of a trade on a day the field says nothing \u2014 no point spoke, or they cancelled, or the field has no day for it \u2014 as a multiple of the standard size. 1 trades it as if there were no gate; 0 drops it. Silence is never a block by accident: this box decides it.' },
       swName3: {
         what: 'What this stage 3 record set is called everywhere it is named — on Boards, in every picker, on the status line. Yours to choose.',
         more: 'Left empty, it takes the next free number, which is what the box shows greyed. A name another record set already has is refused, so no two sets can share one; rename the other on Boards first.',

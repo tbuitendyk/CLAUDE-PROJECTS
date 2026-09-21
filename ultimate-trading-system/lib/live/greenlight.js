@@ -68,6 +68,9 @@ function stage4Refusal(src) {
   // be traded at size 1 as though that were what its record says. Refused in
   // words until the live path can read the lean.
   if (sv.confirm && sv.confirm !== 'off') return `the survivor was priced with confirm set to ${sv.confirm}, and the live path has no reading of the coin's own lean yet — it cannot trade what was priced`;
+  // THE FIELD'S GATE (FIELD-DESIGN.md section H) IS PRICED, NOT YET TRADED:
+  // refused in words until the live path carries the field beside the members
+  if (sv.field) return `the survivor was priced under the field's gate (${String(sv.fieldId || 'a field')}), and the live path does not carry the field yet — it cannot trade what was priced`;
   if (!Array.isArray(src.members) || !src.members.length) return 'the stage 2 set names no members for this unit, so nothing could be trained the same way';
   // A MEMBER ADDED FROM A WALK SET NEEDS THE WALK'S TWO NUMBERS (3.188.0). The
   // live path builds the extra's block of numbers from the look-back and marks

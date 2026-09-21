@@ -75,6 +75,29 @@ list follow.
   speaking, evidence) for every decision, the final grid, the final
   yardsticks, the window used, the fill day, the two counts at fill.
 
+- **The field takes confirm's place on a run, never beside it**: a launch that
+  names a field with confirm past off is refused in words. Two overlays on one
+  trade could not be told apart on Boards, and the design says the field
+  replaces confirm.
+- **What a stage 3 run read is frozen beside the set** (`<id>-field.json.gz`,
+  the pairs' series it priced with), the way the walk's leans are frozen in
+  the set's params; deleting or rebuilding the field on Coins afterwards
+  changes nothing about what was priced, and deleting the set removes it.
+- **A unit the field has no pair for prices plain and folds every gate value
+  to one**, exactly as confirm folds on a unit with no lean; the count line
+  says how many units the field covers.
+- **Table 3.B's floors on avg test trades and beat the kept null money were
+  drawn and never sent** (found in passing while adding the field's floors,
+  which would have been dead the same way): the page enumerated the query's
+  keys and left those two out. Fixed in the same change, because the new
+  floors needed the same fix. Reported here as a defect fixed inside the loop's
+  work, not as its own task.
+- **TALLY_V moves to 10**: every stage 3 set on the box re-totals in the
+  background on its next open, as the mechanism has always worked; old sets
+  gain empty field columns and nothing else changes on them.
+- **The greenlight refuses a survivor priced under the field's gate** until
+  Trade carries the field (step 6), the same refusal confirm has.
+
 ## Parked (for the owner, not done)
 
 - none yet

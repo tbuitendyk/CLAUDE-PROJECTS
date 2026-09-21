@@ -40,6 +40,7 @@ const { trainBoost, predictBoost } = require('./boost');
 const { NOTIONAL, feeRate } = require('./paper');
 const confirmLib = require('./confirm');
 const windowLib = require('./windowmove');
+const fieldGate = require('./fieldgate');
 const { tuneTau } = require('./pipeline');
 const { directionalCall } = require('./paper');
 const { mulberry32 } = require('./rng');
@@ -1562,6 +1563,19 @@ async function s3UnitTask(task) {
   const priceLean = (cell, chunksArr, idxs, callsAll, tradeMap, signsAll, st, bandPct, wantRich) => priceLeanWindow(
     cell, pick(chunksArr, idxs), pick(callsAll, idxs), tradeMap, geo, bandPct, fee, signsAll ? pick(signsAll, idxs) : null, st, wantRich,
   );
+  // THE FIELD ON THIS UNIT (FIELD-DESIGN.md section F): the per-day series
+  // the launch froze beside the set, and every chunk's decision instant on
+  // each window -- the instant lib/windowmove.js takes the decision at, so a
+  // chunk reads the field day it was built on. A unit the field has no pair
+  // for prices plain, and every value of the gate is one setting on it.
+  const fieldDays = task.field && task.field.days ? fieldGate.daysFromColumns(task.field.days) : null;
+  const decisionTsOf = (chunksArr, tradeMap) => chunksArr.map((c) => windowLib.decisionAt(tradeMap, c.startTs, geo).ts);
+  const fieldTsTest = fieldDays ? decisionTsOf(testChunks, maps.trade) : null;
+  const fieldTsHold = fieldDays && holdChunks.length ? decisionTsOf(holdChunks, holdTrade) : null;
+  const priceField = (cell, chunksArr, idxs, callsAll, tradeMap, tsAll, gate, bandPct, wantRich) => priceFieldWindow(
+    pick(callsAll, idxs), pick(tsAll, idxs), fieldDays, gate,
+    (list) => bracketLib.simCell(cell, pick(chunksArr, idxs), list, tradeMap, geo, bandPct, fee), wantRich,
+  );
   // THE PER-TRADE CAPTURE (3.92.0, Tune on a Stage 4 record set; VERIFY-DESIGN.md
   // section 9 step 8). The two tools on Tune take a LIST of entries -- the hour,
   // the side, how many members called that side -- and price them themselves;
@@ -1693,7 +1707,13 @@ async function s3UnitTask(task) {
     const tHours = bracketLib.tHoursOn(st.tHours, geometry);
     const cell = { entry: st.entry, gate: st.gate, dMult: st.dMult, tHours, trailMult: st.trailMult ?? null, armMult: st.armMult ?? null };
     const testCallsAll = streamFor(stream.decision, agr, -1, 'test');
-    const tPriced = priceLean(cell, testChunks, tIdx, testCallsAll, maps.trade, leanFor('test', st.plateauPct), st, bandPct, true);
+    // THE GATE TAKES THE LEAN'S PLACE on a setting that carries one and a unit
+    // the field covers; the launch refuses confirm and the field together
+    const gated = !!(st.field && fieldDays);
+    const priceOn = (chunksArr, idxs, calls, tradeMap, slice, wantRich) => (gated
+      ? priceField(cell, chunksArr, idxs, calls, tradeMap, slice === 'hold' ? fieldTsHold : fieldTsTest, st.field, bandPct, wantRich)
+      : priceLean(cell, chunksArr, idxs, calls, tradeMap, leanFor(slice, st.plateauPct), st, bandPct, wantRich));
+    const tPriced = priceOn(testChunks, tIdx, testCallsAll, maps.trade, 'test', true);
     const tRes = tPriced.res;
     // THE KEPT SCRAMBLES ON THE TEST WINDOW (FUNNEL-DESIGN.md 4.5). Together
     // these build a complete second copy of Table 3.A and Table 3.B out of
@@ -1713,7 +1733,7 @@ async function s3UnitTask(task) {
     const noiseTest = [];
     for (let d = from; d < keep; d++) {
       const dt = streamFor(stream.decision, agr, d, 'test');
-      const dRes = priceLean(cell, testChunks, tIdx, dt, maps.trade, leanFor('test', st.plateauPct), st, bandPct, false).res;
+      const dRes = priceOn(testChunks, tIdx, dt, maps.trade, 'test', false).res;
       noiseTest.push(cents(dRes.pnl));
     }
     // THE KEPT SCRAMBLES ON THE HELD-BACK WINDOW. In a normal run these cost
@@ -1724,7 +1744,7 @@ async function s3UnitTask(task) {
     if (noiseOnly) {
       for (let d = from; d < keep && holdChunks.length; d++) {
         const dh = streamFor(stream.decision, agr, d, 'hold');
-        noiseHold.push(cents(priceLean(cell, holdChunks, hIdx, dh, holdTrade, leanFor('hold', st.plateauPct), st, bandPct, false).res.pnl));
+        noiseHold.push(cents(priceOn(holdChunks, hIdx, dh, holdTrade, 'hold', false).res.pnl));
       }
       // The label rides along so the merge joins on a name, never on a position.
       // Setting indexes are per block and two blocks both start at zero.
@@ -1738,11 +1758,13 @@ async function s3UnitTask(task) {
     let dealShape = null;
     let controls = null;
     let holdLean = null;
+    let holdField = null;
     if (holdChunks.length) {
       const holdCallsAll = streamFor(stream.decision, agr, -1, 'hold');
-      const hPriced = priceLean(cell, holdChunks, hIdx, holdCallsAll, holdTrade, leanFor('hold', st.plateauPct), st, bandPct, true);
+      const hPriced = priceOn(holdChunks, hIdx, holdCallsAll, holdTrade, 'hold', true);
       const hRes = hPriced.res;
       if (hPriced.parts) holdLean = { parts: hPriced.parts, size: hPriced.size };
+      if (hPriced.field) holdField = hPriced.field;
       const hc = holdControlsFor(holdChunks, hIdx, tHours, stream.weekdaysOnly ? 'wk' : 'all');
       holdout = {
         pnl: hRes.pnl, trades: hRes.trades, stops: hRes.stops,
@@ -1765,7 +1787,7 @@ async function s3UnitTask(task) {
       const dealPnls = [];
       for (let d = 0; d < nullN; d++) {
         const dh = streamFor(stream.decision, agr, d, 'hold');
-        const dRes = priceLean(cell, holdChunks, hIdx, dh, holdTrade, leanFor('hold', st.plateauPct), st, bandPct, false).res;
+        const dRes = priceOn(holdChunks, hIdx, dh, holdTrade, 'hold', false).res;
         dealPnls.push(dRes.pnl);
         // FREE, unlike the test ones above: this pricing happens either way to
         // work out beat, and today its money is dropped the moment the count is
@@ -1822,6 +1844,16 @@ async function s3UnitTask(task) {
       verdict: tPriced.parts ? {
         test: confirmLib.verdictOf(tPriced.parts, tPriced.kx, tPriced.ux, tPriced.zx),
         hold: holdLean ? confirmLib.verdictOf(holdLean.parts, tPriced.kx, tPriced.ux, tPriced.zx) : null,
+      } : null,
+      // THE FIELD'S GATE (FIELD-DESIGN.md section F): the gate this row was
+      // priced under and its numbers per window; null on a row without one,
+      // which keeps every record written before the field exactly as it was
+      field: tPriced.field ? {
+        read: st.field.read, minimum: st.field.minimum, signOnly: !!st.field.signOnly, rungs: st.field.rungs, silent: st.field.silent,
+        test: fieldGate.totalsCents(tPriced.field), hold: holdField ? fieldGate.totalsCents(holdField) : null,
+      } : null,
+      fieldVerdict: tPriced.field ? {
+        test: fieldGate.verdictOf(tPriced.field), hold: holdField ? fieldGate.verdictOf(holdField) : null,
       } : null,
       beat, pairs: holdChunks.length ? nullN : 0, lead,
       // ALWAYS PRESENT, null when nothing was kept. The row store's columns
@@ -1956,6 +1988,8 @@ function tallyFold(acc, r, blockIdx, agreedAt = null) {
   // the confirm dial and its multipliers ride the setting; the six numbers of
   // the overlay are summed per coin (3.130.0)
   if (s.confirm === undefined) { s.confirm = r.confirm ?? 'off'; s.kx = r.lean ? r.lean.kx : null; s.ux = r.lean ? r.lean.ux : null; }
+  // the field's gate rides the setting too (FIELD-DESIGN.md section F)
+  if (s.field === undefined) s.field = r.field ? { read: r.field.read, minimum: r.field.minimum, signOnly: !!r.field.signOnly, rungs: r.field.rungs, silent: r.field.silent } : null;
   let c = s.perCoin.get(r.trade);
   if (!c) { c = { test: 0, testN: 0, ttr: 0, ttrN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0, ld: 0, ldN: 0, rung: 0, rungN: 0, voices: 0, voicesN: 0, agr: 0, agrN: 0 }; s.perCoin.set(r.trade, c); }
   c.test += r.pnl || 0; c.testN++;
@@ -1963,6 +1997,7 @@ function tallyFold(acc, r, blockIdx, agreedAt = null) {
   // on a board read on all units together, whose rows are these totals
   if (r.trades != null) { c.ttr += Number(r.trades) || 0; c.ttrN++; }
   if (r.lean) { c.lp = confirmLib.addParts(c.lp || null, r.lean.test); if (r.lean.hold) c.hlp = confirmLib.addParts(c.hlp || null, r.lean.hold); }
+  if (r.field && r.field.test) { c.fp = fieldGate.addTotals(c.fp || null, r.field.test); if (r.field.hold) c.fhp = fieldGate.addTotals(c.fhp || null, r.field.hold); }
   if (r.rung != null) { c.rung += r.rung; c.rungN++; }
   if (r.voices != null) { c.voices += r.voices; c.voicesN++; }
   // records priced before this measurement existed simply have no value here,
@@ -1985,10 +2020,14 @@ function tallyFold(acc, r, blockIdx, agreedAt = null) {
   // judged them by whichever value's multipliers came first. One row per
   // value now, each with its own six numbers and its own word.
   const confirm = r.confirm || 'off';
-  const ck = `${cellLabel}|${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}|${confirm}`;
+  // AND THE FIELD'S GATE IS PART OF IT TOO (FIELD-DESIGN.md section F), for
+  // the same reason: one coin row per value, each with its own numbers
+  const fieldLabel = r.field ? fieldGate.gateLabel(r.field) : '';
+  const ck = `${cellLabel}|${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}|${confirm}|${fieldLabel}`;
   let k = acc.perCoin.get(ck);
   if (!k) {
-    k = { cellLabel, trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry, confirm,
+    k = { cellLabel, trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry, confirm, fieldLabel,
+      field: r.field ? { read: r.field.read, minimum: r.field.minimum, signOnly: !!r.field.signOnly, rungs: r.field.rungs, silent: r.field.silent } : null,
       beat: 0, pairs: 0, test: 0, testN: 0, ttr: 0, ttrN: 0, hold: 0, holdN: 0, trades: 0, tradesN: 0, vsl: 0, vsln: 0,
       agr: 0, agrN: 0, rows: 0, b: new Set() };
     acc.perCoin.set(ck, k);
@@ -2001,6 +2040,7 @@ function tallyFold(acc, r, blockIdx, agreedAt = null) {
   // on the every-coin table reads
   if (r.trades != null) { k.ttr += Number(r.trades) || 0; k.ttrN++; }
   if (r.lean) { k.lp = confirmLib.addParts(k.lp || null, r.lean.test); if (r.lean.hold) k.hlp = confirmLib.addParts(k.hlp || null, r.lean.hold); if (k.kx == null) { k.kx = r.lean.kx; k.ux = r.lean.ux; } }
+  if (r.field && r.field.test) { k.fp = fieldGate.addTotals(k.fp || null, r.field.test); if (r.field.hold) k.fhp = fieldGate.addTotals(k.fhp || null, r.field.hold); }
   if (r.holdout && r.holdout.pnl != null) {
     k.hold += r.holdout.pnl; k.holdN++;
     k.trades += r.holdout.trades || 0; k.tradesN++;
@@ -2043,6 +2083,24 @@ function priceLeanWindow(cell, ch, calls, tradeMap, geo, bandPct, fee, signs, st
   }
   return { res, parts, size: g.size, kx, ux, zx };
 }
+// ONE WINDOW PRICED UNDER THE FIELD'S GATE (FIELD-DESIGN.md section F). The
+// calls are sized by the gate on their own decision days, grouped by their
+// multiple and each group priced by the one simulator on its own; the blocked
+// calls priced once at size 1 beside them so the verdict can say whether
+// blocking them paid. `sim(list)` is the simulator over this window's chunks.
+function priceFieldWindow(calls, decisionTs, days, gate, sim, wantRich) {
+  const sz = fieldGate.sizesFor(days, decisionTs, calls, gate);
+  const g = fieldGate.priceGated(calls, sz.sizes, sim);
+  let res = { pnl: g.pnl, trades: g.trades, stops: g.stops };
+  if (wantRich) res = { ...sim(g.taken), pnl: g.pnl, trades: g.trades };
+  return {
+    res, parts: null,
+    field: {
+      pnl: g.pnl, trades: g.trades, size: g.size, at1: g.at1, blockedAt1: g.blockedAt1, blockedN: g.blockedN,
+      placed: sz.placed, blockedSign: sz.blockedSign, blockedMin: sz.blockedMin, silent: sz.silent, readSum: sz.readSum, readN: sz.readN,
+    },
+  };
+}
 // the parts of a window, to the cent, so a row stores what a reader can add
 function partsCents(parts) {
   const cents = (x) => (x == null || !Number.isFinite(x) ? null : Math.round(x * 100) / 100);
@@ -2060,6 +2118,12 @@ function verdictOfCells(cells, st) {
   if (!st || !st.confirm || st.confirm === 'off') return null;
   const sum = leanSumOf(cells);
   return sum ? confirmLib.verdictOf(sum, st.kx ?? confirmLib.DEFAULT_KX, st.ux ?? confirmLib.DEFAULT_UX, confirmLib.multipliersOf(st.confirm, st.kx, st.ux).zx) : null;
+}
+// THE FIELD'S NUMBERS OVER MANY CELLS, and its verdict by the one rule
+function fieldSumOf(cells, which = 'fp') {
+  let acc = null;
+  for (const c of cells) if (c && c[which]) acc = fieldGate.mergeTotals(acc, c[which]);
+  return acc;
 }
 function verdictOfCoin(k) {
   if (!k || !k.lp) return null;
@@ -2093,13 +2157,17 @@ function mergeTallyAcc(acc, part) {
       mergeNoise(c, 'nt', add.nt, add.ntN); mergeNoise(c, 'nh', add.nh, add.nhN);
       if (add.lp) c.lp = confirmLib.addParts(c.lp || null, add.lp);
       if (add.hlp) c.hlp = confirmLib.addParts(c.hlp || null, add.hlp);
+      if (add.fp) c.fp = fieldGate.mergeTotals(c.fp || null, add.fp);
+      if (add.fhp) c.fhp = fieldGate.mergeTotals(c.fhp || null, add.fhp);
     }
     if (s.confirm === undefined && ps.confirm !== undefined) { s.confirm = ps.confirm; s.kx = ps.kx; s.ux = ps.ux; }
+    if (s.field === undefined && ps.field !== undefined) s.field = ps.field;
   }
   for (const [ck, add] of part.perCoin) {
     let k = acc.perCoin.get(ck);
     if (!k) {
       k = { cellLabel: add.cellLabel, trade: add.trade, ctx1: add.ctx1, ctx2: add.ctx2, geometry: add.geometry, confirm: add.confirm || 'off',
+        fieldLabel: add.fieldLabel || '', field: add.field || null,
         beat: 0, pairs: 0, test: 0, testN: 0, ttr: 0, ttrN: 0, hold: 0, holdN: 0, trades: 0, tradesN: 0, vsl: 0, vsln: 0,
         agr: 0, agrN: 0, rows: 0, b: new Set() };
       acc.perCoin.set(ck, k);
@@ -2110,6 +2178,8 @@ function mergeTallyAcc(acc, part) {
     k.ttr += add.ttr || 0; k.ttrN += add.ttrN || 0;
     if (add.lp) k.lp = confirmLib.addParts(k.lp || null, add.lp);
     if (add.hlp) k.hlp = confirmLib.addParts(k.hlp || null, add.hlp);
+    if (add.fp) k.fp = fieldGate.mergeTotals(k.fp || null, add.fp);
+    if (add.fhp) k.fhp = fieldGate.mergeTotals(k.fhp || null, add.fhp);
     if (k.kx == null && add.kx != null) { k.kx = add.kx; k.ux = add.ux; }
     k.hold += add.hold; k.holdN += add.holdN;
     k.trades += add.trades; k.tradesN += add.tradesN;
@@ -2141,7 +2211,7 @@ async function s3TallyShardTask({ id, blocks, agreedAt = null }) {
 
 module.exports = {
   passGeometry,
-  s1UnitTask, s2UnitTask, s3UnitTask, s3TallyShardTask, richOf, storedRecordOf, shapeOf, appendKept, priceLeanWindow, leanSumOf, verdictOfCells, verdictOfCoin, partsCents,
+  s1UnitTask, s2UnitTask, s3UnitTask, s3TallyShardTask, richOf, storedRecordOf, shapeOf, appendKept, priceLeanWindow, priceFieldWindow, leanSumOf, fieldSumOf, verdictOfCells, verdictOfCoin, partsCents,
   moneyWeights, moneyStakes, moneyWeightReading, weightsFor, weightReadingFor, weightsSaid, trainOnOf, capOf, TRAIN_ON, WEIGHT_CAP_DEFAULT,
   agreedKey, agreedKeyOfRecord, agrOf,
   newTallyAcc, tallyFold, serializeTallyAcc, mergeTallyAcc,

@@ -27,6 +27,7 @@ const defaultCoins = (...a) => require('./dataset').defaultCoins(...a);
 const bracketLib = require('./bracket');
 const confirmLib = require('./confirm');
 const agreement = require('./agreement');
+const fieldGate = require('./fieldgate');
 // One training per reading — read from the reading list itself, so adding a
 // reading can never leave a count behind that was typed in by hand.
 // HOW MANY INDEPENDENT VOICES a board really holds (owner loop, 2026-08-28).
@@ -1286,6 +1287,9 @@ const SORT_KEYS = {
     // word in its written order (adds nothing < just leverage < adds value <
     // better signal), never alphabetically
     confirm: 's', verdict: 'v',
+    // the field's gate (FIELD-DESIGN.md section F): the sized money, the
+    // share blocked, the average read, and its verdict in the written order
+    fieldSized: 'n', fieldBlocked: 'n', fieldRead: 'n', fieldVerdict: 'v',
   },
 };
 // The words the screens use for those keys, for the chain line — read the
@@ -1306,6 +1310,7 @@ const SORT_WORDS = {
   avgLead: 'lead over null set', coinsInMoney: 'coins in the money',
   beatNoise: 'beat the kept null money',
   confirm: 'confirm', verdict: 'verdict',
+  fieldSized: 'field sized $', fieldBlocked: 'field blocked, %', fieldRead: 'field read', fieldVerdict: 'field verdict',
   biggestBeforeCap: 'biggest before the ceiling',
 };
 function sortLabel(spec) {
@@ -1407,6 +1412,7 @@ const FILTER_DEFS = {
     rule: ['agreeRule', 'text'], bar: ['_bar', 'text'],
     tMin: ['tHours', 'min'], tMax: ['tHours', 'max'],
     coinsMin: ['coins', 'min'], testMin: ['avgTest', 'min'], testTradesMin: ['testTrades', 'min'], holdMin: ['avgHold', 'min'],
+    fieldSizedMin: ['fieldSized', 'min'], fieldBlockedMax: ['fieldBlocked', 'max'], fieldReadMin: ['fieldRead', 'min'],
     tradesMin: ['avgTrades', 'min'], vsLongMin: ['avgVsLong', 'min'],
     beatMin: ['_beatPct', 'min'], leadMin: ['avgLead', 'min'], inMoneyMin: ['coinsInMoney', 'min'],
     voicesMin: ['avgVoices', 'min'], agreedMin: ['avgAgreed', 'min'],
@@ -2224,26 +2230,32 @@ function weekdaysApplyTo(rec) { return require('./dataset').weekdaysApply(rec.ge
 // AND THE PLATEAU SHARE ONLY ON A UNIT THAT CARRIES A PLATEAU (3.205.0), for
 // the same reason as confirm: on any other unit its values place identical
 // orders and are one setting there.
-function foldKeyRest(st, wk, geometry, hasLean = false, hasPlateau = false) {
+function foldKeyRest(st, wk, geometry, hasLean = false, hasPlateau = false, hasField = false) {
   return [st.decision, wk ? 1 : 0, st.entry, st.gate, bracketLib.tHoursOn(st.tHours, geometry),
     st.agreeRule, st.agreeBar, st.agreePct, st.agreeRule === 'voices' ? st.agreeCopy : 0,
     st.agreeBoth, st.agreePersist, hasLean ? (st.confirm || 'off') : 'off',
-    hasPlateau ? (st.plateauPct ?? 'none') : 'none'].join('|');
+    hasPlateau ? (st.plateauPct ?? 'none') : 'none',
+    // the field's gate folds to one on a unit the field has no pair for
+    // (FIELD-DESIGN.md section F), exactly as confirm does on a unit with no lean
+    hasField && st.field ? fieldGate.gateLabel(st.field) : 'none'].join('|');
 }
 const hasPlateauOf = (rec) => Array.isArray((rec || {}).plateaus) && rec.plateaus.length > 0;
+const fieldUnitKey = (rec) => `${rec.trade}|${rec.geometry}`;
+const hasFieldOf = (fieldPairs, rec) => !!(fieldPairs && fieldPairs[fieldUnitKey(rec)]);
 // heldOn[u]: the settings unit u prices, as indexes into `settings`, in block order
-function heldOnFor(settings, records, leans = null) {
+function heldOnFor(settings, records, leans = null, fieldPairs = null) {
   const heldOn = [];
   for (const rec of records) {
     const repOf = shapeRepsFor(settings, [rec]);          // one unit's own geometry classes
     const wkApplies = weekdaysApplyTo(rec);
     const hasLean = !!leanOf(leans, rec);
     const hasPlateau = hasPlateauOf(rec);
+    const hasField = hasFieldOf(fieldPairs, rec);
     const seen = new Set();
     const mine = [];
     for (let i = 0; i < settings.length; i++) {
       const st = settings[i];
-      const key = `${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, wkApplies ? !!st.weekdaysOnly : false, rec.geometry, hasLean, hasPlateau)}`;
+      const key = `${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, wkApplies ? !!st.weekdaysOnly : false, rec.geometry, hasLean, hasPlateau, hasField)}`;
       if (seen.has(key)) continue;
       seen.add(key);
       mine.push(i);
@@ -2252,9 +2264,9 @@ function heldOnFor(settings, records, leans = null) {
   }
   return heldOn;
 }
-function foldSameTradeSettings(settings, records, leans = null) {
+function foldSameTradeSettings(settings, records, leans = null, fieldPairs = null) {
   if (!Array.isArray(records) || !records.length) return { kept: settings, folded: [], heldOn: [], unitFolded: [] };
-  const heldOn = heldOnFor(settings, records, leans);
+  const heldOn = heldOnFor(settings, records, leans, fieldPairs);
   const keptOnAny = new Uint8Array(settings.length);
   for (const list of heldOn) for (const i of list) keptOnAny[i] = 1;
   const kept = [];
@@ -2267,11 +2279,12 @@ function foldSameTradeSettings(settings, records, leans = null) {
     const wk0 = weekdaysApplyTo(records[0]);
     const lean0 = !!leanOf(leans, records[0]);
     const plat0 = hasPlateauOf(records[0]);
-    for (const i of heldOn[0]) firstOn0.set(`${repOf.get(shapeKeyOf(settings[i]))}|${foldKeyRest(settings[i], wk0 ? !!settings[i].weekdaysOnly : false, records[0].geometry, lean0, plat0)}`, settings[i].label);
+    const field0 = hasFieldOf(fieldPairs, records[0]);
+    for (const i of heldOn[0]) firstOn0.set(`${repOf.get(shapeKeyOf(settings[i]))}|${foldKeyRest(settings[i], wk0 ? !!settings[i].weekdaysOnly : false, records[0].geometry, lean0, plat0, field0)}`, settings[i].label);
     for (let i = 0; i < settings.length; i++) {
       if (keptOnAny[i]) continue;
       const st = settings[i];
-      folded.push({ dropped: st.label, kept: firstOn0.get(`${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, wk0 ? !!st.weekdaysOnly : false, records[0].geometry, lean0, plat0)}`) || null });
+      folded.push({ dropped: st.label, kept: firstOn0.get(`${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, wk0 ? !!st.weekdaysOnly : false, records[0].geometry, lean0, plat0, field0)}`) || null });
     }
   }
   for (let i = 0; i < settings.length; i++) {
@@ -2335,6 +2348,55 @@ function blockAxesFor(params) {
 function confirmWanted(params) {
   const { confirms } = blockAxesFor(params || {});
   return confirms.some((c) => c !== 'off');
+}
+// THE FIELD'S GATE AXES (FIELD-DESIGN.md section F): none, or every gate the
+// dials declare -- a read, a minimum, sign only and a ladder of rungs, each
+// permuted where its tick says so, with the silent multiple shared -- read
+// against the field the run names. Refused in words, never coerced.
+function fieldAxesFor(params) {
+  const p = params || {};
+  const fieldId = p.fieldId == null || p.fieldId === '' || p.fieldId === 'none' ? null : String(p.fieldId);
+  if (!fieldId) return { fieldId: null, gates: [null], silent: 1 };
+  const readOne = p.fieldRead == null || p.fieldRead === '' ? 'agreement' : String(p.fieldRead);
+  if (!fieldGate.READS.includes(readOne)) throw new Error(`"${readOne}" is not a way to read the field (${fieldGate.READS.join(' / ')})`);
+  const reads = p.fieldPermuteRead ? fieldGate.READS.slice() : [readOne];
+  const minimums = fieldGate.parseMinimums(p.fieldMinimum);
+  const mins = p.fieldPermuteMinimum ? minimums : [minimums[0]];
+  const signOnlys = p.fieldPermuteSignOnly ? [false, true] : [!!p.fieldSignOnly];
+  const ladders = fieldGate.parseRungLists(p.fieldRungs);
+  const rungs = p.fieldPermuteRungs ? ladders : [ladders[0]];
+  const silent = confirmLib.multiplierOrRefuse(p.fieldSilent, 'silent \u00d7', 1);
+  const gates = [];
+  for (const read of reads) for (const minimum of mins) for (const signOnly of signOnlys) for (const r of rungs) gates.push({ read, minimum, signOnly, rungs: r, silent });
+  return { fieldId, gates, silent };
+}
+// WHICH UNITS A FIELD COVERS: unit key -> the pair key in the field, for the
+// units a launch prices. The field's document is parsed once per change of
+// the file, because the count line asks on every keystroke.
+const fieldDocs = new Map();
+function fieldDocOf(id) {
+  const fset = require('./fieldset');
+  let st = null;
+  try { st = fs.statSync(fset.setFile(id)); } catch (_) { st = null; }
+  if (!st) { fieldDocs.delete(id); return null; }
+  const had = fieldDocs.get(id);
+  if (had && had.mtimeMs === st.mtimeMs && had.size === st.size) return had.doc;
+  const doc = fset.readField(id);
+  if (doc) fieldDocs.set(id, { mtimeMs: st.mtimeMs, size: st.size, doc });
+  return doc;
+}
+function fieldPairsFor(fieldId, records) {
+  const id = fieldId == null || fieldId === '' || fieldId === 'none' ? null : String(fieldId);
+  if (!id) return { pairs: {}, doc: null };
+  const fset = require('./fieldset');
+  const doc = fieldDocOf(id);
+  if (!doc) throw new Error(`there is no field ${JSON.stringify(id)} on this box — build one on Coins, or set field to none`);
+  const pairs = {};
+  for (const rec of records || []) {
+    const pr = fset.pairFor(doc, rec.trade, rec.geometry);
+    if (pr && !pr.error) pairs[fieldUnitKey(rec)] = pr.key;
+  }
+  return { pairs, doc };
 }
 // WHERE A CHAIN TOOK ITS UNITS FROM, read off the stage 1 at the top of it
 // (3.186.0). A stage 2 or stage 3 document carries no source of its own -- the
@@ -2427,6 +2489,7 @@ function settingsFor(params, sizes = null, shapes = null) {
   const cells = shapeCellsFor(params);
   const agrees = agreementsFor(params, sizes, shapes);
   const { decisions, bands, weekdays, confirms, kx, ux } = blockAxesFor(params);
+  const { fieldId, gates } = fieldAxesFor(params);
   const out = [];
   for (const decision of decisions) {
     for (const band of bands) {
@@ -2434,15 +2497,20 @@ function settingsFor(params, sizes = null, shapes = null) {
         for (const cell of cells) {
           for (const a of agrees) {
             for (const confirm of confirms) {
-              out.push({
-                ...cell, quorum: undefined,
-                agreeRule: a.rule, agreeBar: a.bar, agreePct: a.pct, agreeCopy: a.copy,
-                agreeBoth: a.bothModels, agreePersist: a.persist,
-                plateauPct: a.plateau ?? null,
-                decision, band, weekdaysOnly: wk,
-                confirm, kx, ux,
-                label: `${agreeLabel(a)} ${shapeLabel(cell)} \u00b7 ${decision} ${band === 'auto' ? 'auto' : `${band}%`} ${wk ? '24/5' : '24/7'}${confirmLabel(confirm, kx, ux)}`,
-              });
+              for (const gate of gates) {
+                out.push({
+                  ...cell, quorum: undefined,
+                  agreeRule: a.rule, agreeBar: a.bar, agreePct: a.pct, agreeCopy: a.copy,
+                  agreeBoth: a.bothModels, agreePersist: a.persist,
+                  plateauPct: a.plateau ?? null,
+                  decision, band, weekdaysOnly: wk,
+                  confirm, kx, ux,
+                  // the field's gate (FIELD-DESIGN.md section F): null on a run
+                  // that names no field, so every setting reads as it always did
+                  field: gate, fieldId,
+                  label: `${agreeLabel(a)} ${shapeLabel(cell)} \u00b7 ${decision} ${band === 'auto' ? 'auto' : `${band}%`} ${wk ? '24/5' : '24/7'}${confirmLabel(confirm, kx, ux)}${fieldGate.gateLabel(gate)}`,
+                });
+              }
             }
           }
         }
@@ -2781,14 +2849,18 @@ function noiseTwinOf(doc) {
 // bands: a few hundred shapes instead of a few hundred thousand settings,
 // worked out through the SAME shapeRepsFor the launch's fold reads, and a
 // test holds the two equal.
-function countDeclared(params, sizes, records, leans = null) {
+function countDeclared(params, sizes, records, leans = null, fieldPairs = null) {
   const cells = shapeCellsFor(params);
   // the committee shapes come off the records this count is about, so the cost
   // line and the launch cannot disagree about how big the committees are
   const agrees = agreementsFor(params, sizes, shapesOf(records));
   const { decisions, bands, weekdays, confirms } = blockAxesFor(params);
-  const declared = decisions.length * bands.length * weekdays.length * cells.length * agrees.length * confirms.length;
-  if (!Array.isArray(records) || !records.length) return { declared, kept: declared, folded: 0, perUnit: [], pricings: 0, weekdaysApply: true, leanUnits: 0 };
+  const { gates } = fieldAxesFor(params);
+  const declared = decisions.length * bands.length * weekdays.length * cells.length * agrees.length * confirms.length * gates.length;
+  if (!Array.isArray(records) || !records.length) return { declared, kept: declared, folded: 0, perUnit: [], pricings: 0, weekdaysApply: true, leanUnits: 0, fieldUnits: 0, fieldGates: gates.length };
+  // the field's gate multiplies only on a unit the field covers; on any other
+  // unit its values fold into one (foldKeyRest)
+  let fieldUnits = 0;
   // confirm multiplies only on a unit with a lean; on any other unit its
   // values fold into one (the fold's own rule, foldKeyRest)
   let leanUnits = 0;
@@ -2822,6 +2894,8 @@ function countDeclared(params, sizes, records, leans = null) {
     if (hasLean) leanUnits++;
     const hasPlateau = hasPlateauOf(rec);
     if (hasPlateau) plateauUnits++;
+    const hasField = hasFieldOf(fieldPairs, rec);
+    if (hasField) fieldUnits++;
     const seen = new Set();
     let mine = 0;
     for (let i = 0; i < items.length; i++) {
@@ -2832,15 +2906,15 @@ function countDeclared(params, sizes, records, leans = null) {
       keptOnAny[i] = 1;
       mine++;
     }
-    perUnit.push(decisions.length * agreesOn(hasPlateau) * mine * (hasLean ? confirms.length : 1));
+    perUnit.push(decisions.length * agreesOn(hasPlateau) * mine * (hasLean ? confirms.length : 1) * (hasField ? gates.length : 1));
   }
   let union = 0;
   for (let i = 0; i < items.length; i++) if (keptOnAny[i]) union++;
   // every value of confirm is kept on SOME unit as soon as one unit carries a
   // lean; with none, only the first value survives the fold anywhere -- and
   // the plateau share the same way
-  const kept = decisions.length * agreesOn(plateauUnits > 0) * union * (leanUnits ? confirms.length : 1);
-  return { declared, kept, folded: declared - kept, perUnit, pricings: perUnit.reduce((a, b) => a + b, 0), weekdaysApply, leanUnits };
+  const kept = decisions.length * agreesOn(plateauUnits > 0) * union * (leanUnits ? confirms.length : 1) * (fieldUnits ? gates.length : 1);
+  return { declared, kept, folded: declared - kept, perUnit, pricings: perUnit.reduce((a, b) => a + b, 0), weekdaysApply, leanUnits, fieldUnits, fieldGates: gates.length };
 }
 function stage3Declared(b) {
   const out = { units: null, coins: null };
@@ -2877,9 +2951,19 @@ function stage3Declared(b) {
   // walks the chain reading documents, and this count runs on every keystroke.
   const chainSource = parent ? coinsSourceOf(parent) : null;
   const leans = records ? confirmLeansFor(records, chainSource || 'none') : {};
-  const counted = countDeclared(b || {}, sizes, records || [], leans);
+  // THE FIELD'S PART OF THE COUNT (FIELD-DESIGN.md section F): which units
+  // the named field covers, so the screen can say why the gate multiplied the
+  // block, or why it is greyed; a field that cannot be read is said in words
+  let fieldPairs = {};
+  let fieldError = null;
+  try { fieldPairs = fieldPairsFor((b || {}).fieldId, records || []).pairs; } catch (err) { fieldError = err.message; }
+  const counted = countDeclared(b || {}, sizes, records || [], leans, fieldPairs);
   out.settings = counted.kept;
   out.leanUnits = counted.leanUnits;
+  out.fieldUnits = counted.fieldUnits;
+  out.fieldGates = counted.fieldGates;
+  out.fieldId = fieldAxesFor(b || {}).fieldId;
+  out.fieldError = fieldError;
   // AND THE SCREEN IS TOLD WHICH LIST, so it can say WHY Confirmation is
   // greyed. "no unit passes" and "this chain never read a list" are two
   // different answers and the second one cannot be fixed by ticking anything.
@@ -2974,7 +3058,24 @@ function startStage3(params) {
         ? 'none of the units this run prices carries a plateau whose rows have a lean — the walk set they were promoted from was walked before rows kept one — so confirm would change nothing; set confirm to off, or walk the set again and promote from it'
         : 'none of the units this run prices is among the coins and shapes that pass on Coins, so confirm would change nothing — set confirm to off, or pick a parent whose units pass');
   }
-  const counted = countDeclared(params, sizes, parentRecords, leans);
+  // THE FIELD (FIELD-DESIGN.md section F): the run names a built field, or
+  // none. With one, confirm must be off -- the field takes confirm's place,
+  // and two overlays on one trade could not be told apart on Boards -- every
+  // unit priced must be covered by at least one pair, and a read of
+  // certainty needs a field built with slid copies.
+  const fieldAxes = fieldAxesFor(params);
+  let fieldDoc = null;
+  let fieldPairs = {};
+  if (fieldAxes.fieldId) {
+    if (confirmWanted(params)) throw new Error('confirm and the field cannot both be on one run — the field takes confirm\'s place, and two overlays on one trade could not be told apart on Boards. Set confirm to off, or field to none');
+    const got = fieldPairsFor(fieldAxes.fieldId, parentRecords);
+    fieldDoc = got.doc; fieldPairs = got.pairs;
+    if (!Object.keys(fieldPairs).length) throw new Error(`none of the units this run prices has a pair in ${fieldDoc.id} (${fieldDoc.name}) — build the field for these coins and shapes on Coins, or set field to none`);
+    if (fieldAxes.gates.some((g) => g.read === 'certainty') && !(fieldDoc.dials && fieldDoc.dials.copies > 0)) {
+      throw new Error(`${fieldDoc.id} (${fieldDoc.name}) was built with no slid copies, so it carries no certainty — read agreement, or build it again with copies`);
+    }
+  }
+  const counted = countDeclared(params, sizes, parentRecords, leans, fieldPairs);
   if (!counted.kept) throw new Error('the block declared no settings');
 
   // the budget gate: the whole plan is known here, so a block that cannot
@@ -3040,6 +3141,15 @@ function startStage3(params) {
       permuteConfirm: !!params.permuteConfirm,
       confirmedX: blockAxesFor(params).kx, unconfirmedX: blockAxesFor(params).ux,
       confirmLeans: leans,
+      // THE FIELD'S GATE (FIELD-DESIGN.md section F): the field named, its
+      // dials as built, the gate dials as typed, and which pair covers each
+      // unit; the pairs' own series are frozen beside the set (fieldFile)
+      fieldId: fieldAxes.fieldId, fieldName: fieldDoc ? fieldDoc.name : null, fieldDials: fieldDoc ? fieldDoc.dials : null,
+      fieldRead: fieldAxes.fieldId ? (params.fieldRead || 'agreement') : null, fieldPermuteRead: !!params.fieldPermuteRead,
+      fieldMinimum: fieldAxes.fieldId ? params.fieldMinimum : null, fieldPermuteMinimum: !!params.fieldPermuteMinimum,
+      fieldSignOnly: !!params.fieldSignOnly, fieldPermuteSignOnly: !!params.fieldPermuteSignOnly,
+      fieldRungs: fieldAxes.fieldId ? params.fieldRungs : null, fieldPermuteRungs: !!params.fieldPermuteRungs,
+      fieldSilent: fieldAxes.silent, fieldPairs,
       // the campaign in use at THIS launch, not the parent's (same rule as stage 2)
       campaign: require('./campaign').getCampaign() || null,
     },
@@ -3070,6 +3180,9 @@ function startStage3(params) {
   // the stamp lists the parent's pinned files -- what this run reads -- with
   // their bytes as they are now, which parentOrRefuse has just proved equal
   doc.dataManifest = childStampFor(id, parent);
+  // the field's series, frozen beside the set, so what it was priced against
+  // is on disk whatever happens to the field on Coins later
+  if (fieldDoc) writeFieldSidecar(id, fieldDoc, fieldPairs);
   activeSet = doc;
   saveSet(doc);
 
@@ -3431,7 +3544,7 @@ function continueStage3(id) {
     saveSet(doc);
     await yieldNow();
     const sizes = [...new Set(parentRecords.map((r) => r.size || (r.ctx1 ? (r.ctx2 ? 3 : 2) : 1)))];
-    const { kept: settings, heldOn } = foldSameTradeSettings(settingsFor(doc.params || {}, sizes, shapesOf(parentRecords)), parentRecords, (doc.params || {}).confirmLeans || null);
+    const { kept: settings, heldOn } = foldSameTradeSettings(settingsFor(doc.params || {}, sizes, shapesOf(parentRecords)), parentRecords, (doc.params || {}).confirmLeans || null, (doc.params || {}).fieldPairs || null);
     const labels = (doc.plan || {}).settingLabels || [];
     if (settings.length !== (doc.plan || {}).settings || labels.length !== settings.length || settings.some((st, i) => st.label !== labels[i])) {
       throw notStarted(`the block rebuilds to ${settings.length.toLocaleString()} settings and this run declared ${Number((doc.plan || {}).settings || 0).toLocaleString()} — `
@@ -3680,7 +3793,7 @@ function storeBudgetFor({ rows, freeBytes = null }) {
 // Line by line, no single string is ever longer than one entry, and the size
 // of the whole stops mattering. Derived, so the old one is not migrated: it
 // reads as an older shape and is rebuilt (RULE NINE).
-const TALLY_V = 9;   // 9 (3.207.0): the every-coin rows sum test trades; 8 (3.131.0): one coin row per value of confirm; 7 (3.130.0): the confirm dial, the lean parts and the verdict
+const TALLY_V = 10;  // 10 (3.212.0): the field's gate, its numbers and its verdict on both tables; 9 (3.207.0): the every-coin rows sum test trades; 8 (3.131.0): one coin row per value of confirm; 7 (3.130.0): the confirm dial, the lean parts and the verdict
 
 // ---- WHAT THE MEMBERS ACTUALLY DID -------------------------------------------
 //
@@ -4501,6 +4614,48 @@ async function appendMissingSettings(doc, pool = null, note = null, asked = null
 
 const AGREED_V = 1;
 const agreedFile = (id) => path.join(SETS_DIR, `${id}-agreed.json.gz`);
+// THE FIELD'S SERIES BESIDE THE SET (FIELD-DESIGN.md section F): one entry per
+// pair a unit reads, frozen at the launch. NOT derived: a totalling rebuilds
+// nothing here, and only deleting the set removes it.
+const FIELD_V = 1;
+const fieldFile = (id) => path.join(SETS_DIR, `${id}-field.json.gz`);
+function writeFieldSidecar(id, fieldDoc, fieldPairs) {
+  const pairs = {};
+  for (const key of new Set(Object.values(fieldPairs || {}))) {
+    const pr = (fieldDoc.pairs || []).find((x) => x.key === key);
+    if (pr) pairs[key] = { days: pr.days, fullAt: pr.fullAt ?? null, copies: pr.fill ? pr.fill.copies : ((fieldDoc.dials || {}).copies || 0), windowDays: pr.windowDays ?? null };
+  }
+  const tmp = `${fieldFile(id)}.tmp${process.pid}-${++tmpSeq}`;
+  fs.writeFileSync(tmp, zlib.gzipSync(Buffer.from(JSON.stringify({ v: FIELD_V, at: new Date().toISOString(), field: fieldDoc.id, name: fieldDoc.name, dials: fieldDoc.dials, pairs }))));
+  fs.renameSync(tmp, fieldFile(id));
+}
+const fieldSidecars = new Map();
+function readFieldSidecar(id) {
+  let st = null;
+  try { st = fs.statSync(fieldFile(id)); } catch (_) { st = null; }
+  if (!st) { fieldSidecars.delete(id); return null; }
+  const had = fieldSidecars.get(id);
+  if (had && had.mtimeMs === st.mtimeMs && had.size === st.size) return had.side;
+  let side = null;
+  try {
+    const raw = JSON.parse(zlib.gunzipSync(fs.readFileSync(fieldFile(id))).toString('utf8'));
+    side = raw && raw.v === FIELD_V && raw.pairs ? raw : null;
+  } catch (_) { side = null; }
+  if (side) fieldSidecars.set(id, { mtimeMs: st.mtimeMs, size: st.size, side });
+  return side;
+}
+// what a unit's task carries of the field: its pair's series, or null on a
+// unit the field has no pair for
+function fieldPayloadFor(doc, rec) {
+  const p = (doc || {}).params || {};
+  if (!p.fieldId || !p.fieldPairs) return null;
+  const key = p.fieldPairs[fieldUnitKey(rec)];
+  if (!key) return null;
+  const side = readFieldSidecar(doc.id);
+  const pair = side && side.pairs && side.pairs[key];
+  if (!pair) throw new Error(`the field ${p.fieldId} this set was priced with is no longer beside it (${path.basename(fieldFile(doc.id))}) — ${rec.trade} ${rec.geometry} cannot be priced the way its records were`);
+  return { key, days: pair.days, copies: pair.copies, fullAt: pair.fullAt };
+}
 function readAgreed(id) {
   try {
     const raw = JSON.parse(zlib.gunzipSync(fs.readFileSync(agreedFile(id))).toString('utf8'));
@@ -4523,7 +4678,7 @@ function relaunchShapeOf(doc) {
   const { records } = stage3UnitsFor(parent, choice.carry, choice.selected);
   if (!records.length) throw new Error(`${parent.name} holds no records — the units cannot be rebuilt`);
   const sizes = [...new Set(records.map((r) => r.size || (r.ctx1 ? (r.ctx2 ? 3 : 2) : 1)))];
-  const { kept, heldOn } = foldSameTradeSettings(settingsFor(doc.params || {}, sizes, shapesOf(records)), records, (doc.params || {}).confirmLeans || null);
+  const { kept, heldOn } = foldSameTradeSettings(settingsFor(doc.params || {}, sizes, shapesOf(records)), records, (doc.params || {}).confirmLeans || null, (doc.params || {}).fieldPairs || null);
   // every setting carries its place in the block, and heldOn[i] lists the
   // places records[i] holds
   return { parent, records, settings: kept.map((st, si) => ({ ...st, si })), heldOn };
@@ -4772,6 +4927,8 @@ function s3Payload({ doc, parent, rec, settings, fee, nullN, agreedOnly = false,
     settings, fee, nullN, keepN: agreedOnly ? 0 : (Number((doc.params || {}).keepN) || 0), seed: doc.seed,
     // the lean this unit prices confirm with, off the set's own record (3.130.0)
     lean: leanOf((doc.params || {}).confirmLeans, rec),
+    // and the field's series for it, off the sidecar frozen at the launch
+    field: fieldPayloadFor(doc, rec),
     // THE FOUR ON THE TEST WINDOW, only when asked (3.107.0): the rebuild wants
     // them, a launch must not pay four more simulations a unit for something
     // nothing on a launch reads.
@@ -4899,6 +5056,15 @@ async function buildTally(doc, pool = null, note = null) {
       confirm: st.confirm || 'off', kx: st.kx ?? null, ux: st.ux ?? null,
       lean: sw.leanSumOf(coinCells),
       verdict: sw.verdictOfCells(coinCells, st),
+      // THE FIELD'S GATE (FIELD-DESIGN.md section F): the gate, its numbers
+      // summed over every coin priced under it, and the verdict by the one rule
+      field: st.field || null,
+      fieldTotals: sw.fieldSumOf(coinCells, 'fp'),
+      fieldHoldTotals: sw.fieldSumOf(coinCells, 'fhp'),
+      fieldVerdict: st.field ? fieldGate.verdictOf(sw.fieldSumOf(coinCells, 'fp')) : null,
+      fieldSized: mean((c) => (c.fp && c.fp.n ? c.fp.pnl / c.fp.n : null)),
+      fieldBlocked: fieldGate.blockedShare(sw.fieldSumOf(coinCells, 'fp')),
+      fieldRead: (() => { const t = sw.fieldSumOf(coinCells, 'fp'); return t && t.readN ? t.readSum / t.readN : null; })(),
       avgRung: mean((c) => (c.rungN ? c.rung / c.rungN : null)),
       avgVoices: mean((c) => (c.voicesN ? c.voices / c.voicesN : null)),
       avgAgreed: mean((c) => (c.agrN ? c.agr / c.agrN : null)),
@@ -4950,6 +5116,13 @@ async function buildTally(doc, pool = null, note = null) {
       lean: k.lp ? { test: k.lp, hold: k.hlp || null } : null,
       kx: k.kx ?? null, ux: k.ux ?? null,
       verdict: sw.verdictOfCoin(k),
+      // the field's gate on this coin's rows (FIELD-DESIGN.md section F)
+      field: k.field || null, fieldLabel: k.fieldLabel || '',
+      fieldTotals: k.fp || null, fieldHoldTotals: k.fhp || null,
+      fieldVerdict: k.fp ? fieldGate.verdictOf(k.fp) : null,
+      fieldSized: k.fp && k.fp.n ? k.fp.pnl / k.fp.n : null,
+      fieldBlocked: fieldGate.blockedShare(k.fp),
+      fieldRead: k.fp && k.fp.readN ? k.fp.readSum / k.fp.readN : null,
       noiseTest: kNt,
       noiseHold: sw.meanNoise([k], 'nh'),
       beatNoise: kNt && kTest != null ? kNt.filter((v) => v != null && kTest > v).length : null,
@@ -5215,6 +5388,7 @@ function deleteSet(id, confirm) {
   }
   rowstore.remove(doc.id);
   try { fs.rmSync(tallyFile(doc.id), { force: true }); } catch (_) { /* may not exist */ }
+  try { fs.rmSync(fieldFile(doc.id), { force: true }); } catch (_) { /* may not exist */ }
   try { fs.rmSync(setFile(doc.id), { force: true }); } catch (_) { /* reported below */ }
   dropCheckpoint(doc.id);
   if (recordsInHand.id === doc.id) { recordsInHand.id = null; recordsInHand.rows = null; }
@@ -5544,7 +5718,7 @@ function stage2Table(id, from, n, filters = null) {
   };
 }
 
-const S3_SORTS = ['share', 'pairs', 'test', 'testtrades', 'money', 'trades', 'vslong', 'rows', 'coin', 'setting', 'agreed', 'beatnoise', 'verdict', 'confirm'];
+const S3_SORTS = ['share', 'pairs', 'test', 'testtrades', 'money', 'trades', 'vslong', 'rows', 'coin', 'setting', 'agreed', 'beatnoise', 'verdict', 'confirm', 'fieldsized', 'fieldblocked', 'fieldread', 'fieldverdict'];
 // What each floor on the every-coin table reads, in the shape spreadOf wants.
 // The table does its own filtering rather than going through FILTER_DEFS, so
 // its columns are named here — and they are named ONCE, beside the floors
@@ -5553,6 +5727,7 @@ const S3_COIN_FILTERS = {
   minShare: ['_sharePct', 'min'], minPairs: ['pairs', 'min'], minTest: ['avgTest', 'min'], minTestTrades: ['avgTestTrades', 'min'],
   minHold: ['avgHold', 'min'], minTrades: ['avgTrades', 'min'], minVsLong: ['avgVsLong', 'min'],
   minAgreed: ['avgAgreed', 'min'], minBeatNoise: ['_beatNoisePct', 'min'],
+  minFieldSized: ['fieldSized', 'min'], maxFieldBlocked: ['fieldBlocked', 'max'], minFieldRead: ['fieldRead', 'min'],
 };
 function stage3Coins(id, query) {
   const t = readTally(id);
@@ -5581,7 +5756,13 @@ function stage3Coins(id, query) {
   // other floor on this table was measured biting, one at a time.
   const minTest = query.minTest === '' || query.minTest == null ? null : Number(query.minTest);
   const minTestTrades = query.minTestTrades === '' || query.minTestTrades == null ? null : Number(query.minTestTrades);
+  const minFieldSized = query.minFieldSized === '' || query.minFieldSized == null ? null : Number(query.minFieldSized);
+  const maxFieldBlocked = query.maxFieldBlocked === '' || query.maxFieldBlocked == null ? null : Number(query.maxFieldBlocked);
+  const minFieldRead = query.minFieldRead === '' || query.minFieldRead == null ? null : Number(query.minFieldRead);
   const clears = (r) => (minPairs ? r.pairs >= minPairs : true)
+    && (minFieldSized == null || (r.fieldSized != null && r.fieldSized >= minFieldSized))
+    && (maxFieldBlocked == null || (r.fieldBlocked != null && r.fieldBlocked <= maxFieldBlocked))
+    && (minFieldRead == null || (r.fieldRead != null && r.fieldRead >= minFieldRead))
     && (setting == null || r.cellLabel === setting)
     && (minTest == null || (r.avgTest != null && r.avgTest >= minTest))
     && (minTestTrades == null || (r.avgTestTrades != null && r.avgTestTrades >= minTestTrades))
@@ -5619,6 +5800,12 @@ function stage3Coins(id, query) {
     verdict: (a, b) => ((verdictRank(b.verdict) ?? -1) - (verdictRank(a.verdict) ?? -1)) || byShare(a, b),
     // the dial's own order: off, confirmed only, sized (3.131.0)
     confirm: (a, b) => (confirmLib.CONFIRM_VALUES.indexOf(a.confirm || 'off') - confirmLib.CONFIRM_VALUES.indexOf(b.confirm || 'off')) || byShare(a, b),
+    // the field's gate (FIELD-DESIGN.md section F): most sized money, fewest
+    // blocked, highest read, best verdict first; rows with none last
+    fieldsized: (a, b) => ((b.fieldSized ?? -1e15) - (a.fieldSized ?? -1e15)) || byShare(a, b),
+    fieldblocked: (a, b) => ((a.fieldBlocked ?? 1e15) - (b.fieldBlocked ?? 1e15)) || byShare(a, b),
+    fieldread: (a, b) => ((b.fieldRead ?? -1e15) - (a.fieldRead ?? -1e15)) || byShare(a, b),
+    fieldverdict: (a, b) => ((verdictRank(b.fieldVerdict) ?? -1) - (verdictRank(a.fieldVerdict) ?? -1)) || byShare(a, b),
   };
   const asked = S3_SORTS.includes(query.sort) ? query.sort : (heldBack ? 'share' : 'beatnoise');
   const sortSetAside = !heldBack && HELD_BACK_SORTS_3B.has(asked) ? asked : null;
@@ -9889,7 +10076,8 @@ function stage3CoinRows(id, query) {
   if (!t) return { indexed: false, why: 'the tables have not been totalled yet' };
   const hit = t.coins.find((k) => k.cellLabel === query.cellLabel && k.trade === query.trade
     && String(k.ctx1 || '') === String(query.ctx1 || '') && String(k.ctx2 || '') === String(query.ctx2 || '')
-    && k.geometry === query.geometry && (k.confirm || 'off') === String(query.confirm || 'off'));
+    && k.geometry === query.geometry && (k.confirm || 'off') === String(query.confirm || 'off')
+    && String(k.fieldLabel || '') === String(query.fieldLabel || ''));
   if (!hit) return { indexed: false, why: 'no such coin row in this set' };
   const agreedAt = readAgreed(id);
   const keyOf = require('./stagework').agreedKeyOfRecord;
@@ -9897,7 +10085,8 @@ function stage3CoinRows(id, query) {
     .map((x) => x.row)
     .filter((r) => r.label.split(' · ')[0] === hit.cellLabel && r.trade === hit.trade
       && String(r.ctx1 || '') === String(hit.ctx1 || '') && String(r.ctx2 || '') === String(hit.ctx2 || '')
-      && r.geometry === hit.geometry && (r.confirm || 'off') === (hit.confirm || 'off'))
+      && r.geometry === hit.geometry && (r.confirm || 'off') === (hit.confirm || 'off')
+      && (r.field ? fieldGate.gateLabel(r.field) : '') === (hit.fieldLabel || ''))
     // joined on the way out, from the same table the tables were totalled
     // from — it is not on the record, and this is the only place it is read
     .map((r) => ({ ...r, ...((agreedAt && agreedAt[`${r.u}|${keyOf(r)}`]) || {}) }));
@@ -10325,6 +10514,7 @@ module.exports = {
   missingUnitsOf, unitFillRefusal, fillMissingUnitsStart, fillMissingUnitsStatus, rebuildRanking,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
   settingsFor, unitsFor, unitsForPassers, unitMembers, isSetDocument, shapesOf, foldPlateauShares, agreementsFor, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, confirmWanted, confirmLeansFor, coinsSourceOf, confirmLabel, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
+  fieldAxesFor, fieldPairsFor, fieldFile, writeFieldSidecar, readFieldSidecar, fieldPayloadFor,
   setSetPicked, pickedOf, unitsChoiceOf, stage3RecordsFor, PICK_CHOICES, PICK_LABELS, stage3UnitsFor,
   setSetNotes, setSetName, nextNames, nextFreeName, nameTaken, setSetSort, setSetFilters, recordHeldBackLook, stage2Rows, stage2Ordered, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,
