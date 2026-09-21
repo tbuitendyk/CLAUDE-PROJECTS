@@ -1,0 +1,155 @@
+Why the shorts are not executing: the key is not allowed to borrow. One setting, yours to change.
+
+tl;dr Every short since 24 August has failed before any order was sent, because
+borrowing is switched off on the Binance API key. Nothing is broken in your
+account and no money was lost or risked — the trades simply never happened. I
+shipped a related code fix that was needed anyway, but it is NOT what is
+stopping you, and no code can be: the key needs its margin borrowing permission
+turned on, and only you can do that. Longs were unaffected throughout. I also
+have to correct myself — my first read of the cause was wrong, and I say where
+below.
+
+WHAT YOU ARE SEEING
+
+Your screen shows the calls being made. 21 September, a SHORT. 20 September, a
+SHORT. Both were decided correctly and neither opened a position.
+
+WHAT ACTUALLY HAPPENS, IN PLAIN TERMS
+
+To sell short you must first borrow the coin. Since 24 August the engine has
+asked the exchange for that loan as a separate, explicit request — which was the
+right change, made after a short quietly sold coins from one of your buy
+positions instead of borrowing.
+
+The exchange refuses that request every time, with "you are not authorized to
+execute this request". The engine then correctly sends no order at all, tries
+again every ten minutes for an hour, and gives up. Six refusals a day, and then
+the call expires.
+
+  THE SHORT THAT NEVER OPENED — 21 September
+  Key: UTC time on the box; what the engine did; what the exchange answered.
+
+    01:20   call arrives, SHORT, 0.168 LTC     (decided, correct)
+    01:20   ask to borrow                       refused — not authorized
+    01:30   ask to borrow                       refused — not authorized
+    01:40   ask to borrow                       refused — not authorized
+    01:50   ask to borrow                       refused — not authorized
+    02:00   ask to borrow                       refused — not authorized
+    02:10   ask to borrow                       refused — not authorized
+    02:20   call expires, abandoned             no order was ever sent
+
+20 September is the same six refusals on the same clock.
+
+WHY YOUR LONGS KEPT WORKING
+
+A buy needs no loan, so it never touches the permission that is switched off.
+Your long exits filled normally on both days — 20 September closed at $58.94 for
+$1.15, 21 September at $61.68 for $2.01. That is why nothing looked wrong from
+the money side: the half of the strategy that needs no borrowing carried on.
+
+THE ONE SETTING
+
+I read the key's own permissions from the box. It reports:
+
+  WHAT THE API KEY IS ALLOWED TO DO
+  Key: the permission as Binance names it, and whether it is on.
+
+    read account data                     ON
+    spot and margin trading               ON
+    margin loan, repay and transfer       OFF     <- this one
+    withdrawals                           OFF     (correct, leave it off)
+
+Borrowing the coin is the third line, and it is off. Everything else the engine
+needs is on. The account itself can borrow — the exchange told me you have 29.33
+LTC of borrowing capacity available against a 1,300 limit — it is the key that
+is not permitted to ask for it.
+
+WHAT I NEED YOU TO DO
+
+On Binance, where your API keys are managed, edit the key the box uses and
+enable the permission covering margin loan, repay and transfer. I have not seen
+that page, so I am describing the setting by what it does rather than quoting a
+label at you — it is the one your key currently reports as off. The key is
+locked to the box's IP address, which is right and does not need changing.
+Withdrawals stay off.
+
+I cannot do this and would not want to be able to: a key that can be given new
+powers from a session is a key that can be given new powers by anything that
+reaches that session.
+
+Tell me when it is done and I will re-run the same read-only check and confirm
+it from the exchange rather than assume it. The next short after that should
+open normally.
+
+WHERE I WAS WRONG, AND HOW I CAUGHT IT
+
+My first answer to you was that Binance had deleted the web address the engine
+was calling. Their own changelog says exactly that, dated for March 2024, and it
+fit the symptom. I reported it as settled without checking it against your box.
+
+Then I checked. The old address still answers normally. The refusal Binance
+sends is its permission refusal, not its "no such address" one. And your journal
+shows this very same key successfully borrowing 0.221886 LTC on 18 August, back
+when the borrowing was bundled inside the order rather than asked for
+separately — bundled borrowing rides on the trading permission, which is on.
+
+So the cause is the permission, not the address. I have written this into the
+quality register as a standing rule: name the evidence that would prove a
+diagnosis WRONG, and go and get it before reporting, not after. A wrong cause
+stated confidently sends you to fix the wrong thing.
+
+WHAT I CHANGED AND DEPLOYED ANYWAY
+
+The two web addresses the engine used for borrowing and repaying are deprecated;
+Binance's supported replacement is a single address taking a borrow-or-repay
+instruction. The engine now uses it. This was worth doing on its own and costs
+nothing, but I want to be plain: it is not the fix for your problem.
+
+More useful was what it exposed. The test rig was serving those old addresses
+itself, so 130 tests passed over a borrow that could never work in production.
+That is the second time in four weeks the fake exchange has been kinder than the
+real one. It now refuses them exactly as Binance does, which makes four of the
+existing short tests fail against the old code — as they should have all along.
+
+WHAT COULD BREAK, AND WHAT SAYS IT DID NOT
+
+Nothing about the deploy can disturb a position: your book held no open
+positions when it went out, the update replaced a file without running a trading
+cycle, and the engine stayed armed and unhalted throughout. The executor's test
+suite passes 132 of 132, including two new checks I watched fail against the old
+code first — one of them reproducing your production failure exactly.
+
+The protections around shorting are all unchanged: a short still borrows its own
+full quantity before selling, a refused loan still sends no order, and a loan
+left behind a rejected sell is still handed straight back.
+
+ANYTHING PREVIOUSLY REPORTED THAT THIS CHANGES
+
+Yes, two things.
+
+The note I sent on 24 August said the borrow-before-sell fix was "deployed" and
+implied shorting was working again. It was deployed, but it has never once
+succeeded against the exchange. Every short since has silently failed.
+
+And the diagnosis in my message earlier today, naming the deleted web address as
+the cause, is withdrawn. The cause is the key permission above.
+
+ONE MORE THING WORTH KNOWING
+
+This was invisible, and that is its own defect. A failed borrow is not in the
+list of events that page you, and it does not reach the panel headed
+"Incidents" on the profile's screen. The column headed "outcome" reads, on
+those two calls, "intent shipped — awaiting fill", which is true and useless:
+they were awaiting a fill that could never come. The only alert that could have
+fired says "stale", which sounds like a timing hiccup.
+
+Separately, the engine's "I am giving up on this trade, out loud" announcement
+cannot fire on the current ten-minute schedule — the sixth refusal always lands
+inside the last few minutes of the hour, so the call expires before the
+give-up notice is reached. That is the announcement you asked for in August, and
+it has never been able to run.
+
+Neither of those is touched. They are screen and alerting changes on the live
+rail and I am not making them unasked. Say the word and I will.
+
+c.
