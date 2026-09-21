@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **a96e4955603c — what the box is serving**, not from the working tree.
+Generated from **c03d71ed744f — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -90,7 +90,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 
 # Coins
 
-## What the controls are called (310)
+## What the controls are called (311)
 
 - `-hour window · one decision a`
 - `— press`
@@ -136,6 +136,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `at band`
 - `at its last day,`
 - `auto-apply settings`
+- `average performance, %`
 - `band`
 - `band(s)`
 - `bands`
