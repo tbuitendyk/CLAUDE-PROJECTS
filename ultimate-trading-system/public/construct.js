@@ -3886,7 +3886,7 @@ async function drawSweep() {
         a committee is trained one way.</span>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <label class="f">name<input id="swName1" placeholder="${esc(nextNames[1] || '')}" maxlength="80" style="width:10rem"></label>
+      <label class="f">name<input id="swName1" placeholder="${esc(nextNames[1] || '')}" maxlength="80" style="width:17rem"></label>
       <label class="f" style="flex:1">description<input id="swDesc1" style="width:100%"></label>
     </div>
     <div class="row">
@@ -3904,7 +3904,7 @@ async function drawSweep() {
       <label class="f" title="the carry takes the top of the parent's table in the sort saved on it — pick the sort on Boards. The fixed rule (beat its own null set, ties by lead over null set) when none is saved.">carry forward (0 = all)<input id="swCarry" type="number" value="0" min="0" style="width:5.5rem"></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <label class="f">name<input id="swName2" placeholder="${esc(nextNames[2] || '')}" maxlength="80" style="width:10rem"></label>
+      <label class="f">name<input id="swName2" placeholder="${esc(nextNames[2] || '')}" maxlength="80" style="width:17rem"></label>
       <label class="f" style="flex:1">description<input id="swDesc2" style="width:100%"></label>
     </div>
     <div class="row">
@@ -4025,7 +4025,7 @@ async function drawSweep() {
     </div>
     <div class="row" style="margin-top:.4rem"><span class="note" id="swCount">…</span></div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <label class="f">name<input id="swName3" placeholder="${esc(nextNames[3] || '')}" maxlength="80" style="width:10rem"></label>
+      <label class="f">name<input id="swName3" placeholder="${esc(nextNames[3] || '')}" maxlength="80" style="width:17rem"></label>
       <label class="f" style="flex:1">description<input id="swDesc3" style="width:100%"></label>
     </div>
     <div class="row">
