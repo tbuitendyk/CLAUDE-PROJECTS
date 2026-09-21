@@ -11412,7 +11412,10 @@ function cFieldPanel() {
       <span class="muted">${cFieldCount(cState.fBacks)} look-back(s)</span>
     </div>
     <div class="row" style="align-items:flex-end">
-      <label class="f" title="which coins to build, comma separated. Blank builds every coin that has been read.">coins to build (blank = all)<input id="fCoins" value="${esc(String(cState.fCoins || ''))}" placeholder="LTCUSDT,BCHUSDT" style="width:14rem"${off}></label>
+      <label class="f" title="which coins to build, comma separated, and the only box for them. Blank builds every coin that has been read.">coins to build (blank = all)<input id="fCoins" value="${esc(String(cState.fCoins || ''))}" placeholder="LTCUSDT,BCHUSDT" style="width:70rem"${off}></label>
+      <span class="muted">${cFieldCount(cState.fCoins) ? `${cFieldCount(cState.fCoins)} coin(s)` : 'every coin that has been read'}</span>
+    </div>
+    <div class="row" style="align-items:flex-end">
       <label class="f" title="the chunk shape to build the field for. The shape decides the trade the outcome is measured over — when it opens and how long it is held.">chunk shape<select id="fGeom"${off}${cState.fPermGeom ? ' disabled' : ''}>${vocabOptions('geometry', cState.fGeom)}</select></label>
       <label class="c" title="ticked, every chunk shape is built rather than the one chosen beside it — one field per hold length, as the walk does, each standing for the shapes that hold for the same time. This is how stage 1 on Sweep runs every shape too."><input${off} id="fPermGeom" type="checkbox"${cState.fPermGeom ? ' checked' : ''}> permute</label>
     </div>

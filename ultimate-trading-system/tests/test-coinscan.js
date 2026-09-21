@@ -1755,8 +1755,10 @@ function theCoinsScreenIsDesignedAndNotAccumulated() {
     `and they say which band they mean: ${JSON.stringify(reading)}`);
 
   // a list box has to be readable back. 36.4rem was the owner's width for the
-  // look-backs (2026-09-17); a list of bands is the same kind of string.
-  for (const id of ['cSweepBands', 'wBands', 'wBacks']) {
+  // look-backs (2026-09-17); a list of bands is the same kind of string, and
+  // so are the decision field's three lists -- its coins box was 14rem until
+  // the owner asked for it wider (3.218.1: "make this field wider").
+  for (const id of ['cSweepBands', 'wBands', 'wBacks', 'fBands', 'fBacks', 'fCoins']) {
     const m = new RegExp(`id="${id}"[^>]*?style="width:([\\d.]+)rem"`).exec(src);
     assert(m, `${id} states a width`);
     assert(Number(m[1]) >= 36.4, `${id} is ${m[1]}rem, too narrow to read a long list back`);
