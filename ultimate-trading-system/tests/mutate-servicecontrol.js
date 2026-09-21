@@ -359,6 +359,12 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), "  if ($('#swExtraShare')) $('#swExtraShare').disabled = !walk || plain;", "  if ($('#swExtraShare')) $('#swExtraShare').disabled = !walk;",
     'theSplitForExtraMembersStartsGhostedAfterALoadWithTheControlArmOn',
     'the split box is live under the control arm, on a load and on a tick alike'],
+  [path.join(ROOT, 'lib', 'stages.js'), '    if (seen.has(key)) continue;\n    seen.add(key);\n    out.push(pct);', '    out.push(pct);',
+    'twoPlateauSharesThatNeedTheSameMembersAreOneSetting',
+    'every plateau share is priced again under its own name, three of twelve identical to a neighbour'],
+  [path.join(ROOT, 'lib', 'stages.js'), "      ? specs.filter((s) => s && s.at != null && members.has(s.at) && s.model === kind && !s.silent).length", "      ? specs.filter((s) => s && s.at != null && members.has(s.at) && s.model === kind).length",
+    'twoPlateauSharesThatNeedTheSameMembersAreOneSetting',
+    'a silent member is counted as speaking, so the block folds two shares the stage 3 fold tells apart'],
   // The Funnel's closing and the scrambled copies it is compared against.
   [path.join(ROOT, 'lib', 'stages.js'),
     '  const closed = S4.ruleWithClosing(t.ranked || [], state.rule, state.closing, doc.target);\n  doc.rule = closed.rule;',

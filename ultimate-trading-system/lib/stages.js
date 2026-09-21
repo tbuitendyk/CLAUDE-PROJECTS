@@ -1947,6 +1947,22 @@ function agreeLabel(a) {
 // voter per kind however many extras it holds, so a committee's size is its
 // base members plus its LOOSE extras plus its plateaus -- votersOf, below --
 // and never its extras counted one by one.
+// 3.210.0: AND HOW MANY MEMBERS EACH PLATEAU HAS TO COUNT, per kind. The
+// plateau share resolves to a number of members -- a plateau of nine needs 3
+// at 25% and 3 at 30% -- so two shares are one setting or two depending on
+// the sizes, exactly as two quorum shares are one rung or two depending on
+// the voters. Read off the record's own specs, with a member marked silent
+// left out, which is the same count the stage 3 fold speaks with; a record
+// carrying no specs is read as every member speaking.
+const plateauSizesOf = (r) => {
+  const specs = Array.isArray(r.specs) ? r.specs : [];
+  return (Array.isArray(r.plateaus) ? r.plateaus : []).map((pl) => {
+    const members = new Set(pl.members || []);
+    return ['logreg', 'boost'].map((kind) => (specs.length
+      ? specs.filter((s) => s && s.at != null && members.has(s.at) && s.model === kind && !s.silent).length
+      : members.size));
+  });
+};
 const shapesOf = (records) => {
   const seen = new Map();
   for (const r of records || []) {
@@ -1958,10 +1974,32 @@ const shapesOf = (records) => {
     const nExtras = extras.length;
     const nPlateaus = plateaus.length;
     const nLoose = extras.filter((_, i) => !covered.has(i)).length;
-    seen.set(`${size}|${nExtras}|${nPlateaus}|${nLoose}`, { size, nExtras, nPlateaus, nLoose });
+    const plateauSizes = plateauSizesOf(r);
+    seen.set(`${size}|${nExtras}|${nPlateaus}|${nLoose}|${JSON.stringify(plateauSizes)}`, { size, nExtras, nPlateaus, nLoose, plateauSizes });
   }
   return [...seen.values()];
 };
+// TWO PLATEAU SHARES THAT NEED THE SAME MEMBERS ARE ONE SETTING (3.210.0,
+// owner order: "code the fix for the duplicate plateau share folds"). A
+// plateau of nine needs 3 members at 25% and at 30%, 7 at 70% and at 75%, 9 at
+// 90% and at 100%: the same members, the same vote, the same trades, priced
+// twice under two names. Folded the way the quorum share is folded by rung in
+// agreementsFor -- by what the share RESOLVES TO on every plateau of every
+// committee shape in the run, never by the number on the box -- and the first
+// share of a group is kept, so a record says the lowest share that needs those
+// members. rungFor is the fold's own arithmetic: committee.foldPlateaus needs
+// max(1, ceil(share * speaking)), and tests/test-stages.js holds the two equal.
+function foldPlateauShares(pcts, shapes) {
+  const seen = new Set();
+  const out = [];
+  for (const pct of pcts) {
+    const key = (shapes || []).map((q) => (q.plateauSizes || []).map((sizes) => sizes.map((n) => (n > 0 ? rungFor(pct, n) : 0)).join('/')).join(';')).join('|');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(pct);
+  }
+  return out;
+}
 // how many VOTERS a committee of this shape holds at stage 3, and how many
 // kinds of evidence: one per base slice at each of the two stages, one per
 // loose extra at each, and one per plateau at each
@@ -2064,8 +2102,10 @@ function agreementsFor(params, sizes, shapes = null) {
   // NINE). On a mixed run a unit without a plateau folds every value of it
   // into one setting, the way confirm folds on a unit without a lean.
   const anyPlateau = seenShapes.some((q) => (q.nPlateaus || 0) > 0);
+  // ...and two shares that need the same members on every plateau are one
+  // setting (3.210.0), see foldPlateauShares
   const plateaus = anyPlateau
-    ? (params.plateauPermutePct ? plateauPctsOffered() : [plateauPctOrRefuse(params.plateauPct)])
+    ? foldPlateauShares(params.plateauPermutePct ? plateauPctsOffered() : [plateauPctOrRefuse(params.plateauPct)], seenShapes)
     : [null];
   const expanded = [];
   for (const a of out) for (const plateau of plateaus) expanded.push({ ...a, plateau });
@@ -10284,7 +10324,7 @@ module.exports = {
   startStage1, startStage2, startStage3,
   missingUnitsOf, unitFillRefusal, fillMissingUnitsStart, fillMissingUnitsStatus, rebuildRanking,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
-  settingsFor, unitsFor, unitsForPassers, unitMembers, isSetDocument, shapesOf, agreementsFor, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, confirmWanted, confirmLeansFor, coinsSourceOf, confirmLabel, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
+  settingsFor, unitsFor, unitsForPassers, unitMembers, isSetDocument, shapesOf, foldPlateauShares, agreementsFor, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, confirmWanted, confirmLeansFor, coinsSourceOf, confirmLabel, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
   setSetPicked, pickedOf, unitsChoiceOf, stage3RecordsFor, PICK_CHOICES, PICK_LABELS, stage3UnitsFor,
   setSetNotes, setSetName, nextNames, nextFreeName, nameTaken, setSetSort, setSetFilters, recordHeldBackLook, stage2Rows, stage2Ordered, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,

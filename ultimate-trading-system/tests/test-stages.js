@@ -238,6 +238,51 @@ module.exports = {
   // the block on a run whose units carry one, is stored as nothing on a run
   // with none, rides every setting's name and record, folds on a unit without
   // a plateau, and is refused by name when off the list.
+  // TWO PLATEAU SHARES THAT NEED THE SAME MEMBERS ARE ONE SETTING (3.210.0,
+  // owner order: "code the fix for the duplicate plateau share folds", after a
+  // run declared 120 settings where ten quorum rungs met twelve plateau shares
+  // and three of the twelve could only ever repeat a neighbour). The fold reads
+  // what a share RESOLVES TO on every plateau of every shape -- the speaking
+  // members per kind, off the records' own specs -- the way the quorum share
+  // is folded by rung, and keeps the first share of each group.
+  twoPlateauSharesThatNeedTheSameMembersAreOneSetting() {
+    const offered = require('../lib/vocabulary').vocabulary().plateauShare.map((o) => Number(o.value));
+    assert.deepStrictEqual(offered, [10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 100], 'the fixture below is written for this list');
+    const nine = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+    const six = [0, 1, 2, 3, 4, 5];
+    const specsFor = (members, silent = []) => ['logreg', 'boost'].flatMap((model) => members.map((at) => ({ model, at, ...(silent.includes(`${model}${at}`) ? { silent: 'thin' } : {}) })));
+    const rec = (members, silent = []) => ({ size: 1, extras: members.map(() => ({})), plateaus: [{ centre: members[0], members }], specs: specsFor(members, silent) });
+    const nines = stages.shapesOf([rec(nine)]);
+    const sixes = stages.shapesOf([rec(six)]);
+    assert.deepStrictEqual(nines[0].plateauSizes, [[9, 9]], 'a plateau of nine speaks with nine of each kind');
+    assert.deepStrictEqual(sixes[0].plateauSizes, [[6, 6]], 'a plateau at the grid\'s edge speaks with six');
+    assert.deepStrictEqual(stages.foldPlateauShares(offered, nines), [10, 20, 25, 40, 50, 60, 70, 80, 90], 'nine members: 25/30, 70/75 and 90/100 each need the same members');
+    assert.deepStrictEqual(stages.foldPlateauShares(offered, sixes), [10, 20, 40, 60, 70, 90], 'six members: 20/25/30, 40/50, 70/75/80 and 90/100 each need the same members');
+    // a run holding both shapes keeps a share as soon as it differs on EITHER
+    assert.deepStrictEqual(stages.foldPlateauShares(offered, stages.shapesOf([rec(nine), rec(six)])), [10, 20, 25, 40, 50, 60, 70, 80, 90],
+      'on a mixed run a share is folded only when it needs the same members on every plateau');
+    // a silent member is not counted, which is what the stage 3 fold speaks with:
+    // one boost member silent makes boost a plateau of eight, and 25% and 30% part company
+    const eightBoost = stages.shapesOf([rec(nine, ['boost4'])]);
+    assert.deepStrictEqual(eightBoost[0].plateauSizes, [[9, 8]]);
+    assert.deepStrictEqual(stages.foldPlateauShares(offered, eightBoost), [10, 20, 25, 30, 40, 50, 60, 70, 80, 90],
+      '25% needs 3 of 9 and 2 of 8, 30% needs 3 of 9 and 3 of 8 -- different members, two settings');
+    // a record with no specs is read as every member speaking
+    assert.deepStrictEqual(stages.shapesOf([{ size: 1, extras: nine.map(() => ({})), plateaus: [{ centre: 4, members: nine }] }])[0].plateauSizes, [[9, 9]]);
+    // the whole block folds the same way, and nothing folds where there is no plateau
+    const B = { cell: { entry: 'market', tHours: 65 }, agreeRule: 'count', agreeBar: 'all', agreePct: 50, plateauPermutePct: true };
+    assert.strictEqual(stages.agreementsFor(B, [1], sixes).length, 6);
+    assert.deepStrictEqual(stages.agreementsFor(B, [1], stages.shapesOf([{ size: 1 }])).map((a) => a.plateau), [null]);
+    // AND THE TWO ARITHMETICS ARE ONE: the fold at stage 3 needs
+    // max(1, ceil(share * speaking)), which is rungFor for a share above 0 up to 100
+    const cm = fs.readFileSync(path.join(ROOT, 'lib', 'committee.js'), 'utf8');
+    assert.ok(cm.includes('const need = Math.max(1, Math.ceil((pct / 100) * sp.length));'), 'the stage 3 fold no longer needs what the block builder folds on');
+    const sw = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    assert.ok(sw.includes('const rungFor = (pct, n) => Math.max(1, Math.min(n, Math.ceil((pct / 100) * n)));'), 'rungFor has moved away from the fold\'s arithmetic');
+    for (const n of [1, 2, 3, 6, 8, 9]) for (const pct of offered) {
+      assert.strictEqual(Math.max(1, Math.min(n, Math.ceil((pct / 100) * n))), Math.max(1, Math.ceil((pct / 100) * n)), `rungFor and the fold disagree at ${pct}% of ${n}`);
+    }
+  },
   thePlateauShareIsADialOnlyWhereAPlateauIs() {
     const cell = { entry: 'market', tHours: 65 };
     const B = { cell, agreeRule: 'count', agreeBar: 'all', agreePct: 50 };
@@ -252,7 +297,9 @@ module.exports = {
     // permute multiplies by the list the box offers, and only where a plateau is
     const offered = require('../lib/vocabulary').vocabulary().plateauShare.map((o) => Number(o.value));
     assert.ok(offered.length >= 10 && offered.includes(50) && offered.includes(100), 'the box offers no real list');
-    assert.deepStrictEqual(stages.agreementsFor({ ...B, plateauPermutePct: true }, [1], withPl).map((a) => a.plateau), offered);
+    // ...folded to the shares that need DIFFERENT members on a plateau of nine
+    // (3.210.0): 25 and 30 both need 3, 70 and 75 both need 7, 90 and 100 both need 9
+    assert.deepStrictEqual(stages.agreementsFor({ ...B, plateauPermutePct: true }, [1], withPl).map((a) => a.plateau), [10, 20, 25, 40, 50, 60, 70, 80, 90]);
     assert.deepStrictEqual(stages.agreementsFor({ ...B, plateauPermutePct: true }, [1], without).map((a) => a.plateau), [null], 'permute multiplies a run with nothing to permute');
     // refused by name when off the list
     assert.throws(() => stages.agreementsFor({ ...B, plateauPct: 33 }, [1], withPl), /33 is not a plateau share/);
@@ -986,19 +1033,19 @@ module.exports = {
     const cell = { entry: 'market', tHours: 65 };
     const B = { cell, agreeRule: 'count', agreeBar: 'all', agreePermutePct: true };
     // the pairs, off the records, exactly as `sizes` is read
-    assert.deepStrictEqual(stages.shapesOf([{ size: 1 }, { size: 1, extras: null }]), [{ size: 1, nExtras: 0, nPlateaus: 0, nLoose: 0 }],
+    assert.deepStrictEqual(stages.shapesOf([{ size: 1 }, { size: 1, extras: null }]), [{ size: 1, nExtras: 0, nPlateaus: 0, nLoose: 0, plateauSizes: [] }],
       'two units with no extras are one committee shape');
     assert.deepStrictEqual(stages.shapesOf([{ size: 1 }, { size: 1, extras: [{}, {}] }]),
-      [{ size: 1, nExtras: 0, nPlateaus: 0, nLoose: 0 }, { size: 1, nExtras: 2, nPlateaus: 0, nLoose: 2 }], 'a unit carrying extras is its own committee shape');
-    assert.deepStrictEqual(stages.shapesOf([{ ctx1: 'A', ctx2: 'B', extras: [{}] }]), [{ size: 3, nExtras: 1, nPlateaus: 0, nLoose: 1 }],
+      [{ size: 1, nExtras: 0, nPlateaus: 0, nLoose: 0, plateauSizes: [] }, { size: 1, nExtras: 2, nPlateaus: 0, nLoose: 2, plateauSizes: [] }], 'a unit carrying extras is its own committee shape');
+    assert.deepStrictEqual(stages.shapesOf([{ ctx1: 'A', ctx2: 'B', extras: [{}] }]), [{ size: 3, nExtras: 1, nPlateaus: 0, nLoose: 1, plateauSizes: [] }],
       'a record with no size of its own is read off what it is alongside');
     // 3.205.0: a plateau is one voter per kind however many extras it holds, so
     // nine extras in one plateau are a committee of 8 + 2, not 8 + 18
     const nine = Array.from({ length: 9 }, () => ({}));
     assert.deepStrictEqual(stages.shapesOf([{ size: 1, extras: nine, plateaus: [{ centre: 4, members: [0, 1, 2, 3, 4, 5, 6, 7, 8] }] }]),
-      [{ size: 1, nExtras: 9, nPlateaus: 1, nLoose: 0 }], 'a plateau is counted as its nine extras');
+      [{ size: 1, nExtras: 9, nPlateaus: 1, nLoose: 0, plateauSizes: [[9, 9]] }], 'a plateau is counted as its nine extras, speaking with nine of each kind');
     assert.deepStrictEqual(stages.shapesOf([{ size: 1, extras: [{}, {}, {}, {}], plateaus: [{ centre: 1, members: [0, 1, 2] }] }]),
-      [{ size: 1, nExtras: 4, nPlateaus: 1, nLoose: 1 }], 'an extra outside every plateau is not counted as loose');
+      [{ size: 1, nExtras: 4, nPlateaus: 1, nLoose: 1, plateauSizes: [[3, 3]] }], 'an extra outside every plateau is not counted as loose');
     assert.deepStrictEqual(stages.shapesOf([]), [], 'no records is no shapes');
     // AND THE FOLD SEES THEM. A committee of 8 and one of 12 land on different
     // rungs, so shares that folded into one when both were read as 8 no longer do.
