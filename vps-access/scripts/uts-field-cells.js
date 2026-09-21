@@ -30,6 +30,7 @@ function load(id) {
         bn: nt.filter((v) => r.pnl > v).length, np: nt.length,
         hb: r.beat ?? null, hp: r.pairs ?? null,
         ft: r.field ? r.field.test : null, fh: r.field ? r.field.hold : null,
+        fvt: r.fieldVerdict ? r.fieldVerdict.test : null, fvh: r.fieldVerdict ? r.fieldVerdict.hold : null,
       });
     }
   }
@@ -79,3 +80,32 @@ for (const u of units) {
   const c = ctl.get(u);
   console.log(`  ${u.padEnd(18)} ${String(c ? c.bn : null).padStart(8)} ` + lines.map((l) => { const r = cells.get(l.g).get(u); return String(r ? r.bn : null).padStart(11); }).join(' '));
 }
+
+// ---- TABLE 3.B, PER UNIT (owner, 2026-09-21: "this table that applies a bunch
+// of settings to units to which they don't pertain is almost worthless ... run
+// your control compare against 3.b"). Each unit takes its own gate value. The
+// fair pick is made on TEST -- the row that beats the most of its kept null
+// copies, then the most test money -- and judged on HELD, the walk's own
+// discipline. The pick made on held itself is printed after it as the ceiling:
+// the most the nine could show, not a fair read.
+function perUnit(title, chooser, fair) {
+  console.log('');
+  console.log(`== ${title} ==`);
+  console.log(`  ${'unit'.padEnd(18)} ${'ctl held'.padStart(9)} ${'ctl bn'.padStart(6)} | ${'chosen gate'.padEnd(14)} ${'bn'.padStart(3)} ${'test $'.padStart(8)} ${'held $'.padStart(8)} ${'Δ held'.padStart(8)}  held verdict`);
+  let better = 0; let sumF = 0; let sumC = 0; const picked = new Map();
+  for (const u of units) {
+    const c = ctl.get(u);
+    const rows = [...cells.values()].map((m) => m.get(u)).filter(Boolean);
+    rows.sort(chooser);
+    const p = rows[0];
+    if (!p || !c) continue;
+    if (p.h > c.h) better++;
+    sumF += Number(p.h) || 0; sumC += Number(c.h) || 0;
+    picked.set(short(p.gate), (picked.get(short(p.gate)) || 0) + 1);
+    console.log(`  ${u.padEnd(18)} ${String(r2(c.h)).padStart(9)} ${String(c.bn).padStart(6)} | ${short(p.gate).padEnd(14)} ${String(p.bn).padStart(3)} ${String(r2(p.t)).padStart(8)} ${String(r2(p.h)).padStart(8)} ${String(r2(p.h - c.h)).padStart(8)}  ${p.fvh || '-'}`);
+  }
+  console.log(`  units better on held: ${better}/${units.length}; held $ summed: chosen ${r2(sumF)} vs control ${r2(sumC)}${fair ? '' : ' (chosen on held itself: a ceiling, not a fair read)'}`);
+  console.log(`  gate values chosen: ${[...picked].map(([g, n]) => `${g} x${n}`).join(', ')}`);
+}
+perUnit('per unit: the row chosen on TEST (most kept null copies beaten, then test $), judged on held', (x, y) => (y.bn - x.bn) || (y.t - x.t), true);
+perUnit('per unit: the row chosen on HELD itself, the ceiling', (x, y) => (y.h - x.h), false);
