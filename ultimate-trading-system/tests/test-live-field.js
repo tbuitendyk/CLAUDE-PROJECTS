@@ -269,6 +269,56 @@ module.exports.theDecisionRowCarriesWhatTheFieldSaidOnBothBooks = function () {
   assert.ok(!plain.pipeline.some((s) => /THE FIELD/.test(s)), 'no field, no step');
 };
 
+// ---- THE LAST DAY (owner, 2026-09-21: "why does this show 09/19 as the last
+// day") -- with candles through 23:00 on the 20th the field must reach the
+// decision taken on the 20th, whose chunk has not closed, on Coins and on the
+// live path alike. 3.212.1 asked the reader to keep unclosed decisions and the
+// reader dropped every one of them, because the chunk builder hands an
+// unclosed chunk over without its prices and the reader skipped on that.
+module.exports.theFieldReachesTheLastDecisionTheCandlesReach = function () {
+  const wm = require('../lib/windowmove');
+  const fieldrun = require('../lib/fieldrun');
+  const fieldlive = require('../lib/fieldlive');
+  const { GEOMETRIES } = require('../lib/dataset');
+  const map = new Map();
+  const T0 = Date.UTC(2026, 6, 23);                       // sixty days of candles ...
+  const lastCandle = Date.UTC(2026, 8, 20, 23);           // ... through 23:00 UTC on 2026-09-20
+  for (let h = 0; h < 60 * 24; h++) {
+    const ts = T0 + h * HOUR;
+    const p = 100 + Math.sin(h / 7) * 3 + Math.cos(h / 31) * 2;
+    map.set(ts, { ts, open: p, high: p + 1, low: p - 1, close: p + 0.2, quoteVolume: 1000 });
+  }
+  assert.strictEqual([...map.keys()].pop(), lastCandle);
+  const decisionOn20th = Date.UTC(2026, 8, 20, 1);
+  const dials = { windowDays: 30, halfLifeDays: 10, floor: 0.05, bands: [0.5, 1], lookbackHours: [24, 48], evidenceCap: 10, leastEvidence: 1, copies: 4 };
+  for (const [geometry, lastStart] of [['daily-3d', Date.UTC(2026, 8, 17)], ['daily-4d', Date.UTC(2026, 8, 16)]]) {
+    const geo = GEOMETRIES[geometry];
+    const closed = wm.windowMoves(map, geometry, [24], {});
+    const kept = wm.windowMoves(map, geometry, [24], { keepUnclosed: true });
+    // the walk and stage 3 read closed outcomes only, exactly as they always did
+    assert.ok(closed.ts[closed.ts.length - 1] + geo.exitOffsetH * HOUR <= lastCandle, `${geometry}: closed only`);
+    assert.ok(closed.out.every((o) => o != null));
+    // the field reads every decision the candles reach: the newest is the one
+    // decided at 01:00 on the 20th, whose exit is days away
+    assert.strictEqual(kept.ts[kept.ts.length - 1], lastStart, `${geometry}: the last decision is the last whose decision candle is on file`);
+    assert.strictEqual(wm.decisionAt(map, lastStart, geo).ts, decisionOn20th);
+    assert.ok(kept.periods > closed.periods, `${geometry}: the unclosed decisions are kept`);
+    assert.strictEqual(kept.out.filter((o) => o == null).length, kept.periods - closed.periods, 'unclosed means no outcome, never an invented one');
+    assert.deepStrictEqual(kept.out.slice(0, closed.periods), closed.out, 'the closed decisions read exactly as before');
+    assert.deepStrictEqual(kept.ts.slice(0, closed.periods), closed.ts);
+    // through the build's own input (what Coins builds and shows as last day)
+    const input = fieldrun.inputFor(map, geometry, [24, 48], { keepUnclosed: true });
+    assert.strictEqual(input.decisionTs[input.decisionTs.length - 1], decisionOn20th, `${geometry}: the build reaches the 20th`);
+    assert.ok(input.closeTs[input.closeTs.length - 1] > lastCandle, 'and knows its chunk has not closed');
+    // and on the live path, deciding that very chunk: the field has a day for it
+    const got = fieldlive.fieldAtDecision(map, geometry, dials, GATE, lastStart, 1, 'x');
+    assert.strictEqual(got.day, decisionOn20th, `${geometry}: the live path reads the field on the day it is deciding`);
+    assert.strictEqual(got.lastDay, decisionOn20th);
+    assert.strictEqual(got.full, true, 'thirty days of window inside sixty of candles');
+    assert.ok(!/no day/.test(got.why), got.why);
+  }
+};
+
 module.exports.zzz_cleanupFabricatedSymbols = function () {
   cleanup();
   for (const sym of SYMS) {

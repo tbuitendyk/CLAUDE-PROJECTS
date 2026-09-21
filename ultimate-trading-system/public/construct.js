@@ -11346,7 +11346,7 @@ function cFieldPanel() {
       <th title="how many decisions the coin has on this shape, first to last">decisions${cFieldSortBtn('decisions', 'desc')}</th>
       <th title="how many days this pair's window holds, and beside it the most its own history allows">window, days${cFieldSortBtn('windowDays', 'desc')}</th>
       <th title="the first day the window was full — from here on the field is complete. never means the history is shorter than the window.">full since${cFieldSortBtn('fullAt', 'asc')}</th>
-      <th title="the last decision day the field was built to: the latest decision the candles on file reach, whether or not its chunk has closed. With the data fresh to today, this is today, and the columns to the right are today's reading.">last day${cFieldSortBtn('lastTs', 'desc')}</th>
+      <th title="the last decision day the field was built to: the latest decision the candles on file reach, whether or not its chunk has closed. With the data fresh to the last finished day on Data, this is that day, and the columns to the right are that day's reading.">last day${cFieldSortBtn('lastTs', 'desc')}</th>
       <th title="which way the coin has tended to go after readings like the last day's: up, down, or none when no point spoke or they cancelled">sign today${cFieldSortBtn('sign', 'desc')}</th>
       <th title="how much of the pull on the last day pointed one way, 0 to 100">agreement today${cFieldSortBtn('agreement', 'desc')}</th>
       <th title="the pull itself on the last day: the sum over speaking points of average outcome times evidence">size today${cFieldSortBtn('size', 'desc')}</th>

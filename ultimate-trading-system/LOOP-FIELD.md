@@ -161,3 +161,20 @@ list follow.
   one folds the eight into one. Test-only: nothing on the box changes and
   the release does not move (RULE EIGHT, a guard that misses is a test-only
   follow-up). All eight new guards and every other field guard were caught.
+- **3.213.1 -- the owner found 3.212.1's freshness order not delivered**
+  ("why does this show 09/19 as the last day" on the Coins grid, with Data
+  through the 20th). The reader (`windowMoves`, `lib/windowmove.js`) was
+  asked to keep unclosed decisions and dropped every one: the chunk builder
+  hands an unclosed chunk over without its prices, and the reader skipped on
+  that before it ever looked at the flag. So the field stopped at the last
+  CLOSED chunk, a day or more behind the data, and the live path (3.213.0)
+  would have found no day for the very decision it was taking and gone
+  silent on every real decision. No test read an unclosed decision; the
+  3.212.1 change shipped on a build that happened to have none in reach.
+  Fixed: the reader keeps them when asked and reads the decision price from
+  the candles itself, which it already did; a chunk whose decision candle is
+  not on file is skipped, never invented. Tested on both daily shapes with
+  candles through 23:00 on the 20th (the last day is the 20th, on Coins and
+  on the live path), guarded, and the `last day` hover text no longer
+  promises "today": the Data refresh fetches finished days only, so the
+  newest decision is the one taken on the last finished day.

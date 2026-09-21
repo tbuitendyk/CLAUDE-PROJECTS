@@ -85,7 +85,16 @@ function windowMoves(map, geometry, lookbacks = [], opts = {}) {
   for (const h of wanted) moves[String(h)] = [];
   let skipped = 0;
   for (const c of built.chunks) {
-    if (c.c1 == null || (c.diffPct == null && !keepUnclosed)) continue;
+    // AN UNCLOSED CHUNK COMES WITHOUT ITS PRICES: the chunk builder hands it
+    // over with c1 null as well as its outcome (lib/dataset.js, buildChunks),
+    // so skipping on c1 here dropped every unclosed decision and `keepUnclosed`
+    // kept nothing -- the field stopped at the last closed chunk and the live
+    // path found no day for the one it was deciding (found by the owner on the
+    // Coins grid, 2026-09-21: "why does this show 09/19 as the last day"). The
+    // decision price is read from the candles just below, which is all a
+    // decision needs; a chunk whose decision candle is not on file yet is
+    // skipped there, never invented.
+    if (!keepUnclosed && (c.c1 == null || c.diffPct == null)) continue;
     const first = map.get(c.startTs);
     const at = decisionAt(map, c.startTs, geo);
     // A PRICE OF ZERO OR BELOW IS NOT A BASE A RETURN CAN BE MEASURED FROM.
