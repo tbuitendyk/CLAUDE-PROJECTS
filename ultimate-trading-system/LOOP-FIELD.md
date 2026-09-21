@@ -146,3 +146,9 @@ list follow.
   field is built with data current to the last full day on file, so an open
   grid shows today's decision when the data is fresh. The suite ran green
   after it.
+- **3.213.0 (5aa33e3), deployed 2026-09-21 06:15:55 UTC**: the field on the
+  live path -- the greenlight carries it, the schema checks it, every
+  decision rebuilds and reads it, the gate sizes the clip, the row on both
+  books shows it. Narrow checks, the new test file and the related suites
+  green before the deploy; the guards, the whole suite, the fingerprint and
+  the word list after.
