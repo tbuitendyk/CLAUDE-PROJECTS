@@ -43,7 +43,15 @@ function theExecutorStillBorrowsBeforeItSellsAShort() {
   assert.ok(/def borrow_base\(/.test(code),
     'the executor has lost borrow_base() — a short would fall back on auto-borrow and sell a '
   + "concurrent long's inventory");
-  assert.ok(/margin\/loan/.test(code), 'the explicit loan call is gone');
+  assert.ok(/margin\/borrow-repay/.test(code), 'the explicit loan call is gone');
+  // AND IT MUST GO SOMEWHERE THE VENUE STILL ANSWERS (2026-09-21). This guard
+  // used to require the string 'margin/loan' — the path Binance removed on
+  // 2024-03-31 — so it actively held the executor on a dead endpoint. Every
+  // live short failed 401 / -1002 for four weeks while this check passed.
+  assert.ok(!/margin\/loan|margin\/repay/.test(code),
+    'the executor calls /sapi/v1/margin/loan or /sapi/v1/margin/repay. Binance removed both on '
+  + '2024-03-31; they answer 401 / -1002 and no short can open. Use '
+  + '/sapi/v1/margin/borrow-repay with type=BORROW|REPAY');
   assert.ok(!/side_eff\s*=\s*"NO_SIDE_EFFECT" if .* else "MARGIN_BUY"/.test(code),
     'the entry has reverted to auto-borrow for shorts — this is the exact 2026-08-24 regression');
 }

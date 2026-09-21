@@ -844,22 +844,31 @@ class Binance:
         every downstream check already assumes.
         """
         params = {"asset": self.base_asset, "isIsolated": "TRUE",
-                  "symbol": self.symbol, "amount": f"{qty:.3f}"}
+                  "symbol": self.symbol, "amount": f"{qty:.3f}", "type": "BORROW"}
         if not self.live:
             jlog("DRYRUN_BORROW", **params)
             return 200, {"tranId": 0, "dryrun": True}
-        return self._http("POST", "/sapi/v1/margin/loan", params, signed=True)
+        # POST /sapi/v1/margin/loan was REMOVED by Binance on 2024-03-31 (their
+        # changelog of 2024-01-09 names /sapi/v1/margin/borrow-repay, with
+        # type=BORROW|REPAY, as the replacement). The retired path answers every
+        # call 401 / -1002 "You are not authorized to execute this request." —
+        # which is what every live short got, six attempts a day, on 2026-09-20
+        # and 2026-09-21. The explicit borrow shipped 2026-08-24 had therefore
+        # never once succeeded against the real venue; only the dry run and the
+        # test rig (whose mock served the same dead path) ever saw it "work".
+        return self._http("POST", "/sapi/v1/margin/borrow-repay", params, signed=True)
 
     def repay_base(self, qty):
         """Repay `qty` of base-asset debt in THIS isolated wallet. Used to undo a
         borrow whose sell then failed: a loan with no short behind it is real
         money accruing interest for a position that does not exist."""
         params = {"asset": self.base_asset, "isIsolated": "TRUE",
-                  "symbol": self.symbol, "amount": f"{qty:.3f}"}
+                  "symbol": self.symbol, "amount": f"{qty:.3f}", "type": "REPAY"}
         if not self.live:
             jlog("DRYRUN_REPAY", **params)
             return 200, {"tranId": 0, "dryrun": True}
-        return self._http("POST", "/sapi/v1/margin/repay", params, signed=True)
+        # Same retirement as the borrow above: /sapi/v1/margin/repay is gone.
+        return self._http("POST", "/sapi/v1/margin/borrow-repay", params, signed=True)
 
     def query_order(self, client_id):
         """Look up an isolated-margin order by its deterministic client id, so a
