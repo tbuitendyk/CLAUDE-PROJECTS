@@ -11132,7 +11132,7 @@ function cFieldGridHtml(got) {
   return `<p class="note">The grid of <b>${esc(String(p.coin))} ${esc(String(p.geometry))}</b> at its last day, ${esc(cFieldDay(p.lastTs))}: in each square, the average move from entry to exit as a share of price, in percent,
     <b>after rising</b> over <b>after falling</b>, with the evidence behind each in brackets (one full-weight day is 1). A dot is a point with nothing behind it.
     Down the side, each look-back's usual move on that day &mdash; the yardstick every band is a share of &mdash; and what it read today.</p>
-    <div class="cwbox"><table class="cgap cpassers"><thead><tr><th>look-back, days</th><th>usual move, %</th><th>today</th>${bands.map((b) => `<th>${esc(String(b))}%</th>`).join('')}</tr></thead>
+    <div class="cwbox"><table class="cgap cpassers"><thead><tr><th title="the look-back this row of points reads, in days: the move into the decision over that many days">look-back, days</th><th title="this look-back's usual move on the last day, in percent: the weighted median of its moves over the window, which every sit-out band is a share of">usual move, %</th><th title="what this look-back read on the last day &mdash; rising, falling or sit out &mdash; and the widest band it cleared">today</th>${bands.map((b) => `<th title="the sit-out band this column of points reads, as a percentage of the look-back's usual move">${esc(String(b))}%</th>`).join('')}</tr></thead>
     <tbody>${grid.map((row, h) => `<tr><td>${esc(String(backs[h]))}</td><td>${yard[h] == null ? '—' : Number(yard[h]).toFixed(2)}</td><td>${today[h] ? (today[h].sign > 0 ? 'rising' : (today[h].sign < 0 ? 'falling' : 'sit out')) + (today[h].bandsCleared ? ` <span class="muted">to ${esc(String(bands[today[h].bandsCleared - 1]))}%</span>` : '') : '—'}</td>${row.map((x) => `<td>${cell(x.rising)}<br>${cell(x.falling)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
 // one field per hold length, as the walk: the same collapse, said for a build
@@ -11218,7 +11218,7 @@ function cFieldPanel() {
     </div>
     <div class="row" style="align-items:flex-end">
       <label class="f" title="which coins to build, comma separated. Blank builds every coin that has been read.">coins to build (blank = all)<input id="fCoins" value="${esc(String(cState.fCoins || ''))}" placeholder="LTCUSDT,BCHUSDT" style="width:14rem"${off}></label>
-      <label class="f" title="the chunk shape to build the field for. The shape decides the trade the outcome is measured over — when it opens and how long it is held.">chunk shape<select id="fGeom"${off}${cState.fPermGeom ? ' disabled' : ''}>${(shapes.length ? shapes : []).map((s) => `<option value="${esc(s.key)}"${cState.fGeom === s.key ? ' selected' : ''}>${esc(s.label)}</option>`).join('')}</select></label>
+      <label class="f" title="the chunk shape to build the field for. The shape decides the trade the outcome is measured over — when it opens and how long it is held.">chunk shape<select id="fGeom"${off}${cState.fPermGeom ? ' disabled' : ''}>${vocabOptions('geometry', cState.fGeom)}</select></label>
       <label class="c" title="ticked, every chunk shape is built rather than the one chosen beside it — one field per hold length, as the walk does, each standing for the shapes that hold for the same time. This is how stage 1 on Sweep runs every shape too."><input${off} id="fPermGeom" type="checkbox"${cState.fPermGeom ? ' checked' : ''}> permute</label>
     </div>
     <div class="row">

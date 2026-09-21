@@ -296,6 +296,8 @@ module.exports = {
     const CHECKED = [
       { id: 'swLayout', allowed: backendLayouts(), why: 'lib/vocabulary.js windowLayout' },
       { id: 'swGeom', allowed: Object.keys(GEOMETRIES), why: 'lib/dataset.js GEOMETRIES' },
+      // the decision field's chunk shape on Coins (3.211.1) draws from the same list
+      { id: 'fGeom', allowed: Object.keys(GEOMETRIES), why: 'lib/dataset.js GEOMETRIES' },
       // The every-coin table's order is applied on the other side, so a value
       // this select offers that the other side does not accept would silently
       // fall back to the default order — the page would CLAIM one ordering and
@@ -385,6 +387,9 @@ module.exports = {
       // (aSetIsOpenedRenamedPickedAndDeletedOnlyByAnIdTheBoxHolds) holds it
       // to exactly that.
       'wSet',
+      // and the fields on this box (3.211.0), the same shape: every option is a
+      // field id the box itself listed
+      'fSet',
       // AND ITS NAMED SCREENS (3.180.0). Its values are the names of screens
       // the box itself listed, so lib/coinsscreens.js IS the allow-list: every
       // door there refuses a name the box does not hold, by name, and every
