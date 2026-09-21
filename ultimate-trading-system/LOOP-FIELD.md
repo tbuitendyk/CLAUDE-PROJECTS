@@ -178,3 +178,8 @@ list follow.
   on the live path), guarded, and the `last day` hover text no longer
   promises "today": the Data refresh fetches finished days only, so the
   newest decision is the one taken on the last finished day.
+- **3.213.1 (b0c0987), deployed 2026-09-21 06:34:56 UTC**: that fix. Narrow
+  checks and the new test green before the deploy; the guard, the whole
+  suite, the fingerprint and the word list after. A field built before this
+  release stops at the last closed chunk and stays as it was built: press
+  `Build the field` again to have one that reaches the last finished day.
