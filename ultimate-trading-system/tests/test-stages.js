@@ -51,9 +51,19 @@ const LAUNCH_BLOCK = {
   cell: { entry: 'market', tHours: 65 }, decision: 'argmax', band: 3,
   agreeRule: 'count', agreeBar: 'all', agreePct: 50, agreeCopy: 98,
 };
+// UNTIL THE RUN IS OVER, which is not when the set stops saying `running`. A
+// stage 3 run writes `done` or `incomplete` on its set, THEN writes its tally
+// file through awaited stream writes, and only after that clears the busy
+// marker every launch refuses on. A wait that read the status alone came back
+// inside that tail -- under load, 29 times in 40 -- so the next launch was
+// refused as "going right now", and the fixture's `finally` deleted a set the
+// run then saved again, which is where the stray incomplete sets in
+// data/stagesets came from. So this waits on the readout the launch reads,
+// stageRunning(), until it no longer names the set.
 async function untilEnded(id, ms = 30000) {
   const t0 = Date.now();
-  while (stages.getSet(id).status === 'running' && Date.now() - t0 < ms) await new Promise((r) => setTimeout(r, 50));
+  const going = () => stages.getSet(id).status === 'running' || stages.stageRunning() === id;
+  while (going() && Date.now() - t0 < ms) await new Promise((r) => setTimeout(r, 50));
   // a landed stage 3 set totals its tables in the background, and the next
   // launch refuses while that goes — wait for it, so a test reads the
   // refusal it is asking about and not the one heavy job at a time
@@ -476,9 +486,7 @@ module.exports = {
       // the run behind the answer ends rather than stranding — there are no
       // price files for this coin, so its one unit fails, the failure is
       // written on the set, and the set says it does not match its own plan
-      const t0 = Date.now();
-      while (stages.getSet(child).status === 'running' && Date.now() - t0 < 30000) await new Promise((r) => setTimeout(r, 50));
-      const after = stages.getSet(child);
+      const after = await untilEnded(child);
       assert.notStrictEqual(after.status, 'running', 'the run behind the answer never ended');
       assert.strictEqual(after.status, 'incomplete', `a run whose only unit has no price files ends incomplete, not ${after.status}`);
       assert.strictEqual((after.failures || []).length, 1, 'the failed unit is written on the set');
