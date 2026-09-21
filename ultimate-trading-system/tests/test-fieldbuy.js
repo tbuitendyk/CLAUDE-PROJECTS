@@ -263,6 +263,12 @@ module.exports.theScreenHasTheButtonThePickerAndTheTableAboveThePairs = function
   assert.ok(table.includes("${r.closed ? 'closed' : (r.passed ? '<span class=\"warn\">closing passed, no closing candle on file yet</span>' : 'running')}"), 'running, closed, or closing passed with no candle');
   assert.ok(server.includes("    const fetchRecent = require('./lib/jobs').anyJobRunning() ? null : (coin) => require('./lib/datarefresh').fillRecent(coin);"), 'the read fetches a missing closing candle, unless a data job holds the cache');
   assert.ok(table.includes('<div class="cwbox" style="margin-bottom:1.6rem"><table class="cgap cpassers">'), 'room under the seven (owner, 2026-09-21)');
+  // THE AVERAGE OF THE SEVEN (3.219.0, owner order 2026-09-21): a line under
+  // the rows, worked out from the rows as drawn on every draw, never stored
+  assert.ok(table.includes("  const pcts = (b.rows || []).map((r) => r.performancePct).filter((v) => v != null && Number.isFinite(Number(v))).map(Number);"), 'the average reads the rows as drawn');
+  assert.ok(table.includes("  const avgPct = pcts.length ? pcts.reduce((a, v) => a + v, 0) / pcts.length : null;"), 'and is their mean');
+  assert.ok(table.includes('<tfoot><tr><td colspan="10" style="text-align:right"><b>average performance, %</b></td><td>${avgCell}</td>'), 'the line under the seven is named and carries the mean in the % column');
+  assert.ok(table.includes("over ${pcts.length} of ${(b.rows || []).length}"), 'and says how many rows it is over');
   assert.ok(panel.includes('<hr style="border:0;border-top:1px solid var(--line);margin:1.8rem 0 1.2rem">\n    <p class="note"><b>Every pair of '), 'and a rule with a heading line before the table of pairs: visual separation (owner, 2026-09-21)');
   // the routes and the help
   for (const r of ["app.post('/api/coins/fields/:id/buy'", "app.get('/api/coins/buys'", "app.get('/api/coins/buys/:id'", "app.post('/api/coins/buys/:id/update'", "app.post('/api/coins/field/close'"]) assert.ok(server.includes(r), r);

@@ -374,6 +374,10 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "  const rules = twoBars ? (p.fieldPermuteRule ? fieldGate.RULES.slice() : [ruleOne]) : ['both'];", "  const rules = p.fieldPermuteRule ? fieldGate.RULES.slice() : [ruleOne];",
     'theGateIsAnAxisThatMultipliesOnlyWhereTheFieldCovers',
     'with one bar the rule is permuted anyway and the same trades are priced twice under two names'],
+  // THE AVERAGE OF THE SEVEN UNDER THE BOUGHT FIELD (3.219.0)
+  [path.join(ROOT, 'public', 'construct.js'), '  const avgPct = pcts.length ? pcts.reduce((a, v) => a + v, 0) / pcts.length : null;', '  const avgPct = pcts.length ? pcts[0] : null;',
+    'theScreenHasTheButtonThePickerAndTheTableAboveThePairs',
+    'the line under the seven prints the first trade\'s performance as the average of all of them'],
   // THE FIELD ON THE LIVE PATH (FIELD-DESIGN.md section H, 3.213.0)
   [path.join(ROOT, 'lib', 'live', 'greenlight.js'), '  if (sv.field && !(src.field && src.field.dials)) {', '  if (false) {',
     'aSurvivorPricedUnderTheFieldIsTradedOnlyWithItsField',

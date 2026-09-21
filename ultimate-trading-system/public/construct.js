@@ -11314,6 +11314,15 @@ function cFieldBuyTable(b) {
       <td>${esc(when(r.decisionTs))}</td><td>${word}</td><td>${cFieldNum(r.agreement, 0)}</td><td>${cFieldNum(r.certainty, 0)}</td><td>${r.speaking ?? '—'}</td><td><b>${cFieldNum(r.score, 1)}</b></td>
       <td>${cBuyPx(r.entryPrice)}${r.entryPrice == null ? ' <span class="muted">(no candle at the opening)</span>' : ''}</td><td>${now}</td><td>${perf}</td><td>${r.closed ? 'closed' : (r.passed ? '<span class="warn">closing passed, no closing candle on file yet</span>' : 'running')}</td></tr>`;
   }).join('');
+  // THE AVERAGE OF THE SEVEN (owner order, 2026-09-21: "a average performance %
+  // total at the bottom of our bought field display that is calculated on each
+  // display so it adapts properly to newly closed trades"): worked out from the
+  // rows as they stand on every draw -- a running trade at its newest price, a
+  // closed one at its closing price -- and never stored, so it cannot lag them
+  const pcts = (b.rows || []).map((r) => r.performancePct).filter((v) => v != null && Number.isFinite(Number(v))).map(Number);
+  const avgPct = pcts.length ? pcts.reduce((a, v) => a + v, 0) / pcts.length : null;
+  const avgCls = avgPct > 0 ? 'pos' : (avgPct < 0 ? 'neg' : 'muted');
+  const avgCell = avgPct == null ? '<span class="muted">—</span>' : `<span class="${avgCls}"><b>${avgPct > 0 ? '+' : ''}${avgPct.toFixed(2)}</b></span>`;
   return `<p class="note">The seven of <b>${esc(b.field.id)} &middot; ${esc(String(b.field.name || ''))}</b>, pressed ${esc(when(b.pressedAt))} UTC: the ${(b.rows || []).length} best of ${Number(b.candidates || 0).toLocaleString()} candidate(s) among ${Number(b.pairs || 0).toLocaleString()} pair(s).
     The rule: ${esc(b.rule || '')}. Fixed as pressed; only the price and the performance move.</p>
     <div class="cwbox" style="margin-bottom:1.6rem"><table class="cgap cpassers"><thead><tr>
@@ -11329,7 +11338,7 @@ function cFieldBuyTable(b) {
       <th title="while the trade runs, the newest candle on file and its close; once the closing has passed, the closing candle's price, fetched if it is not on file, written into the record and never read from the candles again">price now / closed</th>
       <th title="the move from the opening price in the field's own direction, in percent">performance, %</th>
       <th title="running until the closing has passed; closed, at the closing price, once it has and the candle could be had; closing passed with no candle means neither the box nor the exchange had the hour yet, or a data job held the cache — read the field again later">state</th>
-    </tr></thead><tbody>${rows}</tbody></table></div>`;
+    </tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="10" style="text-align:right"><b>average performance, %</b></td><td>${avgCell}</td><td class="muted" style="text-align:left">over ${pcts.length} of ${(b.rows || []).length}</td></tr></tfoot></table></div>`;
 }
 function cFieldBuyBlock(st, off) {
   const saved = st && st.saved ? st.saved : null;
