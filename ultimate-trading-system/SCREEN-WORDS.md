@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **b0c0987e8d39 — what the box is serving**, not from the working tree.
+Generated from **7b05ec01826e — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -76,14 +76,14 @@ _none_
 
 - Every sweep, null board and tune reads this cache, never the exchange — a gap here silently
 - shrinks every window. Refresh re-fetches from the newest cached month (it may have been partial) through the
-- current month. Trim keeps only a range, deleting the rest. Purge deletes the whole asset. Every write refuses
+- current month, then the hours since the last whole day, to the most recent closed hourly candle. Trim keeps only a range, deleting the rest. Purge deletes the whole asset. Every write refuses
 - while a job runs; purge and trim DELETE data — the only way back is downloading again.
 - nothing cached yet — download below
 
-## Every word, flat (71)
+## Every word, flat (80)
 
 ```
-again. and asset. back been below board cache cached coin comma-sep current Data data DELETE deletes deleting download Download downloading Every every exchange from gap Global have here is it job keeps latest may month month. never new newest nothing null on only partial Purge purge range re-fetches reads Refresh refresh refuses rest. runs server shrinks silently sweep the this through to Trim trim tune way while whole window. write yet
+again. and asset. back been below board cache cached candle. closed coin comma-sep current Data data day DELETE deletes deleting download Download downloading Every every exchange from gap Global have here hourly hours is it job keeps last latest may month most never new newest nothing null on only partial Purge purge range re-fetches reads recent Refresh refresh refuses rest. runs server shrinks silently since sweep the then this through to Trim trim tune way while whole window. write yet
 ```
 
 ---
