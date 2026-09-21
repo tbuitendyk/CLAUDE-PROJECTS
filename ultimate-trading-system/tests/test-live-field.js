@@ -34,7 +34,7 @@ const FREEZE = Date.UTC(2026, 5, 30, 23, 59, 59);
 
 // the field's build dials and the gate, as a stage 3 record carries them
 const DIALS = { windowDays: 60, halfLifeDays: 20, floor: 0.05, bands: [0.4, 0.8], lookbackHours: [24, 48, 72, 96], evidenceCap: 10, leastEvidence: 1, copies: 8 };
-const GATE = { read: 'agreement', minimum: 0, signOnly: false, rungs: '100:2', silent: 1 };
+const GATE = { read: 'agreement', agreeMin: 0, certMin: null, rule: 'both', signOnly: false, rungs: '100:2', silent: 1 };
 
 function writeFabricated(sym, seed) {
   const rng = mulberry32(seed);
@@ -100,7 +100,7 @@ module.exports.aSurvivorPricedUnderTheFieldIsTradedOnlyWithItsField = function (
   const gl = require('../lib/live/greenlight');
   const { validateConfig } = require('../lib/live/configschema');
   const { aStage4Source } = require('./fixtures-setup');
-  const gate = { read: 'certainty', minimum: 55, signOnly: false, rungs: '70:1, 100:2', silent: 1 };
+  const gate = { read: 'certainty', agreeMin: null, certMin: 55, rule: 'both', signOnly: false, rungs: '70:1, 100:2', silent: 1 };
   const dials = { windowDays: 400, halfLifeDays: 90, floor: 0.05, bands: [0.4, 0.8, 1.2], lookbackHours: [24, 72, 168], evidenceCap: 20, leastEvidence: 2, copies: 20 };
   // the survivor as a stage 3 record carries it: the gate and its numbers
   const priced = (over) => aStage4Source({ survivor: { ...aStage4Source().survivor, field: { ...gate, test: { placed: 1 }, hold: null } }, ...over });
@@ -115,7 +115,7 @@ module.exports.aSurvivorPricedUnderTheFieldIsTradedOnlyWithItsField = function (
   const src = priced({ field: { id: 'F-3', name: 'x', pairKey: 'LTCUSDT|daily-4d', dials } });
   assert.strictEqual(gl.stage4Refusal(src), null);
   const cfg = gl.configFromStage4(src);
-  assert.deepStrictEqual(cfg.field, { id: 'F-3', name: 'x', dials, gate: { read: 'certainty', minimum: 55, signOnly: false, rungs: '70:1, 100:2', silent: 1 } });
+  assert.deepStrictEqual(cfg.field, { id: 'F-3', name: 'x', dials, gate: { read: 'certainty', agreeMin: null, certMin: 55, rule: 'both', signOnly: false, rungs: '70:1, 100:2', silent: 1 } });
   assert.strictEqual(validateConfig(cfg).ok, true, validateConfig(cfg).errors.join('; '));
   // a survivor priced without one carries none, and a field beside the set
   // does not attach itself to a survivor that was not priced under it
@@ -141,7 +141,8 @@ module.exports.theSchemaRefusesAFieldThatCannotBeRebuilt = function () {
   bad({ ...good.field, dials: { ...DIALS, lookbackHours: [] } }, /^field\.dials: look-backs is empty/);
   bad({ ...good.field, gate: { ...GATE, rungs: '' } }, /^field\.gate: size rungs is empty/);
   bad({ ...good.field, gate: { ...GATE, read: 'mood' } }, /^field\.gate: "mood" is not a way to read the field/);
-  bad({ ...good.field, gate: { ...GATE, minimum: 101 } }, /^field\.gate: minimum: a read is 0 to 100/);
+  bad({ ...good.field, gate: { ...GATE, agreeMin: 101 } }, /^field\.gate: agreement minimum: a read is 0 to 100/);
+  bad({ ...good.field, gate: { ...GATE, rule: 'most' } }, /^field\.gate: "most" is not a way to combine the minimums/);
 };
 
 // ---- THE DECISION ----

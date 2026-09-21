@@ -202,3 +202,25 @@ list follow.
   suite, the fingerprint and the word list after. A field built before this
   release stops at the last closed chunk and stays as it was built: press
   `Build the field` again to have one that reaches the last finished day.
+
+## After the loop
+
+- **3.218.0 -- two minimums, one on each of the field's numbers** (owner
+  `GO NOW!`, 2026-09-21, after the loop had ended: "the dual read
+  functionality"). `minimum` on the read is gone; in its place an
+  `agreement minimum` and a `certainty minimum`, each a list or blank (blank
+  is no bar on that number; 0 blocks nothing, a missing number included), and
+  `must pass` says how two bars combine: `both` blocks when either bar is
+  missed, `either` only when both are. `read` now names only the number
+  `size rungs` sizes by. The rule is permuted only where there are two bars,
+  since with one it tells nothing apart and would price the same trades twice
+  under two names. The gate's record shape moved (`agreeMin`, `certMin`,
+  `rule` in place of `minimum`; lib/fieldgate.js `gateRecord` is its one
+  home, read by the stage 3 row, the Boards coin row and the greenlight), and
+  nothing on the box was written under the old one: the newest stage 3 set
+  there is 3.209.0 and the gate came in 3.212.0, so no set, greenlight or
+  live setup carries it, nothing on disk stops being readable, and the release
+  moves its second digit. No translation of the old shape exists anywhere
+  (RULE NINE, RULE TEN). A certainty bar, like a read of certainty, needs a
+  field built with slid copies: refused at the launch and said beside the
+  dials as they are typed, without greying them.

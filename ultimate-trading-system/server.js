@@ -1336,6 +1336,9 @@ app.post('/api/stage3-count', (req, res) => {
       // why it could not be read -- so the screen greys the gate and says why
       fieldId: d.fieldId == null ? null : d.fieldId, fieldUnits: d.fieldUnits == null ? null : d.fieldUnits,
       fieldGates: d.fieldGates == null ? null : d.fieldGates, fieldError: d.fieldError || null,
+      // and the certainty warning (3.218.0): a bar or read of certainty on a
+      // field built without copies, said beside the dials, not greyed
+      fieldWarn: d.fieldWarn || null,
       // and how many members judge a coin on the units about to be priced, so
       // the Quorum line says the real number instead of a typed one (3.195.1)
       committees: d.committees || [],

@@ -64,6 +64,8 @@ function vocabulary() {
     // THE FIELD'S GATE (FIELD-DESIGN.md section F): what it reads, and the
     // four verdict words with the field's own rule under each
     fieldRead: asChoices(require('./fieldgate').READS),
+    // and how its two minimums combine (3.218.0): both, or either
+    fieldRule: asChoices(require('./fieldgate').RULES),
     fieldVerdict: require('./fieldgate').VERDICTS.map((w) => ({ value: w, label: w, why: require('./fieldgate').verdictWhy(w) })),
     entry: asChoices(bracket.ENTRIES),
     // the engine's own gate list (lib/bracket.js GATES): active and

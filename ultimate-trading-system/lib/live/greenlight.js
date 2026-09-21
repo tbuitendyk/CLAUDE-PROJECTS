@@ -132,7 +132,7 @@ function configFromStage4(src) {
     // the field from closed history and gate the call the way stage 3 did
     field: sv.field && src.field && src.field.dials ? {
       id: src.field.id, name: src.field.name || null, dials: { ...src.field.dials },
-      gate: { read: sv.field.read, minimum: Number(sv.field.minimum), signOnly: !!sv.field.signOnly, rungs: String(sv.field.rungs), silent: Number(sv.field.silent) },
+      gate: require('../fieldgate').gateRecord(sv.field),
     } : null,
     configVersion: `${src.set.id}/${src.gate.id}/${src.pick.by}@${new Date().toISOString().slice(0, 10)}`,
   };

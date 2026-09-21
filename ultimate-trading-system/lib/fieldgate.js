@@ -8,13 +8,24 @@
 // result. On each decision the members make, the field is read on that
 // decision's own day (lib/field.js, readAt), and the trade is:
 //
-//   BLOCKED when the field's sign is AGAINST the members' call, or when the
-//   read -- agreement or certainty, the dial says which -- is below the
-//   minimum (the second block has a tick that turns it off: sign only);
-//   otherwise SIZED by the rung the read falls in, a ladder of multipliers of
-//   the standard size; and a day the field says nothing on (no point spoke,
-//   or they cancelled, or the field has no day for it) trades at the silent
+//   BLOCKED when the field's sign is AGAINST the members' call, or when a
+//   minimum is not reached (the second block has a tick that turns it off:
+//   sign only); otherwise SIZED by the rung the read -- agreement or
+//   certainty, the dial says which -- falls in, a ladder of multipliers of the
+//   standard size; and a day the field says nothing on (no point spoke, or
+//   they cancelled, or the field has no day for it) trades at the silent
 //   multiplier, so silence is never a block by accident.
+//
+// TWO MINIMUMS, ONE ON EACH OF THE FIELD'S NUMBERS (3.218.0, owner GO NOW!
+// 2026-09-21: "the dual read functionality"). The agreement minimum and the
+// certainty minimum are each a bar or blank -- blank is no bar on that number
+// -- and where both are set the rule says how they combine: `both` blocks
+// the trade when either bar is missed, `either` blocks it only when both are.
+// A bar of 0 blocks nothing, a missing number included. The read names the
+// number the rungs size by, and nothing else now: the bars are named by their
+// own number. So one setting can ask for agreement at least 40 AND certainty
+// at least 60, which is the only way to learn whether certainty adds anything
+// beyond agreement.
 //
 // THE VERDICT is decided from the numbers written down before any existed
 // (FIELD-DESIGN.md section F): the gate ADDS VALUE when its sized money is
@@ -26,6 +37,8 @@ const { readAt } = require('./field');
 const confirmLib = require('./confirm');
 
 const READS = Object.freeze(['agreement', 'certainty']);
+// how two minimums combine: both must be reached, or either will do
+const RULES = Object.freeze(['both', 'either']);
 const VERDICTS = confirmLib.VERDICTS;
 
 // THE RUNGS: "up to this read, this multiple", typed as `20:0.5, 50:1, 80:1.5,
@@ -55,15 +68,26 @@ function rungFor(rungs, value) {
   for (const r of rungs) if (v <= r.upTo) return r.x;
   return rungs[rungs.length - 1].x;
 }
-// a list of minimums, or one: numbers 0 to 100, ascending, no repeats
-function parseMinimums(text) {
+// a list of minimums, or one: numbers 0 to 100, ascending, no repeats. `what`
+// is the box's own name, so a refusal says which of the two it is about.
+function parseMinimums(text, what = 'minimum') {
   const raw = Array.isArray(text) ? text : String(text == null ? '' : text).split(/[,\s]+/);
   const nums = raw.map((x) => (x === '' || x == null ? null : Number(x))).filter((x) => x != null);
-  if (!nums.length) throw new Error('minimum is empty — type a read from 0 to 100 (0 blocks nothing on the read)');
-  for (const x of nums) if (!Number.isFinite(x) || x < 0 || x > 100) throw new Error(`minimum: a read is 0 to 100, not ${JSON.stringify(x)}`);
+  if (!nums.length) throw new Error(`${what} is empty — type a read from 0 to 100 (0 blocks nothing on the read)`);
+  for (const x of nums) if (!Number.isFinite(x) || x < 0 || x > 100) throw new Error(`${what}: a read is 0 to 100, not ${JSON.stringify(x)}`);
   const uniq = [...new Set(nums)].sort((a, b) => a - b);
-  if (uniq.length !== nums.length) throw new Error('minimum repeats a value');
+  if (uniq.length !== nums.length) throw new Error(`${what} repeats a value`);
   return uniq;
+}
+// THE BOX AS TYPED: blank is no bar on that number, [null]; otherwise its list
+function minimumsOf(text, what) {
+  if (text == null || !String(text).trim()) return [null];
+  return parseMinimums(text, what);
+}
+// one bar, checked: null stays null, anything else is a read from 0 to 100
+function minimumOrNull(value, what) {
+  if (value == null || value === '') return null;
+  return parseMinimums([value], what)[0];
 }
 // a list of rung ladders, separated by semicolons, or one
 function parseRungLists(text) {
@@ -80,16 +104,62 @@ const multiplierOrRefuse = (value, what, fallback) => confirmLib.multiplierOrRef
 function checkGate(g) {
   const read = String((g || {}).read || 'agreement');
   if (!READS.includes(read)) throw new Error(`"${read}" is not a way to read the field (${READS.join(' / ')})`);
-  const minimum = parseMinimums([(g || {}).minimum])[0];
+  const agreeMin = minimumOrNull((g || {}).agreeMin, 'agreement minimum');
+  const certMin = minimumOrNull((g || {}).certMin, 'certainty minimum');
+  const rule = String((g || {}).rule || 'both');
+  if (!RULES.includes(rule)) throw new Error(`"${rule}" is not a way to combine the minimums (${RULES.join(' / ')})`);
   const rungs = parseRungs((g || {}).rungs);
   const silent = multiplierOrRefuse((g || {}).silent, 'silent ×', 1);
-  return { read, minimum, signOnly: !!(g || {}).signOnly, rungs: rungsText(rungs), silent };
+  return { read, agreeMin, certMin, rule, signOnly: !!(g || {}).signOnly, rungs: rungsText(rungs), silent };
+}
+// THE GATE AS A RECORD CARRIES IT: the seven fields and nothing else, in one
+// place, so a stage 3 row, a Boards coin row and a live configuration cannot
+// each write their own idea of its shape
+function gateRecord(g) {
+  return {
+    read: String(g.read), agreeMin: g.agreeMin == null ? null : Number(g.agreeMin), certMin: g.certMin == null ? null : Number(g.certMin),
+    rule: String(g.rule || 'both'), signOnly: !!g.signOnly, rungs: String(g.rungs), silent: Number(g.silent),
+  };
+}
+// the bars a gate sets, each named by its own number
+function barsOf(g) {
+  const bars = [];
+  if (g.agreeMin != null) bars.push({ what: 'agreement', min: Number(g.agreeMin) });
+  if (g.certMin != null) bars.push({ what: 'certainty', min: Number(g.certMin) });
+  return bars;
 }
 // the gate's part of a setting's name; nothing when there is no gate, so a
-// block that never named a field names its settings exactly as it always did
+// block that never named a field names its settings exactly as it always did.
+// The rule is named only where there are two bars to combine.
 function gateLabel(g) {
   if (!g) return '';
-  return ` · field ${g.read}≥${g.minimum}${g.signOnly ? ' sign only' : ''} ×${g.rungs} silent×${g.silent}`;
+  const bars = barsOf(g);
+  const barText = bars.length === 0 ? 'no minimum'
+    : bars.map((b) => `${b.what}≥${b.min}`).join(g.rule === 'either' ? ' | ' : ' & ');
+  return ` · field ${barText}${g.signOnly ? ' sign only' : ''} sized by ${g.read} ×${g.rungs} silent×${g.silent}`;
+}
+// WHETHER A DAY CLEARS THE BARS: a bar of 0 blocks nothing, a missing number
+// included; `both` needs every bar reached, `either` any one of them; no bar
+// at all is cleared by every day.
+const clearsBar = (value, min) => min <= 0 || (value != null && Number(value) >= min);
+function clearsMinimums(day, g) {
+  const checks = barsOf(g).map((b) => clearsBar(day[b.what], b.min));
+  if (!checks.length) return true;
+  return g.rule === 'either' ? checks.some(Boolean) : checks.every(Boolean);
+}
+// THE BARS A DAY MISSED, in words for the live path's row on Trade: under
+// `both` the ones missed; under `either` both, since it takes both to block
+function minimumWords(day, g) {
+  const missed = barsOf(g).filter((b) => !clearsBar(day[b.what], b.min));
+  return missed.map((b) => `${b.what} ${day[b.what] == null ? 'none' : Number(day[b.what]).toFixed(0)} below ${b.min}`).join(' and ');
+}
+// the block, as a sentence for the anatomy of a live setup: '' with no bar
+function blockWords(g) {
+  const bars = barsOf(g);
+  if (!bars.length) return '';
+  const each = bars.map((b) => `its ${b.what} is below ${b.min}`);
+  if (each.length === 1) return `, BLOCKED when ${each[0]}`;
+  return g.rule === 'either' ? `, BLOCKED when both ${each.join(' and ')}` : `, BLOCKED when ${each.join(' or ')}`;
 }
 
 // THE SIZE OF EVERY CALL under the gate: 0 for a blocked one, the rung's
@@ -109,7 +179,7 @@ function sizesFor(days, decisionTs, calls, gate) {
     const value = gate.read === 'certainty' ? day.certainty : day.agreement;
     out.signSum += day.sign === c ? 1 : 0; out.signN++;
     if (day.sign === -c) { out.blockedSign++; continue; }
-    if (!gate.signOnly && (value == null || value < gate.minimum)) { out.blockedMin++; continue; }
+    if (!gate.signOnly && !clearsMinimums(day, gate)) { out.blockedMin++; continue; }
     sizes[i] = rungFor(rungs, value == null ? 0 : value);
     out.placed++; out.readSum += value == null ? 0 : value; out.readN++;
   }
@@ -220,6 +290,7 @@ function blockedShare(t) {
 }
 
 module.exports = {
-  READS, VERDICTS, parseRungs, rungsText, rungFor, parseMinimums, parseRungLists, checkGate, gateLabel,
+  READS, RULES, VERDICTS, parseRungs, rungsText, rungFor, parseMinimums, minimumsOf, minimumOrNull, parseRungLists,
+  checkGate, gateRecord, gateLabel, clearsMinimums, minimumWords, blockWords,
   sizesFor, priceGated, verdictOf, verdictWhy, daysFromColumns, addTotals, mergeTotals, totalsCents, blockedShare,
 };

@@ -423,10 +423,16 @@ value or permuted, and FOUND (`lib/stagework.js`, the record row) every
 record carries `confirm` and, when a lean was priced, its six numbers and a
 `verdict`. The field takes the place `confirm` holds:
 
-- **On Sweep, stage 3**: the field's gate dials — `read`, `minimum`, `sign
-  only`, the size rungs and `silent` — each with `permute` beside it where
-  permuting makes sense (`minimum` over a list; `read` over both; `sign only`
-  over both). The window, half-life, floor and grid shape are **not**
+- **On Sweep, stage 3**: the field's gate dials — `agreement minimum`,
+  `certainty minimum`, `must pass` (both / either; 3.218.0), `sign only`,
+  `read` (the number the size rungs size by), the size rungs and `silent` —
+  each with `permute` beside it where permuting makes sense (each minimum
+  over a list; `must pass`, `read` and `sign only` over both, `must pass`
+  only where both minimums are set). A blank minimum is no bar on that
+  number and a bar of 0 blocks nothing. Until 3.218.0 there was one
+  `minimum`, on the read; the two bars are what let one setting ask for
+  agreement AND certainty, which is the only way to learn whether certainty
+  adds anything beyond agreement. The window, half-life, floor and grid shape are **not**
   permuted at stage 3: they are the field's, set when it was built on Coins,
   and a stage 3 run names the built field it reads. Re-building under other
   dials is a new field, built on Coins, so what a record set was priced

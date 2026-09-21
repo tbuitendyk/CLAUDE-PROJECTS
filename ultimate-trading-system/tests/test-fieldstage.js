@@ -27,12 +27,30 @@ function theGateIsAnAxisThatMultipliesOnlyWhereTheFieldCovers() {
   assert(plain.length >= 1 && plain.every((st) => st.field === null && st.fieldId === null), 'a run naming no field carries no gate on its settings');
   assert(!plain[0].label.includes('field'), 'and names them exactly as before');
   // a field with two reads, two minimums and two ladders permuted: eight gates
-  const p = { ...BLOCK, fieldId: 'F-1', fieldRead: 'agreement', fieldPermuteRead: true, fieldMinimum: '20, 40', fieldPermuteMinimum: true, fieldSignOnly: false, fieldRungs: '100:1; 50:0.5,100:2', fieldPermuteRungs: true, fieldSilent: '1' };
+  const p = { ...BLOCK, fieldId: 'F-1', fieldRead: 'agreement', fieldPermuteRead: true, fieldAgreeMin: '20, 40', fieldPermuteAgreeMin: true, fieldCertMin: '', fieldRule: 'both', fieldSignOnly: false, fieldRungs: '100:1; 50:0.5,100:2', fieldPermuteRungs: true, fieldSilent: '1' };
   const axes = stages.fieldAxesFor(p);
-  assert.strictEqual(axes.gates.length, 8, `two reads x two minimums x one sign-only x two ladders is eight gates, got ${axes.gates.length}`);
+  assert.strictEqual(axes.gates.length, 8, `two reads x two agreement bars x no certainty bar x one sign-only x two ladders is eight gates, got ${axes.gates.length}`);
   const gated = stages.settingsFor(p, [1], null);
   assert.strictEqual(gated.length, plain.length * 8, 'the gate multiplies the block');
   assert(gated.every((st) => st.field && st.fieldId === 'F-1' && st.label.includes(fieldGate.gateLabel(st.field))), 'every setting carries its gate and names it');
+  // TWO BARS (3.218.0): a certainty list beside the agreement list, and the
+  // rule permuted, multiplies again; with one bar the rule tells nothing apart
+  // and is one value whatever its tick says
+  const two = stages.fieldAxesFor({ ...p, fieldCertMin: '60, 70', fieldPermuteCertMin: true, fieldPermuteRule: true });
+  assert.strictEqual(two.gates.length, 32, `two reads x two agreement bars x two certainty bars x two rules x two ladders is 32 gates, got ${two.gates.length}`);
+  assert.deepStrictEqual([...new Set(two.gates.map((g) => g.rule))].sort(), ['both', 'either']);
+  assert.strictEqual(stages.fieldAxesFor({ ...p, fieldPermuteRule: true }).gates.length, 8, 'with one bar the rule is not permuted');
+  assert.strictEqual(stages.fieldAxesFor({ ...p, fieldRule: 'either' }).gates[0].rule, 'both', 'with one bar the rule is recorded as both, its one value');
+  const bare = stages.fieldAxesFor({ ...p, fieldAgreeMin: ' ', fieldPermuteRead: false, fieldPermuteRungs: false });
+  assert.strictEqual(bare.gates.length, 1);
+  assert.strictEqual(bare.gates[0].agreeMin, null, 'a blank box is no bar');
+  assert.ok(fieldGate.gateLabel(bare.gates[0]).includes('no minimum'), fieldGate.gateLabel(bare.gates[0]));
+  // the certainty refusal, in words, for a bar or a read on a field built without copies
+  const noCopies = { id: 'F-1', name: 'x', dials: { copies: 0 } };
+  assert.strictEqual(stages.certaintyRefusal(axes.gates.filter((g) => g.read === 'agreement'), noCopies), null, 'agreement alone asks nothing of the copies');
+  assert.match(String(stages.certaintyRefusal(axes.gates, noCopies)), /carries no certainty/, 'a read of certainty needs copies');
+  assert.match(String(stages.certaintyRefusal([{ read: 'agreement', agreeMin: 20, certMin: 60 }], noCopies)), /leave the certainty minimum blank/, 'a certainty bar needs copies');
+  assert.strictEqual(stages.certaintyRefusal(two.gates, { ...noCopies, dials: { copies: 20 } }), null, 'with copies nothing is refused');
   // the count: the gate multiplies only on a unit the field covers
   const recs = [REC('AAA'), REC('BBB')];
   const pairs = { 'AAA|daily-4d': 'AAA|daily-4d' };
@@ -58,7 +76,9 @@ function theGateIsAnAxisThatMultipliesOnlyWhereTheFieldCovers() {
     assert(msg.includes(words), `${JSON.stringify(over)} should refuse with "${words}", got "${msg}"`);
   };
   bad({ fieldRead: 'hope' }, 'not a way to read the field');
-  bad({ fieldMinimum: '' }, 'minimum is empty');
+  bad({ fieldAgreeMin: 'x' }, 'agreement minimum: a read is 0 to 100');
+  bad({ fieldCertMin: '10, 10' }, 'certainty minimum repeats a value');
+  bad({ fieldRule: 'most' }, 'not a way to combine the minimums');
   bad({ fieldRungs: '50:1' }, 'must reach 100');
   bad({ fieldSilent: '-1' }, 'silent');
 }
@@ -82,7 +102,7 @@ async function theGateIsAColumnASortAndAFloorOnBothTables() {
   }
   // the Sweep form: the field group, its ticks bottom-aligned, its params sent and filled
   assert.ok(/id="swGrpField" style="display:flex;align-items:flex-end/.test(ui), 'the field group on Sweep does not bottom-align its ticks to its boxes (RULE FOUR-A)');
-  for (const id of ['swField', 'swFieldRead', 'swPermFieldRead', 'swFieldMin', 'swPermFieldMin', 'swFieldSignOnly', 'swPermFieldSignOnly', 'swFieldRungs', 'swPermFieldRungs', 'swFieldSilent']) {
+  for (const id of ['swField', 'swFieldRead', 'swPermFieldRead', 'swFieldAgreeMin', 'swPermFieldAgreeMin', 'swFieldCertMin', 'swPermFieldCertMin', 'swFieldRule', 'swPermFieldRule', 'swFieldSignOnly', 'swPermFieldSignOnly', 'swFieldRungs', 'swPermFieldRungs', 'swFieldSilent']) {
     assert.ok(ui.includes(`id="${id}"`), `Sweep has no ${id}`);
     assert.ok(new RegExp(`\\$\\('#${id}'\\)`).test(ui), `${id} is drawn and never read into the launch`);
   }
@@ -95,7 +115,7 @@ async function theGateIsAColumnASortAndAFloorOnBothTables() {
     plan: { units: 1, settings: 3 }, params: { nullN: 9 },
     recordsVersion: stages.RECORDS_V,
   };
-  const gate = { read: 'agreement', minimum: 20, signOnly: false, rungs: '50:1,100:2', silent: 1 };
+  const gate = { read: 'agreement', agreeMin: 20, certMin: null, rule: 'both', signOnly: false, rungs: '50:1,100:2', silent: 1 };
   const totals = (pnl, at1, size, placed, blockedSign, blockedAt1) => ({ pnl, trades: placed, size, at1, blockedAt1, blockedN: blockedSign, placed, blockedSign, blockedMin: 0, silent: 0, readSum: 60 * placed, readN: placed });
   const mk = (si, trade, field) => ({
     si, label: `count 75% market t65h · argmax auto 24/7${field ? fieldGate.gateLabel(field) : ''}`,
@@ -117,7 +137,7 @@ async function theGateIsAColumnASortAndAFloorOnBothTables() {
     w.push(mk(0, 'AAA', { ...gate, test: totals(30, 12, 8, 6, 2, -5) }));
     w.push(mk(0, 'BBB', { ...gate, test: totals(10, 9, 6, 6, 0, 0) }));
     // setting 1: gated, the gate cost money on its one coin
-    w.push(mk(1, 'AAA', { ...gate, minimum: 40, test: totals(4, 8, 4, 4, 2, 3) }));
+    w.push(mk(1, 'AAA', { ...gate, agreeMin: 40, test: totals(4, 8, 4, 4, 2, 3) }));
     // setting 2: no gate at all
     w.push(mk(2, 'AAA', null));
     w.close();
@@ -169,7 +189,7 @@ function theWorkerPricesAWindowUnderTheGate() {
   const days = [{ ts: 100, sign: 1, agreement: 90, certainty: 80, speaking: 5 }, { ts: 200, sign: -1, agreement: 90, certainty: 80, speaking: 5 }];
   const calls = [1, 1, -1, 0];
   const decisionTs = [100, 200, 200, 200];
-  const gate = { read: 'agreement', minimum: 20, signOnly: false, rungs: '50:1,100:2', silent: 1 };
+  const gate = { read: 'agreement', agreeMin: 20, certMin: null, rule: 'both', signOnly: false, rungs: '50:1,100:2', silent: 1 };
   const seen = [];
   const sim = (list) => { seen.push(list.slice()); let pnl = 0; let trades = 0; for (let i = 0; i < list.length; i++) if (list[i]) { pnl += 5 * (i + 1) * list[i]; trades++; } return { pnl, trades, stops: 0 }; };
   const got = sw.priceFieldWindow(calls, decisionTs, days, gate, sim, true);

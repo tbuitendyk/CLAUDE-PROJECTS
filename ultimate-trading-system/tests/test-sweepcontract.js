@@ -300,6 +300,8 @@ module.exports = {
       { id: 'fGeom', allowed: Object.keys(GEOMETRIES), why: 'lib/dataset.js GEOMETRIES' },
       // the field's read on stage 3 (3.212.0): the engine's own two ways of reading it
       { id: 'swFieldRead', allowed: require('../lib/fieldgate').READS, why: 'lib/fieldgate.js READS' },
+      // and how its two minimums combine (3.218.0): the engine's own two rules
+      { id: 'swFieldRule', allowed: require('../lib/fieldgate').RULES, why: 'lib/fieldgate.js RULES' },
       // The every-coin table's order is applied on the other side, so a value
       // this select offers that the other side does not accept would silently
       // fall back to the default order — the page would CLAIM one ordering and

@@ -1849,7 +1849,7 @@ async function s3UnitTask(task) {
       // priced under and its numbers per window; null on a row without one,
       // which keeps every record written before the field exactly as it was
       field: tPriced.field ? {
-        read: st.field.read, minimum: st.field.minimum, signOnly: !!st.field.signOnly, rungs: st.field.rungs, silent: st.field.silent,
+        ...fieldGate.gateRecord(st.field),
         test: fieldGate.totalsCents(tPriced.field), hold: holdField ? fieldGate.totalsCents(holdField) : null,
       } : null,
       fieldVerdict: tPriced.field ? {
@@ -2027,7 +2027,7 @@ function tallyFold(acc, r, blockIdx, agreedAt = null) {
   let k = acc.perCoin.get(ck);
   if (!k) {
     k = { cellLabel, trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry, confirm, fieldLabel,
-      field: r.field ? { read: r.field.read, minimum: r.field.minimum, signOnly: !!r.field.signOnly, rungs: r.field.rungs, silent: r.field.silent } : null,
+      field: r.field ? fieldGate.gateRecord(r.field) : null,
       beat: 0, pairs: 0, test: 0, testN: 0, ttr: 0, ttrN: 0, hold: 0, holdN: 0, trades: 0, tradesN: 0, vsl: 0, vsln: 0,
       agr: 0, agrN: 0, rows: 0, b: new Set() };
     acc.perCoin.set(ck, k);

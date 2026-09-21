@@ -27,9 +27,9 @@ function theRungsAreReadInWordsAndClimbTo100() {
   let m = '';
   try { G.parseMinimums('10, 10'); } catch (err) { m = err.message; }
   assert(m.includes('repeats'), m);
-  const g = G.checkGate({ read: 'certainty', minimum: '20', signOnly: false, rungs: '100:1', silent: '0.5' });
-  assert.deepStrictEqual(g, { read: 'certainty', minimum: 20, signOnly: false, rungs: '100:1', silent: 0.5 });
-  assert.strictEqual(G.gateLabel(g), ' · field certainty≥20 ×100:1 silent×0.5');
+  const g = G.checkGate({ read: 'certainty', agreeMin: '20', certMin: '', signOnly: false, rungs: '100:1', silent: '0.5' });
+  assert.deepStrictEqual(g, { read: 'certainty', agreeMin: 20, certMin: null, rule: 'both', signOnly: false, rungs: '100:1', silent: 0.5 });
+  assert.strictEqual(G.gateLabel(g), ' · field agreement≥20 sized by certainty ×100:1 silent×0.5');
   assert.strictEqual(G.gateLabel(null), '', 'no gate, no name');
 }
 
@@ -43,7 +43,7 @@ function theGateBlocksSizesAndLetsSilenceThrough() {
     { ts: 300, sign: 0, agreement: 0, certainty: 0, speaking: 0 },
     { ts: 400, sign: 1, agreement: 40, certainty: 10, speaking: 3 },
   ];
-  const gate = { read: 'agreement', minimum: 30, signOnly: false, rungs: '50:1,100:2', silent: 0.5 };
+  const gate = { read: 'agreement', agreeMin: 30, certMin: null, rule: 'both', signOnly: false, rungs: '50:1,100:2', silent: 0.5 };
   const calls = [1, 1, -1, 1, 0, -1];
   const ts = [100, 200, 300, 400, 400, 50];
   const got = G.sizesFor(days, ts, calls, gate);
@@ -56,13 +56,13 @@ function theGateBlocksSizesAndLetsSilenceThrough() {
   assert.strictEqual(got.blockedMin, 0);
   assert.strictEqual(got.silent, 2);
   assert.strictEqual(got.readSum, 130);
-  const min = G.sizesFor(days, ts, calls, { ...gate, minimum: 50 });
+  const min = G.sizesFor(days, ts, calls, { ...gate, agreeMin: 50 });
   assert.deepStrictEqual(Array.from(min.sizes), [2, 0, 0.5, 0, 0, 0.5], 'a read below the minimum blocks');
   assert.strictEqual(min.blockedMin, 1);
-  const only = G.sizesFor(days, ts, calls, { ...gate, minimum: 50, signOnly: true });
+  const only = G.sizesFor(days, ts, calls, { ...gate, agreeMin: 50, signOnly: true });
   assert.deepStrictEqual(Array.from(only.sizes), [2, 0, 0.5, 1, 0, 0.5], 'sign only ignores the minimum');
-  const cert = G.sizesFor(days, ts, calls, { ...gate, read: 'certainty', minimum: 30 });
-  assert.deepStrictEqual(Array.from(cert.sizes), [2, 0, 0.5, 0, 0, 0.5], 'the read dial chooses certainty');
+  const cert = G.sizesFor(days, ts, calls, { ...gate, read: 'certainty', agreeMin: null, certMin: 30 });
+  assert.deepStrictEqual(Array.from(cert.sizes), [2, 0, 0.5, 0, 0, 0.5], 'a bar on certainty blocks on certainty, and the read sizes by it');
 }
 
 // THE MONEY UNDER THE SIZES: grouped by multiple, each group priced alone,
@@ -109,9 +109,71 @@ function theVerdictFollowsItsWrittenOrder() {
   assert.strictEqual(c.size, 1.235); assert.strictEqual(c.at1, 1);
 }
 
+// TWO MINIMUMS, ONE ON EACH NUMBER (3.218.0, owner GO NOW! 2026-09-21: "the
+// dual read functionality"). `both` blocks when either bar is missed, `either`
+// only when both are; a blank box is no bar; a bar of 0 blocks nothing, a
+// missing number included; the read names only what the rungs size by; and
+// the names, the live path's words and the record shape all say the same.
+function theTwoMinimumsCombineByBothOrEither() {
+  const days = [
+    { ts: 100, sign: 1, agreement: 90, certainty: 80, speaking: 5 },   // clears both bars
+    { ts: 200, sign: 1, agreement: 90, certainty: 20, speaking: 5 },   // agreement only
+    { ts: 300, sign: 1, agreement: 30, certainty: 80, speaking: 5 },   // certainty only
+    { ts: 400, sign: 1, agreement: 30, certainty: 20, speaking: 5 },   // neither
+    { ts: 500, sign: 1, agreement: 90, certainty: null, speaking: 5 }, // no certainty on file
+  ];
+  const calls = [1, 1, 1, 1, 1];
+  const ts = [100, 200, 300, 400, 500];
+  const base = { read: 'agreement', agreeMin: 40, certMin: 60, rule: 'both', signOnly: false, rungs: '50:1,100:2', silent: 1 };
+  const both = G.sizesFor(days, ts, calls, base);
+  assert.deepStrictEqual(Array.from(both.sizes), [2, 0, 0, 0, 0], 'both: missing either bar blocks');
+  assert.strictEqual(both.blockedMin, 4);
+  const either = G.sizesFor(days, ts, calls, { ...base, rule: 'either' });
+  assert.deepStrictEqual(Array.from(either.sizes), [2, 2, 1, 0, 2], 'either: only missing both bars blocks; the rungs still read agreement');
+  assert.strictEqual(either.blockedMin, 1);
+  const byCert = G.sizesFor(days, ts, calls, { ...base, rule: 'either', read: 'certainty' });
+  assert.deepStrictEqual(Array.from(byCert.sizes), [2, 1, 2, 0, 1], 'the read names the number the rungs size by, and a missing one sizes as 0');
+  const one = G.sizesFor(days, ts, calls, { ...base, certMin: null, rule: 'either' });
+  assert.deepStrictEqual(Array.from(one.sizes), [2, 2, 0, 0, 2], 'a blank certainty box is no bar on certainty, whatever the rule says');
+  const none = G.sizesFor(days, ts, calls, { ...base, agreeMin: null, certMin: null });
+  assert.deepStrictEqual(Array.from(none.sizes), [2, 2, 1, 1, 2], 'no bar at all: only the sign can block');
+  const zero = G.sizesFor(days, ts, calls, { ...base, agreeMin: 0, certMin: 0 });
+  assert.deepStrictEqual(Array.from(zero.sizes), [2, 2, 1, 1, 2], 'a bar of 0 blocks nothing, a missing certainty included');
+  // the names: the rule only where there are two bars to combine
+  assert.strictEqual(G.gateLabel(base), ' · field agreement≥40 & certainty≥60 sized by agreement ×50:1,100:2 silent×1');
+  assert.strictEqual(G.gateLabel({ ...base, rule: 'either' }), ' · field agreement≥40 | certainty≥60 sized by agreement ×50:1,100:2 silent×1');
+  assert.strictEqual(G.gateLabel({ ...base, certMin: null, rule: 'either' }), ' · field agreement≥40 sized by agreement ×50:1,100:2 silent×1', 'one bar names no rule');
+  assert.strictEqual(G.gateLabel({ ...base, agreeMin: null, certMin: null }), ' · field no minimum sized by agreement ×50:1,100:2 silent×1');
+  // the words the live path prints on Trade when it blocks
+  assert.strictEqual(G.minimumWords(days[3], base), 'agreement 30 below 40 and certainty 20 below 60');
+  assert.strictEqual(G.minimumWords(days[1], base), 'certainty 20 below 60');
+  assert.strictEqual(G.minimumWords(days[4], base), 'certainty none below 60', 'a missing number is said, not invented');
+  // and the block as the anatomy of a live setup says it
+  assert.strictEqual(G.blockWords(base), ', BLOCKED when its agreement is below 40 or its certainty is below 60');
+  assert.strictEqual(G.blockWords({ ...base, rule: 'either' }), ', BLOCKED when both its agreement is below 40 and its certainty is below 60');
+  assert.strictEqual(G.blockWords({ ...base, agreeMin: null, certMin: null }), '');
+  // the record shape has one home
+  assert.deepStrictEqual(G.gateRecord({ ...base, test: { placed: 1 }, hold: null }), base, 'gateRecord carries the seven fields and nothing else');
+  // checked, and refused in words that name the box
+  const bad = (g, words) => {
+    let m = '';
+    try { G.checkGate(g); } catch (err) { m = err.message; }
+    assert(m.includes(words), `${JSON.stringify(g)} should refuse with "${words}", got "${m}"`);
+  };
+  bad({ ...base, rule: 'most' }, 'not a way to combine the minimums');
+  bad({ ...base, certMin: 101 }, 'certainty minimum: a read is 0 to 100');
+  bad({ ...base, agreeMin: 'x' }, 'agreement minimum: a read is 0 to 100');
+  assert.deepStrictEqual(G.minimumsOf('', 'agreement minimum'), [null], 'a blank box is one value, no bar');
+  assert.deepStrictEqual(G.minimumsOf(' 40, 20 ', 'agreement minimum'), [20, 40]);
+  let m = '';
+  try { G.minimumsOf('10, 10', 'certainty minimum'); } catch (err) { m = err.message; }
+  assert.strictEqual(m, 'certainty minimum repeats a value');
+}
+
 module.exports = {
   theRungsAreReadInWordsAndClimbTo100,
   theGateBlocksSizesAndLetsSilenceThrough,
+  theTwoMinimumsCombineByBothOrEither,
   theMoneyIsTheSumOfEachMultipleTimesItsGroup,
   theVerdictFollowsItsWrittenOrder,
 };

@@ -26,7 +26,8 @@ const inputFor = (map, geometry, lookbackHours) => require('./fieldrun').inputFo
 //   dials      the field's build dials as the record carries them (window in
 //              days, half-life, floor, bands, look-backs in hours, the two
 //              evidence dials, copies)
-//   gate       read, minimum, sign only, rungs, silent
+//   gate       read, agreement minimum, certainty minimum, rule, sign only,
+//              rungs, silent (lib/fieldgate.js checkGate)
 //   startTs    the target chunk's start
 //   call       the members' call, 1, -1 or 0
 //   seedText   the pair's key, so the slid copies are the lab's
@@ -53,7 +54,7 @@ function fieldAtDecision(map, geometry, dials, gate, startTs, call, seedText) {
   const sz = fieldGate.sizesFor([day], [ts], [call], gate);
   out.size = sz.sizes[0];
   out.why = sz.blockedSign ? 'blocked by sign'
-    : sz.blockedMin ? `blocked by minimum: ${gate.read} ${out[gate.read] == null ? 'none' : Number(out[gate.read]).toFixed(0)} below ${gate.minimum}`
+    : sz.blockedMin ? `blocked by minimum: ${fieldGate.minimumWords(day, gate)}`
       : sz.silent ? 'silent'
         : `sized: ${gate.read} ${Number(out[gate.read]).toFixed(0)} on the rung ×${out.size}`;
   return out;

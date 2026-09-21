@@ -1631,7 +1631,7 @@ async function swCounts() {
       const noField = !!got.fieldId && Array.isArray(got.unitSettings) && got.unitSettings.length > 0 && !got.fieldUnits;
       swGhostGroup('#swGrpField', noField || !!got.fieldError);
       { const fb = $('#swField'); if (fb) fb.disabled = false; }
-      swSayWhyNoField(got.fieldError ? got.fieldError : (noField ? `Greyed: not one unit this run prices has a pair in ${got.fieldId}, so every value of the gate places the same trades — build that field for these coins and shapes on Coins, or name another.` : ''));
+      swSayWhyNoField(got.fieldError ? got.fieldError : (noField ? `Greyed: not one unit this run prices has a pair in ${got.fieldId}, so every value of the gate places the same trades — build that field for these coins and shapes on Coins, or name another.` : (got.fieldWarn || '')));
       // the budget verdict comes from the SAME arithmetic the launch enforces:
       // a refusal is said here, before the button is pressed
       const refuse = (got.heap && got.heap.band === 'refuse' && got.heap) || (got.disk && got.disk.band === 'refuse' && got.disk) || null;
@@ -1715,7 +1715,9 @@ function swBlockParams() {
     // dials, sent as typed -- the engine refuses a bad one in words
     fieldId: $('#swField') ? $('#swField').value : '',
     fieldRead: $('#swFieldRead') ? $('#swFieldRead').value : 'agreement', fieldPermuteRead: !!($('#swPermFieldRead') && $('#swPermFieldRead').checked),
-    fieldMinimum: $('#swFieldMin') ? $('#swFieldMin').value : '', fieldPermuteMinimum: !!($('#swPermFieldMin') && $('#swPermFieldMin').checked),
+    fieldAgreeMin: $('#swFieldAgreeMin') ? $('#swFieldAgreeMin').value : '', fieldPermuteAgreeMin: !!($('#swPermFieldAgreeMin') && $('#swPermFieldAgreeMin').checked),
+    fieldCertMin: $('#swFieldCertMin') ? $('#swFieldCertMin').value : '', fieldPermuteCertMin: !!($('#swPermFieldCertMin') && $('#swPermFieldCertMin').checked),
+    fieldRule: $('#swFieldRule') ? $('#swFieldRule').value : 'both', fieldPermuteRule: !!($('#swPermFieldRule') && $('#swPermFieldRule').checked),
     fieldSignOnly: !!($('#swFieldSignOnly') && $('#swFieldSignOnly').checked), fieldPermuteSignOnly: !!($('#swPermFieldSignOnly') && $('#swPermFieldSignOnly').checked),
     fieldRungs: $('#swFieldRungs') ? $('#swFieldRungs').value : '', fieldPermuteRungs: !!($('#swPermFieldRungs') && $('#swPermFieldRungs').checked),
     fieldSilent: $('#swFieldSilent') ? $('#swFieldSilent').value : '1',
@@ -1817,7 +1819,9 @@ function fillStageForm(doc) {
     setV('#swConfirmedX', p.confirmedX ?? 2); setV('#swUnconfirmedX', p.unconfirmedX ?? 1);
     // the field's gate, as the set carries it
     setV('#swField', p.fieldId || ''); setV('#swFieldRead', p.fieldRead || 'agreement'); setC('#swPermFieldRead', p.fieldPermuteRead);
-    setV('#swFieldMin', p.fieldMinimum == null ? '20' : p.fieldMinimum); setC('#swPermFieldMin', p.fieldPermuteMinimum);
+    setV('#swFieldAgreeMin', p.fieldAgreeMin == null ? '20' : p.fieldAgreeMin); setC('#swPermFieldAgreeMin', p.fieldPermuteAgreeMin);
+    setV('#swFieldCertMin', p.fieldCertMin == null ? '' : p.fieldCertMin); setC('#swPermFieldCertMin', p.fieldPermuteCertMin);
+    setV('#swFieldRule', p.fieldRule || 'both'); setC('#swPermFieldRule', p.fieldPermuteRule);
     setC('#swFieldSignOnly', p.fieldSignOnly); setC('#swPermFieldSignOnly', p.fieldPermuteSignOnly);
     setV('#swFieldRungs', p.fieldRungs == null ? '20:0.5,50:1,80:1.5,100:2' : p.fieldRungs); setC('#swPermFieldRungs', p.fieldPermuteRungs);
     setV('#swFieldSilent', p.fieldSilent == null ? 1 : p.fieldSilent);
@@ -3996,18 +4000,24 @@ async function drawSweep() {
         <label class="f" title="the size of a trade the coin's own lean agrees with, as a multiple of the plain size. Read by sized only. 2 doubles it; 0 drops it.">confirmed ×<input id="swConfirmedX" type="number" value="2" min="0" step="0.5" style="width:4.5rem"></label>
         <label class="f" title="the size of a trade the coin's own lean disagrees with, as a multiple of the plain size. Read by sized only. 1 leaves it as it was; 0 drops it, which is what confirmed only does.">unconfirmed ×<input id="swUnconfirmedX" type="number" value="1" min="0" step="0.5" style="width:4.5rem"></label>
       </div>
-      <p class="note" style="margin:.6rem 0 .1rem"><b>The field</b> — a field built on Coins is read on every decision the members make, on that decision's own day, and the trade is blocked when the field's sign is against the members' call, blocked when the read is below the minimum unless sign only is ticked, and otherwise sized by the rung the read falls in. A day the field says nothing on trades at the silent multiple. The field takes confirm's place: a run names one or the other, never both. Greyed when no unit being priced has a pair in the field named, and the line below says why.</p>
+      <p class="note" style="margin:.6rem 0 .1rem"><b>The field</b> — a field built on Coins is read on every decision the members make, on that decision's own day, and the trade is blocked when the field's sign is against the members' call, blocked when a minimum is not reached unless sign only is ticked — a bar on the field's agreement, a bar on its certainty, or both bars combined as must pass says — and otherwise sized by the rung the read falls in. A day the field says nothing on trades at the silent multiple. The field takes confirm's place: a run names one or the other, never both. Greyed when no unit being priced has a pair in the field named, and the line below says why.</p>
       <p class="note warn" id="swWhyField" style="margin:.1rem 0 .4rem;display:none"></p>
       <div id="swGrpField" style="display:flex;align-items:flex-end;gap:.45rem;flex-wrap:wrap">
         <label class="f" title="which built field this run reads, or none. A field is built on Coins, under The decision field, for a set of coins and chunk shapes; a unit whose coin and shape has no pair in it prices plain, and every value of the gate is one setting there.">field<select id="swField">
           <option value="">— none —</option>
           ${((fieldsOnBox && fieldsOnBox.fields) || []).map((f) => `<option value="${esc(f.id)}">${esc(f.id)} &middot; ${esc(String(f.name || ''))}</option>`).join('')}</select></label>
-        <label class="f" title="which of the field's two numbers the minimum and the rungs read. agreement: how much of the field's pull pointed one way on that day, 0 to 100. certainty: how the field's size ranked against its slid copies that day, 0 to 100 — only on a field built with copies.">read<select id="swFieldRead">${vocabOptions('fieldRead', 'agreement')}</select></label>
-        <label class="c" title="price both reads, each as its own setting."><input type="checkbox" id="swPermFieldRead"> permute</label>
-        <label class="f" title="the least the read must reach for a trade to be placed, 0 to 100. Type one number, or a comma-separated list and tick permute to price each as its own setting. 0 blocks nothing on the read.">minimum<input id="swFieldMin" value="20" style="width:7rem"></label>
-        <label class="c" title="price every minimum in the box, each as its own setting."><input type="checkbox" id="swPermFieldMin"> permute</label>
-        <label class="c" title="ignore the minimum: block only when the field's sign is against the members' call, and size every other trade by its rung."><input type="checkbox" id="swFieldSignOnly"> sign only</label>
+        <label class="f" title="the least the field's agreement must reach on the decision's day for a trade to be placed, 0 to 100 — how much of the field's pull pointed one way. Type one number, or a comma-separated list and tick permute to price each as its own setting. 0 blocks nothing; blank is no bar on agreement.">agreement minimum<input id="swFieldAgreeMin" value="20" style="width:7rem"></label>
+        <label class="c" title="price every agreement minimum in the box, each as its own setting."><input type="checkbox" id="swPermFieldAgreeMin"> permute</label>
+        <label class="f" title="the least the field's certainty must reach on the decision's day for a trade to be placed, 0 to 100 — how the field's size ranked against its slid copies, so only a field built with copies has it. Type one number, or a comma-separated list and tick permute. 0 blocks nothing; blank is no bar on certainty.">certainty minimum<input id="swFieldCertMin" value="" style="width:7rem"></label>
+        <label class="c" title="price every certainty minimum in the box, each as its own setting."><input type="checkbox" id="swPermFieldCertMin"> permute</label>
+        <label class="f" title="how the two minimums combine when both boxes hold a number. both: a trade needs both bars reached, and missing either blocks it. either: reaching one bar is enough, and only missing both blocks it. With one box blank there is one bar and this choice changes nothing.">must pass<select id="swFieldRule">${vocabOptions('fieldRule', 'both')}</select></label>
+        <label class="c" title="price both ways of combining, each as its own setting."><input type="checkbox" id="swPermFieldRule"> permute</label>
+        <label class="c" title="ignore both minimums: block only when the field's sign is against the members' call, and size every other trade by its rung."><input type="checkbox" id="swFieldSignOnly"> sign only</label>
         <label class="c" title="price both with and without sign only."><input type="checkbox" id="swPermFieldSignOnly"> permute</label>
+        <!-- the blocks above, the sizing below: a deliberate line, not where the width happens to wrap (RULE ELEVEN clause 4) -->
+        <div style="flex-basis:100%;height:0"></div>
+        <label class="f" title="which of the field's two numbers the size rungs read to size a placed trade. agreement: how much of the field's pull pointed one way on that day, 0 to 100. certainty: how the field's size ranked against its slid copies that day, 0 to 100 — only on a field built with copies.">read<select id="swFieldRead">${vocabOptions('fieldRead', 'agreement')}</select></label>
+        <label class="c" title="price both reads, each as its own setting."><input type="checkbox" id="swPermFieldRead"> permute</label>
         <label class="f" title="the ladder of sizes, as rungs of &quot;up to this read:multiple&quot;, comma separated: 20:0.5, 50:1, 80:1.5, 100:2 trades a read up to 20 at half the standard size, up to 50 at the standard size, up to 80 at one and a half, and up to 100 at double. The last rung must reach 100. Several ladders separated by semicolons, with permute ticked, are each their own setting.">size rungs<input id="swFieldRungs" value="20:0.5,50:1,80:1.5,100:2" style="width:16rem"></label>
         <label class="c" title="price every ladder in the box, each as its own setting."><input type="checkbox" id="swPermFieldRungs"> permute</label>
         <label class="f" title="the size of a trade on a day the field says nothing — no point spoke, or they cancelled, or the field has no day for it — as a multiple of the standard size. 1 trades it as if there were no gate; 0 drops it.">silent ×<input id="swFieldSilent" type="number" value="1" min="0" step="0.5" style="width:4.5rem"></label>

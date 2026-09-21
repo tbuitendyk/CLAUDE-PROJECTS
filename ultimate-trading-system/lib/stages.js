@@ -2350,9 +2350,10 @@ function confirmWanted(params) {
   return confirms.some((c) => c !== 'off');
 }
 // THE FIELD'S GATE AXES (FIELD-DESIGN.md section F): none, or every gate the
-// dials declare -- a read, a minimum, sign only and a ladder of rungs, each
-// permuted where its tick says so, with the silent multiple shared -- read
-// against the field the run names. Refused in words, never coerced.
+// dials declare -- a read, a bar on agreement, a bar on certainty, the rule
+// that combines two bars, sign only and a ladder of rungs, each permuted where
+// its tick says so, with the silent multiple shared -- read against the field
+// the run names. Refused in words, never coerced.
 function fieldAxesFor(params) {
   const p = params || {};
   const fieldId = p.fieldId == null || p.fieldId === '' || p.fieldId === 'none' ? null : String(p.fieldId);
@@ -2360,15 +2361,38 @@ function fieldAxesFor(params) {
   const readOne = p.fieldRead == null || p.fieldRead === '' ? 'agreement' : String(p.fieldRead);
   if (!fieldGate.READS.includes(readOne)) throw new Error(`"${readOne}" is not a way to read the field (${fieldGate.READS.join(' / ')})`);
   const reads = p.fieldPermuteRead ? fieldGate.READS.slice() : [readOne];
-  const minimums = fieldGate.parseMinimums(p.fieldMinimum);
-  const mins = p.fieldPermuteMinimum ? minimums : [minimums[0]];
+  // THE TWO MINIMUMS (3.218.0): each box a list or blank, blank being no bar
+  // on that number. The rule tells two bars apart and only two, so with fewer
+  // than two it is one value whatever its tick says -- permuting it there
+  // would price the same trades twice under two names.
+  const agreeMins = fieldGate.minimumsOf(p.fieldAgreeMin, 'agreement minimum');
+  const certMins = fieldGate.minimumsOf(p.fieldCertMin, 'certainty minimum');
+  const aMins = p.fieldPermuteAgreeMin ? agreeMins : [agreeMins[0]];
+  const cMins = p.fieldPermuteCertMin ? certMins : [certMins[0]];
+  const ruleOne = p.fieldRule == null || p.fieldRule === '' ? 'both' : String(p.fieldRule);
+  if (!fieldGate.RULES.includes(ruleOne)) throw new Error(`"${ruleOne}" is not a way to combine the minimums (${fieldGate.RULES.join(' / ')})`);
+  const twoBars = agreeMins[0] != null && certMins[0] != null;
+  const rules = twoBars ? (p.fieldPermuteRule ? fieldGate.RULES.slice() : [ruleOne]) : ['both'];
   const signOnlys = p.fieldPermuteSignOnly ? [false, true] : [!!p.fieldSignOnly];
   const ladders = fieldGate.parseRungLists(p.fieldRungs);
   const rungs = p.fieldPermuteRungs ? ladders : [ladders[0]];
   const silent = confirmLib.multiplierOrRefuse(p.fieldSilent, 'silent \u00d7', 1);
   const gates = [];
-  for (const read of reads) for (const minimum of mins) for (const signOnly of signOnlys) for (const r of rungs) gates.push({ read, minimum, signOnly, rungs: r, silent });
+  for (const read of reads) for (const agreeMin of aMins) for (const certMin of cMins) for (const rule of rules) for (const signOnly of signOnlys) for (const r of rungs) {
+    gates.push({ read, agreeMin, certMin, rule, signOnly, rungs: r, silent });
+  }
   return { fieldId, gates, silent };
+}
+// A CERTAINTY BAR, OR A READ OF CERTAINTY, NEEDS A FIELD BUILT WITH SLID
+// COPIES (3.212.0; the bar from 3.218.0): the refusal in words, or null. The
+// launch throws it; the count line prints it beside the dials before the
+// button is pressed, so the owner is not told at the press what the box
+// could have said at the keystroke.
+function certaintyRefusal(gates, fieldDoc) {
+  if (!fieldDoc) return null;
+  const asks = (gates || []).some((g) => g && (g.read === 'certainty' || g.certMin != null));
+  if (!asks || (fieldDoc.dials && fieldDoc.dials.copies > 0)) return null;
+  return `${fieldDoc.id} (${fieldDoc.name}) was built with no slid copies, so it carries no certainty — read agreement and leave the certainty minimum blank, or build it again with copies`;
 }
 // WHICH UNITS A FIELD COVERS: unit key -> the pair key in the field, for the
 // units a launch prices. The field's document is parsed once per change of
@@ -2954,16 +2978,24 @@ function stage3Declared(b) {
   // THE FIELD'S PART OF THE COUNT (FIELD-DESIGN.md section F): which units
   // the named field covers, so the screen can say why the gate multiplied the
   // block, or why it is greyed; a field that cannot be read is said in words
+  const fieldAxes = fieldAxesFor(b || {});
   let fieldPairs = {};
   let fieldError = null;
-  try { fieldPairs = fieldPairsFor((b || {}).fieldId, records || []).pairs; } catch (err) { fieldError = err.message; }
+  let fieldWarn = null;
+  try {
+    const got = fieldPairsFor(fieldAxes.fieldId, records || []);
+    fieldPairs = got.pairs;
+    // said here, not refused: the dials stay live so the owner can change them
+    fieldWarn = certaintyRefusal(fieldAxes.gates, got.doc);
+  } catch (err) { fieldError = err.message; }
   const counted = countDeclared(b || {}, sizes, records || [], leans, fieldPairs);
   out.settings = counted.kept;
   out.leanUnits = counted.leanUnits;
   out.fieldUnits = counted.fieldUnits;
   out.fieldGates = counted.fieldGates;
-  out.fieldId = fieldAxesFor(b || {}).fieldId;
+  out.fieldId = fieldAxes.fieldId;
   out.fieldError = fieldError;
+  out.fieldWarn = fieldWarn;
   // AND THE SCREEN IS TOLD WHICH LIST, so it can say WHY Confirmation is
   // greyed. "no unit passes" and "this chain never read a list" are two
   // different answers and the second one cannot be fixed by ticking anything.
@@ -3071,9 +3103,7 @@ function startStage3(params) {
     const got = fieldPairsFor(fieldAxes.fieldId, parentRecords);
     fieldDoc = got.doc; fieldPairs = got.pairs;
     if (!Object.keys(fieldPairs).length) throw new Error(`none of the units this run prices has a pair in ${fieldDoc.id} (${fieldDoc.name}) — build the field for these coins and shapes on Coins, or set field to none`);
-    if (fieldAxes.gates.some((g) => g.read === 'certainty') && !(fieldDoc.dials && fieldDoc.dials.copies > 0)) {
-      throw new Error(`${fieldDoc.id} (${fieldDoc.name}) was built with no slid copies, so it carries no certainty — read agreement, or build it again with copies`);
-    }
+    { const why = certaintyRefusal(fieldAxes.gates, fieldDoc); if (why) throw new Error(why); }
   }
   const counted = countDeclared(params, sizes, parentRecords, leans, fieldPairs);
   if (!counted.kept) throw new Error('the block declared no settings');
@@ -3146,7 +3176,9 @@ function startStage3(params) {
       // unit; the pairs' own series are frozen beside the set (fieldFile)
       fieldId: fieldAxes.fieldId, fieldName: fieldDoc ? fieldDoc.name : null, fieldDials: fieldDoc ? fieldDoc.dials : null,
       fieldRead: fieldAxes.fieldId ? (params.fieldRead || 'agreement') : null, fieldPermuteRead: !!params.fieldPermuteRead,
-      fieldMinimum: fieldAxes.fieldId ? params.fieldMinimum : null, fieldPermuteMinimum: !!params.fieldPermuteMinimum,
+      fieldAgreeMin: fieldAxes.fieldId ? (params.fieldAgreeMin == null ? '' : String(params.fieldAgreeMin)) : null, fieldPermuteAgreeMin: !!params.fieldPermuteAgreeMin,
+      fieldCertMin: fieldAxes.fieldId ? (params.fieldCertMin == null ? '' : String(params.fieldCertMin)) : null, fieldPermuteCertMin: !!params.fieldPermuteCertMin,
+      fieldRule: fieldAxes.fieldId ? (params.fieldRule || 'both') : null, fieldPermuteRule: !!params.fieldPermuteRule,
       fieldSignOnly: !!params.fieldSignOnly, fieldPermuteSignOnly: !!params.fieldPermuteSignOnly,
       fieldRungs: fieldAxes.fieldId ? params.fieldRungs : null, fieldPermuteRungs: !!params.fieldPermuteRungs,
       fieldSilent: fieldAxes.silent, fieldPairs,
@@ -10530,7 +10562,7 @@ module.exports = {
   missingUnitsOf, unitFillRefusal, fillMissingUnitsStart, fillMissingUnitsStatus, rebuildRanking,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
   settingsFor, unitsFor, unitsForPassers, unitMembers, isSetDocument, shapesOf, foldPlateauShares, agreementsFor, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, confirmWanted, confirmLeansFor, coinsSourceOf, confirmLabel, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
-  fieldAxesFor, fieldPairsFor, fieldFile, writeFieldSidecar, readFieldSidecar, fieldPayloadFor,
+  fieldAxesFor, certaintyRefusal, fieldPairsFor, fieldFile, writeFieldSidecar, readFieldSidecar, fieldPayloadFor,
   setSetPicked, pickedOf, unitsChoiceOf, stage3RecordsFor, PICK_CHOICES, PICK_LABELS, stage3UnitsFor,
   setSetNotes, setSetName, nextNames, nextFreeName, nameTaken, setSetSort, setSetFilters, recordHeldBackLook, stage2Rows, stage2Ordered, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,
