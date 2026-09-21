@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **d7c1bb1582f0 — what the box is serving**, not from the working tree.
+Generated from **99b0b0e24fac — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -90,7 +90,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 
 # Coins
 
-## What the controls are called (286)
+## What the controls are called (309)
 
 - `-hour window · one decision a`
 - `— press`
@@ -99,6 +99,8 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `, and its pooled money is`
 - `, and two shapes that hold`
 - `, opening`
+- `, pressed`
+- `: the`
 - `· at band`
 - `· band`
 - `· median`
@@ -108,11 +110,14 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `(chance is`
 - `(from a sit-out band sweep of`
 - `(its own sweet spot)`
+- `(no candle at the opening)`
+- `(stands for`
 - `\u00b7`
 - `&#9666; its rows`
 - `&mdash;`
 - `&middot;`
 - `&middot; pooled late money`
+- `&middot; pressed`
 - `% · sit out under ±`
 - `% acted on`
 - `% called`
@@ -129,6 +134,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `also each unit's sweet spot band`
 - `Apply`
 - `Apply settings`
+- `at`
 - `at band`
 - `at its last day,`
 - `auto-apply settings`
@@ -138,11 +144,16 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `bands, mean`
 - `before cost`
 - `Below it,`
+- `best of`
 - `best on both halves`
 - `best window`
 - `black`
 - `Build the field`
+- `Buy the field`
+- `buys on this box`
 - `called`
+- `candidate(s)`
+- `candidate(s) among`
 - `Candidates for Sweep`
 - `candles`
 - `Carry on with it`
@@ -166,6 +177,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `could not be built:`
 - `could not be read:`
 - `decision`
+- `decision (UTC)`
 - `decision's own window,`
 - `decisions`
 - `decisions from`
@@ -256,9 +268,11 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `only rows best on both halves`
 - `only rows same pick`
 - `only what is ticked on Coins`
+- `Open this buy`
 - `Open this field`
 - `Open this screen`
 - `Open this set`
+- `opened at`
 - `over`
 - `own`
 - `pair(s) kept`
@@ -268,6 +282,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `per trade`
 - `per trade per spread`
 - `percentile`
+- `performance, %`
 - `permute`
 - `pick(s) pay after that round trip`
 - `picking blind`
@@ -276,6 +291,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `points with evidence`
 - `pooled late money above the`
 - `Prev`
+- `price now / closed`
 - `Promote every row shown`
 - `Promote the ticked rows`
 - `read`
@@ -296,6 +312,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `run`
 - `same pick`
 - `Save as&hellip;`
+- `score`
 - `scrambled copies`
 - `scrambles / slides as good at fill`
 - `scrambles as good`
@@ -318,6 +335,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `stands alone`
 - `stands for`
 - `starts`
+- `state`
 - `step`
 - `step, days`
 - `Stop`
@@ -329,16 +347,19 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `the coin's usual move`
 - `the colour changes no call`
 - `The decision field`
+- `the field says`
 - `The four columns on the`
 - `The grid of`
 - `the last reading stopped:`
 - `the records carry`
+- `The rule:`
 - `the walk stopped:`
 - `thin side`
 - `Throw it away`
 - `Tick every row shown`
 - `ticked`
 - `to`
+- `to write one down`
 - `today`
 - `trades`
 - `trades a month`
@@ -351,6 +372,8 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `up after rising`
 - `usual move, %`
 - `UTC · release`
+- `UTC &middot;`
+- `UTC from`
 - `UTC, and was built by release`
 - `UTC, and was walked by release`
 - `Walk it forward`
@@ -400,7 +423,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `steady`
 - `trending`
 
-## Sentences the page prints (119)
+## Sentences the page prints (122)
 
 - puts the three boxes above into the list below. Nothing is swept until the coins are read.
 - file(s) on disk this release cannot draw:
@@ -516,16 +539,19 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - A pair the field was built for reads that field, and so does every shape it stands for.
 - the last build finished but could not be written down:
 - . It is not a field until it is finished.
+- no buy on this box yet &mdash; press
 - carry a look-back in hours and add a member to their unit
 - · with the link cut, one at least this strong in
+- pair(s).
+- . Fixed as pressed; only the price and the performance move.
 - : in each square, the average move from entry to exit as a share of price, in percent,
 - , with the evidence behind each in brackets (one full-weight day is 1). A dot is a point with nothing behind it.
 - Down the side, each look-back's usual move on that day &mdash; the yardstick every band is a share of &mdash; and what it read today.
 
-## Every word, flat (605)
+## Every word, flat (620)
 
 ```
--hour 1-day 2-day 3-day 4-day 8-day above Above above. Account across acted actually add ADDITIONAL after again again. against agreement ahead all All alone also among an and another another. answer anything apart apart. appear Apply are as at At auto auto-apply average AWARENESS away back band bands bands. bar bars be beat beats because been before behind belongs below Below below. best beyond black blank blind both box boxes brackets build Build built built-in but by cached call called came Candidates candles cannot cap carries carry Carry certainty chance Change changes changes. charges check checked Choose choose chooses chooses. choosing chose chosen chunk clear Clear cleared click closed closes coin coin-and-shape coin. coins Coins colour coloured colours columns comes CONFIRMATION copies cost costs could counted. counts cut Daily day day. days deals deals. decides decision decisions default delete Delete deleted did differ. different disk do does does. dot down Down downloaded draw drop each Each early early/late edge either else else. empty Empty end. enough Enter enters entire entry every Every Everything everything evidence exactly exam exchange exit fading falling feed fell few fewer fewest field fields figure file files fill filled filter filters finish finished finished. first fixed flip floor for For for. forward found four from full full-weight gap Getting go goes good graded green grid had half half-life half. halves has have heading headings held held. hellip here hidden higher highest history hold holds hours How how if in in. into is it It it. its Its itself judged just keeps kept knew known landed last late lead leans learned least leave left less like line link list listed little log long longest LOOK look-back look-backs looked lost lowest may mdash mean measurements median MEMBER member middot mixed money month months more most move moved moves much must name named Narrow needs neither never Next No no noise. not Nothing nothing nothing. number numbers of off off-then-on often on On once one One ONE ones only ONLY. Open opening opens or out out. over own page page. paid pair part pass passed pay per percent percentile permute phase pick picked picking picks picture plateau point points pooled press Press Prev price priced Promote promoted promotions property pull put puts random range ranks rather ratio reach reaches Read read read. reading reading. readings reads really recolours record recorded. records red refuses release Remove removed removes Rename reported. reserve. Restart restart restarts. reverting right rising rose round row rows rsquo run runs same sat Save saw says scale. scrambled scrambles screen screens scroll sealed searched section selections service set sets setting settings Setup shape shape. shapes share shortest should showing shown side sign signal since sit sit-out sits size skill slid slides sliding slower smaller so So sort sorts span speaking spend spot spread square STAGE standing stands start starts stay stays steady step steps still Stop stopped stretch strong swath sweep Sweep Sweep. sweet swept system tab table Take take taken takes taking tended test th than that the The their them then there there. thereabouts these they thin this This those three Throw tick Tick ticked ticked. time time. to today today. together too top trade trades trailing train TRAINING traits trending tried trip trip. try try. tune two two. typically u00b7 u2014 under unit units Unselect Untick untick unticked until untouched up usual UTC venue view. Walk walk walked want. was was. way Weekly weight well. were what What whatever when where whether which while whole why why. widen will win window window. windows windows. with worked works worst worth would writes written Written wrong yardstick yes yet you your
+-hour 1-day 2-day 3-day 4-day 8-day above Above above. Account across acted actually add ADDITIONAL after again again. against agreement ahead all All alone also among an and another another. answer anything apart apart. appear Apply are as at At auto auto-apply average AWARENESS away back band bands bands. bar bars be beat beats because been before behind belongs below Below below. best beyond black blank blind both box boxes brackets build Build built built-in but Buy buy buys by cached call called came candidate Candidates candle candles cannot cap carries carry Carry certainty chance Change changes changes. charges check checked Choose choose chooses chooses. choosing chose chosen chunk clear Clear cleared click closed closes coin coin-and-shape coin. coins Coins colour coloured colours columns comes CONFIRMATION copies cost costs could counted. counts cut Daily day day. days deals deals. decides decision decisions default delete Delete deleted did differ. different disk do does does. dot down Down downloaded draw drop each Each early early/late edge either else else. empty Empty end. enough Enter enters entire entry every Every Everything everything evidence exactly exam exchange exit fading falling feed fell few fewer fewest field fields figure file files fill filled filter filters finish finished finished. first fixed Fixed flip floor for For for. forward found four from full full-weight gap Getting go goes good graded green grid had half half-life half. halves has have heading headings held held. hellip here hidden higher highest history hold holds hours How how if in in. into is it It it. its Its itself judged just keeps kept knew known landed last late lead leans learned least leave left less like line link list listed little log long longest LOOK look-back look-backs looked lost lowest may mdash mean measurements median MEMBER member middot mixed money month months more most move move. moved moves much must name named Narrow needs neither never Next No no noise. not Nothing nothing nothing. now number numbers of off off-then-on often on On once one One ONE ones only ONLY. Open opened opening opens or out out. over own page page. paid pair part pass passed pay per percent percentile performance permute phase pick picked picking picks picture plateau point points pooled press Press pressed Prev price priced Promote promoted promotions property pull put puts random range ranks rather ratio reach reaches Read read read. reading reading. readings reads really recolours record recorded. records red refuses release Remove removed removes Rename reported. reserve. Restart restart restarts. reverting right rising rose round row rows rsquo rule run runs same sat Save saw says scale. score scrambled scrambles screen screens scroll sealed searched section selections service set sets setting settings Setup shape shape. shapes share shortest should showing shown side sign signal since sit sit-out sits size skill slid slides sliding slower smaller so So sort sorts span speaking spend spot spread square STAGE standing stands start starts state stay stays steady step steps still Stop stopped stretch strong swath sweep Sweep Sweep. sweet swept system tab table Take take taken takes taking tended test th than that the The their them then there there. thereabouts these they thin this This those three Throw tick Tick ticked ticked. time time. to today today. together too top trade trades trailing train TRAINING traits trending tried trip trip. try try. tune two two. typically u00b7 u2014 under unit units Unselect Untick untick unticked until untouched up usual UTC venue view. Walk walk walked want. was was. way Weekly weight well. were what What whatever when where whether which while whole why why. widen will win window window. windows windows. with worked works worst worth would write writes written Written wrong yardstick yes yet you your
 ```
 
 ---
