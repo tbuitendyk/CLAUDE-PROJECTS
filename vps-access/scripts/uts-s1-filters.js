@@ -60,6 +60,9 @@ for (const r of show) {
 
 if (doc.stage === 2) {
   console.log('== stage 2: what the fuller board bought (BOOST members added to the stage 1 committee) ==');
+  const r2 = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Math.round(Number(v) * 100) / 100);
+  // on the record, all-members tuning-slice $ is called money; the table calls it moneyAll
+  for (const r of rows) if (r.moneyAll == null && r.money != null) r.moneyAll = r.money;
   const n = rows.length;
   const helped = rows.filter((r) => (r.helped || 0) > 0).length;
   const moreMoney = rows.filter((r) => r.moneyAll != null && r.money3 != null && r.moneyAll > r.money3).length;
