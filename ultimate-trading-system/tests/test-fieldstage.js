@@ -42,6 +42,15 @@ function theGateIsAnAxisThatMultipliesOnlyWhereTheFieldCovers() {
   assert.strictEqual(counted.perUnit[0], counted.perUnit[1] * 8, 'the covered unit holds eight settings for every one the other holds');
   const none = stages.countDeclared(p, [1], recs, null, {});
   assert.strictEqual(none.kept, stages.countDeclared(BLOCK, [1], recs, null, {}).kept, 'with no unit covered every gate value folds to one and the block is what it was');
+  // and the launch's own fold says the same as the count (foldKeyRest): the
+  // covered unit prices every gate, the other folds the eight into one. The
+  // count multiplies by the gates on its own, so only the fold can see the
+  // key -- a guard on the key was found not really checked (3.213.1) because
+  // nothing here read it.
+  const held = stages.heldOnFor(gated, recs, null, pairs);
+  assert.strictEqual(held[0].length, gated.length, 'the covered unit prices one setting per gate');
+  assert.strictEqual(held[1].length, gated.length / 8, 'the uncovered unit folds the eight gates into one');
+  assert.strictEqual(stages.heldOnFor(gated, recs, null, {})[0].length, gated.length / 8, 'with no unit covered the fold holds one gate everywhere');
   // refusals in words
   const bad = (over, words) => {
     let msg = '';

@@ -152,3 +152,12 @@ list follow.
   books shows it. Narrow checks, the new test file and the related suites
   green before the deploy; the guards, the whole suite, the fingerprint and
   the word list after.
+- **After 3.213.0, the guards found one of 3.212.0's not really checked**:
+  the guard on the fold key's gate part (`foldKeyRest` in `lib/stages.js`)
+  named `theGateIsAnAxisThatMultipliesOnlyWhereTheFieldCovers`, and that test
+  counted through `countDeclared`, which multiplies by the gates on its own
+  and never reads the key. The test now also reads the launch's own fold
+  (`heldOnFor`): the covered unit prices one setting per gate, the uncovered
+  one folds the eight into one. Test-only: nothing on the box changes and
+  the release does not move (RULE EIGHT, a guard that misses is a test-only
+  follow-up). All eight new guards and every other field guard were caught.
