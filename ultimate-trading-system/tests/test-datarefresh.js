@@ -141,6 +141,37 @@ module.exports.theRefreshRouteFillsTheRecentHoursAndTheScreenSaysSo = function (
   assert.ok(help.includes('and then hour by hour to the most recent closed hourly candle'), 'the help entry says so too');
 };
 
+// THE BOX'S OWN WAY OUT (3.214.1): the first press after 3.214.0 fetched
+// nothing past the last whole day, because the service is handed no tunnel
+// name and the VPS cannot reach the REST hosts directly. When nothing is
+// named and every direct host refuses, the tunnel is tried at its standing
+// address; a named tunnel is used first; a direct host that answers is enough.
+module.exports.theRecentHoursGoThroughTheBoxsTunnelWhenTheDirectHostsRefuse = async function () {
+  const kline = (ts) => [ts, '100', '101', '99', '100.5', '10', ts + HOUR - 1, '1000', 5, '5', '500', '0'];
+  const page = (since) => [kline(since), kline(since + HOUR)];
+  const refused = async (url) => (/api\.binance\.vision/.test(url) ? Promise.reject(new Error('getaddrinfo ENOTFOUND api.binance.vision')) : { ok: false, status: 451 });
+  // nothing named, direct hosts refuse: the standing tunnel carries it
+  const asked = [];
+  const rows = await binance.recentKlines('ZZZDRUSDT', D21, { PILOT_SOCKS: '', fetch: refused, viaSocks: (proxy, sym, cursor) => { asked.push(proxy); return page(cursor); } });
+  assert.deepStrictEqual(asked, ['127.0.0.1:1080'], 'the tunnel at its standing address, once the direct hosts refused');
+  assert.deepStrictEqual(rows.map((r) => r.ts), [D21, D21 + HOUR]);
+  // a tunnel named is used first, and the direct hosts are never asked
+  const asked2 = []; let fetched = 0;
+  await binance.recentKlines('ZZZDRUSDT', D21, { PILOT_SOCKS: '10.0.0.1:9', fetch: async () => { fetched++; return { ok: false, status: 451 }; }, viaSocks: (proxy, sym, cursor) => { asked2.push(proxy); return page(cursor); } });
+  assert.deepStrictEqual(asked2, ['10.0.0.1:9']);
+  assert.strictEqual(fetched, 0);
+  // a direct host that answers is enough: no tunnel is asked
+  const asked3 = [];
+  const direct = await binance.recentKlines('ZZZDRUSDT', D21, { PILOT_SOCKS: '', fetch: async (url) => ({ ok: true, json: async () => page(Number(new URL(url).searchParams.get('startTime'))) }), viaSocks: (proxy) => { asked3.push(proxy); return null; } });
+  assert.deepStrictEqual(asked3, []);
+  assert.strictEqual(direct.length, 2);
+  // no tunnel and no host: the direct hosts' own error, never a quiet empty answer
+  await assert.rejects(binance.recentKlines('ZZZDRUSDT', D21, { PILOT_SOCKS: '', fetch: refused, viaSocks: () => { throw new Error('curl: (7) Failed to connect to 127.0.0.1 port 1080'); } }), /binance REST 451/);
+  // an unknown coin is a real answer, not a connectivity failure
+  const none = await binance.recentKlines('ZZZDRUSDT', D21, { PILOT_SOCKS: '', fetch: async () => ({ ok: false, status: 400 }), viaSocks: () => { throw new Error('never asked'); } });
+  assert.deepStrictEqual(none, []);
+};
+
 module.exports.zzz_cleanupTheFakeCoin = function () {
   cleanup();
   assert.strictEqual(fs.readdirSync(CACHE).filter((f) => f.startsWith(`${SYM}-1h-`)).length, 0);

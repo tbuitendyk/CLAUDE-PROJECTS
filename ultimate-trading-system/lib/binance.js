@@ -270,21 +270,35 @@ function candleHourText(ts) {
 // Recent candles via the REST mirror, full OHLC+quoteVolume, hour-bucketed.
 // Pages by startTime, 1000 candles/call; ~3 pages covers any gap since the
 // last published monthly zip.
-async function recentKlines(symbol, sinceMs) {
+// THE BOX'S OWN WAY OUT (3.214.1). This VPS cannot reach the REST hosts
+// directly -- one does not resolve there, the other answers 451 -- and the
+// live path has always gone through the SOCKS tunnel pilot-install.sh keeps up
+// at this address (pilot-tunnel.service), named to it by PILOT_SOCKS. The
+// refresh on Data runs inside the service, which is handed no such name, so
+// its first press after 3.214.0 fetched nothing past the last whole day. When
+// nothing is named and every direct host has refused, the tunnel is tried at
+// its standing address before giving up; a machine with no tunnel fails that
+// try at once and reports the direct hosts' own error.
+const TUNNEL_DEFAULT = '127.0.0.1:1080';
+
+// `deps` lets a test stand in for the two ways out; nothing else passes it.
+async function recentKlines(symbol, sinceMs, deps = {}) {
   const rows = [];
   let cursor = Math.max(0, sinceMs || 0);
+  const viaSocks = deps.viaSocks || socksKlines;
+  const get = deps.fetch || fetch;
   // PILOT_SOCKS (e.g. "127.0.0.1:1080") routes the live-kline fetch through the
   // Mexico SOCKS tunnel. The VPS is geo-blocked from Binance's REST hosts, so
   // without this the current partial month cannot be fetched and F1's data goes
   // stale; the box the tunnel exits through reaches api.binance.com fine. Same
   // public keyless klines, just un-geo-blocked. Falls back to the direct hosts.
-  const socks = process.env.PILOT_SOCKS;
+  let via = ('PILOT_SOCKS' in deps ? deps.PILOT_SOCKS : process.env.PILOT_SOCKS) || null;
   for (let page = 0; page < 4; page++) {
     let data = null;
     let lastErr = null;
-    if (socks) {
+    if (via) {
       try {
-        data = socksKlines(socks, symbol, cursor);
+        data = viaSocks(via, symbol, cursor);
       } catch (err) {
         lastErr = err; // tunnel hiccup — fall through to the direct hosts
       }
@@ -292,7 +306,7 @@ async function recentKlines(symbol, sinceMs) {
     if (data === null) {
       for (const host of API_HOSTS) {
         try {
-          const res = await fetch(`${host}/api/v3/klines?symbol=${symbol}&interval=1h&startTime=${cursor}&limit=1000`);
+          const res = await get(`${host}/api/v3/klines?symbol=${symbol}&interval=1h&startTime=${cursor}&limit=1000`);
           if (res.ok) {
             data = await res.json();
             break;
@@ -302,6 +316,15 @@ async function recentKlines(symbol, sinceMs) {
         } catch (err) {
           lastErr = err;
         }
+      }
+    }
+    if (data === null && !via) {
+      // every direct host refused and no tunnel was named: the box's own
+      try {
+        data = viaSocks(TUNNEL_DEFAULT, symbol, cursor);
+        if (data !== null) via = TUNNEL_DEFAULT; // the pages after this one go straight through it
+      } catch (err) {
+        lastErr = lastErr || err;
       }
     }
     if (data === null) throw lastErr || new Error('binance REST unreachable');
