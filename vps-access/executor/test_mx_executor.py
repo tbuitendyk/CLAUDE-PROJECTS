@@ -38,6 +38,7 @@ class MockBinance(BaseHTTPRequestHandler):
     orders = []               # captured order params
     loans = []                # captured borrow/repay params
     loan_fails = False        # when True the borrow POST returns 400
+    dead_path_calls = []      # calls to endpoints Binance has RETIRED (see do_POST)
     placed = {}               # newClientOrderId -> venue order record (recovery lookup)
     time_skew_ms = 0          # exchange serverTime minus box OS clock (clock tests)
 
@@ -84,22 +85,39 @@ class MockBinance(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length).decode()
         params = dict(p.split("=", 1) for p in raw.split("&") if "=" in p)
-        # BORROW / REPAY. Kept out of `orders` so order-indexing tests are
-        # unaffected: a loan is not an order.
-        if self.path.startswith("/sapi/v1/margin/loan"):
+        # THE RETIRED PATHS ANSWER 401, BECAUSE THE REAL VENUE DOES.
+        # Binance removed POST /sapi/v1/margin/loan and POST /sapi/v1/margin/repay
+        # on 2024-03-31 and replaced both with POST /sapi/v1/margin/borrow-repay
+        # (type=BORROW|REPAY). Until 2026-09-21 this mock happily SERVED the dead
+        # paths, so the explicit-borrow short — shipped 2026-08-24 and never once
+        # able to work in production — passed every test here while every live
+        # short failed 401 / -1002 six times a day. A mock that answers a call the
+        # venue has deleted is not a stand-in for the venue; it is a second
+        # implementation of a world that does not exist (QC 181, again).
+        if (self.path.startswith("/sapi/v1/margin/loan")
+                or self.path.startswith("/sapi/v1/margin/repay")):
+            MockBinance.dead_path_calls.append(self.path.split("?", 1)[0])
+            return self._send(
+                {"code": -1002, "msg": "You are not authorized to execute this request."}, 401)
+        # BORROW / REPAY, the live endpoint. Kept out of `orders` so order-indexing
+        # tests are unaffected: a loan is not an order.
+        if self.path.startswith("/sapi/v1/margin/borrow-repay"):
             MockBinance.loans.append(params)
-            if MockBinance.loan_fails:
-                return self._send({"code": -3045, "msg": "borrow failed"}, 400)
+            kind = params.get("type")
+            if kind not in ("BORROW", "REPAY"):
+                # the venue's own requirement: `type` is mandatory on this endpoint
+                return self._send({"code": -1102, "msg": "Mandatory parameter 'type' was not sent, "
+                                                         "was empty/null, or malformed."}, 400)
             amt = float(params.get("amount", "0"))
-            MockBinance.borrowed += amt
-            MockBinance.base_bal += amt      # the loan lands in free balance
-            return self._send({"tranId": len(MockBinance.loans)})
-        if self.path.startswith("/sapi/v1/margin/repay"):
-            MockBinance.loans.append(params)
-            amt = float(params.get("amount", "0"))
-            repaid = min(amt, MockBinance.borrowed)
-            MockBinance.borrowed -= repaid
-            MockBinance.base_bal -= repaid
+            if kind == "BORROW":
+                if MockBinance.loan_fails:
+                    return self._send({"code": -3045, "msg": "borrow failed"}, 400)
+                MockBinance.borrowed += amt
+                MockBinance.base_bal += amt   # the loan lands in free balance
+            else:
+                repaid = min(amt, MockBinance.borrowed)
+                MockBinance.borrowed -= repaid
+                MockBinance.base_bal -= repaid
             return self._send({"tranId": len(MockBinance.loans)})
         MockBinance.orders.append(params)
         if self.path.startswith("/sapi/v1/margin/order"):
@@ -201,6 +219,7 @@ class ExecutorTest(unittest.TestCase):
         MockBinance.borrowed = 0.0
         MockBinance.loans = []
         MockBinance.loan_fails = False
+        MockBinance.dead_path_calls = []
         MockBinance.commission = "0.01"
         MockBinance.commission_asset = "USDT"
         MockBinance.orders = []
@@ -275,6 +294,48 @@ class ExecutorTest(unittest.TestCase):
         self.assertEqual(loan["isIsolated"], "TRUE")
         self.assertEqual(float(loan["amount"]), float(order["quantity"]))
         self.assertIn("ENTRY_BORROWED", self.events())
+
+    def test_the_borrow_goes_to_the_endpoint_the_venue_still_serves(self):
+        """THE 2026-09-21 SILENT SHORT, as a test.
+
+        Every live SHORT from 2026-08-24 to 2026-09-21 failed before any order
+        was sent: six ENTRY_BORROW_FAILED a day, each carrying
+        `401 {"code": -1002, "msg": "You are not authorized to execute this
+        request."}`. The cause was not the key, the clock or the wallet — longs
+        filled normally throughout. It was the path. Binance retired POST
+        /sapi/v1/margin/loan and POST /sapi/v1/margin/repay on 2024-03-31 in
+        favour of POST /sapi/v1/margin/borrow-repay with type=BORROW|REPAY, and
+        the explicit borrow was written against the dead one.
+
+        So the borrow must reach the LIVE endpoint, carry its type, and touch no
+        retired path — and because the mock now answers those paths exactly as
+        the venue does, the old executor reproduces the production failure here.
+        """
+        self.write_intent(side="SHORT")
+        self.x.do_run(self.bx())
+        self.assertEqual(MockBinance.dead_path_calls, [],
+                         "the executor called an endpoint Binance removed in 2024 — "
+                         "this is the 2026-09-21 live failure, reproduced")
+        self.assertTrue(MockBinance.loans, "the short must borrow explicitly")
+        loan = MockBinance.loans[-1]
+        self.assertEqual(loan["type"], "BORROW",
+                         "borrow-repay is one endpoint for both directions: without "
+                         "type=BORROW the venue rejects the call as malformed")
+        self.assertIn("ENTRY_BORROWED", self.events())
+        self.assertNotIn("ENTRY_BORROW_FAILED", self.events())
+
+    def test_the_unwind_repay_also_uses_the_live_endpoint(self):
+        # The mirror of the above on the repay side: a loan behind a rejected
+        # sell must actually be handed back, and it cannot be if the repay goes
+        # to a path that answers 401.
+        MockBinance.reject_orders = True
+        self.write_intent(side="SHORT")
+        self.x.do_run(self.bx())
+        self.assertEqual(MockBinance.dead_path_calls, [],
+                         "the repay went to a retired endpoint — the borrow would be "
+                         "left outstanding behind a position that does not exist")
+        self.assertEqual(MockBinance.loans[-1]["type"], "REPAY")
+        self.assertAlmostEqual(MockBinance.borrowed, 0.0, places=6)
 
     def test_short_opened_beside_a_long_borrows_instead_of_eating_its_base(self):
         """THE 2026-08-24 HALT, as a test.
