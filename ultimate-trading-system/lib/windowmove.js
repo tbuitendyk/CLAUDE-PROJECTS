@@ -64,11 +64,19 @@ function decisionAt(map, startTs, geo) {
 // shape's own span, from the start of its window to the decision; a number of
 // hours measures from that many hours before the decision instead. Everything
 // still ends at the decision, so no look-back can see past it.
-function windowMoves(map, geometry, lookbacks = []) {
+// AND, ON REQUEST, THE DECISIONS WHOSE OUTCOME HAS NOT CLOSED (FIELD-DESIGN.md
+// section H). The live path reads the decision field on the day it is
+// deciding, and that day's chunk has no outcome yet -- nor have the one or
+// two before it on a 41-hour hold. Their moves are known at the decision, so
+// with `keepUnclosed` they are kept with a null outcome, which the field never
+// adds to a point (a decision enters only once its chunk has closed). Every
+// other reader is unchanged: the walk and stage 3 want closed outcomes only.
+function windowMoves(map, geometry, lookbacks = [], opts = {}) {
   const bracket = require('./bracket');
   const { GEOMETRIES } = require('./dataset');
   const geo = GEOMETRIES[geometry];
-  const built = bracket.buildComboChunks({ trade: map }, geometry, false);
+  const keepUnclosed = !!(opts && opts.keepUnclosed);
+  const built = bracket.buildComboChunks({ trade: map }, geometry, false, keepUnclosed);
   const ts = [];
   const move = [];
   const out = [];
@@ -77,7 +85,7 @@ function windowMoves(map, geometry, lookbacks = []) {
   for (const h of wanted) moves[String(h)] = [];
   let skipped = 0;
   for (const c of built.chunks) {
-    if (c.c1 == null || c.diffPct == null) continue;
+    if (c.c1 == null || (c.diffPct == null && !keepUnclosed)) continue;
     const first = map.get(c.startTs);
     const at = decisionAt(map, c.startTs, geo);
     // A PRICE OF ZERO OR BELOW IS NOT A BASE A RETURN CAN BE MEASURED FROM.
@@ -85,7 +93,7 @@ function windowMoves(map, geometry, lookbacks = []) {
     if (!first || !(first.open > 0) || at.price == null) { skipped++; continue; }
     ts.push(c.startTs);
     move.push(Number((((at.price - first.open) / first.open) * 100).toFixed(4)));
-    out.push(Number(Number(c.diffPct).toFixed(4)));
+    out.push(c.diffPct == null ? null : Number(Number(c.diffPct).toFixed(4)));
     for (const h of wanted) {
       const back = map.get(at.ts - h * 3600000);
       // A LOOK-BACK WITH NO CANDLE BEHIND IT IS NOT MEASURED AND NOT GUESSED.

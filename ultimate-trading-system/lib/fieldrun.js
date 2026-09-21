@@ -74,11 +74,11 @@ async function loadMap(coin) {
   if (!loaded.rows.length) throw new Error('no cached prices on this box');
   return forwardFill(toHourlyMap(loaded.rows)).map;
 }
-function inputFor(map, geometry, lookbackHours) {
+function inputFor(map, geometry, lookbackHours, opts = {}) {
   const windowLib = require('./windowmove');
   const { GEOMETRIES } = require('./dataset');
   const geo = GEOMETRIES[geometry];
-  const wm = windowLib.windowMoves(map, geometry, lookbackHours);
+  const wm = windowLib.windowMoves(map, geometry, lookbackHours, { keepUnclosed: !!(opts && opts.keepUnclosed) });
   const decisionTs = wm.ts.map((startTs) => windowLib.decisionAt(map, startTs, geo).ts);
   const closeTs = wm.ts.map((startTs) => startTs + geo.exitOffsetH * 3600000);
   const moves = {};
@@ -262,7 +262,13 @@ function fieldStart(opts = {}) {
           let rec;
           try {
             const map = await mapOf(t.coin);
-            const input = inputFor(map, t.geometry, dials.lookbackHours);
+            // TO THE LAST FULL DAY ON FILE (owner order, 2026-09-21: "when i
+            // use the build the field function and open a grid i want to see
+            // today's decision if i've got the data fresh to today"). The
+            // decisions whose chunk has not closed yet are days of the field
+            // too -- read, never added to a point -- so the last day is the
+            // latest decision the candles reach, not the last one that closed.
+            const input = inputFor(map, t.geometry, dials.lookbackHours, { keepUnclosed: true });
             const own = cap.perCoin[t.coin] || null;
             const windowDays = dials.windowEachOwn ? (own ? own.days : dials.windowDays) : dials.windowDays;
             const got = await pool.run('coinField', { input, dials: { ...dials, windowDays, seedText: t.key } });

@@ -3217,7 +3217,7 @@ function startStage3(params) {
     saveSet(doc);
     await new Promise((resolve) => { setImmediate(resolve); });
     const declaredSettings = settingsFor(params, sizes, shapesOf(parentRecords));
-    const { kept: settings, folded: sameTrade, heldOn } = foldSameTradeSettings(declaredSettings, parentRecords, leans);
+    const { kept: settings, folded: sameTrade, heldOn } = foldSameTradeSettings(declaredSettings, parentRecords, leans, fieldPairs);
     if (settings.length !== counted.kept || declaredSettings.length !== counted.declared) {
       throw new Error(`the count said ${counted.kept.toLocaleString()} settings (${counted.declared.toLocaleString()} declared) and the block `
         + `built ${settings.length.toLocaleString()} (${declaredSettings.length.toLocaleString()} declared) — the cost line and the launch disagree, so nothing was priced`);

@@ -129,7 +129,7 @@ function weightedMedianSorted(vals, weights, count) {
 function checkInput(input, dials) {
   const { decisionTs, closeTs, out } = input;
   const n = decisionTs.length;
-  if (closeTs.length !== n || out.length !== n) throw new Error('the field needs one close instant and one outcome per decision');
+  if (closeTs.length !== n || out.length !== n) throw new Error('the field needs one close instant and one outcome per decision (null where the chunk has not closed)');
   for (let i = 1; i < n; i++) if (!(decisionTs[i] > decisionTs[i - 1])) throw new Error('the decisions must be in time order with no two at the same instant');
   const moves = dials.lookbackHours.map((h) => {
     const m = input.moves[String(h)];
@@ -328,31 +328,38 @@ function rollPoints(input, dials, R, outcomeOf, K, throughDay) {
   const lastDay = throughDay == null ? n - 1 : Math.min(n - 1, throughDay);
   for (let d = 0; d <= lastDay; d++) {
     const tsNow = decisionTs[d];
-    // decisions whose chunk has closed by now enter the points
+    // decisions whose chunk has closed by now enter the points; one with no
+    // outcome on record (the live path's unclosed tail) enters nothing
     while (addPtr < d && closeTs[addPtr] <= tsNow) {
       const i = addPtr; const e = eOf(i);
-      for (let k = 0; k <= K; k++) copies[k].apply(copies[k].dec, R, i, outcomeOf(k, i), e);
+      for (let k = 0; k <= K; k++) {
+        const v = outcomeOf(k, i);
+        if (v == null || !Number.isFinite(Number(v))) continue;
+        copies[k].apply(copies[k].dec, R, i, Number(v), e);
+      }
       addPtr++;
     }
     // the part older than the floor age moves to the floor accumulator
     while (floorPtr < addPtr && (tsNow - decisionTs[floorPtr]) / DAY_MS > floorAgeDays) {
       const i = floorPtr; const e = eOf(i);
       for (let k = 0; k <= K; k++) {
-        copies[k].apply(copies[k].dec, R, i, outcomeOf(k, i), -e);
-        copies[k].apply(copies[k].flo, R, i, outcomeOf(k, i), dials.floor);
+        const v = outcomeOf(k, i);
+        if (v == null || !Number.isFinite(Number(v))) continue;
+        copies[k].apply(copies[k].dec, R, i, Number(v), -e);
+        copies[k].apply(copies[k].flo, R, i, Number(v), dials.floor);
       }
       floorPtr++;
     }
     // what has left the window leaves the points, from whichever part
     while (dropPtr < addPtr && tsNow - decisionTs[dropPtr] > W) {
       const i = dropPtr;
-      if (i < floorPtr) {
-        for (let k = 0; k <= K; k++) copies[k].apply(copies[k].flo, R, i, outcomeOf(k, i), -dials.floor);
-      } else {
-        const e = eOf(i);
-        for (let k = 0; k <= K; k++) copies[k].apply(copies[k].dec, R, i, outcomeOf(k, i), -e);
-        floorPtr = i + 1;
+      for (let k = 0; k <= K; k++) {
+        const v = outcomeOf(k, i);
+        if (v == null || !Number.isFinite(Number(v))) continue;
+        if (i < floorPtr) copies[k].apply(copies[k].flo, R, i, Number(v), -dials.floor);
+        else copies[k].apply(copies[k].dec, R, i, Number(v), -eOf(i));
       }
+      if (i >= floorPtr) floorPtr = i + 1;
       dropPtr++;
     }
     // re-base the epoch before the exponent grows large
@@ -397,9 +404,17 @@ function buildField(input, dialsIn) {
   const R = readingsFor(input, dials);
   const { n } = R;
   const { decisionTs, out } = input;
-  const K = Math.min(dials.copies, Math.max(0, n - 2));
-  const offsets = slidOffsets(n, K, hashOf(`${dials.seedText}|slide`));
-  const outcomeOf = (k, i) => (k === 0 ? out[i] : out[(i + offsets[k - 1]) % n]);
+  // THE COPIES SLIDE OVER THE CLOSED OUTCOMES ONLY. A decision whose chunk has
+  // not closed (the live path's own day, and the one or two before it on a
+  // long hold) has no outcome to lend a copy; it never enters a point either
+  // way, so the copies are exactly the lab's when every outcome is closed.
+  const closed = [];
+  const posOf = new Int32Array(n).fill(-1);
+  for (let i = 0; i < n; i++) if (out[i] != null && Number.isFinite(Number(out[i]))) { posOf[i] = closed.length; closed.push(i); }
+  const m = closed.length;
+  const K = Math.min(dials.copies, Math.max(0, m - 2));
+  const offsets = slidOffsets(m, K, hashOf(`${dials.seedText}|slide`));
+  const outcomeOf = (k, i) => (k === 0 ? out[i] : (posOf[i] < 0 ? null : out[closed[(posOf[i] + offsets[k - 1]) % m]]));
   const rolled = rollPoints(input, dials, R, outcomeOf, K, null);
   const { days, fullAt, points, scale } = rolled;
   // THE SCRAMBLES, ONCE, ON THE FILL DAY: the same readings, the outcomes
@@ -409,9 +424,9 @@ function buildField(input, dialsIn) {
     const realThen = days[fullAt].size;
     scramblesAsGood = 0;
     for (let c = 0; c < K; c++) {
-      const order = seededOrder(n, hashOf(`${dials.seedText}|scramble|${c}`));
-      const dealt = new Array(n);
-      for (let i = 0; i < n; i++) dealt[i] = out[order[i]];
+      const order = seededOrder(m, hashOf(`${dials.seedText}|scramble|${c}`));
+      const dealt = new Array(n).fill(null);
+      for (let j = 0; j < m; j++) dealt[closed[j]] = out[closed[order[j]]];
       const got = rollPoints(input, dials, R, (k, i) => dealt[i], 0, fullAt);
       const day = got.days[got.days.length - 1];
       if (day && day.size >= realThen - 1e-12) scramblesAsGood++;

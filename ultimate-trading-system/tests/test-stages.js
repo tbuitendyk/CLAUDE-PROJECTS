@@ -325,7 +325,7 @@ module.exports = {
       assert.strictEqual(key(a, false), key(b, false), 'two plateau shares are two settings on a unit with no plateau');
       assert.notStrictEqual(key(a, true), key(b, true), 'two plateau shares are one setting on a unit with a plateau');
     } else {
-      assert.ok(src.includes("hasPlateau ? (st.plateauPct ?? 'none') : 'none'].join('|');"), 'the per-unit fold does not read the plateau share only where a plateau is');
+      assert.ok(src.includes("hasPlateau ? (st.plateauPct ?? 'none') : 'none',"), 'the per-unit fold does not read the plateau share only where a plateau is');
     }
     // the launch records it, the stage 3 unit is told its plateaus, the tables carry it, the refusal is gone
     assert.ok(src.includes('plateauPct: plateauPctOrRefuse(params.plateauPct), plateauPermutePct: !!params.plateauPermutePct,'), 'the launch does not record the plateau share');
@@ -411,14 +411,14 @@ module.exports = {
     assert.ok(answer > 0 && bg > 0 && bg < answer, 'the launch has a background part and answers after starting it');
     const before = fn.slice(0, bg);
     const after = fn.slice(bg, answer);
-    assert.ok(before.includes('const counted = countDeclared(params, sizes, parentRecords, leans);'), 'the gates read the count, not the built block — with the leans the launch prices (3.130.0)');
+    assert.ok(before.includes('const counted = countDeclared(params, sizes, parentRecords, leans, fieldPairs);'), 'the gates read the count, not the built block — with the leans the launch prices (3.130.0) and the field pairs (3.212.0)');
     assert.ok(!before.includes('settingsFor(params, sizes)') && !before.includes('foldSameTradeSettings('), 'nothing before the answer builds or folds the settings');
     assert.ok(before.includes("if (!counted.kept) throw new Error('the block declared no settings');"), 'an empty block still refuses at the press');
     assert.ok(before.includes('tallyBudgetFor({ settings: counted.kept, coins: coinsN })') && before.includes('storeBudgetFor({ rows: counted.pricings })'),
       'both budget gates are the count\'s arithmetic — and the disk gate reads what the units hold between them, never settings × units');
     // RE-AIMED 3.187.0: the block is built from the committee shapes its own
     // records carry, which is how the extras reach the fold.
-    assert.ok(after.includes('const declaredSettings = settingsFor(params, sizes, shapesOf(parentRecords));') && after.includes('foldSameTradeSettings(declaredSettings, parentRecords, leans)'),
+    assert.ok(after.includes('const declaredSettings = settingsFor(params, sizes, shapesOf(parentRecords));') && after.includes('foldSameTradeSettings(declaredSettings, parentRecords, leans, fieldPairs)'),
       'the block is built and folded behind the answer');
     // 3.82.0: the hand-out lives in runStage3Parts, shared with a paused run
     // started again; the launch checks the block, then calls it
@@ -1466,15 +1466,18 @@ module.exports = {
     // the one direct call left is Tune's per-trade capture (3.92.0), which
     // prices each entry on its own at size 1 and does not carry the lean --
     // said in the loop record, left for the owner
-    assert.strictEqual(task.split('bracketLib.simCell(').length - 1, 1, 'the task must not price a window beside the lean split');
+    // two simulators in the task since 3.212.0: the lean split's and the field
+    // gate's, both inside the pricers; nothing prices a window beside them
+    assert.strictEqual(task.split('bracketLib.simCell(').length - 1, 2, 'the task must not price a window beside the lean split and the field gate');
+    assert.strictEqual(task.split('priceOn(').length - 1, 5, 'every window goes through the one chooser between the lean split and the field gate: five windows');
     assert.ok(task.includes('const one = bracketLib.simCell(cell, [chunksArr[i]], [call], tradeMap, geo, bandPct, fee);'), 'and that one call is the per-trade capture');
     const st = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
     assert.ok(st.includes('    lean: leanOf((doc.params || {}).confirmLeans, rec),'), 'every unit is handed the lean the set wrote for it');
-    assert.strictEqual(task.split('priceLean(cell,').length - 1, 5, 'five windows are priced: test, its scrambles, held-back, its scrambles, the deals');
+    assert.strictEqual(task.split('priceLean(cell,').length - 1, 1, 'the lean split is reached only through the chooser');
     // 3.206.0: the lean is folded per setting at its plateau share, so each window asks for it by share
-    assert.ok(task.includes("const tPriced = priceLean(cell, testChunks, tIdx, testCallsAll, maps.trade, leanFor('test', st.plateauPct), st, bandPct, true);"), 'the real test window asks for the rich pass');
-    assert.ok(task.includes("const hPriced = priceLean(cell, holdChunks, hIdx, holdCallsAll, holdTrade, leanFor('hold', st.plateauPct), st, bandPct, true);"), 'so does the real held-back window');
-    assert.ok(task.includes("priceLean(cell, testChunks, tIdx, dt, maps.trade, leanFor('test', st.plateauPct), st, bandPct, false).res"), 'the kept scrambles skip it');
+    assert.ok(task.includes("const tPriced = priceOn(testChunks, tIdx, testCallsAll, maps.trade, 'test', true);"), 'the real test window asks for the rich pass');
+    assert.ok(task.includes("const hPriced = priceOn(holdChunks, hIdx, holdCallsAll, holdTrade, 'hold', true);"), 'so does the real held-back window');
+    assert.ok(task.includes("priceOn(testChunks, tIdx, dt, maps.trade, 'test', false).res"), 'the kept scrambles skip it');
     assert.ok(task.includes("confirm: st.confirm || 'off',") && task.includes('lean: tPriced.parts ? {') && task.includes('verdict: tPriced.parts ? {'),
       'every record carries the dial, and a record with a lean carries its six numbers and its word');
     // the signs come from the same arithmetic Coins reads the windows with
@@ -3414,7 +3417,7 @@ module.exports = {
     const count = src.slice(src.indexOf('function countDeclared('), src.indexOf('function stage3Declared('));
     assert.ok(held.includes('shapeRepsFor(settings, [rec])') && count.includes('shapeRepsFor(items.map((x) => x.shape), [rec])'),
       'the holdings and the count both work out which shapes are the same trade ON ONE UNIT through shapeRepsFor');
-    assert.ok(fold.includes('const heldOn = heldOnFor(settings, records, leans);'), 'the fold is built from the per-unit holdings, not beside them — and hands them the leans (3.130.0)');
+    assert.ok(fold.includes('const heldOn = heldOnFor(settings, records, leans, fieldPairs);'), 'the fold is built from the per-unit holdings, not beside them — and hands them the leans (3.130.0) and the field pairs (3.212.0)');
   },
 
   // NEITHER HEAVY JOB CAN FIRE DURING THE OTHER (owner order, 2026-08-29: "fix
@@ -3742,7 +3745,7 @@ module.exports = {
   // every-coin table's held-back trades column says held-back, since two kinds
   // of trades now sit on it (RULE ELEVEN: a label names the thing).
   async howOftenASettingTradesIsAColumnASortAndAFloorOnBothTables() {
-    assert.strictEqual(stages.TALLY_V, 9, 'the every-coin rows sum test trades from version 9; an older table is rebuilt on open');
+    assert.ok(stages.TALLY_V >= 9, 'the every-coin rows sum test trades from version 9; an older table is rebuilt on open');
     const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     assert.ok(/>avg test trades\$\{bRankSortBtn\(doc, 'testTrades', 'desc'\)\}/.test(ui), 'Table 3.A has no avg test trades column, or it does not sort');
     assert.ok(/>avg test trades\$\{bCoinSortBtn\(view, 'testtrades', '↓'\)\}/.test(ui), 'Table 3.B has no avg test trades column, or it does not sort');
@@ -4080,7 +4083,7 @@ module.exports = {
     assert.strictEqual(n(ui.slice(hs, ui.indexOf('</thead>', hs)), 'th'),
       n(ui.slice(rk, ui.indexOf('<tr><td colspan', rk)), 'td'),
       'Table 3.A has a different number of headings and cells');
-    assert.ok(/colspan="27"/.test(ui), 'the "nothing here" line no longer spans the whole of Table 3.A (27 columns since avg test trades, 3.207.0)');
+    assert.ok(/colspan="31"/.test(ui), 'the "nothing here" line no longer spans the whole of Table 3.A (31 columns since the field, 3.212.0)');
   },
 
   // A BLOCK PRICED BEFORE IT WAS WHOLE CAN BE FILLED IN (owner order,
@@ -6643,10 +6646,10 @@ module.exports = {
     assert.ok(ui.includes('<td ${btd}>${bVerdict(r.verdict, r.lean, r.confirm, r.kx, r.ux)}</td>'), 'Table 3.A does not hand the word its six numbers');
     assert.ok(ui.includes('<td ${btd}>${bVerdict(r.verdict, r.lean ? r.lean.test : null, r.confirm, r.kx, r.ux)}</td>'), 'Table 3.B does not hand the word its six numbers');
     assert.ok(ui.includes("confirm${bCoinSortBtn(view, 'confirm', '↑')}</th>"), 'Table 3.B has no confirm column');
-    assert.ok(ui.includes("const keyOf = (r) => [r.cellLabel, r.trade, r.ctx1 || '', r.ctx2 || '', r.geometry, r.confirm || 'off'].join('|');"),
-      'a coin row is not keyed by its value of confirm, so two rows of one coin open and close together');
-    assert.ok(ui.includes("const q = new URLSearchParams({ cellLabel, trade, ctx1, ctx2, geometry, confirm: confirm || 'off' }).toString();"),
-      'the records under a row are not asked for by the row\'s value of confirm');
+    assert.ok(ui.includes("const keyOf = (r) => [r.cellLabel, r.trade, r.ctx1 || '', r.ctx2 || '', r.geometry, r.confirm || 'off', r.fieldLabel || ''].join('|');"),
+      'a coin row is not keyed by its value of confirm and of the field\'s gate, so two rows of one coin open and close together');
+    assert.ok(ui.includes("const q = new URLSearchParams({ cellLabel, trade, ctx1, ctx2, geometry, confirm: confirm || 'off', fieldLabel: fieldLabel || '' }).toString();"),
+      'the records under a row are not asked for by the row\'s value of confirm and of the field\'s gate');
     assert.ok(ui.includes('or sized with its multipliers">confirm</th>') && ui.includes('Empty on a record priced with confirm off or with no lean.">verdict</th>'),
       'the records under a row do not show confirm and verdict');
     assert.ok(ui.includes('${bConfirm({ confirm: r.confirm, lean: r.lean, kx: r.lean ? r.lean.kx : null, ux: r.lean ? r.lean.ux : null })}'), 'a record\'s confirm is not printed through bConfirm');

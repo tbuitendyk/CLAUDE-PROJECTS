@@ -11084,6 +11084,7 @@ const C_FIELD_OF = {
   decisions: (p) => p.decisions ?? null,
   windowDays: (p) => p.windowDays ?? null,
   fullAt: (p) => p.fullAt ?? null,
+  lastTs: (p) => p.lastTs ?? null,
   sign: (p) => (p.state ? p.state.sign : null),
   agreement: (p) => (p.state ? p.state.agreement : null),
   size: (p) => (p.state ? p.state.size : null),
@@ -11194,7 +11195,7 @@ function cFieldPairRow(p, shapes) {
   const open = cFieldGridOpen.get(p.key) || null;
   const setId = cFieldSt && cFieldSt.saved && cFieldSt.saved.id;
   if (p.error) {
-    return `<tr><td>${esc(p.coin)}</td><td>${esc(label(p.geometry))}</td><td colspan="14"><span class="warn">could not be built: ${esc(p.error)}</span></td></tr>`;
+    return `<tr><td>${esc(p.coin)}</td><td>${esc(label(p.geometry))}</td><td colspan="15"><span class="warn">could not be built: ${esc(p.error)}</span></td></tr>`;
   }
   return `<tr>
       <td>${esc(p.coin)}</td>
@@ -11202,6 +11203,7 @@ function cFieldPairRow(p, shapes) {
       <td>${Number(p.decisions || 0).toLocaleString()}</td>
       <td>${Number(p.windowDays || 0).toLocaleString()}${p.capDays && p.capDays !== p.windowDays ? `<span class="muted"> of ${Number(p.capDays).toLocaleString()}</span>` : ''}</td>
       <td>${p.fullAt ? esc(cFieldDay(p.fullAt)) : '<span class="warn">never</span>'}</td>
+      <td>${esc(cFieldDay(p.lastTs))}</td>
       <td>${s ? cFieldSign(s.sign) : '—'}</td>
       <td>${s ? cFieldNum(s.agreement, 0) : '—'}</td>
       <td>${s ? cFieldNum(s.size, 2) : '—'}</td>
@@ -11212,7 +11214,7 @@ function cFieldPairRow(p, shapes) {
       <td>${r && r.certainty ? `${cFieldNum(r.certainty.lowest, 0)} · ${cFieldNum(r.certainty.quarter, 0)} · <b>${cFieldNum(r.certainty.median, 0)}</b> · ${cFieldNum(r.certainty.threeQuarters, 0)} · ${cFieldNum(r.certainty.highest, 0)}` : '—'}</td>
       <td>${f ? `${f.scramblesAsGood == null ? '—' : f.scramblesAsGood} / ${f.slidesAsGood == null ? '—' : f.slidesAsGood} of ${f.copies}` : '—'}</td>
       <td><button data-fgrid="${esc(p.key)}"${setId ? '' : ' disabled'} title="${setId ? 'opens the grid under this row: every look-back down the side, every sit-out band across the top, and in each square the average outcome after rising and after falling with the evidence behind each' : 'the grid opens once the field is written to disk'}">${open ? 'close the grid' : 'the grid'}</button></td>
-    </tr>${open ? `<tr><td colspan="15">${cFieldGridHtml(open)}</td></tr>` : ''}`;
+    </tr>${open ? `<tr><td colspan="16">${cFieldGridHtml(open)}</td></tr>` : ''}`;
 }
 // THE GRID ON DEMAND (RULE ELEVEN clause 3: if it is stored, show it): every
 // point's average outcome after rising and after falling, with the evidence
@@ -11344,6 +11346,7 @@ function cFieldPanel() {
       <th title="how many decisions the coin has on this shape, first to last">decisions${cFieldSortBtn('decisions', 'desc')}</th>
       <th title="how many days this pair's window holds, and beside it the most its own history allows">window, days${cFieldSortBtn('windowDays', 'desc')}</th>
       <th title="the first day the window was full — from here on the field is complete. never means the history is shorter than the window.">full since${cFieldSortBtn('fullAt', 'asc')}</th>
+      <th title="the last decision day the field was built to: the latest decision the candles on file reach, whether or not its chunk has closed. With the data fresh to today, this is today, and the columns to the right are today's reading.">last day${cFieldSortBtn('lastTs', 'desc')}</th>
       <th title="which way the coin has tended to go after readings like the last day's: up, down, or none when no point spoke or they cancelled">sign today${cFieldSortBtn('sign', 'desc')}</th>
       <th title="how much of the pull on the last day pointed one way, 0 to 100">agreement today${cFieldSortBtn('agreement', 'desc')}</th>
       <th title="the pull itself on the last day: the sum over speaking points of average outcome times evidence">size today${cFieldSortBtn('size', 'desc')}</th>
@@ -11361,7 +11364,7 @@ function cFieldPanel() {
   </div>`;
 }
 const C_FIELD_NAME = {
-  coin: 'coin', geometry: 'chunk shape', decisions: 'decisions', windowDays: 'window, days', fullAt: 'full since',
+  coin: 'coin', geometry: 'chunk shape', decisions: 'decisions', windowDays: 'window, days', fullAt: 'full since', lastTs: 'last day',
   sign: 'sign today', agreement: 'agreement today', size: 'size today', certainty: 'certainty today', speaking: 'points speaking',
   withEvidence: 'points with evidence', agrMedian: 'agreement range', certMedian: 'certainty range', slides: 'scrambles / slides as good at fill',
 };

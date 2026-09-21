@@ -1298,6 +1298,11 @@ app.post('/api/stage3-count', (req, res) => {
       // and WHICH list of Coins this chain's leans could come from (3.186.0),
       // so the screen says why Confirmation is greyed rather than only that it is
       leanUnits: d.leanUnits == null ? null : d.leanUnits, confirmWanted: !!d.confirmWanted,
+      // the field's part of the count (FIELD-DESIGN.md section F): which field
+      // the block names, how many units it covers, how many gate values, and
+      // why it could not be read -- so the screen greys the gate and says why
+      fieldId: d.fieldId == null ? null : d.fieldId, fieldUnits: d.fieldUnits == null ? null : d.fieldUnits,
+      fieldGates: d.fieldGates == null ? null : d.fieldGates, fieldError: d.fieldError || null,
       // and how many members judge a coin on the units about to be priced, so
       // the Quorum line says the real number instead of a typed one (3.195.1)
       committees: d.committees || [],
