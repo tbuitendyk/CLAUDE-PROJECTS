@@ -516,6 +516,25 @@ app.get('/api/coins/fields/:id/pair', (req, res) => {
     return res.send(body);
   } catch (err) { return res.status(400).json({ error: err.message }); }
 });
+// BUY THE FIELD (3.215.0): the press writes the seven best candidates of a
+// field down with the price each trade opened at; a buy reads back with its
+// prices as they stand; the buys on the box are listed and deleted here.
+app.post('/api/coins/fields/:id/buy', (req, res) => {
+  try { return res.json(require('./lib/fieldbuy').buyField(req.params.id)); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.get('/api/coins/buys', (req, res) => {
+  try { return res.json({ buys: require('./lib/fieldbuy').listBuys() }); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.get('/api/coins/buys/:id', (req, res) => {
+  try { return res.json(require('./lib/fieldbuy').buyNow(req.params.id)); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.post('/api/coins/buys/:id/delete', (req, res) => {
+  try { return res.json(require('./lib/fieldbuy').deleteBuy(req.params.id)); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
 // THE PASSERS' ONE DOOR: the bar, and a row's tick. Both live beside the band.
 app.post('/api/coins/passers', (req, res) => {
   try {

@@ -484,6 +484,12 @@ function cacheState() {
 // full history. Returns null if nothing is cached. Used by the live pilot screen
 // so the owner can see the data is caught up before arming.
 function newestCandleTs(symbol) {
+  const c = newestCandle(symbol);
+  return c ? c.ts : null;
+}
+// THE NEWEST CLOSED CANDLE ON FILE, WHOLE (3.215.0): the same two candidates,
+// the row itself rather than its instant, for a price as it stands
+function newestCandle(symbol) {
   let files = [];
   try { files = fs.readdirSync(CACHE_DIR); } catch { return null; }
   const days = files.filter((f) => new RegExp(`^${symbol}-1h-\\d{4}-\\d{2}-\\d{2}\\.json$`).test(f)).sort();
@@ -501,11 +507,20 @@ function newestCandleTs(symbol) {
       const rows = JSON.parse(fs.readFileSync(path.join(CACHE_DIR, f), 'utf8'));
       for (const r of rows) {
         const t = r && typeof r.ts === 'number' ? r.ts : null;
-        if (t != null && (newest == null || t > newest)) newest = t;
+        if (t != null && (newest == null || t > newest.ts)) newest = r;
       }
     } catch { /* skip an unreadable file */ }
   }
   return newest;
 }
+// A MONTH AS THE BOX HOLDS IT, NO NETWORK (3.215.0): the bundle when there is
+// one, else the month's day files; null when neither is on disk
+function monthRowsOnDisk(symbol, year, month) {
+  try {
+    const rows = JSON.parse(fs.readFileSync(cachePath(symbol, year, month), 'utf8'));
+    if (Array.isArray(rows)) return rows;
+  } catch { /* no bundle */ }
+  return monthFromDayFiles(symbol, year, month);
+}
 
-module.exports = { dayFilePath, readDayFile, dayFileWhole, writeDayFile, candleHourText, monthlyKlines, dailyKlines, recentKlines, socksServerTime, unzipSingleEntry, parseKlineCsv, cacheState, cachedMonths, cachedDayMonths, coveredMonths, monthFromDayFiles, cachePath, newestCandleTs, CACHE_DIR, HOUR_MS, MINUTE_MS: 60_000 };
+module.exports = { dayFilePath, readDayFile, dayFileWhole, writeDayFile, candleHourText, newestCandle, monthRowsOnDisk, monthlyKlines, dailyKlines, recentKlines, socksServerTime, unzipSingleEntry, parseKlineCsv, cacheState, cachedMonths, cachedDayMonths, coveredMonths, monthFromDayFiles, cachePath, newestCandleTs, CACHE_DIR, HOUR_MS, MINUTE_MS: 60_000 };
