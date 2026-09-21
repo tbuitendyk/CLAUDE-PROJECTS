@@ -122,6 +122,15 @@ list follow.
 
 ## Parked (for the owner, not done)
 
+- **Owner's to-do (2026-09-21, after 3.215.0)**: the `scrambles / slides as
+  good at fill` column is taken once, on the day the window first filled, and
+  never again. The owner wants the null sets (the scrambled copies and the
+  slid copies) recomputed for the CURRENT window when `Build the field` is
+  used, and recomputed whenever another process consults them. Not started;
+  waits for a `GO NOW!` of its own. Cost to note before it starts: the
+  scrambles roll every copy from the start of the window to the day asked
+  for, so a recompute at the last day costs about what the fill-day pass
+  costs, once per pair.
 - **Found in passing, not touched (RULE ZERO)**: on Trade, the decision
   table's `outcome` heading is drawn with the key `fate`, and the column key
   describes it under `outcome`, so that one heading carries no hover text.

@@ -1,16 +1,16 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html \u2014 so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "d7c1bb1582f0dec237df7ba67018be5645360f09",
-  "subject": "3.214.2 -- Coins: the table of pairs keeps its place through a repaint, and an opened grid's row comes into view",
-  "capturedAt": "2026-09-21T07:24:31Z",
+  "commit": "1c65cd6f61737eb6f5d128b26f0659a76661b9f0",
+  "subject": "3.215.0 -- Coins: Buy the field writes the seven best down and follows their price; the decision field can be put away",
+  "capturedAt": "2026-09-21T08:12:44Z",
   "files": {
     "public/construct.js": {
-      "sha256": "d3751af57a30c09afdf194842bd6d88cabcd2f14e21aec2577d2da44d0121b86",
-      "bytes": 896581
+      "sha256": "7db1f755481ca1cf9f1def043cc8ec9522a20604eb5bd4bbb9351473b68bb986",
+      "bytes": 904656
     },
     "public/help-content.js": {
-      "sha256": "da4dee729396f10f5553e712ad732b910ae8500c5140d26a50f41835181b9f9f",
-      "bytes": 167131
+      "sha256": "ce1f39f9370858be9ce680640c34081ee73292ad1e3e4a6fb63355d3039dde23",
+      "bytes": 168083
     }
   },
   "htmlNotVerified": "public/construct.html, public/trade.html and public/setup.html are served with the release stamped into the head (3.137.0) and, for construct.html, the cache markers rewritten to the content hash of each script, so their served bytes never equal their stored bytes. Nothing is generated from them."

@@ -11285,8 +11285,11 @@ function cFieldBuyTable(b) {
   const label = (k) => ((cShapesNow || []).find((x) => x.key === k) || {}).label || k;
   const rows = (b.rows || []).map((r) => {
     const word = r.sign > 0 ? '<span class="pos">up</span>' : (r.sign < 0 ? '<span class="neg">down</span>' : '<span class="muted">none</span>');
-    const perf = r.performancePct == null ? '<span class="muted">—</span>'
-      : `<span class="${r.performancePct > 0 ? 'pos' : (r.performancePct < 0 ? 'neg' : 'muted')}">${r.performancePct > 0 ? '+' : ''}${Number(r.performancePct).toFixed(2)}</span>`;
+    // the class and the sign are worked out first: the word list reads the
+    // text between tags, and a choice inside the tag read as three labels
+    const perfCls = r.performancePct > 0 ? 'pos' : (r.performancePct < 0 ? 'neg' : 'muted');
+    const perfNum = r.performancePct == null ? null : `${r.performancePct > 0 ? '+' : ''}${Number(r.performancePct).toFixed(2)}`;
+    const perf = perfNum == null ? '<span class="muted">—</span>' : `<span class="${perfCls}">${perfNum}</span>`;
     const now = r.price == null ? '<span class="muted">no candle after the opening yet</span>' : `${cBuyPx(r.price)} <span class="muted">at ${esc(when(r.priceTs))}</span>`;
     return `<tr><td>${esc(r.coin)}</td><td>${esc(label(r.geometry))}${(r.standsFor || []).length ? ` <span class="muted">(stands for ${esc(r.standsFor.map(label).join(', '))})</span>` : ''}</td>
       <td>${esc(when(r.decisionTs))}</td><td>${word}</td><td>${cFieldNum(r.agreement, 0)}</td><td>${cFieldNum(r.certainty, 0)}</td><td>${r.speaking ?? '—'}</td><td><b>${cFieldNum(r.score, 1)}</b></td>
