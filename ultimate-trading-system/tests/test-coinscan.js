@@ -1870,6 +1870,15 @@ function theTableOfPairsKeepsItsPlaceAndAnOpenedGridComesIntoView() {
   assert.ok(src.includes('<div class="cwbox cwtall"><table class="cgap cpassers"><thead><tr>\n      <th title="the coin">coin'), 'and that box is the one the pairs table sits in');
 }
 
+// TWO BUTTONS IN ONE ROW NEVER TOUCH (owner, 2026-09-21: "don't squish buttons
+// against each other. fail due to ugliness"): the stylesheet stands a button
+// that follows a button off by the row's gap again, on every screen.
+function twoButtonsInOneRowNeverTouch() {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.html'), 'utf8');
+  assert.ok(/\.row \{ display:flex; align-items:center; gap:\.8rem; flex-wrap:wrap; \}/.test(html), 'the row keeps its gap');
+  assert.ok(html.includes('  .row > button + button { margin-left:.8rem; }'), 'a button that follows a button in a row stands off it by the gap again');
+}
+
 module.exports = {
   theSplitReadingPromotesTheWholeHistoryPickOfEveryRowShown,
   theWindowsStartAfterTheWarmUpAndTheShortTailIsDropped,
@@ -1922,4 +1931,5 @@ module.exports = {
   noCoinsTableIsStyledSoWideItNeedsASidewaysBar,
   unselectAllIsOnEveryRowSetUnderCandidatesForSweep,
   theTableOfPairsKeepsItsPlaceAndAnOpenedGridComesIntoView,
+  twoButtonsInOneRowNeverTouch,
 };

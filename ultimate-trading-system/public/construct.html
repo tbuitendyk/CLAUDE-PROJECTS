@@ -30,6 +30,10 @@
   .sub { color:var(--dim); font-size:.8rem; margin-bottom:.9rem; }
   a { color:var(--accent); }
   .row { display:flex; align-items:center; gap:.8rem; flex-wrap:wrap; }
+  /* TWO BUTTONS IN ONE ROW NEVER TOUCH (owner, 2026-09-21: "don't squish
+     buttons against each other. fail due to ugliness"): a button that follows
+     a button in a row stands off it by the row's gap again, on every screen */
+  .row > button + button { margin-left:.8rem; }
   .spacer { flex:1; }
   .muted { color:var(--muted); } .pos{color:var(--pos);} .neg{color:var(--neg);} .warn{color:var(--warn);}
   .tabs { display:flex; gap:.25rem; border-bottom:1px solid var(--line); margin:.4rem 0 .9rem; flex-wrap:wrap; }

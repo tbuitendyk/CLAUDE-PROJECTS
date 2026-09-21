@@ -11297,7 +11297,7 @@ function cFieldBuyTable(b) {
   }).join('');
   return `<p class="note"><b>${esc(b.id)}</b>, pressed ${esc(when(b.pressedAt))} UTC from <b>${esc(b.field.id)} &middot; ${esc(String(b.field.name || ''))}</b>: the ${(b.rows || []).length} best of ${Number(b.candidates || 0).toLocaleString()} candidate(s) among ${Number(b.pairs || 0).toLocaleString()} pair(s).
     The rule: ${esc(b.rule || '')}. Fixed as pressed; only the price and the performance move.</p>
-    <div class="cwbox"><table class="cgap cpassers"><thead><tr>
+    <div class="cwbox" style="margin-bottom:1.2rem"><table class="cgap cpassers"><thead><tr>
       <th title="the coin">coin</th>
       <th title="the chunk shape the field was built on, and the shapes it stands for">chunk shape</th>
       <th title="the decision the field read, UTC. The trade opens at this instant.">decision (UTC)</th>

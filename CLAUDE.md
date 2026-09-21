@@ -462,6 +462,13 @@ aligned, which makes the two that were not a mistake, not a choice.
   answers in a second, so there is no excuse for shipping either.
 - **`tests/test-coinscan.js` holds this for the Coins screen** and fails on
   either fault, so a row added tomorrow cannot quietly be wrong.
+- **TWO BUTTONS IN ONE ROW NEVER TOUCH** (owner order, 2026-09-21: "don't
+  squish buttons against each other. fail due to ugliness", on the Coins
+  field section's `Open this buy` and `Delete it`). The stylesheet stands a
+  button that follows a button off by the row's gap again, on every screen
+  (`.row > button + button` in `public/construct.html`), and
+  `tests/test-coinscan.js :: twoButtonsInOneRowNeverTouch` holds the rule.
+  A button row is designed with that space counted in, never packed.
 
 
 ## RULE FIVE — functionality targeted to the final system is never based on non-accessible

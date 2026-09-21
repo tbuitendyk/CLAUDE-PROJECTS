@@ -189,6 +189,7 @@ module.exports.theScreenHasTheButtonThePickerAndTheTableAboveThePairs = function
     assert.ok(table.includes(h), `the table has ${h}`);
   }
   assert.ok(table.includes("${r.closed ? 'closed' : 'running'}"), 'running until the exit candle is on file, then closed');
+  assert.ok(table.includes('<div class="cwbox" style="margin-bottom:1.2rem"><table class="cgap cpassers">'), 'room between the buy\'s table and the table of pairs (owner, 2026-09-21)');
   // the routes and the help
   const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
   for (const r of ["app.post('/api/coins/fields/:id/buy'", "app.get('/api/coins/buys'", "app.get('/api/coins/buys/:id'", "app.post('/api/coins/buys/:id/delete'"]) assert.ok(server.includes(r), r);
