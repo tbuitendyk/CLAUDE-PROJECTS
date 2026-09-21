@@ -34,6 +34,7 @@ function hist(list, f) {
   for (const r of list) { const v = f(r); if (v == null) { none++; continue; } for (const b of buckets) if (v >= b[0] && v < b[1]) { out[b[2]]++; break; } }
   return `${Object.entries(out).map(([k, n]) => `${k}: ${n}`).join('  ')}${none ? `  (no value: ${none})` : ''}`;
 }
+if (doc.stage === 2) for (const r of rows) { if (r.moneyAll == null && r.money != null) r.moneyAll = r.money; if (r.members == null) r.members = (r.specs || []).length; }
 const kept = stages.applyFilters(doc.stage, rows, filters);
 console.log(`rows: ${rows.length} in all, ${kept.length} pass the ${parts.length ? 'asked' : 'saved'} filters`);
 for (const [name, list] of (doc.stage === 2 ? [] : [['all rows', rows], ['rows that pass', kept]])) {
