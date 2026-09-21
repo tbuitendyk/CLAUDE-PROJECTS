@@ -36,7 +36,7 @@ function hist(list, f) {
 }
 const kept = stages.applyFilters(doc.stage, rows, filters);
 console.log(`rows: ${rows.length} in all, ${kept.length} pass the ${parts.length ? 'asked' : 'saved'} filters`);
-for (const [name, list] of [['all rows', rows], ['rows that pass', kept]]) {
+for (const [name, list] of (doc.stage === 2 ? [] : [['all rows', rows], ['rows that pass', kept]])) {
   console.log(`== ${name} ==`);
   console.log(`  beat its own null set, %:                 ${hist(list, beatPct)}`);
   console.log(`  beat its own null set -- tuning-slice $, %: ${hist(list, moneyPct)}`);
@@ -49,7 +49,7 @@ for (const [name, list] of [['all rows', rows], ['rows that pass', kept]]) {
   console.log(`  by coin: ${Object.entries(byCoin).sort((a, b) => b[1] - a[1]).map(([c, n]) => `${c} ${n}`).join(', ')}`);
 }
 // the rows that pass, best first by the forecast-score beat, with their money reading beside
-const show = kept.slice().sort((a, b) => ((beatPct(b) ?? -1) - (beatPct(a) ?? -1)) || ((b.lead ?? -1e9) - (a.lead ?? -1e9))).slice(0, 25);
+const show = (doc.stage === 2 ? [] : kept).slice().sort((a, b) => ((beatPct(b) ?? -1) - (beatPct(a) ?? -1)) || ((b.lead ?? -1e9) - (a.lead ?? -1e9))).slice(0, 25);
 console.log('== the first 25 rows that pass, by beat its own null set ==');
 console.log('  unit                                  beat%  lead   score   | tuning $   beat$%  lead$   voices');
 for (const r of show) {
@@ -75,8 +75,10 @@ if (doc.stage === 2) {
   console.log(`  tuning-slice $ summed: stage 1 members ${r2(sum((r) => r.money3))}, all members ${r2(sum((r) => r.moneyAll))}`);
   console.log(`  beat its own null set at 95+: ${b95} of ${n}; beat its own null set -- tuning-slice $ at 95+: ${bm95} of ${n}`);
   console.log('  unit                                  s1#  memb voices  score3  scoreAll helped | beat%  lead  |  $ s1   $ all  beat$%  lead$');
-  const shown = rows.slice().sort((a, b) => ((b.moneyAll ?? -1e9) - (a.moneyAll ?? -1e9)));
+  const byAll = rows.slice().sort((a, b) => ((b.moneyAll ?? -1e9) - (a.moneyAll ?? -1e9)));
+  const shown = byAll.length > 40 ? [...byAll.slice(0, 25), { gap: true }, ...byAll.slice(-12)] : byAll;
   for (const r of shown) {
+    if (r.gap) { console.log('  ...'); continue; }
     const u = `${r.trade}|${r.ctx1 || ''}${r.ctx2 ? '|' + r.ctx2 : ''}|${r.geometry}`;
     const f = (v, d = 1) => (v == null ? '-' : Number(v).toFixed(d));
     console.log(`  ${u.padEnd(38)} ${String(r.s1rank ?? '-').padStart(3)}  ${String((r.specs || []).length).padStart(4)} ${String(r.voices ?? '-').padStart(6)}  ${f(r.score3, 1).padStart(6)}  ${f(r.scoreAll, 1).padStart(8)} ${f(r.helped, 1).padStart(6)} | ${f(beatPct(r), 0).padStart(4)}  ${f(r.lead, 2).padStart(5)} | ${f(r.money3, 1).padStart(6)} ${f(r.moneyAll, 1).padStart(7)}  ${f(moneyPct(r), 0).padStart(5)}  ${f(r.leadMoney, 2).padStart(5)}`);
