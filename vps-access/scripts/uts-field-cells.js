@@ -42,7 +42,7 @@ const ctl = new Map(C.rows.map((r) => [r.unit, r]));
 const cells = new Map();
 for (const r of F.rows) { if (!cells.has(r.gate)) cells.set(r.gate, new Map()); cells.get(r.gate).set(r.unit, r); }
 const sum = (list, f) => list.reduce((a, r) => a + (Number(f(r)) || 0), 0);
-const short = (g) => g.replace(' sized by agreement ×100:1 silent×1', '').replace(/agreement≥/, 'a≥').replace(/certainty≥/, 'c≥');
+const short = (g) => g.replace(/ sized by \w+ ×100:1 silent×1$/, '').replace(/agreement≥/, 'a≥').replace(/certainty≥/, 'c≥');
 console.log(`control ${C.doc.name} (${B}): ${units.length} units, ${C.rows.length} records`);
 console.log(`field   ${F.doc.name} (${A}): ${cells.size} gate values, ${F.rows.length} records`);
 const cRows = units.map((u) => ctl.get(u)).filter(Boolean);
@@ -91,21 +91,27 @@ for (const u of units) {
 function perUnit(title, chooser, fair) {
   console.log('');
   console.log(`== ${title} ==`);
-  console.log(`  ${'unit'.padEnd(18)} ${'ctl held'.padStart(9)} ${'ctl bn'.padStart(6)} | ${'chosen gate'.padEnd(14)} ${'bn'.padStart(3)} ${'test $'.padStart(8)} ${'held $'.padStart(8)} ${'Δ held'.padStart(8)}  held verdict`);
+  console.log(`  ${'unit'.padEnd(18)} ${'ctl held'.padStart(9)} ${'ctl tr'.padStart(6)} ${'ctl bn'.padStart(6)} | ${'chosen gate'.padEnd(14)} ${'bn'.padStart(3)} ${'test $'.padStart(8)} ${'test tr'.padStart(7)} ${'held $'.padStart(8)} ${'held tr'.padStart(7)} ${'Δ held'.padStart(8)}  held verdict`);
   let better = 0; let sumF = 0; let sumC = 0; const picked = new Map();
   for (const u of units) {
     const c = ctl.get(u);
-    const rows = [...cells.values()].map((m) => m.get(u)).filter(Boolean);
+    // A ROW THAT HARDLY TRADES BEATS EVERY LOSING NULL COPY (found on the
+    // second field run: two chosen rows with test $ 0 and held $ 0). The pick
+    // needs at least ten test trades, the floor uts-two-sets-per-coin.js
+    // already uses, and the trade counts are printed beside the money.
+    const all = [...cells.values()].map((m) => m.get(u)).filter(Boolean);
+    const rows = all.filter((r) => (Number(r.tt) || 0) >= 10);
     rows.sort(chooser);
-    const p = rows[0];
-    if (!p || !c) continue;
+    const p = rows[0] || null;
+    if (!c) continue;
+    if (!p) { console.log(`  ${u.padEnd(18)} no row with ten test trades or more (${all.length} rows)`); continue; }
     if (p.h > c.h) better++;
     sumF += Number(p.h) || 0; sumC += Number(c.h) || 0;
     picked.set(short(p.gate), (picked.get(short(p.gate)) || 0) + 1);
-    console.log(`  ${u.padEnd(18)} ${String(r2(c.h)).padStart(9)} ${String(c.bn).padStart(6)} | ${short(p.gate).padEnd(14)} ${String(p.bn).padStart(3)} ${String(r2(p.t)).padStart(8)} ${String(r2(p.h)).padStart(8)} ${String(r2(p.h - c.h)).padStart(8)}  ${p.fvh || '-'}`);
+    console.log(`  ${u.padEnd(18)} ${String(r2(c.h)).padStart(9)} ${String(c.ht).padStart(6)} ${String(c.bn).padStart(6)} | ${short(p.gate).padEnd(14)} ${String(p.bn).padStart(3)} ${String(r2(p.t)).padStart(8)} ${String(p.tt).padStart(7)} ${String(r2(p.h)).padStart(8)} ${String(p.ht).padStart(7)} ${String(r2(p.h - c.h)).padStart(8)}  ${p.fvh || '-'}`);
   }
   console.log(`  units better on held: ${better}/${units.length}; held $ summed: chosen ${r2(sumF)} vs control ${r2(sumC)}${fair ? '' : ' (chosen on held itself: a ceiling, not a fair read)'}`);
   console.log(`  gate values chosen: ${[...picked].map(([g, n]) => `${g} x${n}`).join(', ')}`);
 }
-perUnit('per unit: the row chosen on TEST (most kept null copies beaten, then test $), judged on held', (x, y) => (y.bn - x.bn) || (y.t - x.t), true);
-perUnit('per unit: the row chosen on HELD itself, the ceiling', (x, y) => (y.h - x.h), false);
+perUnit('per unit: the row chosen on TEST (most kept null copies beaten, then test $; ten test trades or more), judged on held', (x, y) => (y.bn - x.bn) || (y.t - x.t), true);
+perUnit('per unit: the row chosen on HELD itself (ten test trades or more), the ceiling', (x, y) => (y.h - x.h), false);
