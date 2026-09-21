@@ -296,8 +296,8 @@ window.HELP = {
         more: 'The launch refuses when the price files no longer fingerprint identically to the ones the parent read — a mismatch refuses, it never mixes.',
       },
       swCarry: {
-        what: 'How many rows carry forward into the BOOST training, from the top of the parent\'s table in the sort saved on it. 0 carries all of them.',
-        more: 'Pick the sort on Boards — its columns save first/second/third priorities onto the record set, and the carry takes exactly that order. With nothing saved it is the fixed rule: beat its own null set, ties by lead over null set. Carry generously: the cut is for shedding the clearly-dead, not for picking winners.',
+        what: 'How many rows carry forward into the BOOST training, from the top of the parent\'s table as Boards shows it: in the sort saved on it, and only the rows the filters saved on it keep. 0 carries all of them.',
+        more: 'Pick the sort on Boards — its columns save first/second/third priorities onto the record set, and the carry takes exactly that order. With nothing saved it is the fixed rule: beat its own null set, ties by lead over null set. The filters above the stage 1 table save onto the record set the moment they are applied, and the line under this box says how many rows they leave; Clear filters under the table carries from the whole set again. Carry generously: the cut is for shedding the clearly-dead, not for picking winners.',
       },
       swName2: {
         what: 'What this stage 2 record set is called everywhere it is named — on Boards, in every picker, on the status line. Yours to choose.',

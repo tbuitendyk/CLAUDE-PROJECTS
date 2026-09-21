@@ -1436,6 +1436,12 @@ app.post('/api/stageset/:id/filters', (req, res) => {
   try { return res.json(stages.setSetFilters(req.params.id, (req.body || {}).filters)); }
   catch (err) { return res.status(400).json({ error: String(err.message || err) }); }
 });
+// WHAT A STAGE 2 LAUNCH WOULD CARRY (3.220.0): the stage 1 table in its saved
+// order under its saved filters, counted, so the set-up says it before the press
+app.get('/api/stageset/:id/carry', (req, res) => {
+  try { return res.json(stages.stage1CarryPreview(req.params.id, req.query.carry)); }
+  catch (err) { return res.status(400).json({ error: String(err.message || err) }); }
+});
 app.post('/api/stageset/:id/sort', (req, res) => {
   try { return res.json(stages.setSetSort(req.params.id, (req.body || {}).sort)); }
   catch (err) { return res.status(400).json({ error: err.message }); }

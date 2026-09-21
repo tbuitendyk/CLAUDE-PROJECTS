@@ -1634,23 +1634,12 @@ function startStage2(params) {
   const parentFee = Number((parent.params || {}).fee);
   if (!Number.isFinite(parentFee)) throw new Error(`${parent.name} declares no fee % each way, so its tuning-slice $ cannot be read again here`);
   const parentNullN = Math.max(0, Math.floor(num((parent.params || {}).nullN, 19)));
-  // The carry takes the parent's table in ITS OWN saved order — the exact
-  // order the owner sees on Boards — and the fixed rule (the recorded
-  // ranking) when no sort is saved.
-  const saved = Array.isArray(parent.sort) && parent.sort.length ? parent.sort : null;
-  let ordered = ranking.slice();
-  if (saved) {
-    const merged = ranking.map((row, i) => {
-      const r = parentRecords.get(row.u) || {};
-      return {
-        _i: i, u: row.u, beat: row.beat, pairs: row.pairs, lead: row.lead, score: row.score,
-        money: r.money, beatMoney: r.beatMoney, leadMoney: r.leadMoney,
-        trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry,
-      };
-    });
-    ordered = applySort(1, merged, saved, (a, b) => a._i - b._i);
-  }
-  const carried = carry > 0 ? ordered.slice(0, carry) : ordered;
+  // THE CARRY TAKES THE PARENT'S TABLE AS BOARDS SHOWS IT (3.220.0): its saved
+  // order, and only the rows its saved filters keep -- stage1Carry, the one
+  // definition the set-up's own line reads too.
+  const cut = stage1Carry(parent, carry);
+  const carried = cut.rows;
+  if (!carried.length) throw new Error(`the filters saved on ${parent.name}'s table keep none of its ${cut.of} rows — press Clear filters under its table on Boards, or loosen them`);
   // A PARENT WHOSE EXTRA MEMBERS WERE TRAINED BEFORE THE SPLIT EXISTED IS
   // REFUSED (3.202.0, RULE NINE). Its LOGREG extras were trained on the window
   // layout's training window; the BOOST extras here would train on a share of
@@ -1679,8 +1668,8 @@ function startStage2(params) {
     measurements: MEASUREMENTS_VERSION,
     boardNull: { ...BOARD_NULL_NONE },
     parent: {
-      id: parent.id, name: parent.name, carry: carried.length, of: ranking.length,
-      sortedBy: saved ? sortLabel(saved) : 'the fixed rule',
+      id: parent.id, name: parent.name, carry: carried.length, of: cut.of, kept: cut.kept,
+      sortedBy: cut.sortedBy, filters: cut.filters,
     },
     // ...parent.params carries the parent's campaign in; the campaign in use
     // AT THIS LAUNCH wins, the same rule every other launch follows.
@@ -5657,9 +5646,13 @@ function plateauReadings(id, rec, specs, plateaus, extras) {
   });
 }
 
-function stage1Table(id, from, n, filters = null) {
-  const doc = getSet(id);
-  if (!doc) return null;
+// THE STAGE 1 TABLE IN ITS SAVED ORDER, IN ONE DEFINITION (3.220.0): what
+// Boards draws and what the stage 2 carry takes, so they can never be two
+// different tables. Each row carries its place under the saved sort, settled
+// before any filter.
+function stage1Ordered(doc) {
+  if (!doc || !doc.id) return null;
+  const id = doc.id;
   const ranking = rankingOf(id);
   const byU = new Map(allRecords(id).map((r) => [r.u, r]));
   let rows = ranking.map((row, i) => {
@@ -5687,13 +5680,40 @@ function stage1Table(id, from, n, filters = null) {
   if (Array.isArray(doc.sort) && doc.sort.length) rows = applySort(1, rows, doc.sort, (a, b) => a._i - b._i);
   // the place is settled BEFORE the filters, so a filtered table still says
   // where each row stands in the whole set rather than renumbering itself
-  rows = rows.map((r, i) => ({ ...r, rank: i + 1 }));
+  return rows.map((r, i) => ({ ...r, rank: i + 1 }));
+}
+function stage1Table(id, from, n, filters = null) {
+  const doc = getSet(id);
+  if (!doc) return null;
+  let rows = stage1Ordered(doc);
   const of = rows.length;
   rows = applyFilters(1, rows, filters);
   return {
     total: rows.length, of, from, sort: doc.sort || [],
     rows: rows.slice(from, from + n).map(({ _i, ...rest }) => rest),
   };
+}
+// THE STAGE 2 CARRY, IN ONE DEFINITION (3.220.0, owner order 2026-09-21: the
+// stage 1 filters carry fix). The carry takes the parent's table exactly as
+// Boards shows it: in its saved order, and only the rows its saved filters
+// keep -- the rule the stage 3 carry has had since 3.78.0 ("the carry from
+// table 2 must NOT ignore filters!"). One reader for the launch and for the
+// set-up's own line about it, so the table in front of the owner and the
+// table the carry reads are never two different tables.
+function stage1Carry(parent, carry) {
+  const ordered = stage1Ordered(parent) || [];
+  const shown = applyFilters(1, ordered, parent.filters || null);
+  const n = Math.max(0, Math.floor(num(carry, 0)));
+  const rows = n > 0 ? shown.slice(0, n) : shown;
+  const saved = Array.isArray(parent.sort) && parent.sort.length ? parent.sort : null;
+  return { rows, of: ordered.length, kept: shown.length, sortedBy: saved ? sortLabel(saved) : 'the fixed rule', filters: parent.filters || null };
+}
+// what a stage 2 launch would carry, counted, for the set-up's line before the press
+function stage1CarryPreview(id, carry) {
+  const doc = getSet(String(id || ''));
+  if (!doc || doc.stage !== 1) throw new Error('the carry is read off a stage 1 record set');
+  const got = stage1Carry(doc, carry);
+  return { id: doc.id, carry: got.rows.length, of: got.of, kept: got.kept, sortedBy: got.sortedBy, filters: got.filters };
 }
 
 // THE STAGE 2 TABLE, IN ONE DEFINITION (3.78.0, owner order 2026-09-06: "the
@@ -10560,7 +10580,7 @@ module.exports = {
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
   startStage1, startStage2, startStage3,
   missingUnitsOf, unitFillRefusal, fillMissingUnitsStart, fillMissingUnitsStatus, rebuildRanking,
-  stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
+  stage1Table, stage1Ordered, stage1Carry, stage1CarryPreview, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
   settingsFor, unitsFor, unitsForPassers, unitMembers, isSetDocument, shapesOf, foldPlateauShares, agreementsFor, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, confirmWanted, confirmLeansFor, coinsSourceOf, confirmLabel, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
   fieldAxesFor, certaintyRefusal, fieldPairsFor, fieldFile, writeFieldSidecar, readFieldSidecar, fieldPayloadFor,
   setSetPicked, pickedOf, unitsChoiceOf, stage3RecordsFor, PICK_CHOICES, PICK_LABELS, stage3UnitsFor,

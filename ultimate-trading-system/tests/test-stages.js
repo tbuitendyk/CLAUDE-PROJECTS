@@ -742,6 +742,65 @@ module.exports = {
       'a form that disagrees with the set stage 2 reads from says nothing');
   },
 
+  // THE STAGE 2 CARRY TAKES THE STAGE 1 TABLE AS BOARDS SHOWS IT (3.220.0,
+  // owner order 2026-09-21: "GO NOW! on the stage 1 filters carry fix"). The
+  // saved sort and the saved filters both cut it; the launch and the set-up's
+  // own line read one definition; the Boards page writes the stage 1 filters
+  // onto the set the way it writes the stage 2 filters.
+  async theStageTwoCarryTakesOnlyTheRowsTheStageOneFiltersKeep() {
+    const id = `s1-test-${Date.now().toString(36)}-cut`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify({
+        id, stage: 1, seq: 999979, name: 'S1 #cut', status: 'done', createdAt: new Date().toISOString(), plan: { units: 3 },
+        params: { nullN: 4, fee: 0.00125 },
+        sort: [{ key: 'beat', dir: 'desc' }], filters: { beatMin: 60 },
+      }));
+      const rec = rowstore.writer(id, 'records');
+      rec.push({ u: 0, trade: 'C0', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', counts: {}, specs: [], score: 100, beat: 4, pairs: 4, lead: 2, money: 5, beatMoney: 4, leadMoney: 1, nullScores: [], blocks: {} });
+      rec.push({ u: 1, trade: 'C1', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', counts: {}, specs: [], score: 90, beat: 2, pairs: 4, lead: 1, money: -1, beatMoney: 1, leadMoney: 0, nullScores: [], blocks: {} });
+      rec.push({ u: 2, trade: 'C2', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', counts: {}, specs: [], score: 80, beat: 3, pairs: 4, lead: 1.5, money: 2, beatMoney: 3, leadMoney: 0.5, nullScores: [], blocks: {} });
+      rec.close();
+      const rk = rowstore.writer(id, 'ranking');
+      rk.push({ rank: 1, u: 0, beat: 4, pairs: 4, lead: 2, score: 100 });
+      rk.push({ rank: 2, u: 1, beat: 2, pairs: 4, lead: 1, score: 90 });
+      rk.push({ rank: 3, u: 2, beat: 3, pairs: 4, lead: 1.5, score: 80 });
+      rk.close();
+      const doc = stages.getSet(id);
+      // the table as Boards shows it: sorted by beat, filtered to 60% and up
+      assert.deepStrictEqual(stages.stage1Table(id, 0, 10, doc.filters).rows.map((r) => r.trade), ['C0', 'C2'], 'the screen shows the two that clear 60%');
+      const all = stages.stage1Carry(doc, 0);
+      assert.deepStrictEqual(all.rows.map((r) => r.u), [0, 2], 'carry 0 takes every row the filters keep, in the saved order');
+      assert.strictEqual(all.of, 3, 'of the whole table');
+      assert.strictEqual(all.kept, 2, 'the filters keep two');
+      assert.notStrictEqual(all.sortedBy, 'the fixed rule', 'and the saved sort is named');
+      assert.deepStrictEqual(stages.stage1Carry(doc, 1).rows.map((r) => r.u), [0], 'carry 1 takes the top of those');
+      // no filters saved: the whole table, in the fixed rule when no sort is saved either
+      doc.filters = null; doc.sort = null;
+      const plain = stages.stage1Carry(doc, 0);
+      assert.deepStrictEqual(plain.rows.map((r) => r.u), [0, 1, 2]);
+      assert.strictEqual(plain.kept, 3);
+      assert.strictEqual(plain.sortedBy, 'the fixed rule');
+      // the set-up's own line reads the same definition
+      const pv = stages.stage1CarryPreview(id, 1);
+      assert.deepStrictEqual([pv.carry, pv.of, pv.kept], [1, 3, 2], 'the preview counts what the launch would carry');
+    } finally {
+      try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+    }
+    // the launch, the route and the screens use it
+    const st = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    assert.ok(st.includes('  const cut = stage1Carry(parent, carry);\n  const carried = cut.rows;'), 'the stage 2 launch carries through stage1Carry');
+    assert.ok(st.includes('carry: carried.length, of: cut.of, kept: cut.kept,'), 'and the set records what the filters kept');
+    const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+    assert.ok(srv.includes("app.get('/api/stageset/:id/carry', (req, res) => {"), 'the set-up can ask what the carry would take');
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    assert.ok(ui.includes('<p class="note warn" id="swCut2" style="margin:.2rem 0 .4rem;display:none"></p>'), 'the stage 2 set-up has the line');
+    assert.ok(ui.includes("the filters saved on the parent's table leave <b>${Number(got.kept).toLocaleString()}</b> of its ${Number(got.of).toLocaleString()} rows, and the carry takes the top of those. Press Clear filters under its table on Boards to carry from the whole set."), 'and it says what the stage 3 set-up says');
+    assert.ok(ui.includes("if ((key === 'S1' || key === 'S2') && doc && doc.id) await tryPost("), 'Clear filters under the stage 1 table clears them off the set too');
+  },
+
   async theNameBoxIsOnEveryStageOfSweepAndTheLaunchSendsIt() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');

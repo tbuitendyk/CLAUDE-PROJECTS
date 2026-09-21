@@ -374,6 +374,10 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "  const rules = twoBars ? (p.fieldPermuteRule ? fieldGate.RULES.slice() : [ruleOne]) : ['both'];", "  const rules = p.fieldPermuteRule ? fieldGate.RULES.slice() : [ruleOne];",
     'theGateIsAnAxisThatMultipliesOnlyWhereTheFieldCovers',
     'with one bar the rule is permuted anyway and the same trades are priced twice under two names'],
+  // THE STAGE 2 CARRY HONOURS THE STAGE 1 FILTERS (3.220.0)
+  [path.join(ROOT, 'lib', 'stages.js'), '  const shown = applyFilters(1, ordered, parent.filters || null);', '  const shown = applyFilters(1, ordered, null);',
+    'theStageTwoCarryTakesOnlyTheRowsTheStageOneFiltersKeep',
+    'the stage 2 carry takes the top of the whole stage 1 table again, and the rows the owner filtered out come along'],
   // THE AVERAGE OF THE SEVEN UNDER THE BOUGHT FIELD (3.219.0)
   [path.join(ROOT, 'public', 'construct.js'), '  const avgPct = pcts.length ? pcts.reduce((a, v) => a + v, 0) / pcts.length : null;', '  const avgPct = pcts.length ? pcts[0] : null;',
     'theScreenHasTheButtonThePickerAndTheTableAboveThePairs',

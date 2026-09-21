@@ -941,6 +941,7 @@ async function swProgress() {
   // so that stays behind the boxes actually having moved, with the draft
   // memory that only has something new to save when they have.
   swProvenance();
+  swSayCut2();   // what the stage 1 filters leave the carry (3.220.0)
   if (swMoved) {
     rememberSweepForm();
     swCountsSoon();
@@ -1390,6 +1391,25 @@ const SW_NO_CONFIRM = {
   walk: 'Greyed: no unit this run prices carries a plateau whose rows have a lean — the rows ticked from a walk set on Coins were walked before rows kept one — so every value of confirm places the same trades.',
   both: 'Greyed: not one unit this run prices is ticked under Candidates for Sweep on Coins, so all three values place the same trades.',
 };
+// WHAT THE CARRY WOULD TAKE (3.220.0): the stage 1 table under the filters
+// saved on it, said on the set-up the way the stage 3 set-up says it, because
+// the boxes that cut it are on another screen. Asked of the box when the
+// parent or the carry changes, and again on every draw of this tab.
+let swCut2Asked = '';
+async function swSayCut2() {
+  const e = $('#swCut2');
+  if (!e) return;
+  const from = $('#swFrom2') ? $('#swFrom2').value : '';
+  const carry = $('#swCarry') ? $('#swCarry').value : '0';
+  const key = `${from}|${carry}`;
+  if (key === swCut2Asked) return;
+  swCut2Asked = key;
+  if (!from) { e.style.display = 'none'; e.textContent = ''; return; }
+  const got = await apiOr(`api/stageset/${encodeURIComponent(from)}/carry?carry=${encodeURIComponent(carry)}`, null);
+  if (!got || got.kept == null || got.kept === got.of) { e.style.display = 'none'; e.textContent = ''; return; }
+  e.innerHTML = `the filters saved on the parent's table leave <b>${Number(got.kept).toLocaleString()}</b> of its ${Number(got.of).toLocaleString()} rows, and the carry takes the top of those. Press Clear filters under its table on Boards to carry from the whole set.`;
+  e.style.display = '';
+}
 function swSayWhyNoField(said) {
   const e = $('#swWhyField');
   if (!e) return;
@@ -3788,6 +3808,7 @@ async function drawGreenlight() {
 // next one reads, and every set names its parent.
 async function drawSweep() {
   if (swPoll) { clearInterval(swPoll); swPoll = null; }
+  swCut2Asked = '';   // the filters may have moved on Boards since this tab was last drawn
   const [st, camp, names, fieldsOnBox] = await Promise.all([
     apiOr('api/stagesets', ({ running: null, sets: [] })),
     apiOr('api/campaign', ({ name: '' })),
@@ -3901,8 +3922,9 @@ async function drawSweep() {
     <p class="note warn" id="swWhy2" style="margin:.2rem 0 .5rem;display:none"></p>
     <div class="row" style="align-items:flex-end">
       <label class="f">from stage 1 record set<select id="swFrom2" style="min-width:24rem">${swOpt1}</select></label>
-      <label class="f" title="the carry takes the top of the parent's table in the sort saved on it — pick the sort on Boards. The fixed rule (beat its own null set, ties by lead over null set) when none is saved.">carry forward (0 = all)<input id="swCarry" type="number" value="0" min="0" style="width:5.5rem"></label>
+      <label class="f" title="the carry takes the top of the parent's table as Boards shows it: in the sort saved on it, and only the rows the filters saved on it keep — pick both on Boards. The fixed rule (beat its own null set, ties by lead over null set) when no sort is saved; the whole table when no filter is. The line under this row says what the filters leave.">carry forward (0 = all)<input id="swCarry" type="number" value="0" min="0" style="width:5.5rem"></label>
     </div>
+    <p class="note warn" id="swCut2" style="margin:.2rem 0 .4rem;display:none"></p>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <label class="f">name<input id="swName2" placeholder="${esc(nextNames[2] || '')}" maxlength="80" style="width:17rem"></label>
       <label class="f" style="flex:1">description<input id="swDesc2" style="width:100%"></label>
@@ -4162,6 +4184,7 @@ async function drawSweep() {
       + 'length and the band its own stage 1 worked out \u2014 press Start stage 3 when you are ready.';
     rememberSweepForm();
     swProvenance();
+    swSayCut2();   // what the stage 1 filters leave the carry (3.220.0)
     swCounts();
   };
   // EVERY BOX THAT CHANGES THE COUNT RE-ASKS IT, AND ON TYPING AS WELL AS ON
@@ -4192,6 +4215,7 @@ async function drawSweep() {
     const onChange = () => {
       rememberSweepForm();
       swProvenance();
+      swSayCut2();   // what the stage 1 filters leave the carry (3.220.0)
       if (el.name === 'swSource' || el.id === 'swPlainUnits') swPassersGrey();
       if (!NO_COUNT.has(el.id)) swCountsSoon();
     };
@@ -4202,6 +4226,7 @@ async function drawSweep() {
   swProgress();
   swCounts();
   swProvenance();
+  swSayCut2();   // what the stage 1 filters leave the carry (3.220.0)
 }
 
 // ---- Boards ----------------------------------------------------------------
@@ -4456,7 +4481,7 @@ async function drawBoards() {
       c.parent && c.parent.selected != null
         ? `selected ${Number(c.parent.selected).toLocaleString()} of ${Number(c.parent.of).toLocaleString()}`
         : c.parent && (c.parent.sortedBy || c.parent.orderBy)
-          ? `carried ${Number(c.parent.carry).toLocaleString()} by ${c.parent.sortedBy || (c.parent.orderBy === 'lead' ? 'lead over null set' : 'beat its own null set')}`
+          ? `carried ${Number(c.parent.carry).toLocaleString()} by ${c.parent.sortedBy || (c.parent.orderBy === 'lead' ? 'lead over null set' : 'beat its own null set')}${c.parent.kept != null && c.parent.kept !== c.parent.of ? `, from the ${Number(c.parent.kept).toLocaleString()} its saved filters keep of ${Number(c.parent.of).toLocaleString()}` : ''}`
           : null,
       esc(c.status),
     ].filter(Boolean).join(' · ')})`).join(' → ')}${chain.length > 1 ? ' · price files fingerprint-checked at every launch' : ''}</p>` : '';
@@ -4949,7 +4974,9 @@ async function bApplyFilters(root, key, doc) {
   const next = bBoxesNow(root, key);
   bSetFilters(key, next);
   bSaveView({ [`from${key}`]: 0 });
-  if (key === 'S2' && doc && doc.id) {
+  // the stage 1 table's filters reach the set too (3.220.0): the stage 2 carry
+  // reads them, exactly as the stage 3 carry reads the stage 2 table's
+  if ((key === 'S1' || key === 'S2') && doc && doc.id) {
     await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/filters`, { filters: next });
   }
   if (key === 'S3C' || key === 'S3R') bRedrawPeggedToCoinHead();
@@ -5038,7 +5065,7 @@ function bWireFilters(root, doc) {
       // Ticking it means "keep it applied", so anything typed and not yet put
       // on goes on now — otherwise it would sit in a box whose button has just
       // been greyed out, looking applied and not being it.
-      if (cb.checked && !bSameFilters(bBoxesNow(root, key), bFilters(key))) bApplyFilters(root, key);
+      if (cb.checked && !bSameFilters(bBoxesNow(root, key), bFilters(key))) bApplyFilters(root, key, doc);
       else bApplyState(root, key);
     };
   });
@@ -5057,7 +5084,7 @@ function bWireFilters(root, doc) {
       delete all[key];
       bSaveView({ filters: all, [`from${key}`]: 0, ...(key === 'S3C' ? { s3cBeforePin: null, s3cPin: null } : {}) });
       // and off the record set too, or the boxes empty while the carry stays cut
-      if (key === 'S2' && doc && doc.id) await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/filters`, { filters: {} });
+      if ((key === 'S1' || key === 'S2') && doc && doc.id) await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/filters`, { filters: {} });
       if (key === 'S3C' || key === 'S3R') bRedrawPeggedToCoinHead();
       else drawBoards().then(() => restoreScroll(tab));
     };

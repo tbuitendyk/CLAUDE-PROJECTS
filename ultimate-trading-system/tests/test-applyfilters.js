@@ -109,8 +109,10 @@ module.exports = {
     // carry from table 2 must NOT ignore filters!"). Every other table's
     // filters are a view; these decide what a stage 3 launch prices, so a
     // launch has to be able to read them.
-    assert.ok(/key === 'S2' && doc && doc\.id/.test(ap) && /\/filters`, \{ filters: next \}/.test(ap),
-      'the stage 2 filters stay in the browser, so the carry goes on taking the top of a table the owner is not looking at');
+    // AND THE STAGE 1 TABLE'S TOO (3.220.0, owner order: the stage 1 filters
+    // carry fix), for the stage 2 carry, by the same rule
+    assert.ok(/\(key === 'S1' \|\| key === 'S2'\) && doc && doc\.id/.test(ap) && /\/filters`, \{ filters: next \}/.test(ap),
+      'the stage 1 or stage 2 filters stay in the browser, so the carry goes on taking the top of a table the owner is not looking at');
     assert.ok(/from\$\{key\}`\]: 0/.test(ap),
       'applying leaves the table on the page it was on, which can be past the end of a smaller result');
   },
