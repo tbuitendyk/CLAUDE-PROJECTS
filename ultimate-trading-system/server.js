@@ -438,6 +438,84 @@ app.post('/api/coins/walk/stop', (req, res) => {
   try { return res.json(coinsrun.coinsWalkStop()); }
   catch (err) { return res.status(400).json({ error: err.message }); }
 });
+
+// ---- THE DECISION FIELD (FIELD-DESIGN.md; owner LOOP NOW! 2026-09-21) ------
+// The same four doors the walk has, plus one pair in full for the grid.
+app.post('/api/coins/field', (req, res) => {
+  try {
+    const b = req.body || {};
+    const fieldrun = require('./lib/fieldrun');
+    if (b.carryOn) {
+      const part = require('./lib/fieldset').readPart(String(b.carryOn));
+      if (!part) return res.status(400).json({ error: `there is nothing saved under ${JSON.stringify(String(b.carryOn))} to carry on from` });
+      return res.json(fieldrun.fieldStart({ ...(part.head.asked || {}), carryOn: String(b.carryOn) }));
+    }
+    return res.json(fieldrun.fieldStart({
+      windowDays: b.windowDays, windowEachOwn: b.windowEachOwn === true,
+      halfLifeDays: b.halfLifeDays, floor: b.floor,
+      bands: b.bands, lookbackDays: b.lookbackDays,
+      evidenceCap: b.evidenceCap, leastEvidence: b.leastEvidence, copies: b.copies,
+      only: Array.isArray(b.only) ? b.only : (b.only ? String(b.only).split(',').map((x) => x.trim()).filter(Boolean) : null),
+      geometry: b.geometry == null ? '' : String(b.geometry), everyShape: b.everyShape === true,
+      name: b.name == null ? '' : String(b.name).slice(0, 80),
+    }));
+  } catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.get('/api/coins/field', (req, res) => {
+  try {
+    const body = JSON.stringify(require('./lib/fieldrun').fieldStatus());
+    res.type('json');
+    if (/\bgzip\b/.test(String(req.headers['accept-encoding'] || ''))) {
+      res.set('Content-Encoding', 'gzip');
+      return res.send(require('zlib').gzipSync(body));
+    }
+    return res.send(body);
+  } catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.post('/api/coins/field/stop', (req, res) => {
+  try { return res.json(require('./lib/fieldrun').fieldStop()); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.get('/api/coins/fields', (req, res) => {
+  try { return res.json({ fields: require('./lib/fieldset').listFields(), nextName: require('./lib/fieldset').nextName() }); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.post('/api/coins/fields/:id/open', (req, res) => {
+  try { return res.json(require('./lib/fieldrun').fieldOpen(req.params.id)); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.post('/api/coins/fields/:id/name', (req, res) => {
+  try { return res.json(require('./lib/fieldset').renameField(req.params.id, (req.body || {}).name)); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.post('/api/coins/fields/:id/delete', (req, res) => {
+  try { return res.json(require('./lib/fieldset').deleteField(req.params.id, (req.body || {}).confirm)); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.post('/api/coins/fields/:id/drop-part', (req, res) => {
+  try {
+    const f = require('./lib/fieldset');
+    const st = require('./lib/fieldrun').fieldStatus();
+    if (st && st.running && st.keeping === String(req.params.id)) {
+      return res.status(400).json({ error: 'that field is building right now — stop it first' });
+    }
+    if (!f.readPart(req.params.id)) return res.status(400).json({ error: `there is nothing saved under ${JSON.stringify(String(req.params.id))}` });
+    f.removePart(req.params.id);
+    return res.json({ dropped: String(req.params.id) });
+  } catch (err) { return res.status(400).json({ error: err.message }); }
+});
+// one pair in full -- the grid, the yardsticks, today's readings, the series
+app.get('/api/coins/fields/:id/pair', (req, res) => {
+  try {
+    const body = JSON.stringify(require('./lib/fieldrun').fieldPair(req.params.id, req.query.key));
+    res.type('json');
+    if (/\bgzip\b/.test(String(req.headers['accept-encoding'] || ''))) {
+      res.set('Content-Encoding', 'gzip');
+      return res.send(require('zlib').gzipSync(body));
+    }
+    return res.send(body);
+  } catch (err) { return res.status(400).json({ error: err.message }); }
+});
 // THE PASSERS' ONE DOOR: the bar, and a row's tick. Both live beside the band.
 app.post('/api/coins/passers', (req, res) => {
   try {

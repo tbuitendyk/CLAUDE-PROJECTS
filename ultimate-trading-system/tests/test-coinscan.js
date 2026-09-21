@@ -1082,7 +1082,7 @@ function anEmptyFilterBoxHidesNothingAtAll() {
 function everyTickOnCoinsBottomAlignsToItsFieldsAndNoButtonSharesTheirRow() {
   const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
   // the Coins screen is its own renderer plus the walk's panels it draws with
-  const marks = ['function drawCoins(', 'function cWalkPanel(', 'function cSplitPanel(', 'function cWalkSetsRow(', 'function cWalkFilterRow('];
+  const marks = ['function drawCoins(', 'function cWalkPanel(', 'function cSplitPanel(', 'function cWalkSetsRow(', 'function cWalkFilterRow(', 'function cFieldPanel(', 'function cFieldSetsRow('];
   let looked = 0;
   for (const mark of marks) {
     const at = src.indexOf(mark);
@@ -1574,7 +1574,7 @@ function everyDivACoinsPanelOpensItAlsoCloses() {
   const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
   const bad = [];
   let checked = 0;
-  for (const name of ['cWalkPanel', 'cCandidatesPanel', 'cPassersBox', 'cPromotedBoxes', 'cSplitPanel', 'cWalkRow', 'cSetsRow']) {
+  for (const name of ['cWalkPanel', 'cCandidatesPanel', 'cPassersBox', 'cPromotedBoxes', 'cSplitPanel', 'cWalkRow', 'cSetsRow', 'cFieldPanel', 'cFieldSetsRow', 'cFieldPairRow', 'cFieldGridHtml', 'cFieldUnfinishedRow']) {
     const at = src.indexOf(`function ${name}(`);
     if (at < 0) continue;
     // to the next function declared at the start of a line

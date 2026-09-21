@@ -39,6 +39,7 @@ const TASKS = {
   hlTrain: require('./halflife').hlTrainTask,
   passTrain: require('./passes').passTrainTask,
   coinWalk: require('./coinscan').walkTask,
+  coinField: require('./field').fieldTask,
   // Introspection, so the nice level above is a testable property rather than
   // a comment nobody can check.
   //

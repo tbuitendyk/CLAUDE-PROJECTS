@@ -662,7 +662,7 @@ module.exports = {
     assert.ok(/\$\{cPassersBox\(pass\)\}\n    \$\{cPromotedBoxes\(groups\)\}/.test(src),
       'with what passed a reading and what was promoted off a walk as two boxes inside it');
     assert.ok(/<div class="cbarwrap">\n  \$\{!recs\.length \?/.test(src), 'the coins are drawn inside the window');
-    assert.ok(/\n  <\/div>\n  <div id="cWalkWrap">\$\{cWalkPanel\(\)\}<\/div>`;/.test(src),
+    assert.ok(/\n  <\/div>\n  <div id="cWalkWrap">\$\{cWalkPanel\(\)\}<\/div>\n  <div id="cFieldWrap">\$\{cFieldPanel\(\)\}<\/div>`;/.test(src),
       'and Walk it forward sits under the window, a short scroll away rather than a mile');
     assert.ok(/<b>coins and shapes that pass<\/b>/.test(src) && /<input id="cPassBar" type="number" min="0" max="\$\{pass\.trials\}"/.test(src), 'the bar box sits in the sentence');
     assert.ok(/no coin and shape passes at this bar/.test(src), 'and an empty list says so');

@@ -8981,6 +8981,13 @@ const cState = (() => {
     wSort: 'asGood', wDir: 'asc',
     wSorts: [{ key: 'asGood', dir: 'asc' }], wF: {}, wFrom: 0, wAuto: false, wName: '', wSetPick: '',
     sCut: '', sMin: 30, sSorts: [{ key: 'latePerTrade', dir: 'desc' }], sF: {}, sAuto: false,
+    // the decision field's dials (FIELD-DESIGN.md section E): the proposed
+    // defaults, every one of them the owner's to change on the screen
+    fWindow: '', fEachOwn: false, fHalf: 500, fFloor: 0.1, fCap: 30, fLeast: 3, fCopies: 50,
+    fBandFrom: 10, fBandTo: 300, fBandStep: 10, fBands: '',
+    fBackFrom: 1, fBackTo: 60, fBackStep: 2, fBacks: '',
+    fCoins: '', fGeom: 'daily-1d', fPermGeom: true, fName: '', fSetPick: '',
+    fSorts: [{ key: 'certainty', dir: 'desc' }], fFrom: 0,
   };
   try { return { ...d, ...(JSON.parse(localStorage.getItem(C_KEY) || 'null') || {}) }; } catch (_) { return d; }
 })();
@@ -9038,6 +9045,12 @@ let cFeeNow = null;
 let cSweepNow = { bands: [], count: 0, most: 200, builtIn: { from: 0, to: 500, step: 10, count: 51 }, inRecords: [] };
 let cWalksNow = [];    // the walk sets on disk, headers only
 let cWalkNextName = '';
+// the decision field's own state on this screen (FIELD-DESIGN.md)
+let cFieldSt = null;      // what the box says the build is doing
+let cFieldPoll = null;
+let cFieldsNow = [];      // the fields on disk, headers only
+let cFieldNextName = '';
+const cFieldGridOpen = new Map();   // the grids fetched and open under their rows
 // THE COLOURS ARE THE OWNER'S: "red, green, and black for sit out". The bar is
 // drawn on a light track so black reads on the dark theme as well as the light
 // one -- black on this page's dark ground is invisible.
@@ -10767,14 +10780,14 @@ function cWalkBind() {
   }
   // THE PAGING BAR IS THE ONE BOARDS DRAWS, so it says the same things; only
   // where a page lands is this screen's. Held on Funnel does exactly this.
-  for (const b of document.querySelectorAll('[data-bpage]')) {
+  for (const b of document.querySelectorAll('[data-bpage]:not([data-bpage^="F:"])')) {
     b.onclick = () => {
       cState.wFrom = Number(b.dataset.bpage.split(':')[1]) || 0;
       cRemember();
       cWalkRepaint(true);
     };
   }
-  for (const el of document.querySelectorAll('[data-bpageto]')) {
+  for (const el of document.querySelectorAll('[data-bpageto]:not([data-bpageto="F"])')) {
     let jumped = false;                 // change fires, the repaint pulls the box out, blur follows: one jump
     const jump = () => {
       if (jumped) return;
@@ -10967,6 +10980,490 @@ function cWalkBind() {
 // THE POLL. It runs only while the walk does, stops the moment the tab is left,
 // and picks a running walk back up on the way in -- the owner went to look at
 // the processor and came back to a panel that had forgotten there was a walk.
+// ---- THE DECISION FIELD ON COINS (FIELD-DESIGN.md section E; owner LOOP NOW!
+// 2026-09-21). Drawn exactly the way the walk section above it is drawn -- the
+// same rows, the same Apply into a list, the same sets row, the same run row,
+// the same poll -- because the owner learns one shape of long job on this
+// screen and not two (RULE ELEVEN clause 5). Every dial is the owner's (RULE
+// FIVE); the engine reads nothing it did not type.
+const C_FIELD_PER = 100;
+const C_FIELD_OF = {
+  coin: (p) => `${p.coin} ${p.geometry}`,
+  geometry: (p) => `${p.geometry} ${p.coin}`,
+  decisions: (p) => p.decisions ?? null,
+  windowDays: (p) => p.windowDays ?? null,
+  fullAt: (p) => p.fullAt ?? null,
+  sign: (p) => (p.state ? p.state.sign : null),
+  agreement: (p) => (p.state ? p.state.agreement : null),
+  size: (p) => (p.state ? p.state.size : null),
+  certainty: (p) => (p.state ? p.state.certainty : null),
+  speaking: (p) => (p.state ? p.state.speaking : null),
+  withEvidence: (p) => (p.state && p.state.pointsWithEvidence ? p.state.pointsWithEvidence.rising + p.state.pointsWithEvidence.falling : null),
+  agrMedian: (p) => (p.range && p.range.agreement ? p.range.agreement.median : null),
+  certMedian: (p) => (p.range && p.range.certainty ? p.range.certainty.median : null),
+  scrambles: (p) => (p.fill ? p.fill.scramblesAsGood : null),
+  slides: (p) => (p.fill ? p.fill.slidesAsGood : null),
+};
+const cFieldTie = (x, y) => String(`${x.coin}${x.geometry}`).localeCompare(`${y.coin}${y.geometry}`);
+function cFieldSortBtn(key, firstDir) { return cSortBtn('fSorts', 'fsort', key, firstDir); }
+const cFieldSign = (s) => (s > 0 ? '<span class="pos">up</span>' : (s < 0 ? '<span class="neg">down</span>' : '<span class="muted">none</span>'));
+const cFieldNum = (v, d = 0) => (v == null || !Number.isFinite(Number(v)) ? '—' : Number(v).toFixed(d));
+const cFieldDay = (ts) => (ts ? new Date(ts).toISOString().slice(0, 10) : '—');
+// from, to and step into a list, as the walk's Apply does; the list is what is built
+function cFieldListFrom(from, to, step) {
+  const a = Number(from); const b = Number(to); const s = Number(step);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || !(s > 0) || b < a) return null;
+  const out = [];
+  for (let x = a; x <= b + 1e-9 && out.length < 2000; x += s) out.push(Number(x.toFixed(6)));
+  return out;
+}
+const cFieldCount = (list) => String(list || '').split(',').filter((x) => x.trim() !== '').length;
+// what the box allows for the window, in words, off the last status
+function cFieldCapWords() {
+  const cap = cFieldSt && cFieldSt.cap;
+  if (!cap || !cap.system) return 'no coin has been read yet, so the most this box allows is not known — press Read these coins first';
+  return `up to ${Number(cap.system.days).toLocaleString()} days on this box — the train stretch of ${cap.system.coin}, whose history starts ${cFieldDay(cap.system.firstTs)}, under 61/13/13/13`;
+}
+function cFieldSetPicked() {
+  const fs = cFieldsNow || [];
+  if (!fs.length) return null;
+  const want = String(cState.fSetPick || '');
+  const open = (cFieldSt && cFieldSt.saved) || null;
+  return fs.find((w) => w.id === want) || (open ? fs.find((w) => w.id === open.id) : null) || fs[0];
+}
+// the dials a set was built under, in words, so nothing stored is left unsaid
+function cFieldDialsWords(d, cap) {
+  if (!d) return '';
+  const bands = d.bands || []; const backs = d.lookbackDays || (d.lookbackHours || []).map((h) => h / 24);
+  const win = d.windowEachOwn ? `each coin's own train stretch${cap && cap.days ? ` (the shortest is ${Number(cap.days).toLocaleString()} days)` : ''}` : `${Number(d.windowDays).toLocaleString()} days`;
+  return `window ${win}, half-life ${d.halfLifeDays} days, weight floor ${d.floor}, `
+    + `${bands.length} sit-out band(s) from ${bands[0]} to ${bands[bands.length - 1]}, ${backs.length} look-back(s) from ${backs[0]} to ${backs[backs.length - 1]} days, `
+    + `evidence cap ${d.evidenceCap}, least evidence ${d.leastEvidence}, ${d.copies} slid copies`;
+}
+function cFieldSetsRow() {
+  const fs = cFieldsNow || [];
+  const open = (cFieldSt && cFieldSt.saved) || null;
+  if (!fs.length) {
+    return '<p class="note">no field is on this box yet &mdash; every finished build writes one, and it appears here to open again.</p>';
+  }
+  const sel = cFieldSetPicked();
+  const mb = (b) => `${(Number(b || 0) / 1048576).toFixed(1)} MB`;
+  const when = (t) => (t ? cWhen(new Date(t).toISOString()) : '?');
+  return `<div class="row">
+      <label class="f" title="every finished build on this box, newest first. Opening one puts its table on this screen exactly as a fresh build would be, with the dials it was built under.">fields on this box<select id="fSet" style="width:18rem">
+        ${fs.map((w) => `<option value="${esc(w.id)}"${sel && sel.id === w.id ? ' selected' : ''}>${esc(w.id)} &middot; ${esc(String(w.name || ''))}</option>`).join('')}
+      </select></label>
+    </div>
+    <div class="row">
+      <button id="fSetOpen">Open this field</button>
+      <button id="fSetName">Rename it</button>
+      <button id="fSetDel" class="danger">Delete it</button>
+      <span id="fSetMsg" class="muted">${open ? esc(`${open.opened ? 'This field is open' : 'Written'}: ${open.id}, ${open.name}`) : ''}</span>
+    </div>
+    ${!sel ? '' : `<p class="note">${esc(sel.id)} holds <b>${Number(sel.pairs || 0).toLocaleString()}</b> coin and shape pair(s),
+      takes ${esc(mb(sel.bytes))} on disk, finished ${esc(when(sel.finishedAt))} UTC, and was built by release ${esc(String(sel.release || '?'))}.
+      ${sel.dials ? `It was built with ${esc(cFieldDialsWords(sel.dials, sel.cap))}.` : ''}</p>`}
+    ${(cFieldSt && cFieldSt.saveError) ? `<p class="note warn">the last build finished but could not be written down: ${esc(String(cFieldSt.saveError))} &mdash; the table above is still good, and it goes when the service restarts.</p>` : ''}`;
+}
+function cFieldUnfinishedRow(st, busy) {
+  const left = (st && st.unfinishedFields) || [];
+  if (!left.length) return '';
+  return left.map((u) => {
+    const got = Number(u.pairs || 0);
+    const of = Number(u.of || 0);
+    const pct = of ? Math.round((got / of) * 100) : null;
+    return `<div class="row" style="margin-top:.4rem">
+      <span class="warn"><b>${esc(u.name || u.id)}</b> did not finish — ${got.toLocaleString()}${of ? ` of ${of.toLocaleString()}` : ''} pair(s) kept${pct == null ? '' : `, ${pct}%`}. It is not a field until it is finished.</span>
+      <button data-fcarry="${esc(u.id)}"${busy ? ' disabled' : ''} title="builds only the pairs this build never got to, and writes the field when they all land. Everything it already did is kept and is not built again.">Carry on with it</button>
+      <button data-fdropcarry="${esc(u.id)}" class="danger"${busy ? ' disabled' : ''} title="throws away what this build saved. There is no undo.">Throw it away</button>
+    </div>`;
+  }).join('');
+}
+function cFieldLine() {
+  const st = cFieldSt;
+  if (!st) return '';
+  if (st.running) {
+    return `building · ${st.done} of ${st.of}${st.workers ? ` · across ${st.workers} worker${st.workers === 1 ? '' : 's'}` : ''}`
+      + `${fCpuWords(st.cpu)}${st.filling ? ` · ${st.filling}` : ''}${st.stopping ? ' · stopping' : ''}`;
+  }
+  if (st.error) return '';
+  if (!st.finishedAt) return '';
+  const n = (st.pairs || []).length;
+  const d = (st.saved && (cFieldsNow || []).find((w) => w.id === st.saved.id) || {}).dials || null;
+  return `${n} pair(s) · finished ${esc(cWhen(new Date(st.finishedAt).toISOString()))} UTC${d ? ` · ${esc(cFieldDialsWords(d, st.capUsed))}` : ''}`;
+}
+function cFieldPairRow(p, shapes) {
+  const label = (k) => (shapes.find((x) => x.key === k) || {}).label || k;
+  const s = p.state || null; const r = p.range || null; const f = p.fill || null;
+  const ev = s && s.pointsWithEvidence ? s.pointsWithEvidence : null;
+  const open = cFieldGridOpen.get(p.key) || null;
+  const setId = cFieldSt && cFieldSt.saved && cFieldSt.saved.id;
+  if (p.error) {
+    return `<tr><td>${esc(p.coin)}</td><td>${esc(label(p.geometry))}</td><td colspan="14"><span class="warn">could not be built: ${esc(p.error)}</span></td></tr>`;
+  }
+  return `<tr>
+      <td>${esc(p.coin)}</td>
+      <td>${esc(label(p.geometry))}${(p.standsFor || []).length ? `<span class="muted"> stands for ${esc(p.standsFor.map(label).join(', '))}</span>` : ''}</td>
+      <td>${Number(p.decisions || 0).toLocaleString()}</td>
+      <td>${Number(p.windowDays || 0).toLocaleString()}${p.capDays && p.capDays !== p.windowDays ? `<span class="muted"> of ${Number(p.capDays).toLocaleString()}</span>` : ''}</td>
+      <td>${p.fullAt ? esc(cFieldDay(p.fullAt)) : '<span class="warn">never</span>'}</td>
+      <td>${s ? cFieldSign(s.sign) : '—'}</td>
+      <td>${s ? cFieldNum(s.agreement, 0) : '—'}</td>
+      <td>${s ? cFieldNum(s.size, 2) : '—'}</td>
+      <td>${s ? cFieldNum(s.certainty, 0) : '—'}</td>
+      <td>${s ? Number(s.speaking).toLocaleString() : '—'}</td>
+      <td>${ev ? `${ev.rising} / ${ev.falling} of ${ev.of}` : '—'}</td>
+      <td>${r && r.agreement ? `${cFieldNum(r.agreement.lowest, 0)} · ${cFieldNum(r.agreement.quarter, 0)} · <b>${cFieldNum(r.agreement.median, 0)}</b> · ${cFieldNum(r.agreement.threeQuarters, 0)} · ${cFieldNum(r.agreement.highest, 0)}` : '—'}</td>
+      <td>${r && r.certainty ? `${cFieldNum(r.certainty.lowest, 0)} · ${cFieldNum(r.certainty.quarter, 0)} · <b>${cFieldNum(r.certainty.median, 0)}</b> · ${cFieldNum(r.certainty.threeQuarters, 0)} · ${cFieldNum(r.certainty.highest, 0)}` : '—'}</td>
+      <td>${f ? `${f.scramblesAsGood == null ? '—' : f.scramblesAsGood} / ${f.slidesAsGood == null ? '—' : f.slidesAsGood} of ${f.copies}` : '—'}</td>
+      <td><button data-fgrid="${esc(p.key)}"${setId ? '' : ' disabled'} title="${setId ? 'opens the grid under this row: every look-back down the side, every sit-out band across the top, and in each square the average outcome after rising and after falling with the evidence behind each' : 'the grid opens once the field is written to disk'}">${open ? 'close the grid' : 'the grid'}</button></td>
+    </tr>${open ? `<tr><td colspan="15">${cFieldGridHtml(open)}</td></tr>` : ''}`;
+}
+// THE GRID ON DEMAND (RULE ELEVEN clause 3: if it is stored, show it): every
+// point's average outcome after rising and after falling, with the evidence
+// behind each, look-backs down the side and bands across the top
+function cFieldGridHtml(got) {
+  const p = got.pair || {}; const d = got.dials || {};
+  const bands = d.bands || []; const backs = (d.lookbackHours || []).map((h) => h / 24);
+  const grid = p.grid || [];
+  const cell = (x) => (x ? `<span class="${x.avg > 0 ? 'pos' : (x.avg < 0 ? 'neg' : 'muted')}">${x.avg > 0 ? '+' : ''}${Number(x.avg).toFixed(2)}</span> <span class="muted">(${Number(x.evidence).toFixed(0)})</span>` : '<span class="muted">·</span>');
+  const today = p.readingToday || [];
+  const yard = (p.state && p.state.yardsticks) || [];
+  return `<p class="note">The grid of <b>${esc(String(p.coin))} ${esc(String(p.geometry))}</b> at its last day, ${esc(cFieldDay(p.lastTs))}: in each square, the average move from entry to exit as a share of price, in percent,
+    <b>after rising</b> over <b>after falling</b>, with the evidence behind each in brackets (one full-weight day is 1). A dot is a point with nothing behind it.
+    Down the side, each look-back's usual move on that day &mdash; the yardstick every band is a share of &mdash; and what it read today.</p>
+    <div class="cwbox"><table class="cgap cpassers"><thead><tr><th>look-back, days</th><th>usual move, %</th><th>today</th>${bands.map((b) => `<th>${esc(String(b))}%</th>`).join('')}</tr></thead>
+    <tbody>${grid.map((row, h) => `<tr><td>${esc(String(backs[h]))}</td><td>${yard[h] == null ? '—' : Number(yard[h]).toFixed(2)}</td><td>${today[h] ? (today[h].sign > 0 ? 'rising' : (today[h].sign < 0 ? 'falling' : 'sit out')) + (today[h].bandsCleared ? ` <span class="muted">to ${esc(String(bands[today[h].bandsCleared - 1]))}%</span>` : '') : '—'}</td>${row.map((x) => `<td>${cell(x.rising)}<br>${cell(x.falling)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
+// one field per hold length, as the walk: the same collapse, said for a build
+function cFieldCollapseLine() {
+  if (!cCollapse || !cCollapse.length) return '';
+  const shapes = cShapesNow || [];
+  const label = (k) => (shapes.find((x) => x.key === k) || {}).label || k;
+  const down = cCollapse.reduce((a, c) => a + ((c.standsFor || []).length), 0);
+  if (!down) return '';
+  const parts = cCollapse.map((c) => {
+    const held = c.forwardHours == null ? '' : ` (held ${c.forwardHours}h)`;
+    return c.standsFor && c.standsFor.length
+      ? `<b>${esc(label(c.walks))}</b>${held} stands for ${c.standsFor.map((k) => esc(label(k))).join(' and ')}`
+      : `<b>${esc(label(c.walks))}</b>${held} stands alone`;
+  });
+  return `<p class="note"><b>At a fixed look-back a chunk shape is only how long the trade is held</b>, and two shapes that hold
+    for the same time are the same trade a day apart, so with permute ticked one field is built for each: ${parts.join('; ')}.
+    A pair the field was built for reads that field, and so does every shape it stands for.</p>`;
+}
+function cFieldPanel() {
+  const st = cFieldSt;
+  const building = !!(st && st.running);
+  const heldBy = !building && cBusyNow ? String(cBusyNow) : null;
+  const off = building || heldBy ? ' disabled' : '';
+  const pairs = (st && !st.running && Array.isArray(st.pairs)) ? st.pairs : null;
+  const shapes = cShapesNow || [];
+  const cap = st && st.cap && st.cap.system ? st.cap.system : null;
+  // the list boxes are filled from their three boxes on the first draw, so the
+  // owner never meets an empty list they did not empty themselves
+  if (!String(cState.fBands || '').trim()) cState.fBands = (cFieldListFrom(cState.fBandFrom, cState.fBandTo, cState.fBandStep) || []).join(',');
+  if (!String(cState.fBacks || '').trim()) cState.fBacks = (cFieldListFrom(cState.fBackFrom, cState.fBackTo, cState.fBackStep) || []).join(',');
+  const windowShown = String(cState.fWindow || '').trim() || (cap ? String(cap.days) : '');
+  const sorted = pairs ? cSortRows(pairs, cState.fSorts, C_FIELD_OF, cFieldTie, null) : [];
+  const from = Math.min(Math.max(0, Number(cState.fFrom) || 0), Math.max(0, (Math.ceil(sorted.length / C_FIELD_PER) - 1) * C_FIELD_PER));
+  const page = sorted.slice(from, from + C_FIELD_PER);
+  return `<div class="panel">
+    <h3 style="margin-top:0">The decision field</h3>
+    <p class="note">For each coin and chunk shape, a grid of points &mdash; one per sit-out band and look-back &mdash; filled one decision a day
+      over a sliding window and read on every decision day. Each point keeps what the coin did, entry to exit, after a <b>rising</b>
+      reading at that band and look-back, and after a <b>falling</b> one; a reading that sat out records nothing. A decision enters the
+      points only once its chunk has closed, so a day's field holds nothing from that day or after it, whatever stretch of history it
+      sits in. On each day the field has a <b>sign</b> (which way the coin tended to go after readings like today's), an <b>agreement</b>
+      (how much of the pull points one way, 0 to 100), and a <b>certainty</b> (how it ranks against slid copies of the coin, 0 to 100).
+      <b>Nothing here trades, refuses or chooses.</b></p>
+    ${cFieldCollapseLine()}
+    <div class="row" style="align-items:flex-end">
+      <label class="f" title="how many days the field remembers. A number of days is held to the most this box allows, which is the train stretch of the shortest history under 61/13/13/13, so the window is always full by the time a test day is traded, whichever window layout a run picks.">window, days<input${off} id="fWindow" type="number" min="1" step="1" value="${esc(windowShown)}" style="width:6rem"${cState.fEachOwn ? ' disabled' : ''}></label>
+      <label class="c" title="ticked, each coin's window is its own train stretch under 61/13/13/13 rather than the one number typed beside it: a coin with eight years of history remembers more than one with six. Unticked, every coin remembers the same number of days."><input${off} id="fEachOwn" type="checkbox"${cState.fEachOwn ? ' checked' : ''}> each coin's own</label>
+      <span class="muted">${esc(cFieldCapWords())}</span>
+    </div>
+    <div class="row" style="align-items:flex-end">
+      <label class="f" title="the age, in days, at which a day's weight in the points has halved. Today is full weight; a day this old counts half; a day twice this old counts a quarter, down to the floor.">half-life, days<input${off} id="fHalf" type="number" min="1" step="1" value="${esc(String(cState.fHalf))}" style="width:6rem"></label>
+      <label class="f" title="the least weight any day in the window keeps, however old. 0.1 means the oldest days count a tenth of today; 1 turns the half-life off and every day counts the same.">weight floor<input${off} id="fFloor" type="number" min="0" max="1" step="0.01" value="${esc(String(cState.fFloor))}" style="width:6rem"></label>
+      <label class="f" title="the most evidence one point may bring to the field, in full-weight days. A point with more evidence than this counts as if it had exactly this much, so no single point can carry the field on its own. 0 turns the cap off.">evidence cap<input${off} id="fCap" type="number" min="0" step="1" value="${esc(String(cState.fCap))}" style="width:6rem"></label>
+      <label class="f" title="the least evidence a point needs before it speaks, in full-weight days. A point with less says nothing on the days its reading would otherwise let it.">least evidence<input${off} id="fLeast" type="number" min="0" step="0.5" value="${esc(String(cState.fLeast))}" style="width:6rem"></label>
+      <label class="f" title="how many slid copies of each coin are rolled beside the real one, for certainty. A slid copy moves every outcome along by the same amount and wraps the tail round to the front, so each outcome keeps its neighbours in time and only which reading it sits under is cut. Certainty on a day is how many of them the real field's size beats. The scrambles count, with the outcomes dealt into a random order instead, is taken once when the window first fills and shown beside it; the gate never reads it. Zero skips both.">slid copies<input${off} id="fCopies" type="number" min="0" max="200" step="1" value="${esc(String(cState.fCopies))}" style="width:6rem"></label>
+    </div>
+    <div class="row" style="align-items:flex-end">
+      <label class="f" title="the lowest sit-out band the grid starts from, as a percentage of each look-back's usual move on the day. Filling these three in and pressing Apply writes a list into the box below; that list is what is built.">lowest sit-out band<input${off} id="fBandFrom" type="number" min="1" step="1" value="${esc(String(cState.fBandFrom))}" style="width:9rem"></label>
+      <label class="f" title="the highest sit-out band the grid reaches.">highest sit-out band<input${off} id="fBandTo" type="number" min="1" step="1" value="${esc(String(cState.fBandTo))}" style="width:9rem"></label>
+      <label class="f" title="how far apart the bands are. Every band in the list below is one column of the grid.">step<input${off} id="fBandStep" type="number" min="1" step="1" value="${esc(String(cState.fBandStep))}" style="width:6rem"></label>
+    </div>
+    <div class="row">
+      <button id="fBandApply"${off}>Apply</button>
+      <span id="fBandOut" class="muted">puts the three boxes above into the list below.</span>
+    </div>
+    <div class="row" style="align-items:flex-end">
+      <label class="f" title="the sit-out bands of the grid, comma separated, and the only thing that decides them. Apply fills it from the three boxes above; after that it is yours to edit — leave gaps, add one on its own, take one out. Each is a percentage of the look-back's usual move: at 100 a decision reads rising or falling only when it moved more than the coin usually does over that look-back.">sit-out bands<input${off} id="fBands" value="${esc(String(cState.fBands))}" style="width:70rem"></label>
+      <span class="muted">${cFieldCount(cState.fBands)} band(s)</span>
+    </div>
+    <div class="row" style="align-items:flex-end">
+      <label class="f" title="the shortest look-back the grid starts from, in days. Filling these three in and pressing Apply writes a list into the box below; that list is what is built.">shortest look-back, days<input${off} id="fBackFrom" type="number" min="1" step="1" value="${esc(String(cState.fBackFrom))}" style="width:9rem"></label>
+      <label class="f" title="the longest look-back the grid reaches, in days.">longest look-back, days<input${off} id="fBackTo" type="number" min="1" step="1" value="${esc(String(cState.fBackTo))}" style="width:9rem"></label>
+      <label class="f" title="how far apart the look-backs are, in days. Every look-back in the list below is one row of the grid.">step, days<input${off} id="fBackStep" type="number" min="1" step="1" value="${esc(String(cState.fBackStep))}" style="width:6rem"></label>
+    </div>
+    <div class="row">
+      <button id="fBackApply"${off}>Apply</button>
+      <span id="fBackOut" class="muted">puts the three boxes above into the list below.</span>
+    </div>
+    <div class="row" style="align-items:flex-end">
+      <label class="f" title="the look-backs of the grid, in days, comma separated, and the only box for them. A look-back decides what is LOOKED AT — the move into the decision over that many days — and the chunk shape decides the trade. Every one ends at the decision, so none can see past it.">look-backs, days<input${off} id="fBacks" value="${esc(String(cState.fBacks))}" style="width:70rem"></label>
+      <span class="muted">${cFieldCount(cState.fBacks)} look-back(s)</span>
+    </div>
+    <div class="row" style="align-items:flex-end">
+      <label class="f" title="which coins to build, comma separated. Blank builds every coin that has been read.">coins to build (blank = all)<input id="fCoins" value="${esc(String(cState.fCoins || ''))}" placeholder="LTCUSDT,BCHUSDT" style="width:14rem"${off}></label>
+      <label class="f" title="the chunk shape to build the field for. The shape decides the trade the outcome is measured over — when it opens and how long it is held.">chunk shape<select id="fGeom"${off}${cState.fPermGeom ? ' disabled' : ''}>${(shapes.length ? shapes : []).map((s) => `<option value="${esc(s.key)}"${cState.fGeom === s.key ? ' selected' : ''}>${esc(s.label)}</option>`).join('')}</select></label>
+      <label class="c" title="ticked, every chunk shape is built rather than the one chosen beside it — one field per hold length, as the walk does, each standing for the shapes that hold for the same time. This is how stage 1 on Sweep runs every shape too."><input${off} id="fPermGeom" type="checkbox"${cState.fPermGeom ? ' checked' : ''}> permute</label>
+    </div>
+    <div class="row">
+      <label class="f" title="the name the field this build writes will carry. Blank takes the greyed name beside it. Every finished build writes a field to disk; a build you Stop does not, but what it saved is kept and can be carried on.">name for the field this build writes<input${off} id="fName" value="${esc(String(cState.fName || ''))}" placeholder="${esc(cFieldNextName)}" maxlength="80" style="width:14rem"></label>
+    </div>
+    ${cFieldSetsRow()}
+    <div class="row">
+      <button id="fRun" class="pri"${off}${heldBy ? ` title="${esc(heldBy)} — one heavy job at a time. The button wakes when it lands."` : ''}>Build the field</button>
+      ${building ? '<button id="fStop">Stop</button>' : ''}
+      <span id="fOut" class="muted">${heldBy ? esc(`${heldBy} — Build the field wakes when it lands`) : cFieldLine()}</span>
+    </div>
+    ${cFieldUnfinishedRow(st, building || !!heldBy)}
+    ${(st && st.error) ? `<p class="note warn">the build stopped: ${esc(st.error)}</p>` : ''}
+    ${!pairs ? (building ? '' : '<p class="note">nothing built yet — press <b>Build the field</b>, or open a field above</p>') : (!pairs.length ? '<p class="note">no coin and shape could be built</p>' : `
+    <div class="cwbox cwtall"><table class="cgap cpassers"><thead><tr>
+      <th title="the coin">coin${cFieldSortBtn('coin', 'asc')}</th>
+      <th title="the chunk shape, and the shapes this field stands for">chunk shape${cFieldSortBtn('geometry', 'asc')}</th>
+      <th title="how many decisions the coin has on this shape, first to last">decisions${cFieldSortBtn('decisions', 'desc')}</th>
+      <th title="how many days this pair's window holds, and beside it the most its own history allows">window, days${cFieldSortBtn('windowDays', 'desc')}</th>
+      <th title="the first day the window was full — from here on the field is complete. never means the history is shorter than the window.">full since${cFieldSortBtn('fullAt', 'asc')}</th>
+      <th title="which way the coin has tended to go after readings like the last day's: up, down, or none when no point spoke or they cancelled">sign today${cFieldSortBtn('sign', 'desc')}</th>
+      <th title="how much of the pull on the last day pointed one way, 0 to 100">agreement today${cFieldSortBtn('agreement', 'desc')}</th>
+      <th title="the pull itself on the last day: the sum over speaking points of average outcome times evidence">size today${cFieldSortBtn('size', 'desc')}</th>
+      <th title="how many of the slid copies the real field's size beat on the last day, as a share of them, 0 to 100">certainty today${cFieldSortBtn('certainty', 'desc')}</th>
+      <th title="how many points spoke on the last day — had a reading that was not sit out and enough evidence">points speaking${cFieldSortBtn('speaking', 'desc')}</th>
+      <th title="how many points carry at least the least evidence after rising, and after falling, of all the points">points with evidence${cFieldSortBtn('withEvidence', 'desc')}</th>
+      <th title="agreement over the days in the window that had a speaking point: lowest, a quarter of the way up, the middle, three quarters, highest. This is the realistic range a minimum on stage 3 has to be read against.">agreement range${cFieldSortBtn('agrMedian', 'desc')}</th>
+      <th title="certainty over the same days: lowest, a quarter, the middle, three quarters, highest">certainty range${cFieldSortBtn('certMedian', 'desc')}</th>
+      <th title="on the day the window first filled: how many scrambled copies (outcomes dealt into a random order) did at least as well as the real field, and how many slid copies did, of the copies built. Low is the result; the scrambles count is taken once and nothing but this column reads it.">scrambles / slides as good at fill${cFieldSortBtn('slides', 'asc')}</th>
+      <th></th>
+    </tr></thead>
+    <tbody>${page.map((p) => cFieldPairRow(p, shapes)).join('')}</tbody></table></div>
+    ${bPager(sorted.length, from, C_FIELD_PER, 'F')}
+    <p class="note">${(cState.fSorts || []).length ? `sorted by ${cSortWords(cState.fSorts, C_FIELD_NAME)}` : 'unsorted'}. Every heading sorts: click to add it, again to flip it, once more to drop it.</p>`)}
+  </div>`;
+}
+const C_FIELD_NAME = {
+  coin: 'coin', geometry: 'chunk shape', decisions: 'decisions', windowDays: 'window, days', fullAt: 'full since',
+  sign: 'sign today', agreement: 'agreement today', size: 'size today', certainty: 'certainty today', speaking: 'points speaking',
+  withEvidence: 'points with evidence', agrMedian: 'agreement range', certMedian: 'certainty range', slides: 'scrambles / slides as good at fill',
+};
+function cFieldRepaint() {
+  const wrap = $('#cFieldWrap');
+  if (!wrap) return;
+  const y = window.scrollY;
+  wrap.innerHTML = cFieldPanel();
+  cFieldBind();
+  window.scrollTo(0, y);
+}
+function cFieldBind() {
+  const say = (t, warn) => { const el = $('#fOut'); if (el) el.innerHTML = warn ? `<span class="warn">${esc(t)}</span>` : esc(t); };
+  const keep = (id, key, num) => {
+    const el = $(`#${id}`);
+    if (!el) return;
+    el.onchange = () => { cState[key] = num ? Number(el.value) : el.value; cRemember(); };
+  };
+  keep('fWindow', 'fWindow', false); keep('fHalf', 'fHalf', true); keep('fFloor', 'fFloor', true); keep('fCap', 'fCap', true);
+  keep('fLeast', 'fLeast', true); keep('fCopies', 'fCopies', true);
+  keep('fBandFrom', 'fBandFrom', true); keep('fBandTo', 'fBandTo', true); keep('fBandStep', 'fBandStep', true); keep('fBands', 'fBands', false);
+  keep('fBackFrom', 'fBackFrom', true); keep('fBackTo', 'fBackTo', true); keep('fBackStep', 'fBackStep', true); keep('fBacks', 'fBacks', false);
+  keep('fCoins', 'fCoins', false); keep('fGeom', 'fGeom', false); keep('fName', 'fName', false);
+  const each = $('#fEachOwn');
+  if (each) each.onchange = () => { cState.fEachOwn = each.checked; cRemember(); cFieldRepaint(); };
+  const perm = $('#fPermGeom');
+  if (perm) perm.onchange = () => { cState.fPermGeom = perm.checked; cRemember(); cFieldRepaint(); };
+  const apply = (btn, from, to, step, into, out, word) => {
+    const b = $(`#${btn}`);
+    if (!b) return;
+    b.onclick = () => {
+      const list = cFieldListFrom(cState[from], cState[to], cState[step]);
+      const o = $(`#${out}`);
+      if (!list) { if (o) o.innerHTML = '<span class="warn">the three boxes need a lowest, a highest at least as big, and a step above zero</span>'; return; }
+      cState[into] = list.join(',');
+      cRemember();
+      cFieldRepaint();
+      const o2 = $(`#${out}`);
+      if (o2) o2.textContent = `${list.length} ${word}(s) put into the list below.`;
+    };
+  };
+  apply('fBandApply', 'fBandFrom', 'fBandTo', 'fBandStep', 'fBands', 'fBandOut', 'band');
+  apply('fBackApply', 'fBackFrom', 'fBackTo', 'fBackStep', 'fBacks', 'fBackOut', 'look-back');
+  const run = $('#fRun');
+  if (run) run.onclick = async () => {
+    run.disabled = true;
+    say('starting…');
+    let ans = null;
+    try {
+      ans = await post('api/coins/field', {
+        windowDays: String(cState.fWindow || '').trim() || (cFieldSt && cFieldSt.cap && cFieldSt.cap.system ? cFieldSt.cap.system.days : ''),
+        windowEachOwn: !!cState.fEachOwn,
+        halfLifeDays: cState.fHalf, floor: cState.fFloor, evidenceCap: cState.fCap, leastEvidence: cState.fLeast, copies: cState.fCopies,
+        bands: String(cState.fBands || ''), lookbackDays: String(cState.fBacks || ''),
+        only: String(cState.fCoins || '').trim() || null,
+        geometry: cState.fGeom, everyShape: !!cState.fPermGeom,
+        name: String(cState.fName || '').trim(),
+      });
+    } catch (err) { say(String(err && err.message ? err.message : err), true); run.disabled = false; return; }
+    if (!ans || ans.started === false) { say((ans && ans.why) || 'it did not start', true); run.disabled = false; return; }
+    cFieldGridOpen.clear();
+    cState.fFrom = 0;
+    cFieldSt = { running: true, done: 0, of: ans.of || 0, workers: ans.workers, cpu: null, pairs: null, finishedAt: null, error: null, stopping: false, cap: cFieldSt && cFieldSt.cap };
+    cFieldRepaint();
+    cFieldTick();
+  };
+  const stop = $('#fStop');
+  if (stop) stop.onclick = async () => {
+    stop.disabled = true;
+    try { await post('api/coins/field/stop', {}); } catch (_) { /* it may have just landed */ }
+    cFieldTick();
+  };
+  for (const b of document.querySelectorAll('[data-fcarry]')) {
+    b.onclick = async () => {
+      b.disabled = true;
+      try {
+        const ans = await post('api/coins/field', { carryOn: b.dataset.fcarry });
+        if (ans && ans.started === false) { b.disabled = false; say(ans.why || 'it did not start', true); return; }
+      } catch (err) { b.disabled = false; say(err.message, true); return; }
+      cFieldGridOpen.clear();
+      cFieldSt = { running: true, done: 0, of: 0, workers: null, cpu: null, pairs: null, finishedAt: null, error: null, stopping: false, cap: cFieldSt && cFieldSt.cap };
+      cFieldRepaint();
+      cFieldTick();
+    };
+  }
+  for (const b of document.querySelectorAll('[data-fdropcarry]')) {
+    b.onclick = async () => {
+      const id = b.dataset.fdropcarry;
+      if (!confirm(`Throw away what "${id}" saved?\n\nThe pairs it already built go with it and cannot be got back except by building again.`)) return;
+      b.disabled = true;
+      try { await post(`api/coins/fields/${encodeURIComponent(id)}/drop-part`, {}); } catch (err) { b.disabled = false; say(err.message, true); return; }
+      cFieldTick();
+    };
+  }
+  // the sets row: open, rename, delete -- the walk's three, on fields
+  const pick = () => { const el = $('#fSet'); return el ? el.value : ''; };
+  const sel = $('#fSet');
+  if (sel) sel.onchange = () => { cState.fSetPick = sel.value; cRemember(); cFieldRepaint(); };
+  const sayS = (t, warn) => { const el = $('#fSetMsg'); if (el) el.innerHTML = warn ? `<b class="warn">${esc(t)}</b>` : esc(t); };
+  const ob = $('#fSetOpen');
+  if (ob) ob.onclick = async () => {
+    const id = pick();
+    if (!id) return;
+    ob.disabled = true; sayS('opening…');
+    try {
+      const got = await post(`api/coins/fields/${encodeURIComponent(id)}/open`, {});
+      sayS(`open: ${got.id} · ${got.name} · ${Number(got.pairs).toLocaleString()} pair(s)`);
+      cFieldGridOpen.clear();
+      cState.fFrom = 0; cRemember();
+      await cFieldTick();
+    } catch (err) { sayS(String(err && err.message ? err.message : err), true); ob.disabled = false; }
+  };
+  const nb = $('#fSetName');
+  if (nb) nb.onclick = async () => {
+    const id = pick();
+    if (!id) return;
+    const was = ((cFieldsNow || []).find((w) => w.id === id) || {}).name || '';
+    const typed = prompt(`A new name for ${id}:`, was);
+    if (typed === null) return;
+    try {
+      const got = await post(`api/coins/fields/${encodeURIComponent(id)}/name`, { name: typed });
+      sayS(`renamed ${got.id} to ${got.name}`);
+      await cFieldTick();
+    } catch (err) { sayS(String(err && err.message ? err.message : err), true); }
+  };
+  const db = $('#fSetDel');
+  if (db) db.onclick = async () => {
+    const id = pick();
+    if (!id) return;
+    let look = null;
+    try { look = await post(`api/coins/fields/${encodeURIComponent(id)}/delete`, {}); }
+    catch (err) { sayS(String(err && err.message ? err.message : err), true); return; }
+    if (!(look && look.preview)) { sayS('nothing was deleted — the box answered strangely', true); return; }
+    const typed = prompt(`Permanently delete ${look.name}?\n\n${Number(look.pairs).toLocaleString()} coin and shape pair(s), ${(look.bytes / 1048576).toFixed(1)} MB on disk\n\nThis cannot be undone and the field would have to be built again.\n\nType the field's id back to confirm:\n${look.confirmWith}`, '');
+    if (typed === null) return;
+    if (String(typed).trim() !== look.confirmWith) { sayS('that is not the field’s id — nothing was deleted', true); return; }
+    try {
+      const done = await post(`api/coins/fields/${encodeURIComponent(id)}/delete`, { confirm: String(typed).trim() });
+      sayS(`deleted ${done.name} — ${(done.bytes / 1048576).toFixed(1)} MB freed`);
+      await cFieldTick();
+    } catch (err) { sayS(String(err && err.message ? err.message : err), true); }
+  };
+  // the grid, fetched once per pair and kept until the panel is repainted for a new build
+  for (const b of document.querySelectorAll('[data-fgrid]')) {
+    b.onclick = async () => {
+      const key = b.dataset.fgrid;
+      if (cFieldGridOpen.has(key)) { cFieldGridOpen.delete(key); cFieldRepaint(); return; }
+      const id = cFieldSt && cFieldSt.saved && cFieldSt.saved.id;
+      if (!id) return;
+      b.disabled = true; b.textContent = 'opening…';
+      try {
+        const got = await apiOr(`api/coins/fields/${encodeURIComponent(id)}/pair?key=${encodeURIComponent(key)}`, null);
+        if (!got) throw new Error('the grid could not be read');
+        cFieldGridOpen.set(key, got);
+      } catch (err) { say(err.message, true); b.disabled = false; b.textContent = 'the grid'; return; }
+      cFieldRepaint();
+    };
+  }
+  for (const b of document.querySelectorAll('[data-fsort]')) {
+    b.onclick = () => {
+      cState.fFrom = 0;
+      cCycleSort('fSorts', b.dataset.fsort, b.dataset.sdir === 'desc' ? 'desc' : 'asc');
+      cFieldRepaint();
+    };
+  }
+  for (const b of document.querySelectorAll('[data-bpage^="F:"]')) {
+    b.onclick = () => { cState.fFrom = Number(b.dataset.bpage.split(':')[1]) || 0; cRemember(); cFieldRepaint(); };
+  }
+  for (const el of document.querySelectorAll('[data-bpageto="F"]')) {
+    let jumped = false;
+    const jump = () => {
+      if (jumped) return;
+      const pages = Math.max(1, Number(el.dataset.bpages) || 1);
+      const per = Math.max(1, Number(el.dataset.bper) || C_FIELD_PER);
+      const want = Math.round(Number(el.value));
+      if (!Number.isFinite(want)) { el.value = String(Math.floor(Number(el.defaultValue) || 1)); return; }
+      const page = Math.min(pages, Math.max(1, want));
+      if (page === Number(el.defaultValue)) { el.value = String(page); return; }
+      jumped = true;
+      cState.fFrom = (page - 1) * per;
+      cRemember();
+      cFieldRepaint();
+    };
+    el.onchange = jump;
+    el.onkeydown = (e) => { if (e.key === 'Enter') jump(); };
+  }
+}
+async function cFieldTick() {
+  if (cFieldPoll) { clearTimeout(cFieldPoll); cFieldPoll = null; }
+  if (tab !== 'coins') return;
+  let st = null;
+  try { st = await apiOr('api/coins/field', null); } catch (_) { st = null; }
+  if (tab !== 'coins') return;
+  if (!st) { cFieldPoll = setTimeout(cFieldTick, 2000); return; }
+  const wasRunning = !!(cFieldSt && cFieldSt.running);
+  cFieldSt = st;
+  if (st && Array.isArray(st.fields)) cFieldsNow = st.fields;
+  if (st && st.nextName) cFieldNextName = st.nextName;
+  if (st.running) {
+    const out = $('#fOut');
+    if (out && !wasRunning) cFieldRepaint(); else if (out) out.textContent = cFieldLine(); else cFieldRepaint();
+    cFieldPoll = setTimeout(cFieldTick, 1000);
+    return;
+  }
+  cFieldRepaint();
+}
+
 async function cWalkTick() {
   if (cWalkPoll) { clearTimeout(cWalkPoll); cWalkPoll = null; }
   if (tab !== 'coins') return;
@@ -11295,7 +11792,8 @@ async function drawCoins() {
     </div>`;
   }).join('')}
   </div>
-  <div id="cWalkWrap">${cWalkPanel()}</div>`;
+  <div id="cWalkWrap">${cWalkPanel()}</div>
+  <div id="cFieldWrap">${cFieldPanel()}</div>`;
 
   cLastRecs = recs;
   cPaintBars(recs);
@@ -11476,6 +11974,8 @@ async function drawCoins() {
   }
   cWalkBind();
   cWalkTick();
+  cFieldBind();
+  cFieldTick();
   // THE STOP ANSWERS, and its answer is shown. The route replies with a reason
   // when there is nothing to stop; thrown away, pressing it did and said nothing.
   if ($('#cStop')) {

@@ -347,6 +347,12 @@ function normalise(body = {}) {
 function coinsOwnBusy() {
   if (run && !run.finishedAt && !run.error) return 'a Coins reading is going';
   if (walkRun && walkRun.running) return 'Walk it forward is going';
+  // and the field build (FIELD-DESIGN.md), a third heavy job on this screen,
+  // named here so every refusal built on stageBusy() covers it too
+  {
+    const f = (() => { try { return require('./fieldrun').fieldOwnBusy(); } catch (_) { return null; } })();
+    if (f) return f;
+  }
   return null;
 }
 

@@ -201,12 +201,24 @@ with no evidence on that side says nothing.
 ### How the points are brought together: the field
 
 The **field** for the day is the sum over every speaking point of
-`sign(average) × weight`, where the weight is the evidence behind the point
+`average × weight`, where the average is the point's weighted average
+outcome after today's reading and the weight is the evidence behind the point
 (PROPOSED: the count, capped so no single point can carry the field; the cap
 is a dial). Its sign is the field's **sign** — the direction the coin has
 tended to go after readings like today's, across every band and look-back at
-once. Its size, against the largest it could be if every speaking point
-agreed, is the field's **agreement**: a share from 0 to 100.
+once. Its size is the pull itself. Its size against the largest it could be
+if every speaking point pulled the same way — |Σ average × weight| over
+Σ |average| × weight — is the field's **agreement**: a share from 0 to 100.
+
+**Changed in the loop (2026-09-21, LOOP-FIELD.md).** As first written this
+summed `sign(average) × weight`. The first fabricated coin showed why that
+cannot work: the bands at one look-back nest, so their points agree with each
+other whether or not they know anything, and a slid copy with no signal is
+exactly as unanimous as a coin whose outcome follows its move perfectly. The
+signal lives in how far the average sits from zero, so that is what a point
+brings. Certainty (below) ranks the field's size, not its agreement, for the
+same reason. The owner's words in section B are untouched by this; it is a
+PROPOSED line and theirs to reverse.
 
 A field of zero — no point speaking, or the points cancelling — is a day the
 field has nothing to say. That is distinct from a field that says *against*.
@@ -232,6 +244,15 @@ alike.
 **Which of the two the gate reads — agreement or certainty — is a dial**, not
 a decision made here. Both are recorded on every trade (section F) so the
 owner can see which one separates good trades from bad before choosing.
+
+**Slides only, decided (owner, 2026-09-21, after the difference was
+explained).** The gate's certainty is ranked against slid copies only. A
+scramble deals the outcomes into a random order and breaks up the coin's own
+runs, so on a trending coin the real field beats its scrambles even when the
+readings mean nothing; a slide keeps the runs and moves only which reading
+each outcome sits under. The scrambles count is taken once, when the field
+first fills, and shown on the state beside the slides count the way Coins
+shows `scrambles as good` beside `slides as good`; the gate never reads it.
 
 ### How the field gates the members (point 11, answer 4)
 
@@ -285,8 +306,27 @@ Point 9 is what makes it complete: the window may be **no longer than the
 train stretch**, so on the first test day the window has been full for the
 whole of train. FOUND (`lib/stagework.js`, `windowLayout` `reserve61` /
 `split70`; Coins offers `61/13/13/13 (sealed exam)` and `70/15/15`): the
-train stretch is 61% or 70% of loaded history, so the cap is read from the
-layout at build time and stated on the screen, never typed as a number.
+split is by chunk count of the loaded range, and 61% is the smaller train
+share of the two layouts, so a cap at 61% of a coin's history keeps the
+window full at test start under either layout.
+
+**The cap, decided (owner, 2026-09-21).** The window dial takes two forms:
+
+- **a number of days**, held to **one system maximum** worked out from the
+  shortest history on the server — 61% of its days, which is 1,335 today
+  (the shortest current coin starts in late September 2020). A number above
+  the maximum is refused in words with the maximum printed beside the box,
+  never silently cut. The owner's example of 1,500 is above it on today's
+  data, and they know it.
+- **`max`** (the owner's word; it becomes a screen word only when rendered
+  and deployed), meaning what is available: each coin gets 61% of its own
+  history, so a coin from January 2018 gets about 1,943 days and the shortest
+  gets 1,335.
+
+Either way the field records, per coin and shape, the window it was actually
+built with and whether it was full on the first test day, so a stage 3 set can
+say which it read. The maximum is shown on the screen with the coin that sets
+it and that coin's first candle date (RULE ELEVEN clause 3).
 
 ## E. The dials, and where they live (answer 5)
 
@@ -297,7 +337,7 @@ rendered and deployed (RULE ONE-A).
 
 | dial | PROPOSED default | what it does |
 |---|---|---|
-| window, days | 1,500, capped at the train stretch | how many days the field remembers (points 1, 6, 9) |
+| window, days | 1,335 today (the system maximum), or `max` | how many days the field remembers: a number is held to the system maximum, `max` gives each coin 61% of its own history (points 1, 6, 9; section D) |
 | half-life, days | 500 | age at which a day's weight has halved (point 7) |
 | weight floor | 0.10 | the least weight any day in the window keeps (point 7: "some pre-stated weighting") |
 | sit-out bands | 30 from 10% to 300% of the usual move | the columns of the grid; PROPOSED as from/to/count with `Apply` into an editable list, the shape RULE ELEVEN clause 2 fixed on Coins |
@@ -328,21 +368,31 @@ the same thing on both — which is exactly what `sized` does today with
 
 ### The new section on Coins (answer 5, and the owner's note on the build)
 
-A new section on the Coins screen, below `Walk it forward` (its name is not
-chosen here; it will be read off the screen once it exists). It holds:
+A new section on the Coins screen, below `Walk it forward`. **Names and
+layout (owner order, 2026-09-21):** *"make rational, logical choices. ugly
+mode zero ... Everything lined up. Map setups to existing setups and GUIs.
+Make everything consistent ... Don't be sloppy."* So every control here copies
+the shape of the control that does the same job on the walk section it sits
+under, and where the walk has none, the Sweep stage 1 form. The captions in
+the table above are the proposed names. None is a screen word until it is
+rendered and deployed (RULE ONE-A). It holds:
 
 - **The dials** above, in the house shape: captions over boxes, ticks
   bottom-aligned to the fields beside them, each button in a row of its own
   (RULE FOUR, FOUR-A, ELEVEN).
 - **The build launcher.** Either **one set-up** — one coin and one chunk
-  shape — or **the Sweep stage 1 shape**: FOUND (Sweep, stage 1) the boxes
-  `trade coins (blank = all` … `downloaded)` and a `chunk shape` choice that
-  offers each shape by name and `all of them`. The launcher takes the same
-  two choices, so blank coins and `all of them` builds every coin and shape
-  on the box, one task per pair on the worker pool, the way `Walk it forward`
-  already runs — FOUND (`lib/coinsrun.js`, `walkTasksFor` on the pool; the
-  Coins screen prints `coins to walk (blank = all)` and
-  `shape is walked for each:`).
+  shape — or every coin and every shape, chosen the way stage 1 on Sweep
+  chooses: FOUND (`public/construct.js`, the stage 1 form) a coins box
+  `trade coins (blank = all` … `downloaded)`, a `chunk shape` choice offering
+  one shape, and a `permute` tick beside it that runs every shape. (This
+  record first said the choice offered `all of them`; it does not — `all of
+  them` is a `quorum bar` value. Corrected 2026-09-21.) On Coins the same
+  job already has a shape too, in the walk section this one sits under:
+  `coins to walk (blank = all)`. The launcher copies that: a coins box, blank
+  for all; a `chunk shape` choice with a `permute` tick beside it for every
+  shape. Blank coins with `permute` builds every coin and shape on the box,
+  one task per pair on the worker pool, the way `Walk it forward` already
+  runs — FOUND (`lib/coinsrun.js`, `walkTasksFor` on the pool).
 - **Progress and stop** while it builds, and a **name** for what it writes,
   the way the walk has `name for the set this walk writes` and `Stop`.
 - **State, once built** (RULE ELEVEN clause 3 — if it is stored, show it),
@@ -495,21 +545,16 @@ first and costed before it is asked.
 
 ## K. Not verified
 
-- How long the train stretch is in days on the box today, under each layout
-  — the cap in point 9 is read from it at build time and I have not
-  computed it here.
-- Whether one task per coin and shape over 1,500 days by 900 points, with 50
-  slid copies rolled beside it, fits the box's pool in a time the owner would
-  wait for. 900 points × 4 numbers × 51 copies is small in memory; the time is
-  in the 1,500 daily passes, and I have not measured one.
 - Whether the live path's closed history reaches far enough back for a window
-  of 1,500 days on every coin a setup trades.
-- Whether the certainty rank should be against slid copies only or slid and
-  dealt both, the way `Walk it forward` shows both. Section D proposes slid
-  daily and dealt at fill; the owner has not chosen.
-- The name of the new section and of every control in it. Nothing here is a
-  screen word until it is rendered, deployed, fingerprinted and generated
-  into SCREEN-WORDS.md (RULE ONE-A).
+  of 1,335 days on every coin a setup trades.
+- The names in section E are proposed; each becomes a screen word only when
+  it is rendered, deployed, fingerprinted and generated into SCREEN-WORDS.md
+  (RULE ONE-A).
+
+Settled on 2026-09-21 and moved out of this list: the train stretch in days
+(section D, the cap); the build time (the owner: *"Don't worry about the time
+involved on the field setup ... Doesn't need to be measured in advance"*);
+the certainty rank (section D, slides only).
 
 ## L. One false start, mine
 
@@ -530,3 +575,13 @@ And one word: I called the three readings of a window "colours" while
 explaining this. The owner: *"what are you talking about colours for?"* The
 readings are `rising`, `falling` and `sit out`, which is what the screen
 prints; the bars on Coins are coloured, the readings are not.
+
+## M. The loop (owner, 2026-09-21)
+
+After the four decisions above were given, the owner wrote: **"GO NOW!  LOOP
+NOW!   keep going until done including deploy"**. Under RULE SIX that names
+this body of work: the record brought up to date (this section's commit),
+then section I steps 1 to 4 and 6, built, tested and deployed in that order,
+and step 5 handed to the owner to run. Step 7, the retirements, stays with
+the owner as section I says. The running record of the loop — decisions,
+parked items, what reached the box — is `LOOP-FIELD.md`.

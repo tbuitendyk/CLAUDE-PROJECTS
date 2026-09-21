@@ -39,6 +39,7 @@ const INLINE = {
   hlTrain: require('./halflife').hlTrainTask,
   passTrain: require('./passes').passTrainTask,
   coinWalk: require('./coinscan').walkTask,
+  coinField: require('./field').fieldTask,
   ping: async () => ({ priority: os.getPriority(), pid: process.pid, ...threadNice() }),
 };
 
