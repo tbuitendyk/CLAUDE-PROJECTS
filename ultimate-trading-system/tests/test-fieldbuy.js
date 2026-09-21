@@ -160,6 +160,33 @@ module.exports.theBuyIsFixedAsPressedAndItsPriceMovesUntilTheExitCandleIsOnFile 
   cleanup();
 };
 
+// UPDATE THE PRICING (owner, 2026-09-21): the hours are fetched for the coins
+// whose trade still runs, never for a closed one, and the seven are read again
+module.exports.thePricingIsUpdatedForWhatStillRunsAndNothingElse = async function () {
+  cleanup();
+  const id = aField();
+  const buy = fb.buyField(id, { now: 1_800_000_000_000 });
+  made.buys.push(buy.id);
+  const NOW = Date.UTC(2026, 8, 21, 6, 35);
+  // close one trade first, so it is left alone by the update
+  binance.writeDayFile(COINS[0], Date.UTC(2026, 8, 22), dayRows(200, Date.UTC(2026, 8, 22), 0, 23));
+  await fb.buyNow(buy.id, { now: NOW });
+  const asked = [];
+  const got = await fb.updateBuy(buy.id, { now: NOW, fetchRecent: async (coin) => { asked.push(coin); if (coin === COINS[1]) binance.writeDayFile(COINS[1], Date.UTC(2026, 8, 21), dayRows(101, Date.UTC(2026, 8, 21), 0, 9)); } });
+  const runningCoins = buy.rows.map((r) => r.coin).filter((c) => c !== COINS[0]);
+  assert.deepStrictEqual(asked.sort(), runningCoins.slice().sort(), 'every running coin is fetched once, the closed one never');
+  assert.deepStrictEqual({ coins: got.updated.coins, failed: got.updated.failed, at: got.updated.at }, { coins: runningCoins.length, failed: [], at: NOW });
+  const r = got.rows.find((x) => x.coin === COINS[1]);
+  assert.deepStrictEqual({ closed: r.closed, price: r.price, priceTs: r.priceTs }, { closed: false, price: 110.25, priceTs: Date.UTC(2026, 8, 21, 9) }, 'the newest closed hour the fetch brought');
+  assert.strictEqual(got.rows.find((x) => x.coin === COINS[0]).closed, true, 'the closed trade is untouched');
+  // a coin the mirror will not answer for is named, and the rest are priced
+  const again = await fb.updateBuy(buy.id, { now: NOW, fetchRecent: async (coin) => { if (coin === COINS[2]) throw new Error('mirror down'); } });
+  assert.deepStrictEqual(again.updated.failed, [`${COINS[2]}: mirror down`]);
+  // no fetch allowed: refused in words, nothing changes
+  await assert.rejects(fb.updateBuy(buy.id, { now: NOW }), /the pricing cannot be updated while a data job holds the cache/);
+  cleanup();
+};
+
 module.exports.aWeeklyShapeIsPricedByItsRunsAndAnInventedCandleIsNeverAPrice = function () {
   const { TUE_OFFSET_H, THU_OFFSET_H, LABEL_HOURS } = require('../lib/dataset');
   const dec = Date.UTC(2026, 8, 22);                     // a Tuesday 00:00: the weekly decision instant
@@ -225,6 +252,8 @@ module.exports.theScreenHasTheButtonThePickerAndTheTableAboveThePairs = function
   assert.ok(ui.includes("  return list.length ? list[0].id : null;   // the open field's own buy, its newest press"), 'the field\'s newest press is the one shown');
   assert.ok(block.includes("<button id=\"fBuy\" class=\"pri\"${off || has ? ' disabled' : ''}"), 'one field, one test: the button ghosts once the field has its seven (owner, 2026-09-21)');
   assert.ok(block.includes("has its seven — a new day needs Build the field again"), 'and the line beside it says why');
+  assert.ok(block.includes("  const running = !!(shown && (shown.rows || []).some((r) => !r.closed));") && block.includes("<button id=\"fBuyUpdate\"${running ? '' : ' disabled'}") && block.includes('>Update the pricing</button>'), 'Update the pricing beside Buy the field, live while a trade of the seven still runs (owner, 2026-09-21)');
+  assert.ok(ui.includes("      const got = await post(`api/coins/buys/${encodeURIComponent(id)}/update`, {});"), 'the press goes through the service');
   assert.ok(block.includes('<div class="row" style="margin-top:1rem">\n      <button id="fBuy" class="pri"'), 'space between Build the field and Buy the field');
   const table = ui.slice(ui.indexOf('function cFieldBuyTable(b) {'), ui.indexOf('\n}\n', ui.indexOf('function cFieldBuyTable(b) {')));
   const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
@@ -236,11 +265,11 @@ module.exports.theScreenHasTheButtonThePickerAndTheTableAboveThePairs = function
   assert.ok(table.includes('<div class="cwbox" style="margin-bottom:1.6rem"><table class="cgap cpassers">'), 'room under the seven (owner, 2026-09-21)');
   assert.ok(panel.includes('<hr style="border:0;border-top:1px solid var(--line);margin:1.8rem 0 1.2rem">\n    <p class="note"><b>Every pair of '), 'and a rule with a heading line before the table of pairs: visual separation (owner, 2026-09-21)');
   // the routes and the help
-  for (const r of ["app.post('/api/coins/fields/:id/buy'", "app.get('/api/coins/buys'", "app.get('/api/coins/buys/:id'", "app.post('/api/coins/field/close'"]) assert.ok(server.includes(r), r);
+  for (const r of ["app.post('/api/coins/fields/:id/buy'", "app.get('/api/coins/buys'", "app.get('/api/coins/buys/:id'", "app.post('/api/coins/buys/:id/update'", "app.post('/api/coins/field/close'"]) assert.ok(server.includes(r), r);
   assert.ok(!server.includes("/api/coins/buys/:id/delete"), 'no delete door for a buy: a press replaces it, and the field takes it along');
   assert.ok(server.includes("    if (got && got.deleted) got.buysGone = require('./lib/fieldbuy').deleteBuysOf(req.params.id);"), 'a deleted field takes its buy with it');
   const help = fs.readFileSync(path.join(ROOT, 'public', 'help-content.js'), 'utf8');
-  for (const k of ['fBuy:', 'fSetClose:']) assert.ok(help.includes(`      ${k} '`), `help for ${k}`);
+  for (const k of ['fBuy:', 'fBuyUpdate:', 'fSetClose:']) assert.ok(help.includes(`      ${k} '`), `help for ${k}`);
   assert.ok(!help.includes('fBuyOpen') && !help.includes('fBuyPick') && !help.includes('fBuyDel'), 'nothing described that is not there');
 };
 

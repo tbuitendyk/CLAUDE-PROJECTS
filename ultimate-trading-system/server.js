@@ -535,6 +535,13 @@ app.get('/api/coins/buys', (req, res) => {
   try { return res.json({ buys: require('./lib/fieldbuy').listBuys() }); }
   catch (err) { return res.status(400).json({ error: err.message }); }
 });
+app.post('/api/coins/buys/:id/update', async (req, res) => {
+  try {
+    // the pricing of what still runs, brought to the newest closed hour; refused in words while a data job holds the cache
+    const fetchRecent = require('./lib/jobs').anyJobRunning() ? null : (coin) => require('./lib/datarefresh').fillRecent(coin);
+    return res.json(await require('./lib/fieldbuy').updateBuy(req.params.id, { fetchRecent }));
+  } catch (err) { return res.status(400).json({ error: err.message }); }
+});
 app.get('/api/coins/buys/:id', async (req, res) => {
   try {
     // a selection whose closing has passed is closed at its closing price; the

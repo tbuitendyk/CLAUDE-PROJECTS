@@ -223,4 +223,24 @@ async function buyNow(id, { now = Date.now(), fetchRecent = null } = {}) {
   return { ...doc, rows };
 }
 
-module.exports = { DIR, V, TAKE, RULE, tradeOf, priceOf, candlesBetween, candidatesOf, buyField, readBuy, listBuys, buyOf, deleteBuy, deleteBuysOf, buyNow };
+// UPDATE THE PRICING (owner, 2026-09-21: "on any test table that has
+// positions in a running state, you have to provide a non ghosted button ...
+// to update the pricing"): the hours since the last whole day are fetched
+// for every coin whose trade is still running, the way Refresh to latest
+// fetches them, and the seven are read again -- a closing that has passed
+// closes, a running trade shows the newest closed hour. Nothing is fetched
+// for a trade already closed.
+async function updateBuy(id, { now = Date.now(), fetchRecent = null } = {}) {
+  const doc = readBuy(id);
+  if (!doc) throw new Error(`there is no buy ${JSON.stringify(String(id))} on this box`);
+  if (!fetchRecent) throw new Error('the pricing cannot be updated while a data job holds the cache — try again when it lands');
+  const coins = [...new Set((doc.rows || []).filter((r) => r.closedPrice == null).map((r) => r.coin))];
+  const failed = [];
+  for (const coin of coins) {
+    try { await fetchRecent(coin); } catch (err) { failed.push(`${coin}: ${err.message}`); }
+  }
+  const out = await buyNow(id, { now, fetchRecent });
+  return { ...out, updated: { at: now, coins: coins.length, failed } };
+}
+
+module.exports = { DIR, V, TAKE, RULE, tradeOf, priceOf, candlesBetween, candidatesOf, buyField, readBuy, listBuys, buyOf, deleteBuy, deleteBuysOf, buyNow, updateBuy };

@@ -11329,8 +11329,10 @@ function cFieldBuyBlock(st, off) {
   const when = (t) => (t ? cWhen(new Date(t).toISOString()) : '?');
   const shown = cBuyOpen && picked && cBuyOpen.id === picked ? cBuyOpen : null;
   const has = !!buys.length;
+  const running = !!(shown && (shown.rows || []).some((r) => !r.closed));
   return `<div class="row" style="margin-top:1rem">
       <button id="fBuy" class="pri"${off || has ? ' disabled' : ''} title="${has ? 'this field has its seven: one field, one test. A new day needs a refresh on Data and Build the field again, and the new field has its own press.' : 'reads every pair of the field on this screen and writes down its seven best candidates for their newest decision, with the price each trade opened at. One field, one test. Nothing is traded.'}">Buy the field</button>
+      <button id="fBuyUpdate"${running ? '' : ' disabled'} title="${running ? 'fetches the newest closed hour for every trade of the seven that is still running, closes any whose closing has passed, and reads the table again' : 'live while a trade of the seven is still running'}">Update the pricing</button>
       <span id="fBuyOut" class="muted">${esc(has ? `${saved.id} · ${saved.name} has its seven — a new day needs Build the field again` : `reads every pair of ${saved.id} · ${saved.name} and writes down its seven best for their newest decision`)}</span>
     </div>
     ${buys.length && shown ? cFieldBuyTable(shown) : `<p class="note">no buy of ${esc(saved.id)} yet &mdash; press <b>Buy the field</b> to write one down</p>`}`;
@@ -11513,6 +11515,23 @@ function cFieldBind() {
   apply('fBandApply', 'fBandFrom', 'fBandTo', 'fBandStep', 'fBands', 'fBandOut', 'band');
   apply('fBackApply', 'fBackFrom', 'fBackTo', 'fBackStep', 'fBacks', 'fBackOut', 'look-back');
   // BUY THE FIELD: the press, the picker, the re-read, the delete
+  // UPDATE THE PRICING: the newest closed hour for every trade still running
+  const upd = $('#fBuyUpdate');
+  if (upd) upd.onclick = async () => {
+    const id = cBuyPicked();
+    if (!id) return;
+    upd.disabled = true;
+    const o = $('#fBuyOut'); if (o) o.textContent = 'fetching the newest hours…';
+    try {
+      const got = await post(`api/coins/buys/${encodeURIComponent(id)}/update`, {});
+      cBuyOpen = got;
+      cFieldRepaint();
+      const o2 = $('#fBuyOut');
+      if (o2) o2.innerHTML = got.updated && got.updated.failed && got.updated.failed.length
+        ? `<span class="warn">${esc(`pricing updated ${cWhen(new Date(got.updated.at).toISOString())} UTC, but not for: ${got.updated.failed.join(' · ')}`)}</span>`
+        : esc(`pricing updated ${cWhen(new Date((got.updated || {}).at || Date.now()).toISOString())} UTC`);
+    } catch (err) { if (o) o.innerHTML = `<span class="warn">${esc(String(err && err.message ? err.message : err))}</span>`; upd.disabled = false; }
+  };
   const buy = $('#fBuy');
   if (buy) buy.onclick = async () => {
     const id = cFieldSt && cFieldSt.saved && cFieldSt.saved.id;
