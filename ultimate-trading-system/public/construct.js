@@ -10987,6 +10987,8 @@ function cWalkBind() {
 // screen and not two (RULE ELEVEN clause 5). Every dial is the owner's (RULE
 // FIVE); the engine reads nothing it did not type.
 const C_FIELD_PER = 100;
+const C_FIELD_NONE_YET = '<p class="note">nothing built yet — press <b>Build the field</b>, or open a field above</p>';
+const C_FIELD_NO_PAIRS = '<p class="note">no coin and shape could be built</p>';
 const C_FIELD_OF = {
   coin: (p) => `${p.coin} ${p.geometry}`,
   geometry: (p) => `${p.geometry} ${p.coin}`,
@@ -11006,7 +11008,11 @@ const C_FIELD_OF = {
 };
 const cFieldTie = (x, y) => String(`${x.coin}${x.geometry}`).localeCompare(`${y.coin}${y.geometry}`);
 function cFieldSortBtn(key, firstDir) { return cSortBtn('fSorts', 'fsort', key, firstDir); }
-const cFieldSign = (s) => (s > 0 ? '<span class="pos">up</span>' : (s < 0 ? '<span class="neg">down</span>' : '<span class="muted">none</span>'));
+function cFieldSign(s) {
+  if (s > 0) return '<span class="pos">up</span>';
+  if (s < 0) return '<span class="neg">down</span>';
+  return '<span class="muted">none</span>';
+}
 const cFieldNum = (v, d = 0) => (v == null || !Number.isFinite(Number(v)) ? '—' : Number(v).toFixed(d));
 const cFieldDay = (ts) => (ts ? new Date(ts).toISOString().slice(0, 10) : '—');
 // from, to and step into a list, as the walk's Apply does; the list is what is built
@@ -11126,14 +11132,24 @@ function cFieldGridHtml(got) {
   const p = got.pair || {}; const d = got.dials || {};
   const bands = d.bands || []; const backs = (d.lookbackHours || []).map((h) => h / 24);
   const grid = p.grid || [];
-  const cell = (x) => (x ? `<span class="${x.avg > 0 ? 'pos' : (x.avg < 0 ? 'neg' : 'muted')}">${x.avg > 0 ? '+' : ''}${Number(x.avg).toFixed(2)}</span> <span class="muted">(${Number(x.evidence).toFixed(0)})</span>` : '<span class="muted">·</span>');
+  const cell = (x) => {
+    if (!x) return '<span class="muted">·</span>';
+    const cls = x.avg > 0 ? 'pos' : (x.avg < 0 ? 'neg' : 'muted');
+    const num = `${x.avg > 0 ? '+' : ''}${Number(x.avg).toFixed(2)}`;
+    return `<span class="${cls}">${num}</span> <span class="muted">(${Number(x.evidence).toFixed(0)})</span>`;
+  };
+  const readWord = (t, bands) => {
+    if (!t) return '—';
+    const word = t.sign > 0 ? 'rising' : (t.sign < 0 ? 'falling' : 'sit out');
+    return t.bandsCleared ? `${word} <span class="muted">to ${esc(String(bands[t.bandsCleared - 1]))}%</span>` : word;
+  };
   const today = p.readingToday || [];
   const yard = (p.state && p.state.yardsticks) || [];
   return `<p class="note">The grid of <b>${esc(String(p.coin))} ${esc(String(p.geometry))}</b> at its last day, ${esc(cFieldDay(p.lastTs))}: in each square, the average move from entry to exit as a share of price, in percent,
     <b>after rising</b> over <b>after falling</b>, with the evidence behind each in brackets (one full-weight day is 1). A dot is a point with nothing behind it.
     Down the side, each look-back's usual move on that day &mdash; the yardstick every band is a share of &mdash; and what it read today.</p>
     <div class="cwbox"><table class="cgap cpassers"><thead><tr><th title="the look-back this row of points reads, in days: the move into the decision over that many days">look-back, days</th><th title="this look-back's usual move on the last day, in percent: the weighted median of its moves over the window, which every sit-out band is a share of">usual move, %</th><th title="what this look-back read on the last day &mdash; rising, falling or sit out &mdash; and the widest band it cleared">today</th>${bands.map((b) => `<th title="the sit-out band this column of points reads, as a percentage of the look-back's usual move">${esc(String(b))}%</th>`).join('')}</tr></thead>
-    <tbody>${grid.map((row, h) => `<tr><td>${esc(String(backs[h]))}</td><td>${yard[h] == null ? '—' : Number(yard[h]).toFixed(2)}</td><td>${today[h] ? (today[h].sign > 0 ? 'rising' : (today[h].sign < 0 ? 'falling' : 'sit out')) + (today[h].bandsCleared ? ` <span class="muted">to ${esc(String(bands[today[h].bandsCleared - 1]))}%</span>` : '') : '—'}</td>${row.map((x) => `<td>${cell(x.rising)}<br>${cell(x.falling)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    <tbody>${grid.map((row, h) => `<tr><td>${esc(String(backs[h]))}</td><td>${yard[h] == null ? '—' : Number(yard[h]).toFixed(2)}</td><td>${readWord(today[h], bands)}</td>${row.map((x) => `<td>${cell(x.rising)}<br>${cell(x.falling)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
 // one field per hold length, as the walk: the same collapse, said for a build
 function cFieldCollapseLine() {
@@ -11232,7 +11248,7 @@ function cFieldPanel() {
     </div>
     ${cFieldUnfinishedRow(st, building || !!heldBy)}
     ${(st && st.error) ? `<p class="note warn">the build stopped: ${esc(st.error)}</p>` : ''}
-    ${!pairs ? (building ? '' : '<p class="note">nothing built yet — press <b>Build the field</b>, or open a field above</p>') : (!pairs.length ? '<p class="note">no coin and shape could be built</p>' : `
+    ${!pairs ? (building ? '' : C_FIELD_NONE_YET) : (!pairs.length ? C_FIELD_NO_PAIRS : `
     <div class="cwbox cwtall"><table class="cgap cpassers"><thead><tr>
       <th title="the coin">coin${cFieldSortBtn('coin', 'asc')}</th>
       <th title="the chunk shape, and the shapes this field stands for">chunk shape${cFieldSortBtn('geometry', 'asc')}</th>
