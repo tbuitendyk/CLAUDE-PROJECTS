@@ -11328,9 +11328,10 @@ function cFieldBuyBlock(st, off) {
   const picked = cBuyPicked();
   const when = (t) => (t ? cWhen(new Date(t).toISOString()) : '?');
   const shown = cBuyOpen && picked && cBuyOpen.id === picked ? cBuyOpen : null;
+  const has = !!buys.length;
   return `<div class="row" style="margin-top:1rem">
-      <button id="fBuy" class="pri"${off ? ' disabled' : ''} title="reads every pair of the field on this screen and writes down its seven best candidates for their newest decision, with the price each trade opened at. A press replaces the field's earlier seven. Nothing is traded.">Buy the field</button>
-      <span id="fBuyOut" class="muted">${esc(`reads every pair of ${saved.id} · ${saved.name} and writes down its seven best for their newest decision`)}</span>
+      <button id="fBuy" class="pri"${off || has ? ' disabled' : ''} title="${has ? 'this field has its seven: one field, one test. A new day needs a refresh on Data and Build the field again, and the new field has its own press.' : 'reads every pair of the field on this screen and writes down its seven best candidates for their newest decision, with the price each trade opened at. One field, one test. Nothing is traded.'}">Buy the field</button>
+      <span id="fBuyOut" class="muted">${esc(has ? `${saved.id} · ${saved.name} has its seven — a new day needs Build the field again` : `reads every pair of ${saved.id} · ${saved.name} and writes down its seven best for their newest decision`)}</span>
     </div>
     ${buys.length && shown ? cFieldBuyTable(shown) : `<p class="note">no buy of ${esc(saved.id)} yet &mdash; press <b>Buy the field</b> to write one down</p>`}`;
 }

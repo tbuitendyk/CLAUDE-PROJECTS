@@ -123,10 +123,13 @@ function buyField(fieldId, { now = Date.now(), take = TAKE } = {}) {
     return { ...c, ...t, entryPrice: priceOf(map, t.entryTs, t.entryHours, t.mode) };
   });
   ensureDir();
-  // ONE BUY PER FIELD (owner, 2026-09-21: "one job ... which makes seven
-  // entries. They're connected to an open field"): a press replaces the
-  // field's earlier buy, so the field always shows its newest seven
-  deleteBuysOf(head.id);
+  // ONE FIELD, ONE TEST (owner, 2026-09-21: "once a field has been built and
+  // the buy the field button has been used, it should be ghosted after
+  // that"). A field's last day is fixed when it is built, so a second press
+  // would say the same seven; it is refused in words, and a new day means a
+  // new field. The seven of every field stay with their field.
+  const had = buyOf(head.id);
+  if (had) throw new Error(`${head.id} already has its seven, pressed ${new Date(had.pressedAt).toISOString().slice(0, 16).replace('T', ' ')} UTC — a new day needs a refresh on Data and Build the field again`);
   const doc = {
     v: V, id: nextId(), field: { id: head.id, name: head.name || head.id }, pressedAt: now,
     rule: RULE, take, candidates: ranked.length, pairs: (head.briefs || []).length, rows,
@@ -134,8 +137,8 @@ function buyField(fieldId, { now = Date.now(), take = TAKE } = {}) {
   fs.writeFileSync(file(doc.id), JSON.stringify(doc));
   return doc;
 }
-// the buy of one field, or null; and every buy of a field removed (a re-press,
-// or the field itself deleted)
+// the buy of one field, or null; and every buy of a field removed with the
+// field itself
 function buyOf(fieldId) {
   return listBuys().find((b) => b.field && b.field.id === String(fieldId)) || null;
 }

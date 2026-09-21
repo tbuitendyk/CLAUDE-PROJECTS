@@ -157,16 +157,21 @@ module.exports.theBuysAreListedNewestFirstAndDeletedOnce = function () {
   cleanup();
   const id = aField();
   const a = fb.buyField(id, { now: 1_800_000_000_000 }); made.buys.push(a.id);
-  const b = fb.buyField(id, { now: 1_800_000_500_000 }); made.buys.push(b.id);
+  // ONE FIELD, ONE TEST: a second press is refused in words, and the first stands
+  assert.throws(() => fb.buyField(id, { now: 1_800_000_500_000 }), new RegExp(`${id} already has its seven, pressed 2027-01-15 08:00 UTC — a new day needs a refresh on Data and Build the field again`));
   const list = fb.listBuys().filter((x) => x.field.id === id);
-  assert.deepStrictEqual(list.map((x) => x.id), [b.id], 'one buy per field: the second press replaced the first');
-  assert.strictEqual(fb.readBuy(b.id).pressedAt, 1_800_000_500_000, 'what is on disk is the second press (its id may be the first\'s, reused)');
-  assert.strictEqual(fb.listBuys().filter((x) => x.field.id === id).length, 1);
-  assert.deepStrictEqual({ rows: list[0].rows, candidates: list[0].candidates, pairs: list[0].pairs, pressedAt: list[0].pressedAt }, { rows: 7, candidates: 10, pairs: 15, pressedAt: 1_800_000_500_000 });
-  assert.strictEqual(fb.buyOf(id).id, b.id, 'the field\'s own buy');
+  assert.deepStrictEqual(list.map((x) => x.id), [a.id], 'one buy per field');
+  assert.deepStrictEqual({ rows: list[0].rows, candidates: list[0].candidates, pairs: list[0].pairs, pressedAt: list[0].pressedAt }, { rows: 7, candidates: 10, pairs: 15, pressedAt: 1_800_000_000_000 });
+  assert.strictEqual(fb.buyOf(id).id, a.id, 'the field\'s own buy');
+  // another field has its own press, and the seven stay with their field
+  const id2 = aField();
+  const c = fb.buyField(id2, { now: 1_800_000_600_000 }); made.buys.push(c.id);
+  assert.strictEqual(fb.buyOf(id).id, a.id);
+  assert.strictEqual(fb.buyOf(id2).id, c.id);
   assert.strictEqual(fb.deleteBuysOf(id), 1, 'deleting the field takes its buy along');
   assert.strictEqual(fb.buyOf(id), null);
-  assert.strictEqual(fb.readBuy(b.id), null);
+  assert.strictEqual(fb.readBuy(a.id), null);
+  assert.strictEqual(fb.buyOf(id2).id, c.id, 'and not another field\'s');
   assert.throws(() => fb.deleteBuy(a.id), /there is no buy/);
   assert.throws(() => fb.buyNow(a.id), /there is no buy/);
   assert.throws(() => fb.buyField('F-nope'), /there is no field/);
@@ -194,6 +199,8 @@ module.exports.theScreenHasTheButtonThePickerAndTheTableAboveThePairs = function
   assert.ok(!ui.includes('fBuyPick') && !ui.includes('fBuyDel') && !ui.includes('fBuyOpen'), 'one button and the field\'s own seven under it: no picker, no open, no delete (owner, 2026-09-21)');
   assert.ok(block.includes('${buys.length && shown ? cFieldBuyTable(shown) : `<p class="note">no buy of ${esc(saved.id)} yet'), 'the open field\'s seven, or the note');
   assert.ok(ui.includes("  return list.length ? list[0].id : null;   // the open field's own buy, its newest press"), 'the field\'s newest press is the one shown');
+  assert.ok(block.includes("<button id=\"fBuy\" class=\"pri\"${off || has ? ' disabled' : ''}"), 'one field, one test: the button ghosts once the field has its seven (owner, 2026-09-21)');
+  assert.ok(block.includes("has its seven — a new day needs Build the field again"), 'and the line beside it says why');
   assert.ok(block.includes('<div class="row" style="margin-top:1rem">\n      <button id="fBuy" class="pri"'), 'space between Build the field and Buy the field');
   const table = ui.slice(ui.indexOf('function cFieldBuyTable(b) {'), ui.indexOf('\n}\n', ui.indexOf('function cFieldBuyTable(b) {')));
   for (const h of ['>coin<', '>chunk shape<', '>decision (UTC)<', '>the field says<', '>agreement<', '>certainty<', '>points speaking<', '>score<', '>opened at<', '>price now / closed<', '>performance, %<', '>state<']) {
