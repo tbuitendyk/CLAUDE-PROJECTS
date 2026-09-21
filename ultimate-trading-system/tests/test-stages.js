@@ -752,7 +752,7 @@ module.exports = {
       'and it is still the list of sets that carries them');
     assert.ok(ui.includes("  const nextNames = st.nextNames || {};"), 'Sweep does not read the next free names off the list');
     for (const n of [1, 2, 3]) {
-      assert.ok(ui.includes(`      <label class="f">name<input id="swName${n}" placeholder="\${esc(nextNames[${n}] || '')}" maxlength="80" style="width:10rem"></label>\n      <label class="f" style="flex:1">description<input id="swDesc${n}" style="width:100%"></label>`),
+      assert.ok(ui.includes(`      <label class="f">name<input id="swName${n}" placeholder="\${esc(nextNames[${n}] || '')}" maxlength="80" style="width:17rem"></label>\n      <label class="f" style="flex:1">description<input id="swDesc${n}" style="width:100%"></label>`),
         `the stage ${n} name box is not beside description with the next free name greyed in it`);
       assert.ok(ui.includes(`      name: $('#swName${n}').value,`), `the stage ${n} launch does not send the name`);
       // THE NAME THE OWNER TYPED STAYS IN THE BOX (3.67.1, owner report). This
