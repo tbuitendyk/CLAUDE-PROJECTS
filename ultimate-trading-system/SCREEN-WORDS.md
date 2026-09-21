@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **1b87a81b6ace — what the box is serving**, not from the working tree.
+Generated from **2790458ee5bb — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -560,7 +560,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 
 # Sweep
 
-## What the controls are called (116)
+## What the controls are called (118)
 
 - `— each says why:`
 - `— none —`
@@ -573,6 +573,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `(the field`
 - `&middot;`
 - `24/5`
+- `agreement minimum`
 - `all loaded data`
 - `are already priced and are kept`
 - `arm`
@@ -581,6 +582,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `Campaign — the parent chain name`
 - `Campaign “`
 - `carry forward (0 = all)`
+- `certainty minimum`
 - `chunk shape`
 - `compare coins (blank = all`
 - `confirm`
@@ -618,7 +620,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `leave the extra members out`
 - `Load training setup`
 - `members`
-- `minimum`
+- `must pass`
 - `name`
 - `no estimate until the first`
 - `no runs yet`
@@ -679,7 +681,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `what is ticked from a walk set`
 - `window layout`
 
-## What the dropdowns offer (63)
+## What the dropdowns offer (65)
 
 - `0.25×`
 - `0.5×`
@@ -721,6 +723,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `agreement`
 - `all of them`
 - `argmax`
+- `both`
 - `breakout`
 - `certainty`
 - `confirmed only`
@@ -731,6 +734,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `Daily 3-day`
 - `Daily 4-day`
 - `directional`
+- `either`
 - `families`
 - `its own history`
 - `market`
@@ -771,7 +775,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - Stage 3 — price any settings from the kept votes, no training
 - — the boxes below decide when enough of a coin's members agree to act.
 - — on a unit whose coin and chunk shape came from Coins, whether under coins and shapes that pass or from a walk set, every call the members make is checked against the way that coin itself has moved after a rising window and after a falling window. For a passer that reading is its own sweet spot band on the shape's own span; for a walk-set unit it is its plateau's lean — the rows' rising and falling signs at their own look-backs and bands, folded at the plateau share. These boxes decide what that check changes. The reading comes from the list this record set took its units from when its stage 1 was started, never from the other one. Greyed when no unit being priced carries one, and the line below says why.
-- — a field built on Coins is read on every decision the members make, on that decision's own day, and the trade is blocked when the field's sign is against the members' call, blocked when the read is below the minimum unless sign only is ticked, and otherwise sized by the rung the read falls in. A day the field says nothing on trades at the silent multiple. The field takes confirm's place: a run names one or the other, never both. Greyed when no unit being priced has a pair in the field named, and the line below says why.
+- — a field built on Coins is read on every decision the members make, on that decision's own day, and the trade is blocked when the field's sign is against the members' call, blocked when a minimum is not reached unless sign only is ticked — a bar on the field's agreement, a bar on its certainty, or both bars combined as must pass says — and otherwise sized by the rung the read falls in. A day the field says nothing on trades at the silent multiple. The field takes confirm's place: a run names one or the other, never both. Greyed when no unit being priced has a pair in the field named, and the line below says why.
 - units. Progress above; the set lands on Boards.
 - carried units.
 - — it is gone from the box above.
@@ -796,10 +800,10 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - , and the number differs from unit to unit
 - . The boxes below decide when enough of them agree to act,
 
-## Every word, flat (431)
+## Every word, flat (436)
 
 ```
-1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 60h 65h 8-day 89h about above above. act act. active add after again against agree agreement all alongside already and another any are argmax arm as at attaches auto band bands bar be because been being belonging below beside best biggest blank block blocked Boards Boards. BOOST both both. box boxes breakout built but buy by call came Campaign campaign campaigns cannot carried carries carry certainty chain changes. check checked chunk coin coins Coins comes committee compare confirm Confirmation confirmed conviction count cover covers crumbs Currently cut daily Daily data day decide decision declared Delete deleted deleted. Deleting deployed. description different differs direction directional doubles downloaded Each each end ends enough entry estimate every Every everything exam exist existing extra falling falls families fee fees fewer field files filters finished first fit. folded for For forecast forward freak from gate go going gone good greenlight greenlights Greyed has here history hold holds how ignore in in. into is it it. its itself judged keep keeps. kept kind kinds known lands landslide last later launched layout lean learning. leave lesson limit line list live Load loaded locked LOGREG look-backs make many market may member members middot minimum minted models money more. most moved multiple. name named names never new next nine No no none not nothing now null number of Off off off. on On once one One one. ones. only or orders ordinary other others otherwise out own pair parent parent. pass passer passes paused per permanently permute place places plain plateau price priced prices prices. Progress progress quarter Quorum quorum rank read reading reads record records refuse remove removed Removed rest Retire retrained reused right rising rounds rows run rung rungs running runs same saved says scans sealed second Selected sell set Set set. sets sets. setting settings setup setups. shape shapes share share. side side. sign signs silent single singles size sized small so span split spot stage Stage stages start Start started starts static stayed staying still strictly Sweep sweeps sweet tab table takes taking teaches than that the The their them them. there These they this This those three ticked times to too took trade Trade trades trail train trained training trains travels tree triples tuning tuning-slice turns unconfirmed under undone. unit units units. unless until up UTC value values View voice voices vote votes voting wake walk walk-set was wastes way way. week weekly Weekly weigh weightless were What what when where whether while whole whose why why. will window window. with working worth writes wrong yet
+1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 60h 65h 8-day 89h about above above. act act. active add after again against agree agreement all alongside already and another any are argmax arm as at attaches auto band bands bar bars be because been being belonging below beside best biggest blank block blocked Boards Boards. BOOST both both. box boxes breakout built but buy by call came Campaign campaign campaigns cannot carried carries carry certainty chain changes. check checked chunk coin coins Coins combined comes committee compare confirm Confirmation confirmed conviction count cover covers crumbs Currently cut daily Daily data day decide decision declared Delete deleted deleted. Deleting deployed. description different differs direction directional doubles downloaded Each each either end ends enough entry estimate every Every everything exam exist existing extra falling falls families fee fees fewer field files filters finished first fit. folded for For forecast forward freak from gate go going gone good greenlight greenlights Greyed has here history hold holds how ignore in in. into is it it. its itself judged keep keeps. kept kind kinds known lands landslide last later launched layout lean learning. leave lesson limit line list live Load loaded locked LOGREG look-backs make many market may member members middot minimum minted models money more. most moved multiple. must name named names never new next nine No no none not nothing now null number of Off off off. on On once one One one. ones. only or orders ordinary other others otherwise out own pair parent parent. pass passer passes paused per permanently permute place places plain plateau price priced prices prices. Progress progress quarter Quorum quorum rank reached read reading reads record records refuse remove removed Removed rest Retire retrained reused right rising rounds rows run rung rungs running runs same saved says scans sealed second Selected sell set Set set. sets sets. setting settings setup setups. shape shapes share share. side side. sign signs silent single singles size sized small so span split spot stage Stage stages start Start started starts static stayed staying still strictly Sweep sweeps sweet tab table takes taking teaches than that the The their them them. there These they this This those three ticked times to too took trade Trade trades trail train trained training trains travels tree triples tuning tuning-slice turns unconfirmed under undone. unit units units. unless until up UTC value values View voice voices vote votes voting wake walk walk-set was wastes way way. week weekly Weekly weigh weightless were What what when where whether while whole whose why why. will window window. with working worth writes wrong yet
 ```
 
 ---
