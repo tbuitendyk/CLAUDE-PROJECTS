@@ -799,6 +799,11 @@ module.exports = {
     assert.ok(ui.includes('<p class="note warn" id="swCut2" style="margin:.2rem 0 .4rem;display:none"></p>'), 'the stage 2 set-up has the line');
     assert.ok(ui.includes("the filters saved on the parent's table leave <b>${Number(got.kept).toLocaleString()}</b> of its ${Number(got.of).toLocaleString()} rows, and the carry takes the top of those. Press Clear filters under its table on Boards to carry from the whole set."), 'and it says what the stage 3 set-up says');
     assert.ok(ui.includes("if ((key === 'S1' || key === 'S2') && doc && doc.id) await tryPost("), 'Clear filters under the stage 1 table clears them off the set too');
+    // AND THE STAGE 1 TABLE'S WIRING IS HANDED ITS SET (3.220.1, owner: "i set
+    // a filter of 86 rows on stage 1 and stage 2 sweep is doing all 1530
+    // units"): without it Apply saved nothing and the carry took everything
+    assert.ok(ui.includes("  bWireFilters(mount, doc);\n  bWireTableFold(mount);\n  await bWireMembers(doc, mount, 'S1');"), 'the stage 1 table\'s filter wiring is not handed its set, so Apply cannot save onto it');
+    assert.ok(ui.includes("par.carry === (par.kept != null ? par.kept : par.of)"), 'carry 0 against a filtered parent reads as a mismatch on the stage 3 heading');
   },
 
   async theNameBoxIsOnEveryStageOfSweepAndTheLaunchSendsIt() {

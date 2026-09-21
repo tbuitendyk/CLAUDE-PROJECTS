@@ -1342,8 +1342,9 @@ function swProvenance() {
   } else {
     const par = s2row.parent || {};
     const carryBox = Number(v('#swCarry')) || 0;
+    // carry 0 is "all the filters keep", not "all there are" (3.220.1)
     const carryMatch = carryBox === 0
-      ? (par.carry != null && par.of != null ? par.carry === par.of : true)
+      ? (par.carry != null && par.of != null ? par.carry === (par.kept != null ? par.kept : par.of) : true)
       : carryBox === par.carry;
     const named = rowOf(v('#swFrom2'));
     const mismatch = v('#swFrom2') !== (par.id || '')
@@ -5538,7 +5539,10 @@ async function bDrawStage1(doc, incomplete, view, mount) {
   </div>`)) return;
   bWirePager(mount);
   bWireSort(doc, mount);
-  bWireFilters(mount);
+  // handed its set, or Apply cannot save the filters onto it and the stage 2
+  // carry takes the whole table (3.220.1, owner: "i set a filter of 86 rows on
+  // stage 1 and stage 2 sweep is doing all 1530 units")
+  bWireFilters(mount, doc);
   bWireTableFold(mount);
   await bWireMembers(doc, mount, 'S1');
 }
