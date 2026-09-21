@@ -290,6 +290,7 @@ const TH={
   window:'the 96h feature window the call was built from, by its start date. Provenance only — see entry (UTC) for when it traded.',
   votes:'the committee members in order — full, prices, volume, cross. UP = long, DOWN = short, no call = that member named no direction.',
   call:'what the quorum decided from those votes. STAND DOWN means the quorum was not reached, which is a decision, not a failure.',
+  field:'what the coin’s own decision field said on this decision and what its gate made of the call. up / down / none is the field’s sign; agreement and certainty are its two reads, 0 to 100; then the gate’s verdict — blocked by sign, blocked by minimum, silent, or sized on a rung, which multiplies the clip. "—" means this configuration was not priced under a field.',
   outcome:'what the executor actually did with the call — filled, skipped, gave up, or killed on price drift.',
 };
 // th(label, key) — a heading always carries its own description.
@@ -1021,8 +1022,9 @@ async function drawLive(){
       <div class="muted" style="font-size:.68rem;margin:.3rem 0"><b>entry (UTC)</b> = the moment the call acts (window start + the geometry's entry offset) ·
         <b>window</b> = the feature window it was computed from ·
         <b>member votes</b> = the committee in order — UP = long, DOWN = short, no call = named no direction ·
-        <b>call</b> = what the quorum decided · <b>outcome</b> = what the executor did with it</div>
-      <table><thead><tr>${th('entry (UTC)','entryUtc','text-align:left')}${th('window','chunk','text-align:left')}${th('member votes','votes','text-align:left')}${th('call','side','text-align:left')}${th('outcome','fate','text-align:left')}</tr></thead><tbody>
+        <b>call</b> = what the quorum decided · <b>field</b> = what the coin’s decision field said and what its gate made of the call ·
+        <b>outcome</b> = what the executor did with it</div>
+      <table><thead><tr>${th('entry (UTC)','entryUtc','text-align:left')}${th('window','chunk','text-align:left')}${th('member votes','votes','text-align:left')}${th('call','side','text-align:left')}${th('field','field','text-align:left')}${th('outcome','fate','text-align:left')}</tr></thead><tbody>
       ${(st.decisions||[]).length?st.decisions.map(dec=>{
         // Each member's vote carries the page's direction colours: UP green,
         // DOWN red, no call muted. Read as a row of words they were all the same
@@ -1034,10 +1036,19 @@ async function drawLive(){
                                   :'<span class="muted">no call</span>').join(' · ')
           : '—';
         const lab=dec.side==='LONG'?['LONG','pos']:dec.side==='SHORT'?['SHORT','neg']:['no trade','muted'];
+        // WHAT THE FIELD SAID on this decision (FIELD-DESIGN.md section H):
+        // its sign, its read, and what the gate made of the call -- the same
+        // words on Paper Books and on Live Trading, through this one row
+        const f=dec.field;
+        const ftxt=!f?'<span class="muted">—</span>'
+          :`${f.sign>0?'<span class="pos">up</span>':f.sign<0?'<span class="neg">down</span>':'<span class="muted">none</span>'}`
+            +`${f.agreement!=null?` · agreement ${Number(f.agreement).toFixed(0)}`:''}${f.certainty!=null?` · certainty ${Number(f.certainty).toFixed(0)}`:''}`
+            +` · <span class="${/^blocked/.test(f.why||'')?'neg':'muted'}">${esc(f.why||'')}</span>`;
         return `<tr><td style="text-align:left;white-space:nowrap">${esc((dec.entry_utc||'').replace('T',' ').slice(0,16))||'—'}</td>
         <td style="text-align:left;white-space:nowrap" class="muted">${esc((dec.chunk_start||'').slice(0,10))}</td>
         <td style="text-align:left">${vtxt}</td><td style="text-align:left;white-space:nowrap" class="${lab[1]}"><b>${lab[0]}</b></td>
-        <td style="text-align:left" class="muted">${esc(dec.fate||'')}</td></tr>`;}).join(''):'<tr><td colspan="5" class="empty">no decisions recorded yet</td></tr>'}
+        <td style="text-align:left">${ftxt}</td>
+        <td style="text-align:left" class="muted">${esc(dec.fate||'')}</td></tr>`;}).join(''):'<tr><td colspan="6" class="empty">no decisions recorded yet</td></tr>'}
       </tbody></table></div>
     <div class="panel"><div class="k">Incidents</div>
       <table style="margin-top:.4rem"><thead><tr>${th('utc','utc')}${th('kind','kind')}${th('detail','detail','text-align:left')}</tr></thead><tbody>

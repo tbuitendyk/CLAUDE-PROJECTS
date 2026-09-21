@@ -97,10 +97,35 @@ list follow.
   gain empty field columns and nothing else changes on them.
 - **The greenlight refuses a survivor priced under the field's gate** until
   Trade carries the field (step 6), the same refusal confirm has.
+- **Trade rebuilds the field at every decision, keeping no state** (step 6,
+  3.213.0): the same engine over the same candles as the build on Coins, to
+  the last decision the candles reach, read at the target's own decision
+  instant. The lab and the live path can never compute a different number for
+  the same day, and nothing on disk can drift from the candles.
+- **A blocked call is no call.** The members' call still rides in the intent
+  and the record beside what the field said; the side goes FLAT and no order
+  is placed. A placed call's clip is the setup's clip times the rung's
+  multiple, rounded to the cent; the box's own ceiling on a clip is the clip
+  times the largest multiple the gate can give, so an intent the gate sized
+  can never be refused as over-sized.
+- **The field rides in the hash.** Its sign, the two reads, the size and the
+  verdict are hashed with the votes, so the recompute proves the gate the way
+  it proves the committee.
+- **The greenlight carries the field into the configuration**: the field's id
+  and name, the build dials with THIS pair's own window (read off the series
+  frozen beside the stage 3 set), and the gate as the survivor was priced
+  under it. A set whose frozen series cannot be read is refused in words, so
+  nothing priced under a field is ever traded at size 1 without it.
+- **One decision table on Trade, one path for both books**: the field's
+  column sits between the call it acts on and the outcome the executor gave,
+  and reads the same on Paper Books and Live Trading (RULE TWO).
 
 ## Parked (for the owner, not done)
 
-- none yet
+- **Found in passing, not touched (RULE ZERO)**: on Trade, the decision
+  table's `outcome` heading is drawn with the key `fate`, and the column key
+  describes it under `outcome`, so that one heading carries no hover text.
+  One word in `public/trade.html`; reported, waiting for a yes.
 
 ## What reached the box
 
@@ -115,3 +140,9 @@ list follow.
   stage 3 -- the Sweep group, the pricing, the record fields, the tally, both
   Boards tables, the greenlight refusal. Narrow checks and the gate's guards
   green; the suite and the word list after.
+- **3.212.1 (87a01dc), deployed 2026-09-21 about 06:00 UTC**: two reds the
+  suite found after 3.212.0 (the count route dropped the field's numbers; the
+  launch's plan folded without the field) and the owner's order that the
+  field is built with data current to the last full day on file, so an open
+  grid shows today's decision when the data is fresh. The suite ran green
+  after it.

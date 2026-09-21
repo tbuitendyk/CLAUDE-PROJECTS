@@ -151,7 +151,7 @@ async function computeSignal(setup, now, opts = {}) {
         + `(${new Date(miss.lastFeatureTs).toISOString()}) — refresh has not reached it; waiting` };
   }
 
-  const { call, perMember, side, priceAt, inputHash, agreement } =
+  const { call, perMember, side, priceAt, inputHash, agreement, field } =
     await decideFor(cfg, target, trainChunks, chunks, maps, geo, views, bandPct, freeze.throughMs, fee);
 
   let entryOpen = chooseEntryOpen(priceAt, null);
@@ -187,9 +187,13 @@ async function computeSignal(setup, now, opts = {}) {
       config_version: cfg.configVersion,
       train_through: freeze.throughMs,
       band_pct: bandPct,
+      // WHAT THE FIELD SAID, and the clip it gives (FIELD-DESIGN.md section
+      // H): the standard clip times the rung's multiple on a placed call;
+      // null field on a configuration priced without one
+      field: field || null,
       // execution params from the setup (plan 3.1) — the box validates these
       // against its own allowlist entry for setup_id before acting.
-      clip_usd: setup.clipUsd,
+      clip_usd: field && field.size > 0 && side !== 'FLAT' ? Math.round(setup.clipUsd * field.size * 100) / 100 : setup.clipUsd,
       hold_hours: cfg.cell.tHours,
       stop_pct: setup.stopPct ?? null,
       paper: setup.state === 'paper',
@@ -213,7 +217,7 @@ async function computeSignalForChunk(setup, chunkStartMs) {
     return { found: false, chunk_start: new Date(chunkStartMs).toISOString(),
       note: `current data missing ${miss.name} feature candle ${new Date(miss.lastFeatureTs).toISOString()} — cannot recompute yet` };
   }
-  const { side, perMember, priceAt, inputHash, agreement } =
+  const { side, perMember, priceAt, inputHash, agreement, field } =
     await decideFor(cfg, target, trainChunks, chunks, maps, geo, views, bandPct, freeze.throughMs, fee);
   return {
     found: true,
@@ -225,6 +229,7 @@ async function computeSignalForChunk(setup, chunkStartMs) {
     input_hash: inputHash,
     quorum: cfg.cell.quorum,
     agreement: agreement || null,
+    field: field || null,
     band_pct: bandPct,
     config_version: cfg.configVersion,
   };
@@ -245,7 +250,7 @@ async function computePreview(setup, now) {
       note: `feature window closed but ${miss.name}'s last candle is not cached yet — preview available shortly`,
       entry_utc: new Date(entryAt).toISOString() };
   }
-  const { side, perMember, agreement } = await decideFor(cfg, target, trainChunks, chunks, maps, geo, views, bandPct, freeze.throughMs, fee);
+  const { side, perMember, agreement, field } = await decideFor(cfg, target, trainChunks, chunks, maps, geo, views, bandPct, freeze.throughMs, fee);
   return {
     available: true,
     setup_id: setup.id,
@@ -253,6 +258,7 @@ async function computePreview(setup, now) {
     per_member: perMember,
     quorum: cfg.cell.quorum,
     agreement: agreement || null,
+    field: field || null,
     band_pct: bandPct,
     chunk_start: new Date(target.startTs).toISOString(),
     entry_utc: new Date(entryAt).toISOString(),

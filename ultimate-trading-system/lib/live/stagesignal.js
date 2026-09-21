@@ -134,15 +134,32 @@ async function stageCommitteeCallFor(cfg, target, closed, allChunks, maps, geo, 
   const entryTs = target.startTs + (geo.entryOffsetH || 0) * HOUR_MS;
   const bar = maps.trade.get(entryTs);
   const priceAt = bar ? bar.open : null;
-  const side = SIDE_MAP[String(call)] || 'FLAT';
+  // THE FIELD'S GATE OVER THE CALL (FIELD-DESIGN.md section H): the field is
+  // rebuilt from the closed history the members trained on and read at this
+  // decision's own instant, exactly as stage 3 read it on the day; a blocked
+  // call is no call, a placed one carries its size for the clip. Everything
+  // the field said rides in the hash, so the recompute can prove the gate.
+  let field = null;
+  let gatedCall = call;
+  if (cfg.field && cfg.field.gate) {
+    const got = require('../fieldlive').fieldAtDecision(maps.trade, cfg.branch.geometry, cfg.field.dials, cfg.field.gate, target.startTs, call, `${cfg.combo.trade}|${cfg.branch.geometry}`);
+    field = {
+      id: cfg.field.id, read: got.read, sign: got.sign, agreement: got.agreement == null ? null : Number(got.agreement.toFixed(2)),
+      certainty: got.certainty == null ? null : Number(got.certainty.toFixed(2)), speaking: got.speaking,
+      day: got.day == null ? null : new Date(got.day).toISOString(), full: got.full, size: got.size, why: got.why,
+    };
+    if (call !== 0 && !(got.size > 0)) gatedCall = 0;
+  }
+  const side = SIDE_MAP[String(gatedCall)] || 'FLAT';
   const level = C.levelFor(agr, decision);
   const inputHash = crypto.createHash('sha256')
     .update(JSON.stringify({
       chunk: target.startTs, perMember, agreement: agr, level, band: Math.abs(cfg.branch.band),
       side, symbol: cfg.combo.trade, train_through: freezeMs, config_version: cfg.configVersion, engine: 'stages',
+      ...(field ? { field: { sign: field.sign, agreement: field.agreement, certainty: field.certainty, size: field.size, why: field.why } } : {}),
     }))
     .digest('hex').slice(0, 16);
-  return { call, perMember, side, priceAt, inputHash, entryTs, agreement: agr, level, members: members.length, testSlice: nTest };
+  return { call: gatedCall, membersCall: call, perMember, side, priceAt, inputHash, entryTs, agreement: agr, level, members: members.length, testSlice: nTest, field };
 }
 
 module.exports = { stageCommitteeCallFor, trainStageCommittee, agreementOf, trainingWeightsFor };

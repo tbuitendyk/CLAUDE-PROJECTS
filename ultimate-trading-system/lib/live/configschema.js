@@ -200,6 +200,18 @@ function validateConfig(cfg) {
   if (typeof cfg.configVersion !== 'string' || !cfg.configVersion.trim()) {
     fail(errors, 'configVersion: must be a non-empty string');
   }
+  // THE FIELD (FIELD-DESIGN.md section H): absent on a configuration priced
+  // without one; with one, the build dials and the gate are the engine's own
+  // checks, so a configuration that cannot be rebuilt is refused here
+  if (cfg.field != null) {
+    const f = cfg.field;
+    if (!f || typeof f !== 'object') fail(errors, 'field: must be an object or absent');
+    else {
+      if (typeof f.id !== 'string' || !f.id.trim()) fail(errors, 'field.id: must name the field the survivor was priced against');
+      try { require('../field').checkDials({ ...(f.dials || {}), lookbackHours: (f.dials || {}).lookbackHours }); } catch (err) { fail(errors, `field.dials: ${err.message}`); }
+      try { require('../fieldgate').checkGate(f.gate || {}); } catch (err) { fail(errors, `field.gate: ${err.message}`); }
+    }
+  }
 
   return { ok: errors.length === 0, errors };
 }

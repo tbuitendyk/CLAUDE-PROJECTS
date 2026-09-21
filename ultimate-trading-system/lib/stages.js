@@ -8677,6 +8677,22 @@ async function stage4GreenlightSource(setId, asked = {}) {
       // so live folds a plateau the way the set was priced
       plateaus: (rec.plateaus || []).map((f) => ({ centre: f.centre, members: (f.members || []).slice() })) },
     survivor: { ...survivor, bandPct: survivor.bandMode === 'auto' || survivor.bandMode == null ? rec.bandPct : Math.abs(Number(survivor.bandMode)), halfLife: hl ? hl.halfLife : null },
+    // THE FIELD THE STAGE 3 SET WAS PRICED WITH (FIELD-DESIGN.md section H):
+    // its id and name, its build dials with THIS pair's own window (each
+    // coin's own, or the system number), read off the series frozen beside
+    // the set -- so the live path rebuilds exactly what was priced. Null on
+    // a set that named no field; an error in words where the sidecar is gone.
+    field: (() => {
+      const pp = parent.params || {};
+      if (!pp.fieldId) return null;
+      const key = (pp.fieldPairs || {})[`${rec.trade}|${rec.geometry}`] || null;
+      const side = readFieldSidecar(parent.id);
+      const pair = key && side && side.pairs ? side.pairs[key] : null;
+      if (!pair) return { id: pp.fieldId, name: pp.fieldName || null, error: `the field ${pp.fieldId} frozen beside ${parent.id} cannot be read for ${rec.trade} ${rec.geometry}` };
+      const d = { ...(pp.fieldDials || {}) };
+      delete d.windowEachOwn; delete d.seedText; delete d.lookbackDays;
+      return { id: pp.fieldId, name: pp.fieldName || null, pairKey: key, dials: { ...d, windowDays: pair.windowDays ?? d.windowDays } };
+    })(),
     // THE STOP AND THE LADDER AS THE SET FROZE THEM AT ITS PRESS (3.149.0): the survivor's own choice on record, or none
     stop: ((doc.stopChoices || {})[survivor.label]) ? JSON.parse(JSON.stringify(doc.stopChoices[survivor.label])) : null,
     pick,

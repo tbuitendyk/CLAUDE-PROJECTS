@@ -68,9 +68,13 @@ function stage4Refusal(src) {
   // be traded at size 1 as though that were what its record says. Refused in
   // words until the live path can read the lean.
   if (sv.confirm && sv.confirm !== 'off') return `the survivor was priced with confirm set to ${sv.confirm}, and the live path has no reading of the coin's own lean yet — it cannot trade what was priced`;
-  // THE FIELD'S GATE (FIELD-DESIGN.md section H) IS PRICED, NOT YET TRADED:
-  // refused in words until the live path carries the field beside the members
-  if (sv.field) return `the survivor was priced under the field's gate (${String(sv.fieldId || 'a field')}), and the live path does not carry the field yet — it cannot trade what was priced`;
+  // THE FIELD'S GATE (FIELD-DESIGN.md section H): a survivor priced under it
+  // can be traded only with the field it was priced against -- the dials and
+  // the pair's own window, frozen beside its stage 3 set. Refused in words
+  // where that record cannot be read.
+  if (sv.field && !(src.field && src.field.dials)) {
+    return `the survivor was priced under the field's gate, and ${src.field && src.field.error ? src.field.error : 'the stage 3 set carries no field for it'} — the live path cannot rebuild what was priced`;
+  }
   if (!Array.isArray(src.members) || !src.members.length) return 'the stage 2 set names no members for this unit, so nothing could be trained the same way';
   // A MEMBER ADDED FROM A WALK SET NEEDS THE WALK'S TWO NUMBERS (3.188.0). The
   // live path builds the extra's block of numbers from the look-back and marks
@@ -122,6 +126,14 @@ function configFromStage4(src) {
     },
     // how the members were trained, so the live path can train the same way
     training: { ...(src.training || {}) },
+    // THE FIELD BESIDE THE MEMBERS (FIELD-DESIGN.md section H): the field
+    // named, its build dials with this pair's own window, and the gate the
+    // survivor was priced under -- everything the live path needs to rebuild
+    // the field from closed history and gate the call the way stage 3 did
+    field: sv.field && src.field && src.field.dials ? {
+      id: src.field.id, name: src.field.name || null, dials: { ...src.field.dials },
+      gate: { read: sv.field.read, minimum: Number(sv.field.minimum), signOnly: !!sv.field.signOnly, rungs: String(sv.field.rungs), silent: Number(sv.field.silent) },
+    } : null,
     configVersion: `${src.set.id}/${src.gate.id}/${src.pick.by}@${new Date().toISOString().slice(0, 10)}`,
   };
   const v = validateConfig(cfg);

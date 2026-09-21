@@ -184,6 +184,7 @@ function deriveSetup(events, setupId, extraDecisions = []) {
           votes: e.per_member || null, quorum: e.quorum ?? null,
           decision_price: e.decision_price ?? null,
           input_hash: e.input_hash || null,
+          field: e.field || null,
           fate: e.side === 'FLAT' ? 'flat — no trade' : 'seen',
         };
         break;
@@ -249,6 +250,7 @@ function deriveSetup(events, setupId, extraDecisions = []) {
           chunk_start: d.chunk_start, utc: d.produced_utc || null, side: d.side,
           votes: d.per_member || null, quorum: d.quorum ?? null,
           decision_price: d.decision_price ?? null, input_hash: d.input_hash || null,
+          field: d.field || null,
           fate: d.side === 'FLAT' ? 'stand down' : 'recorded',
         };
       }

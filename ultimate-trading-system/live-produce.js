@@ -36,7 +36,10 @@ function allowlistFrom(setups) {
   for (const s of setups) {
     allow[s.id] = {
       symbol: s.tradedPair,
-      max_clip_usd: s.clipUsd,
+      // the largest multiple the field's rungs can give (FIELD-DESIGN.md
+      // section H), or one: the box's ceiling on a clip, never below what
+      // an intent may ask for
+      max_clip_usd: Math.round(s.clipUsd * require('./lib/fieldlive').largestMultipleOf((s.configSnapshot || {}).field) * 100) / 100,
       max_concurrent: Math.max(1, Math.ceil(s.configSnapshot.cell.tHours / 24)),
       // R5: the box PINS paper-vs-real and the hold from THIS allowlist, not the
       // intent's own fields — so a tampered/buggy intent can neither drive a paper
@@ -132,6 +135,9 @@ function recordDecision(setupId, dec) {
               train_through: out.intent.train_through,
               produced_utc: out.intent.produced_utc,
               paper: out.intent.paper,
+              // what the field said on this decision (FIELD-DESIGN.md section H)
+              field: out.intent.field || null,
+              clip_usd: out.intent.clip_usd,
               window_complete: true,
             });
           } catch (e) {
