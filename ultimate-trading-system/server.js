@@ -542,22 +542,11 @@ const currentMonth = () => new Date().toISOString().slice(0, 7);
 
 // Backfill a month that has no published bundle yet, day by day — the same
 // path the paper books use to stay current (owner caught the refresh
-// fetching nothing while July's bundles are unpublished, 2026-08-03).
-async function backfillDailies(symbol, monthStr, setProgress) {
-  const { dailyKlines } = require('./lib/binance');
-  const [y, m] = monthStr.split('-').map(Number);
-  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  const today = new Date();
-  let fetched = 0;
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dayDate = Date.UTC(y, m - 1, d);
-    if (dayDate >= Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())) break; // today is never a finished day file
-    setProgress(`${symbol} ${monthStr}-${String(d).padStart(2, '0')} (day file)`);
-    const rows = await dailyKlines(symbol, y, m, d);
-    if (rows && rows.length) fetched++;
-  }
-  return fetched;
-}
+// fetching nothing while July's bundles are unpublished, 2026-08-03). Since
+// 3.214.0 it lives in lib/datarefresh.js beside the pass that fetches the
+// hours after the last finished day, and a day file that is not whole is
+// asked for again.
+const backfillDailies = (symbol, monthStr, setProgress) => require('./lib/datarefresh').backfillDayFiles(symbol, monthStr, { setProgress });
 
 const paper = require('./lib/paper');
 
@@ -594,7 +583,10 @@ app.post('/api/data/download', (req, res) => {
 
 // Refresh one asset (or every cached asset) from its newest cached month to
 // the current month. Re-fetches the newest cached month too — it may have
-// been partial when first downloaded.
+// been partial when first downloaded. THEN THE HOURS SINCE THE LAST WHOLE
+// DAY, to the most recent closed hourly candle (owner order, 2026-09-21):
+// the portal's day files run a day behind, and Global Refresh and Refresh
+// to latest both come through here.
 app.post('/api/data/refresh', (req, res) => {
   const one = req.body && req.body.symbol ? String(req.body.symbol).trim().toUpperCase() : null;
   if (one && !SYMBOL_RE.test(one)) return res.status(400).json({ error: 'symbol must look like DOTUSDT' });
@@ -618,7 +610,13 @@ app.post('/api/data/refresh', (req, res) => {
       for (const mm of missing) {
         backfilled[mm] = await backfillDailies(t.symbol, mm, setProgress);
       }
-      out[t.symbol] = { refreshedFrom: t.to, candles: rows.length, monthsWithoutBundles: missing, dayFilesFetched: backfilled };
+      // the REST mirror can be out of reach where the portal was not: the day
+      // files fetched above stay, and the finished message SAYS the hours
+      // since the last whole day were not fetched, and why
+      let recent;
+      try { recent = await require('./lib/datarefresh').fillRecent(t.symbol, { setProgress }); }
+      catch (err) { recent = { candles: 0, since: null, to: null, error: err.message }; }
+      out[t.symbol] = { refreshedFrom: t.to, candles: rows.length + recent.candles, monthsWithoutBundles: missing, dayFilesFetched: backfilled, recentCandles: recent.candles, recentSince: recent.since, to: recent.to, recentError: recent.error || null };
     }
     return out;
   });

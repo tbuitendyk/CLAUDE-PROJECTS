@@ -194,7 +194,7 @@ window.HELP = {
         more: 'This reaches the public price service over the internet. It is the only thing in the whole system that does.',
       },
       dlRefreshAll: {
-        what: 'Tops up every asset already held, from its newest stored month through the current one. Nothing new is added — it only brings what you have up to date.',
+        what: 'Tops up every asset already held, from its newest stored month through the current one and then hour by hour to the most recent closed hourly candle. Nothing new is added — it only brings what you have up to date.',
         more: 'The progress appears beside the button while it runs.',
       },
     },

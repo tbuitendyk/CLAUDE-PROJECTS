@@ -195,15 +195,21 @@ async function monthlyKlines(symbol, year, month, interval = '1h') {
 // One DAILY zip from the bulk portal (published ~1 day behind real time) —
 // the fallback for recent data when the REST mirror is unreachable. Cached
 // on disk like monthly files; null on 404 (not published yet / no data).
-async function dailyKlines(symbol, year, month, day) {
+// `refetch` asks the portal again for a day whose file is on disk but not
+// whole (3.214.0): a day the refresh wrote from the REST mirror before the
+// day had ended, or before the portal had published it. On a 404 the file on
+// disk is left as it is, and the REST pass completes it.
+async function dailyKlines(symbol, year, month, day, { refetch = false } = {}) {
   const mm = String(month).padStart(2, '0');
   const dd = String(day).padStart(2, '0');
   const file = path.join(CACHE_DIR, `${symbol}-1h-${year}-${mm}-${dd}.json`);
-  try {
-    const cached = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (Array.isArray(cached)) return cached;
-  } catch {
-    /* no cache yet */
+  if (!refetch) {
+    try {
+      const cached = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (Array.isArray(cached)) return cached;
+    } catch {
+      /* no cache yet */
+    }
   }
   const url = `${DATA}/data/spot/daily/klines/${symbol}/1h/${symbol}-1h-${year}-${mm}-${dd}.zip`;
   const res = await fetch(url);
@@ -215,19 +221,50 @@ async function dailyKlines(symbol, year, month, day) {
   // scope — every cache-miss fetch threw ReferenceError, so the daily-zip
   // tier of the fallback ladder silently never worked (review, 2026-07-31).
   const rows = parseKlineCsv(unzipSingleEntry(buf).toString('utf8'), HOUR_MS);
+  writeRowsAtomic(file, rows);
+  return rows;
+}
+
+// ATOMIC: worker threads read these files concurrently with the main
+// thread's refresh timers. A torn read would fall into a reader's catch,
+// re-fetch, and on a 404 silently drop the month — changing the dataset a
+// model trains on with no error surfaced. rename() is atomic on POSIX.
+function writeRowsAtomic(file, rows) {
   try {
     fs.mkdirSync(CACHE_DIR, { recursive: true });
-    // ATOMIC: worker threads read these files concurrently with the main
-    // thread's refresh timers. A torn read would fall into the catch above,
-    // re-fetch, and on a 404 silently drop the month — changing the dataset
-    // a model trains on with no error surfaced. rename() is atomic on POSIX.
     const tmp = `${file}.tmp${process.pid}-${++tmpSeq}-${Math.floor(Math.random()*1e6)}`;
     fs.writeFileSync(tmp, JSON.stringify(rows));
     fs.renameSync(tmp, file);
   } catch (err) {
     console.error(`cache write failed for ${path.basename(file)}:`, err.message);
   }
-  return rows;
+}
+
+// ONE DAY'S FILE (3.214.0): the piece a month is held in until its bundle is
+// published, and the shape the hours since the last finished day are written
+// in. A day file is WHOLE when its last candle opened at 23:00 of its day;
+// today's is partial and grows with every refresh.
+function dayFilePath(symbol, dayStartMs) {
+  const d = new Date(dayStartMs);
+  return path.join(CACHE_DIR, `${symbol}-1h-${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}.json`);
+}
+function readDayFile(symbol, dayStartMs) {
+  try {
+    const rows = JSON.parse(fs.readFileSync(dayFilePath(symbol, dayStartMs), 'utf8'));
+    return Array.isArray(rows) ? rows : null;
+  } catch { return null; }
+}
+function dayFileWhole(rows, dayStartMs) {
+  const last = Array.isArray(rows) && rows.length ? rows[rows.length - 1] : null;
+  return !!(last && last.ts === dayStartMs + 23 * HOUR_MS);
+}
+function writeDayFile(symbol, dayStartMs, rows) {
+  writeRowsAtomic(dayFilePath(symbol, dayStartMs), rows);
+}
+// the hour a candle opened, as the Data screen prints it: YYYY-MM-DD-HH:00:00 UTC
+function candleHourText(ts) {
+  const d = new Date(ts);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}-${String(d.getUTCHours()).padStart(2, '0')}:00:00`;
 }
 
 // Recent candles via the REST mirror, full OHLC+quoteVolume, hour-bucketed.
@@ -402,11 +439,16 @@ function cacheState() {
   return [...bySymbol.entries()]
     .map(([symbol, e]) => {
       const months = [...e.months].sort();
+      // THE NEWEST CANDLE, TO THE HOUR (owner order, 2026-09-21): a day file
+      // is no longer a whole day, so its name cannot say how far the data
+      // reaches. The newest candle on disk can, and it is what `to` says.
+      const newest = newestCandleTs(symbol);
       return {
         symbol,
         months: months.length,
         from: months[0],
-        to: e.latest.length > 7 ? e.latest : months[months.length - 1],
+        to: newest != null ? candleHourText(newest) : (e.latest.length > 7 ? e.latest : months[months.length - 1]),
+        toTs: newest,
         toMonth: months[months.length - 1],
       };
     })
@@ -425,7 +467,11 @@ function newestCandleTs(symbol) {
   const months = files.filter((f) => new RegExp(`^${symbol}-1h-\\d{4}-\\d{2}\\.json$`).test(f)).sort();
   const candidates = [];
   if (days.length) candidates.push(days[days.length - 1]);
-  if (months.length) candidates.push(months[months.length - 1]);
+  // a bundle is read only when no day file lies in a later month than it:
+  // cacheState() asks this for every coin on every draw of Data (3.214.0)
+  const dayMonth = days.length ? days[days.length - 1].slice(symbol.length + 4, symbol.length + 11) : null;
+  const bundleMonth = months.length ? months[months.length - 1].slice(symbol.length + 4, symbol.length + 11) : null;
+  if (months.length && !(dayMonth && bundleMonth && dayMonth > bundleMonth)) candidates.push(months[months.length - 1]);
   let newest = null;
   for (const f of candidates) {
     try {
@@ -439,4 +485,4 @@ function newestCandleTs(symbol) {
   return newest;
 }
 
-module.exports = { monthlyKlines, dailyKlines, recentKlines, socksServerTime, unzipSingleEntry, parseKlineCsv, cacheState, cachedMonths, cachedDayMonths, coveredMonths, monthFromDayFiles, cachePath, newestCandleTs, CACHE_DIR, HOUR_MS, MINUTE_MS: 60_000 };
+module.exports = { dayFilePath, readDayFile, dayFileWhole, writeDayFile, candleHourText, monthlyKlines, dailyKlines, recentKlines, socksServerTime, unzipSingleEntry, parseKlineCsv, cacheState, cachedMonths, cachedDayMonths, coveredMonths, monthFromDayFiles, cachePath, newestCandleTs, CACHE_DIR, HOUR_MS, MINUTE_MS: 60_000 };

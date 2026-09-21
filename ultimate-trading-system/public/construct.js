@@ -318,7 +318,7 @@ const COL = {
   pair: 'the Binance symbol, hourly candles.',
   months: 'how many whole months of hourly candles are cached on this box for the coin.',
   from: 'first cached month, YYYY-MM.',
-  to: 'last cached month, YYYY-MM. The current month is partial until it closes.',
+  to: 'the newest hourly candle on file, YYYY-MM-DD-HH:00:00 UTC, by the hour it opened. Refresh brings it to the most recent closed hour.',
   manage: 'per-coin actions. Downloading is by month; purging removes the cached candles, not any run that used them.',
   // saved-run lists
   run: 'the run id. The timestamp in it is when the job was FIRED, in UTC.',
@@ -635,7 +635,7 @@ async function drawData() {
     <h3 style="margin-top:0">Data on server</h3>
     <p class="note">Every sweep, null board and tune reads this cache, never the exchange — a gap here silently
       shrinks every window. Refresh re-fetches from the newest cached month (it may have been partial) through the
-      current month. Trim keeps only a range, deleting the rest. Purge deletes the whole asset. Every write refuses
+      current month, then the hours since the last whole day, to the most recent closed hourly candle. Trim keeps only a range, deleting the rest. Purge deletes the whole asset. Every write refuses
       while a job runs; purge and trim DELETE data — the only way back is downloading again.</p>
     <div class="scrollx" id="dataTbl">${rows.length ? `<table><thead><tr>
       ${cth('coin','pair')}${cth('months','months')}${cth('from','from')}${cth('to','to')}${cth('manage','manage','text-align:left')}</tr></thead><tbody>
@@ -669,7 +669,7 @@ async function drawData() {
            to the bottom like its neighbours, and centres the button and the
            status against each other inside itself. -->
       <div style="display:flex;align-items:center;gap:.8rem;flex:1 1 18rem;min-width:0">
-        <button id="dlRefreshAll" title="Every cached coin: fetch from its newest cached month through the current month">Global Refresh</button>
+        <button id="dlRefreshAll" title="Every cached coin: fetch from its newest cached month through the current month, then the hours since the last whole day, to the most recent closed hourly candle">Global Refresh</button>
         <!-- Wraps to a second line inside the group rather than pushing the
              group onto one of its own, which would put it back underneath. -->
         <div id="dlOut" class="note" style="min-width:0">
@@ -685,7 +685,7 @@ async function drawData() {
         dsStatus('working…');
         const result = await pollJob(out.jobId, dsStatus);
         dsStatus(result && typeof result === 'object'
-          ? 'done — ' + Object.entries(result).map(([sym, r]) => `${sym}: ${r.regenerated ? 'regenerated' : `${r.candles || 0} candles`}`).join(' · ')
+          ? 'done — ' + Object.entries(result).map(([sym, r]) => `${sym}: ${r.regenerated ? 'regenerated' : `${r.candles || 0} candles`}${r.to ? ` to ${r.to}` : ''}${r.recentError ? ` — the hours since the last whole day were not fetched: ${r.recentError}` : ''}`).join(' · ')
           : 'done');
       } else {
         dsStatus(out.purged != null ? `${out.purged} cached file(s) deleted` : 'done');
