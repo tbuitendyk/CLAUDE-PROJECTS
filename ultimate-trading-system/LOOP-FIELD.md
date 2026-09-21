@@ -107,3 +107,11 @@ list follow.
 - **3.211.0 (dc8b184), deployed 2026-09-21 about 05:26 UTC**: the engine, the
   build, fields on disk, the section on Coins. Narrow checks green before the
   deploy; the suite, the guards and the word list after it.
+- **3.211.1 (aa61cc0) and 3.211.2 (bc89a3c), deployed 2026-09-21 05:33 and
+  05:38 UTC**: two reds the suite found after 3.211.0 (bare grid headings; a
+  select built off the vocabulary) and one the word list found (code fragments
+  read as labels on Coins). Each fixed, deployed and re-fingerprinted.
+- **3.212.0 (f520aff), deployed 2026-09-21 about 05:52 UTC**: the gate on
+  stage 3 -- the Sweep group, the pricing, the record fields, the tally, both
+  Boards tables, the greenlight refusal. Narrow checks and the gate's guards
+  green; the suite and the word list after.
