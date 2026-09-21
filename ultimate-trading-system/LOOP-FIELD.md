@@ -81,4 +81,6 @@ list follow.
 
 ## What reached the box
 
-- nothing yet
+- **3.211.0 (dc8b184), deployed 2026-09-21 about 05:26 UTC**: the engine, the
+  build, fields on disk, the section on Coins. Narrow checks green before the
+  deploy; the suite, the guards and the word list after it.
