@@ -1637,7 +1637,8 @@ module.exports = {
     assert.ok(server.includes('leanUnits: d.leanUnits == null ? null : d.leanUnits, confirmWanted: !!d.confirmWanted'), 'the count route hands the screen the lean count');
     const boards = screens.drawBody('drawBoards');
     for (const piece of [">confirm${bRankSortBtn(doc, 'confirm', 'asc')}</th>", ">confirm verdict${bRankSortBtn(doc, 'verdict', 'desc')}</th>",
-      '${bConfirm(r)}</td>', ">confirm verdict${bCoinSortBtn(view, 'verdict', '\u2193')}</th>"]) {
+      '${bConfirm(r)}</td>', ">confirm verdict${bCoinSortBtn(view, 'verdict', '\u2193')}</th>",
+      "<td ${btd}>${bVerdict(r.verdict, r.lean ? r.lean.test : null, r.confirm, r.kx, r.ux)}</td>"]) {
       assert.ok(boards.includes(piece), `Boards must draw: ${piece}`);
     }
     // 3.131.0: each hands the word its six numbers, and the records under a row have their own two verdict cells
@@ -6857,14 +6858,15 @@ module.exports = {
     assert.strictEqual(bLeanNumbers(null, 'sized', 2, 1), '', 'numbers are made up where there is no lean');
     assert.strictEqual(bLeanNumbers({ c: parts.c }, 'sized', 2, 1), '', 'half a lean prints half the numbers');
     assert.strictEqual(bLeanNumbers(parts, 'sized', 2, 1),
-      '<div class="muted" style="white-space:nowrap;font-size:.85em">confirmed $8.00 over 4 · unconfirmed $-3.00 over 3 · no lean $1.00 over 1 · at size 1 $6.00 → sized $14.00</div>');
-    assert.ok(bLeanNumbers(parts, 'confirmed only').endsWith('at size 1 $6.00 → confirmed only $9.00</div>'), 'confirmed only does not drop the unconfirmed trades');
-    assert.ok(bLeanNumbers(parts, 'off').endsWith('at size 1 $6.00</div>'), 'off has money under it beyond the money at size 1');
+      // 3.228.0: a block that may wrap between its parts, never one line that may not
+      '<div class="muted bnums"><span style="white-space:nowrap">confirmed $8.00 over 4</span> · <span style="white-space:nowrap">unconfirmed $-3.00 over 3</span> · <span style="white-space:nowrap">no lean $1.00 over 1</span> · <span style="white-space:nowrap">at size 1 $6.00 → sized $14.00</span></div>');
+    assert.ok(bLeanNumbers(parts, 'confirmed only').endsWith('at size 1 $6.00 → confirmed only $9.00</span></div>'), 'confirmed only does not drop the unconfirmed trades');
+    assert.ok(bLeanNumbers(parts, 'off').endsWith('at size 1 $6.00</span></div>'), 'off has money under it beyond the money at size 1');
     // the word carries them on the screen, with a hover for the rule; no word, no numbers
     const v = bVerdict('better signal', parts, 'sized', 2, 1);
-    assert.ok(v.startsWith('<span title="the rule">better signal</span><div class="muted"'), v);
+    assert.ok(v.startsWith('<div class="bwords"><span title="the rule">better signal</span><div class="muted'), v);
     assert.ok(!/title="[^"]*confirmed \$/.test(v), 'the six numbers are in a hover, not on the screen');
-    assert.strictEqual(bVerdict('better signal'), '<span title="the rule">better signal</span>');
+    assert.strictEqual(bVerdict('better signal'), '<div class="bwords"><span title="the rule">better signal</span></div>');
     assert.strictEqual(bVerdict(null, parts, 'sized', 2, 1), '<span class="muted">—</span>', 'no word, no numbers');
   },
 };

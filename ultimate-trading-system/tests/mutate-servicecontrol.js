@@ -1817,7 +1817,7 @@ const GUARDS = [
     'aStage4GreenlightRefusesInWordsAndShuttlesOnlyIntoADraft', 'a survivor priced with the lean is greenlighted and traded at size 1 as though that were its record'],
   [path.join(ROOT, 'public', 'construct.js'), "      swGhostGroup('#swGrpConfirm', noLean);", "      swGhostGroup('#swGrpConfirm', false);",
     'theConfirmDialIsOnSweepAndItsVerdictOnBoards', 'the dial is never greyed, so it offers a lean on runs that have no unit to read it on'],
-  [path.join(ROOT, 'public', 'construct.js'), "        <td ${btd}>${bVerdict(r.verdict)}</td>\n        <td ${btd}>${r.rows}</td>", "        <td ${btd}>${r.rows}</td>",
+  [path.join(ROOT, 'public', 'construct.js'), "        <td ${btd}>${bVerdict(r.verdict, r.lean ? r.lean.test : null, r.confirm, r.kx, r.ux)}</td>\n        <td ${btd}>${bFieldVerdict(r.fieldVerdict, r.fieldTotals)}</td>", "        <td ${btd}>${bFieldVerdict(r.fieldVerdict, r.fieldTotals)}</td>",
     'theConfirmDialIsOnSweepAndItsVerdictOnBoards', 'Table 3.B has a verdict heading with no cell under it'],
   [path.join(ROOT, 'lib', 'funnel.js'), "const CATEGORICAL_DIALS = ['decision', 'weekdaysOnly', 'entry', 'gate', 'agreeRule', 'agreeBar', 'agreeBoth', 'confirm'];", "const CATEGORICAL_DIALS = ['decision', 'weekdaysOnly', 'entry', 'gate', 'agreeRule', 'agreeBar', 'agreeBoth'];",
     'theConfirmDialNamesItsSettingsAndRefusesBadValues', 'the Funnel cannot read confirm as a dial'],
@@ -2061,7 +2061,7 @@ const GUARDS = [
   // ---- ONE PRESS, AND IT FOLLOWS WHAT IS CHOSEN UNDER coin (3.136.0) ----
   [path.join(ROOT, 'public', 'construct.js'), "      const unitNow = blend ? 'all' : d.unit;", "      const unitNow = 'all';",
     'everyCopyOfThePressWorksOutWhatIsChosenUnderCoin', 'the press prices every coin and shape with one chosen under coin -- the fault the owner reported twice'],
-  [path.join(ROOT, 'public', 'construct.js'), "  const blend = !(d && d.unit);\n  return `<button ${named ? 'id=\"fRebuild\" ' : ''}class=\"pri\" data-frebuild=\"1\"${(blend ? fRichSetOff(d) : fRichOff(d)) ? ' disabled' : ''}>", "  const blend = true;\n  return `<button ${named ? 'id=\"fRebuild\" ' : ''}class=\"pri\" data-frebuild=\"1\"${(blend ? fRichSetOff(d) : fRichOff(d)) ? ' disabled' : ''}>",
+  [path.join(ROOT, 'public', 'construct.js'), "function fRebuildPress(d, named) {\n  const blend = !(d && d.unit);", "function fRebuildPress(d, named) {\n  const blend = true;",
     'everyCopyOfThePressWorksOutWhatIsChosenUnderCoin', 'with a coin and shape chosen the press is read off every coin and shape: dead too early or live too long, and its line counts the wrong thing'],
   // ---- THE SETUP PAGE CAN ALWAYS BE RELOADED TO START THE ENGINE (3.135.0) ----
   [SETUP, "const at = (p) => (p.startsWith('svc/') ? CONTROL_DIR + p.slice(4) : ENGINE_DIR + p);", 'const at = (p) => p;',
@@ -2093,7 +2093,7 @@ const GUARDS = [
     'theBoardsFieldAndVerdictCellsWrapInsteadOfWideningTheTable', 'the field figures are one unbreakable line again and set the width of the whole table'],
   [path.join(ROOT, 'public', 'construct.js'), "return `<span style=\"white-space:nowrap\">up to ${esc(upTo)} ×${esc(x)}</span>`; }).join(', ')}", "return esc(r); }).join(',')}",
     'theBoardsFieldAndVerdictCellsWrapInsteadOfWideningTheTable', 'the size rungs are printed as the name\'s shorthand again'],
-  [path.join(ROOT, 'public', 'construct.js'), "const bNoSort = '<span class=\"bsort\"></span>';", "const bNoSort = '';",
+  [path.join(ROOT, 'public', 'construct.js'), ">#${bNoSort}</th>", ">#</th>",
     'theBoardsFieldAndVerdictCellsWrapInsteadOfWideningTheTable', 'a heading that does not sort loses its blank line and its words sit a line lower than the others'],
   [path.join(ROOT, 'public', 'construct.html'), "  td .bwords { text-align:left; max-width:19rem; }", "  td .bwords { text-align:left; }",
     'theBoardsFieldAndVerdictCellsWrapInsteadOfWideningTheTable', 'the words-over-numbers block is as wide as its longest line again'],
