@@ -3807,6 +3807,31 @@ async function drawGreenlight() {
 // best rows forward and adds the BOOST members; stage 3 prices settings from
 // the kept votes without training anything. Each stage writes a record set the
 // next one reads, and every set names its parent.
+// THE CONDITIONS THE UNITS WERE TRAINED UNDER, AS ONE FILL (3.72.0; shared
+// since 3.222.0 by Load training setup and the choices under How the run
+// decides). Stages 1 and 2 open at the close of the chunk, hold to the chunk's
+// own end, price at the unit's own band and add every lean up. One definition,
+// so a fill from either place sets the same boxes to the same values -- two
+// copies of this list would be two lists to keep in step, and nothing would.
+// t is not a number here: the chunk's own is turned into each unit's own hold
+// length when it is priced, the way a band of auto already is.
+function swFillTrainedShape() {
+  const setV = (sel, v) => { const el = $(sel); if (el) el.value = String(v); };
+  const setC = (sel, v) => { const el = $(sel); if (el) el.checked = !!v; };
+  setV('#swAgreeRule', 'trained'); setC('#swPermAgreeRule', false);
+  setC('#swPermAgreeBar', false); setC('#swPermAgreeShare', false); setC('#swPermAgreeCopy', false);
+  setC('#swAgreeBoth', false); setC('#swPermAgreeBoth', false);
+  setV('#swAgreeHold', '0'); setC('#swPermAgreeHold', false);
+  setV('#swPlateauShare', '50'); setC('#swPermPlateauShare', false);
+  setV('#swEntry', 'market'); setC('#swPermEntry', false);
+  setC('#swPermGate', false); setC('#swPermD', false);
+  setV('#swTrail', ''); setC('#swPermTrail', false); setC('#swPermArm', false);
+  setV('#swDec', 'argmax'); setC('#swPermDec', false);
+  setV('#swBand', 'auto'); setC('#swPermBand', false);
+  setC('#swWk', false); setC('#swPermWk', false);
+  setV('#swT', 'own'); setC('#swPermT', false);
+}
+
 async function drawSweep() {
   if (swPoll) { clearInterval(swPoll); swPoll = null; }
   swCut2Asked = '';   // the filters may have moved on Boards since this tab was last drawn
@@ -3951,6 +3976,17 @@ async function drawSweep() {
       <label class="f">null set size<input id="swNull3" type="number" value="19" min="0" style="width:4.5rem"></label>
       <label class="f" title="how many of the null set's money figures to write down, rather than just counting them. Keeping some builds a whole second copy of the stage 3 tables out of scrambled money alone, which is the only thing the Funnel can measure a real result against. Costs one extra pricing per setting per coin for each one kept, so 10 makes the run about 10% longer. 0 keeps none, which is how every run before this one worked.">null set money kept<input id="swKeep3" type="number" value="10" min="0" style="width:4.5rem"></label>
     </div>
+    <p class="note" style="margin:.6rem 0 .1rem" id="swModeHead"><b>How the run decides</b> — pick one. The first two fill the boxes below for that kind of run and say what is still yours to set; custom leaves every box as it is. Nothing is started.</p>
+    <div class="row">
+      <label class="c" title="fills the boxes below for a run in which the members’ own trained call is placed only on a day the field’s sign agrees with it: quorum by trained, entry market, t the chunk’s own, band % (or auto) auto, decision argmax, 24/5 off, sign only ticked, silent × 0, size rungs 100:1, every permute off. Name the field yourself under The field. Nothing is started."><input type="radio" name="swMode" id="swModeAgree" value="agree"> members + field agree</label>
+    </div>
+    <div class="row">
+      <label class="c" title="fills the boxes below for a run in which the field’s sign alone is the call and the members are not read: quorum by field, entry market, t the chunk’s own, band % (or auto) auto, decision argmax, 24/5 off, sign only off, size rungs 100:1, every permute off. The minimums under The field are then the whole trigger. Name the field yourself under The field. Nothing is started."><input type="radio" name="swMode" id="swModeField" value="field"> field alone</label>
+    </div>
+    <div class="row">
+      <label class="c" title="leaves every box below exactly as it is, for you to set each one yourself."><input type="radio" name="swMode" id="swModeCustom" value="custom" checked> custom</label>
+    </div>
+    <p class="note" id="swModeSaid" style="margin:.1rem 0 .4rem;display:none"></p>
     <div class="row" style="margin-top:.5rem">
       <button id="swTrained3" title="fills the boxes below with the conditions the units were actually trained and scored under in stages 1 and 2, so what those stages did can be priced here as one setting and read against everything else on the same table. Those stages open at the close of the chunk and hold to the chunk's own end, add every member's lean together and take the winning side whatever the margin, with no head count and nothing to clear. Nothing is started: the boxes are filled and you press start stage 3 yourself.">Load training setup</button>
       <span id="swTrainedSaid" class="note"></span>
@@ -4166,20 +4202,7 @@ async function drawSweep() {
   // is nothing left for this to guess at and nothing left for it to ask.
   $('#swTrained3').onclick = () => {
     const said = $('#swTrainedSaid');
-    const setV = (sel, v) => { const el = $(sel); if (el) el.value = String(v); };
-    const setC = (sel, v) => { const el = $(sel); if (el) el.checked = !!v; };
-    setV('#swAgreeRule', 'trained'); setC('#swPermAgreeRule', false);
-    setC('#swPermAgreeBar', false); setC('#swPermAgreeShare', false); setC('#swPermAgreeCopy', false);
-    setC('#swAgreeBoth', false); setC('#swPermAgreeBoth', false);
-    setV('#swAgreeHold', '0'); setC('#swPermAgreeHold', false);
-    setV('#swPlateauShare', '50'); setC('#swPermPlateauShare', false);
-    setV('#swEntry', 'market'); setC('#swPermEntry', false);
-    setC('#swPermGate', false); setC('#swPermD', false);
-    setV('#swTrail', ''); setC('#swPermTrail', false); setC('#swPermArm', false);
-    setV('#swDec', 'argmax'); setC('#swPermDec', false);
-    setV('#swBand', 'auto'); setC('#swPermBand', false);
-    setC('#swWk', false); setC('#swPermWk', false);
-    setV('#swT', 'own'); setC('#swPermT', false);
+    swFillTrainedShape();
     said.textContent = 'filled in: quorum by trained, entry market, t the chunk\u2019s own, band % (or auto) auto, '
       + 'decision argmax, 24/5 off, every permute off. That is one setting, and it prices every unit at the hold '
       + 'length and the band its own stage 1 worked out \u2014 press Start stage 3 when you are ready.';
@@ -4188,6 +4211,59 @@ async function drawSweep() {
     swSayCut2();   // what the stage 1 filters leave the carry (3.220.0)
     swCounts();
   };
+  // HOW THE RUN DECIDES (3.222.0, owner: "a cluster of radio buttons ... one
+  // being the simple member vote and coin field agreement configuration ...
+  // another that is coin field only ... and one that is the normal mode of
+  // operation, custom, where everything is opened"). The first two FILL the
+  // boxes below, the way Load training setup fills them -- the trained shape
+  // through the one definition, then the field's part -- and the note under
+  // the three says what was set and what is still the owner's to choose;
+  // custom fills nothing. The boxes stay the truth of the run (RULE ELEVEN
+  // clause 2): a choice here is a fill the owner may then edit, never a
+  // setting the launch reads, and nothing is started.
+  const swModeNow = () => {
+    for (const id of ['swModeAgree', 'swModeField', 'swModeCustom']) { const el = $(`#${id}`); if (el && el.checked) return el.value; }
+    return 'custom';
+  };
+  const swModeFill = (mode) => {
+    if (mode !== 'agree' && mode !== 'field') return;
+    const setV = (sel, v) => { const el = $(sel); if (el) el.value = String(v); };
+    const setC = (sel, v) => { const el = $(sel); if (el) el.checked = !!v; };
+    swFillTrainedShape();
+    setV('#swAgreeRule', mode === 'field' ? 'field' : 'trained');
+    // the field's part: no permute of any of its boxes, the standard size on
+    // every rung; agreement is the field's sign with the members' call and
+    // nothing else, and a day the field says nothing is then no agreement
+    for (const id of ['swPermFieldAgreeMin', 'swPermFieldCertMin', 'swPermFieldRule', 'swPermFieldSignOnly', 'swPermFieldRead', 'swPermFieldRungs']) setC(`#${id}`, false);
+    setV('#swFieldRungs', '100:1');
+    setC('#swFieldSignOnly', mode === 'agree');
+    if (mode === 'agree') setV('#swFieldSilent', '0');
+  };
+  const swModeSay = () => {
+    const said = $('#swModeSaid');
+    if (!said) return;
+    const mode = swModeNow();
+    const shape = 'entry market, t the chunk\u2019s own, band % (or auto) auto, decision argmax, 24/5 off';
+    const html = mode === 'agree'
+      ? `<b>members + field agree</b> \u2014 filled in: quorum by trained, ${shape}, sign only ticked, silent \u00d7 0, size rungs 100:1, every permute off. `
+        + 'The members\u2019 own call is placed only on a day the field\u2019s sign agrees with it, at the standard size; a day the field says nothing places nothing. '
+        + '<b>Still yours:</b> name the field under The field (built on Coins) \u2014 with none named, no call is checked against a field; '
+        + 'untick sign only to demand an agreement minimum or a certainty minimum as well; set silent \u00d7 to 1 to let a day the field says nothing trade; '
+        + 'tick any permute to price choices side by side. Then press Start stage 3.'
+      : mode === 'field'
+        ? `<b>field alone</b> \u2014 filled in: quorum by field, ${shape}, sign only off, size rungs 100:1, every permute off. `
+          + 'The field\u2019s sign is the call and the members are not read, so quorum bar, share and both kinds do nothing here; hold still applies. '
+          + '<b>Still yours:</b> name the field under The field (built on Coins) \u2014 with none named the run is refused; '
+          + 'agreement minimum, certainty minimum and must pass are the whole trigger \u2014 blank places every day the field speaks, a number demands more; '
+          + 'silent \u00d7 does nothing here, because a day the field says nothing is no call; tick any permute to price choices side by side. Then press Start stage 3.'
+        : '';
+    said.innerHTML = html;
+    said.style.display = html ? '' : 'none';
+  };
+  for (const id of ['swModeAgree', 'swModeField', 'swModeCustom']) {
+    const el = $(`#${id}`);
+    if (el) el.addEventListener('change', () => { swModeFill(swModeNow()); swModeSay(); });
+  }
   // EVERY BOX THAT CHANGES THE COUNT RE-ASKS IT, AND ON TYPING AS WELL AS ON
   // LEAVING THE BOX (owner, 2026-08-29: "especially it's not working with the
   // null set size").
@@ -4212,6 +4288,7 @@ async function drawSweep() {
   // re-asking the counts. Two walks over the same list is two lists again, and
   // the one that fell behind would be the one nobody was looking at.
   restoreSweepForm();
+  swModeSay();
   for (const el of sweepControls()) {
     const onChange = () => {
       rememberSweepForm();

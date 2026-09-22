@@ -507,10 +507,69 @@ module.exports = {
   // A fill that sets a dropdown to a string not among its options leaves the
   // box on whatever it was, silently, and the owner launches something else
   // entirely believing they launched the trainings' own conditions.
+  // HOW THE RUN DECIDES (3.222.0, owner: "a cluster of radio buttons ... after
+  // the basics are selected"): three choices after the basics and before Load
+  // training setup, each alone in its row as the three under where this run
+  // takes its units from are; the first two fill the boxes through the one
+  // training shape and then the field's part, start nothing, and the guide
+  // under them is written from the checked choice on a change and when the
+  // screen is drawn; custom fills nothing and is where a fresh screen starts.
+  theThreeChoicesUnderHowTheRunDecidesFillTheBoxesAndStartNothing() {
+    const panel = SWEEP.slice(SWEEP.indexOf('<h3 id="swH3"'), SWEEP.indexOf('<div id="swOut3">'));
+    const order = ['id="swKeep3"', 'id="swModeHead"', 'id="swModeAgree"', 'id="swModeField"', 'id="swModeCustom"', 'id="swModeSaid"', 'id="swTrained3"'];
+    const at = order.map((s) => panel.indexOf(s));
+    assert.ok(at.every((i) => i >= 0), `missing from the stage 3 section: ${order.filter((_, i) => at[i] < 0).join(', ')}`);
+    assert.deepStrictEqual(at.slice().sort((a, b) => a - b), at,
+      'the choices sit after the basics and before Load training setup, the note that names them above and the guide below');
+    const rows = [...panel.matchAll(/<div class="row"[^>]*>([\s\S]*?)<\/div>/g)].map((m) => m[0]);
+    const choiceRows = rows.filter((r) => /type="radio" name="swMode"/.test(r));
+    assert.strictEqual(choiceRows.length, 3, `the three choices are drawn across ${choiceRows.length} rows`);
+    for (const r of choiceRows) {
+      const id = (/id="(swMode\w+)"/.exec(r) || [])[1];
+      assert.strictEqual((r.match(/<label/g) || []).length, 1, `the choice ${id} shares its row, so the three are no longer the same height`);
+      assert.ok(!/class="f"/.test(r) && !/margin-top/.test(r), `the choice ${id} shares its row with a field or carries a margin of its own`);
+      assert.ok(/<label class="c" title="[^"]+"><input type="radio"/.test(r), `the choice ${id} has no hover`);
+    }
+    assert.ok(/id="swModeCustom" value="custom" checked/.test(panel), 'custom is the choice a fresh screen starts on');
+    // THE FILL: the one training shape, then the field's part; nothing started
+    const fillAt = SWEEP.indexOf('const swModeFill = (mode) => {');
+    assert.ok(fillAt > 0, 'the choices fill nothing');
+    const fill = SWEEP.slice(fillAt, SWEEP.indexOf('\n  };', fillAt));
+    assert.ok(!/api\/stage3'/.test(fill) && !/tryPost/.test(fill), 'a choice must fill the boxes and start nothing');
+    assert.ok(fill.includes('swFillTrainedShape();'), 'the shape is the one definition Load training setup fills');
+    assert.ok(fill.includes("setV('#swAgreeRule', mode === 'field' ? 'field' : 'trained');"), 'members + field agree reads the members through trained, field alone reads the field');
+    assert.ok(fill.includes("setC('#swFieldSignOnly', mode === 'agree');"), 'agreement is the field\'s sign with the members\' call and nothing else, and field alone reads the minimums');
+    assert.ok(fill.includes("if (mode === 'agree') setV('#swFieldSilent', '0');"), 'under members + field agree a day the field says nothing must place nothing');
+    assert.ok(fill.includes("setV('#swFieldRungs', '100:1');"), 'the standard size on every rung');
+    for (const [id, value] of [...fill.matchAll(/setV\('#(sw[A-Za-z0-9]+)', '([^']*)'\)/g)].map((m) => [m[1], m[2]])) {
+      const offered = optionValues(SWEEP, id);
+      if (offered.length) assert.ok(offered.includes(value), `a choice sets #${id} to "${value}", which is not one of its choices (${offered.join(', ')})`);
+    }
+    assert.ok(['field', 'trained'].every((v) => optionValues(SWEEP, 'swAgreeRule').includes(v)), 'quorum by must offer trained and field');
+    // THE GUIDE: from the checked choice, on a change and when the screen is drawn
+    assert.ok(SWEEP.includes("if (el) el.addEventListener('change', () => { swModeFill(swModeNow()); swModeSay(); });"), 'a change of choice must fill and then say');
+    assert.ok(SWEEP.includes('  restoreSweepForm();\n  swModeSay();'), 'the guide is not written for a remembered choice when the screen is drawn');
+    const sayAt = SWEEP.indexOf('const swModeSay = () => {');
+    assert.ok(sayAt > 0, 'the guide is gone');
+    const say = SWEEP.slice(sayAt, SWEEP.indexOf('\n  };', sayAt));
+    for (const word of ['quorum by trained', 'quorum by field', 'sign only', 'silent \\u00d7', 'size rungs 100:1', 'The field', 'Start stage 3', 'agreement minimum', 'certainty minimum', 'must pass', 'hold still applies']) {
+      assert.ok(say.includes(word), `the guide does not say ${word}`);
+    }
+    assert.ok(say.includes("said.style.display = html ? '' : 'none';"), 'an empty guide still takes a line under custom');
+  },
+
   theTrainingSetupControlFillsTheFormAndStartsNothing() {
     const at = SWEEP.indexOf("$('#swTrained3').onclick");
     assert.ok(at > 0, 'the load training setup control must be wired');
-    const fn = SWEEP.slice(at, SWEEP.indexOf('\n  };', at));
+    // THE SHAPE IT FILLS IS ONE DEFINITION, shared with the choices under How
+    // the run decides (3.222.0), so the two can never fill different boxes
+    const shapeAt = SWEEP.indexOf('function swFillTrainedShape() {');
+    assert.ok(shapeAt > 0, 'the training shape fill is gone');
+    const shape = SWEEP.slice(shapeAt, SWEEP.indexOf('\n}\n', shapeAt));
+    const click = SWEEP.slice(at, SWEEP.indexOf('\n  };', at));
+    assert.ok(click.includes('swFillTrainedShape();'), 'load training setup must fill through the shared shape');
+    assert.ok(!/setV\('#sw/.test(click), 'load training setup keeps a fill of its own beside the shared one');
+    const fn = click + shape;
     // it must not launch: a control that fills the form is the owner's
     // servant; one that presses start for them takes the decision away
     // (RULE FIVE), and the difference is one line of code away at all times
