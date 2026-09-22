@@ -7647,6 +7647,15 @@ function fHoldPanel(d, st) {
     <div class="row" style="align-items:flex-end">
       ${fRebuildPress(d, true)}</div>
     ${st.rebuiltSaid ? `<p class="note">${esc(st.rebuiltSaid)}</p>` : ''}
+    <!-- READ THE RANKING LIVES HERE, ON ITS OWN ROW (3.228.1, owner 2026-09-22).
+         3.164.2 took every button out of a row that also holds a field, so a
+         button would never sit against a field. Everywhere else that sweep gave
+         the button its own row under its fields. This one it carried off to
+         Step 6 of the walk, where nobody would look for it, and the section
+         built to be read BEFORE any walk lost the control that reads it. -->
+    <div class="row">
+      <button id="fHoldRead"${ready ? '' : ' disabled'}>Read the ranking</button>
+    </div>
     <div class="row" style="align-items:flex-end">
       <label class="f" title="The settings are put in order by the money they made on one part of the test window, then put in order again by their money on another part. This number is how far the two orders agree, from -1 to 1: 1.00 is the same order on both parts, 0.00 no relation at all, below zero the order comes out backwards. A coin and shape clears the bar when its number reaches this on as many of the four boundaries as on how many of the four asks for. Leave it blank and no row can clear the bar, because nothing has been asked of it.">order must agree by at least<input
         id="fHoldAtLeast" type="number" step="0.05" min="-1" max="1" style="width:6rem"
@@ -7740,9 +7749,6 @@ function fStep6(d, st, r) {
         value="${esc(String(dd.max == null ? '' : dd.max))}"></label>
       <label class="f">fewest test trades<input id="fTrades" type="number" style="width:8rem"
         value="${esc(String(tr.min == null ? '' : tr.min))}"></label>
-    </div>
-    <div class="row">
-      <button id="fHoldRead"${ready ? '' : ' disabled'}>Read the ranking</button>
     </div>
     <div class="row">
       <button id="fAddFloors">Add these limits to the rule</button>

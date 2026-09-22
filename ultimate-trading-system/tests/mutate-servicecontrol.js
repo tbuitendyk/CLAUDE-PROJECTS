@@ -2088,6 +2088,9 @@ const GUARDS = [
     'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows', 'a unit\'s file is written empty and every board reads nothing'],
   [path.join(ROOT, 'lib', 'stages.js'), "      if (old[label]) richSumsTake(blend[label], old[label]);", "",
     'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows', 'a unit priced again is counted twice in the blend\'s average'],
+  // ---- READ THE RANKING IS BACK IN Worth walking? (3.228.1) ----
+  [path.join(ROOT, 'public', 'construct.js'), "    <div class=\"row\">\n      <button id=\"fHoldRead\"${ready ? '' : ' disabled'}>Read the ranking</button>\n    </div>\n    <div class=\"row\" style=\"align-items:flex-end\">\n      <label class=\"f\" title=\"The settings are put in order", "    <div class=\"row\" style=\"align-items:flex-end\">\n      <label class=\"f\" title=\"The settings are put in order",
+    'readTheRankingSitsInWorthWalkingOnItsOwnRow', 'the section that reads the ranking has no control to read it with again'],
   // ---- THE BOARDS CELLS WRAP INSTEAD OF WIDENING THE TABLE (3.228.0) ----
   [path.join(ROOT, 'public', 'construct.js'), "  return `<div class=\"muted bnums bgrid\"><span>placed ${N(t.placed)}</span>", "  return `<div class=\"muted\" style=\"white-space:nowrap\"><span>placed ${N(t.placed)}</span>",
     'theBoardsFieldAndVerdictCellsWrapInsteadOfWideningTheTable', 'the field figures are one unbreakable line again and set the width of the whole table'],

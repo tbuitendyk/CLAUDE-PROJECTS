@@ -4876,3 +4876,20 @@ module.exports.theStageFourTableKeepsTheHeldBackWindowBehindATick = function () 
   // the help describes the tick
   assert.ok(src('public/help-content.js').includes('fHeldBack: {'), 'the tick is not described on the Help tab');
 };
+
+// READ THE RANKING IS IN Worth walking?, ON ITS OWN ROW, AND NOWHERE ELSE
+// (3.228.1, owner 2026-09-22: "i used to have a control that actually did
+// something once the test history numbers were worked out to help me make a
+// selection for the funnel. there's no such control now"). 3.164.2's sweep
+// carried it off to Step 6 of the walk. It is read back here: drawn once, in
+// the section that holds the boxes it fills, on a row with no field in it.
+module.exports.readTheRankingSitsInWorthWalkingOnItsOwnRow = function () {
+  const page = src('public/construct.js');
+  const hits = page.split('<button id="fHoldRead"').length - 1;
+  assert.strictEqual(hits, 1, `Read the ranking is drawn ${hits} time(s); it is drawn once, in Worth walking?`);
+  const panel = page.slice(page.indexOf('<h3 style="margin-top:0">Worth walking?</h3>'), page.indexOf('id="fHoldAtLeast"'));
+  assert.ok(panel.includes('<div class="row">\n      <button id="fHoldRead"${ready ? \'\' : \' disabled\'}>Read the ranking</button>\n    </div>'),
+    'Read the ranking is not on its own row in Worth walking?, above the boxes it fills');
+  const step6 = page.slice(page.indexOf('function fStep6(d, st, r) {'), page.indexOf('function fStep7(d, st) {'));
+  assert.ok(!step6.includes('fHoldRead'), 'Read the ranking is still drawn on Step 6 of the walk');
+};
