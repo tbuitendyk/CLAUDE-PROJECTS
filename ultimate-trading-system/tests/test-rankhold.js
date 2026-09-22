@@ -336,7 +336,7 @@ module.exports = {
     // A SET CAN HOLD THREE HUNDRED COINS AND SHAPES, so the table has a page --
     // the SAME bar Boards draws, which is the one that states the true total.
     assert.ok(panel.includes("${bPager(all.length, from, F_HOLD_PER, 'WH')}"), 'the table draws every row it has, however many that is');
-    assert.ok(wire.includes("document.querySelectorAll('[data-bpage]')") && wire.includes("document.querySelectorAll('[data-bpageto]')"),
+    assert.ok(wire.includes("box.querySelectorAll('[data-bpage]')") && wire.includes("box.querySelectorAll('[data-bpageto]')"),
       'the paging bar is drawn and nothing listens to it');
     // and changing what is shown goes back to page one, or a page past the end
     // of a narrowed table reads as "nothing clears the bar"
