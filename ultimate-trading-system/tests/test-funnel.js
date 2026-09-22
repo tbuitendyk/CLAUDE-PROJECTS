@@ -2906,10 +2906,12 @@ module.exports = {
       ${lift('function fCpuWords(cpu) {', '\n}\n')}
       ${lift('const fAcrossWords = (units)', '\n')}
       ${lift('const fStoppingWords = (run)', '\n')}
+      ${lift('const fReadingWords = (run)', '\n')}
       const fRebuildSay = (text) => { said.push(text); };
       // a reply of null is an ask the service did not answer
       const api = async () => { if (!replies.length) throw new Error('the test ran out of replies'); const r = replies.shift(); if (r === null) throw new Error('no answer'); return r; };
-      const setTimeout = (fn) => fn();          // no real waiting in a test
+      let ticks = 0;   // no real waiting in a test, and a watcher that never ends is a failure, not a hang
+      const setTimeout = (fn) => { if (++ticks > 200) throw new Error('the watcher never ended'); fn(); };
       let fRichWatching = false;
       let fHoldSeen = null;
       let fHoldAsked = null;
@@ -2920,12 +2922,15 @@ module.exports = {
       return fRichWatch;
     `);
     const watch = build(said, [
+      // before the first setting is priced the boards are being read, and that is counted too (3.225.0)
+      { running: true, done: 0, of: 0, reading: { done: 3, of: 86 }, cpu: { busy: 0.2, cores: 8 } },
       { done: 95, of: 300, cpu: { busy: 0.56, cores: 8 } },
       { done: 220, of: 300, cpu: { busy: 0.5, cores: 8 } },
       { error: 'stop the test here' },
     ], 0);
     await watch({ set: 's3-test' });
     assert.deepStrictEqual(said, [
+      'reading the boards — 3 of 86 · 20% of 8 cores busy',
       'working them out — 95 of 300 settings · 56% of 8 cores busy',
       'working them out — 220 of 300 settings · 50% of 8 cores busy',
       'FAILED — stop the test here',
@@ -2952,9 +2957,11 @@ module.exports = {
       ${lift('function fCpuWords(cpu) {', '\n}\n')}
       ${lift('const fAcrossWords = (units)', '\n')}
       ${lift('const fStoppingWords = (run)', '\n')}
+      ${lift('const fReadingWords = (run)', '\n')}
       const fRebuildSay = (text) => { said.push(text); };
       const api = async () => { if (!replies.length) throw new Error('the test ran out of replies'); const r = replies.shift(); if (r === null) throw new Error('no answer'); return r; };
-      const setTimeout = (fn) => fn();
+      let ticks = 0;   // no real waiting in a test, and a watcher that never ends is a failure, not a hang
+      const setTimeout = (fn) => { if (++ticks > 200) throw new Error('the watcher never ended'); fn(); };
       let fRichWatching = false;
       let fHoldSeen = null;
       let fHoldAsked = null;
@@ -4380,6 +4387,7 @@ module.exports.theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft = 
     lift('const fAcrossWords = (units)', '\n'),
     lift('const fRichWhere = (d)', '\n'),
     lift('const fStoppingWords = (run)', '\n'),
+    lift('const fReadingWords = (run)', '\n'),
     lift('function fRichLine(d) {', '\n}\n'),
   ].join('\n')}\nreturn { fRichOff, fRichLine }; })()`);
 
@@ -4409,6 +4417,11 @@ module.exports.theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft = 
   assert.ok(!going.includes('across'), `one coin and shape says across: ${going}`);
   const many = fRichLine({ richOn: { have: 0, need: 640, run: { running: true, done: 6000, of: 60372, units: 3, cpu: { busy: 0.5, cores: 8 } } } });
   assert.ok(many.includes('6,000 of 60,372 settings across 3 coins and shapes'), `a set of several coins and shapes does not say so: ${many}`);
+  // 3.225.0: before the first setting is priced the boards are being read, and the line counts them
+  const reading = fRichLine({ richOn: { have: 0, need: 640, run: { running: true, done: 0, of: 0, reading: { done: 12, of: 86 }, cpu: { busy: 0.2, cores: 8 } } } });
+  assert.strictEqual(reading, 'reading the boards — 12 of 86 · 20% of 8 cores busy', `the boards being read are not counted on the line: ${reading}`);
+  assert.ok(fRichLine({ richOn: { have: 0, need: 640, run: { running: true, done: 0, of: 0, cpu: { busy: 0.2, cores: 8 } } } }).startsWith('working them out'),
+    'a run that has not begun reading no longer says working them out');
   assert.ok(fRichLine({ richOn: { have: 640, need: 640, run: null } }).includes('done'), 'a finished one says so');
   assert.ok(/setting\(s\) in this record set/.test(fRichLine({ richOn: { have: 640, need: 640, run: null } })),
     'a finished one says the numbers cover the survivors rather than the record set');
@@ -4735,9 +4748,11 @@ module.exports.theStopLandsBetweenCoinsAndShapesAndTheWatcherSaysWhereThePassSto
     ${lift('function fCpuWords(cpu) {', '\n}\n')}
     ${lift('const fAcrossWords = (units)', '\n')}
     ${lift('const fStoppingWords = (run)', '\n')}
+    ${lift('const fReadingWords = (run)', '\n')}
     const fRebuildSay = (text) => { said.push(text); };
     const api = async () => { if (!replies.length) throw new Error('the test ran out of replies'); const r = replies.shift(); if (r === null) throw new Error('no answer'); return r; };
-    const setTimeout = (fn) => fn();
+    let ticks = 0;   // no real waiting in a test, and a watcher that never ends is a failure, not a hang
+    const setTimeout = (fn) => { if (++ticks > 200) throw new Error('the watcher never ended'); fn(); };
     let fRichWatching = false;
     let fHoldSeen = null;
     let fHoldAsked = null;

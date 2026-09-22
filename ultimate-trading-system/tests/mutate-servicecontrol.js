@@ -2088,6 +2088,15 @@ const GUARDS = [
     'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows', 'a unit\'s file is written empty and every board reads nothing'],
   [path.join(ROOT, 'lib', 'stages.js'), "      if (old[label]) richSumsTake(blend[label], old[label]);", "",
     'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows', 'a unit priced again is counted twice in the blend\'s average'],
+  // ---- THE BOARDS BEING READ ARE COUNTED (3.225.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "    run.reading = { done: 0, of: todo.length };", "    run.reading = null;",
+    'thePassPricesOnlyTheTestWindowAndKeepsItPerCoinAndShape', 'the status never says the boards are being read, and the line sits on working them out through the whole read'],
+  [path.join(ROOT, 'lib', 'stages.js'), "      run.reading.done += 1;\n", "",
+    'thePassPricesOnlyTheTestWindowAndKeepsItPerCoinAndShape', 'the count of boards read never moves off nought'],
+  [path.join(ROOT, 'public', 'construct.js'), "        : (fReadingWords(p) || 'working them out')) + fCpuWords(p.cpu) + fStoppingWords(p));", "        : 'working them out') + fCpuWords(p.cpu) + fStoppingWords(p));",
+    'theWatcherSaysHowFarItHasGotOnEveryPoll', 'the watcher says working them out and nothing more through the whole read of the boards'],
+  [path.join(ROOT, 'public', 'construct.js'), "      : (fReadingWords(run) || 'working them out')) + fCpuWords(run.cpu) + fStoppingWords(run);", "      : 'working them out') + fCpuWords(run.cpu) + fStoppingWords(run);",
+    'theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft', 'the line beside the press says working them out and nothing more through the whole read of the boards'],
   // ---- THE STOP BESIDE THE PRESS (3.224.0) ----
   [path.join(ROOT, 'lib', 'stages.js'), "      if (run.stopRequested) { stoppedAfter = plan.indexOf(p) + 1; break; }", "",
     'thePassPricesOnlyTheTestWindowAndKeepsItPerCoinAndShape', 'the stop is taken and the pass goes on pricing every coin and shape regardless'],

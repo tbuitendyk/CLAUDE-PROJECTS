@@ -595,8 +595,12 @@ module.exports = {
       assert.strictEqual(fs.readdirSync(path.join(stages.funnelRichDir(c.s3), 'units')).length, 1, 'more than the one coin and shape was written');
       assert.strictEqual(stages.funnelRichStop(c.s3).stopping, false, 'a stop with nothing going claims to stop something');
       // THE PRESS AGAIN CARRIES ON: the rest, one file per coin and shape, every one done
-      stages.funnelRichStart(c.s3, {});
+      // -- and THE BOARDS BEING READ ARE COUNTED ON THE STATUS (3.225.0): from
+      // the press, before the first setting is priced, and every one once read
+      const pressed = stages.funnelRichStart(c.s3, {});
+      assert.deepStrictEqual(pressed.reading, { done: 0, of: units.length }, 'the status at the press does not say the boards are being read');
       const out = await settle(() => stages.funnelRichStatus(c.s3), 'the pass');
+      assert.deepStrictEqual(stages.funnelRichStatus(c.s3).reading, { done: units.length, of: units.length }, 'the count of boards read did not move over every one');
       assert.strictEqual((out.failures || []).length, 0, JSON.stringify(out.failures));
       assert.strictEqual(out.stopped, false);
       assert.strictEqual(out.units, units.length - 1, 'the press after a stop priced what the stopped pass had already written');

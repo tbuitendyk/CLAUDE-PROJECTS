@@ -7487,6 +7487,9 @@ function richStatus(run) {
     unit: run.unit ?? null,
     // a stop asked for and not yet landed (3.224.0): the coin and shape being priced lands first
     stopping: !!run.stopRequested,
+    // how many of the set's boards the pass has read so far, before the first
+    // setting is priced (3.225.0); null until the pass has begun reading
+    reading: run.reading ?? null,
     // beside the count, so the owner can see the box working and not just a
     // number that has not moved
     cpu: cpuLoad(),
@@ -7519,7 +7522,7 @@ function funnelRichStart(id, state = {}) {
   const doc = getSet(id);
   if (!doc) throw new Error(`unknown record set '${id}'`);
   claimOrRefuse();
-  const run = { id: String(id), token: `${id}:${Date.now()}`, done: 0, of: 0, units: null, unit: null, result: null, error: null, promise: null };
+  const run = { id: String(id), token: `${id}:${Date.now()}`, done: 0, of: 0, units: null, unit: null, reading: null, result: null, error: null, promise: null };
   richRun = run;
   run.promise = (async () => {
     // THE WHOLE RECORD SET, NOT THE RULE'S SURVIVORS (3.102.0, owner order
@@ -7573,8 +7576,15 @@ function funnelRichStart(id, state = {}) {
     const had = readFunnelRich(String(id));
     const plan = [];
     let onBoards = 0;
+    // READING THE BOARDS IS COUNTED TOO (3.225.0, owner 2026-09-22: "all i
+    // see on the status is 'working them out...'"). On a set of 86 coins and
+    // shapes the boards take minutes to read before the first setting is
+    // priced, and the line said nothing the whole time. The count of boards
+    // read rides on the status until the count of settings takes over.
+    run.reading = { done: 0, of: todo.length };
     for (const u of todo) {
       const board = await funnelBoard(String(id), t, u.key);
+      run.reading.done += 1;
       onBoards += (board.all || []).length;
       const missing = richMissingFor(board.all, had, u.key);
       if (missing.labels.length) plan.push({ unit: u, ...missing });
@@ -7630,7 +7640,7 @@ function funnelRichStop(id) {
 }
 function funnelRichStatus(id) {
   if (!richRun || richRun.id !== String(id)) {
-    return { running: false, none: true, token: null, done: 0, of: 0, cpu: cpuLoad(), error: null, result: null };
+    return { running: false, none: true, token: null, done: 0, of: 0, reading: null, cpu: cpuLoad(), error: null, result: null };
   }
   return richStatus(richRun);
 }
