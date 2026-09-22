@@ -2377,12 +2377,14 @@ module.exports = {
     // lacks priced, and written before the next one starts -- so a killed prep
     // picks up where it stopped instead of starting again from nothing.
     assert.ok(route.includes('const todo = unit ? units.filter((u) => u.key === unit) : units;'), 'the press prices something other than the coin and shape named, or every one');
-    assert.ok(route.includes('const board = await funnelBoard(String(id), t, u.key);') && route.includes('const missing = richMissingFor(board.all, had, u.key);'),
+    assert.ok(route.includes('const board = await funnelBoard(String(id), t, x.unit.key);') && route.includes('const missing = richMissingFor(board.all, readFunnelRich(String(id)), x.unit.key);'),
       'a coin and shape is priced from something other than its whole board, or prices what it already carries again');
-    const loop = route.slice(route.indexOf('for (const p of plan) {'), route.indexOf('funnelRankHoldForget(doc.id);'));
+    const loop = route.slice(route.indexOf('for (const x of left) {'), route.indexOf('funnelRankHoldForget(doc.id);'));
     assert.ok(loop.includes('kept = saveFunnelRich(doc.id, got.perSetting, got.testControls);'), 'a coin and shape is not written before the next one starts, so a killed prep loses every one it finished');
-    assert.ok(loop.includes("const got = await rebuildRichFor(doc, p.labels, { unit: p.unit.key, testOnly: true, note: (done) => { run.done = doneBefore + done; } });"), 'the count does not move over what is left across the coins and shapes');
-    assert.ok(route.includes('run.of = plan.reduce((s, p) => s + p.labels.length, 0);'), 'the count is over the board, not over what is left');
+    assert.ok(loop.includes("const got = await rebuildRichFor(doc, missing.labels, { unit: x.unit.key, testOnly: true, shape, pool, note: (done) => { run.done = doneBefore + done; } });"), 'the count does not move over what is left across the coins and shapes');
+    // 3.226.0: what is left is reckoned off the tables and the index at the press, and each board moves it to the truth
+    assert.ok(route.includes('run.of = left.reduce((s, x) => s + x.left, 0);') && route.includes('run.of += missing.labels.length - x.left;'), 'the count is over the board, not over what is left');
+    assert.ok(!route.includes('const plan = [];'), 'the pass holds the whole plan again before it prices anything');
     assert.ok(/this record set has no settings on its board/.test(route),
       'a set with nothing on its board must say so in those words, not "nothing was asked for"');
     assert.ok(/\.catch\(\(err\) => \{ run\.error = String\(\(err && err\.message\) \|\| err\); \}\);/.test(route),
@@ -2396,7 +2398,7 @@ module.exports = {
     const missingFn = lib.slice(lib.indexOf('function richMissingFor(boardRows, had, unitKey) {'), lib.indexOf('function mergeProofs(list) {'));
     assert.ok(missingFn.includes('if (r.avgTest != null && Number.isFinite(Number(r.avgTest))) expect[L] = Number(r.avgTest);'),
       'the board is read without the money the sweep stored, so nothing can be checked against it');
-    assert.ok(route.includes('proofs.push(proveRebuild(got.perSetting, p.expect));') && route.includes('proof: mergeProofs(proofs)'), 'the proof is handed something other than what was just read, or the proofs are not merged into the answer');
+    assert.ok(route.includes('proofs.push(proveRebuild(got.perSetting, missing.expect));') && route.includes('proof: mergeProofs(proofs)'), 'the proof is handed something other than what was just read, or the proofs are not merged into the answer');
     // a reading of the ranking was read FROM these numbers, so it goes when they move
     assert.ok(route.includes('funnelRankHoldForget(doc.id);'),
       'a ranking already read is served beside numbers it never saw');
@@ -2463,7 +2465,7 @@ module.exports = {
     // is the blend's own -- the same figure the rebuild works out, averaged over
     // every unit. There is no single board left to name, and naming one would be
     // the false alarm this test was written about, pointing the other way.
-    assert.ok(lib2.includes('proofs.push(proveRebuild(got.perSetting, p.expect));'), 'the press hands the proof something other than what it just read');
+    assert.ok(lib2.includes('proofs.push(proveRebuild(got.perSetting, missing.expect));'), 'the press hands the proof something other than what it just read');
     assert.ok(!lib2.includes("const onUnit = state.unit && String(state.unit) !== 'all' ? String(state.unit) : null;"),
       'the press still resolves a board to check on, which it no longer reads');
     const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
@@ -2904,9 +2906,8 @@ module.exports = {
     const said = [];
     const build = new Function('said', 'replies', 'sleepMs', `
       ${lift('function fCpuWords(cpu) {', '\n}\n')}
-      ${lift('const fAcrossWords = (units)', '\n')}
+      ${lift('const fAcrossWords = (units, onUnit)', '\n')}
       ${lift('const fStoppingWords = (run)', '\n')}
-      ${lift('const fReadingWords = (run)', '\n')}
       const fRebuildSay = (text) => { said.push(text); };
       // a reply of null is an ask the service did not answer
       const api = async () => { if (!replies.length) throw new Error('the test ran out of replies'); const r = replies.shift(); if (r === null) throw new Error('no answer'); return r; };
@@ -2922,15 +2923,15 @@ module.exports = {
       return fRichWatch;
     `);
     const watch = build(said, [
-      // before the first setting is priced the boards are being read, and that is counted too (3.225.0)
-      { running: true, done: 0, of: 0, reading: { done: 3, of: 86 }, cpu: { busy: 0.2, cores: 8 } },
+      // the count is known from the press, and the coin and shape the pass is on rides beside it (3.226.0)
+      { running: true, done: 0, of: 4733440, units: 86, onUnit: { at: 1, of: 86 }, cpu: { busy: 0.2, cores: 8 } },
       { done: 95, of: 300, cpu: { busy: 0.56, cores: 8 } },
       { done: 220, of: 300, cpu: { busy: 0.5, cores: 8 } },
       { error: 'stop the test here' },
     ], 0);
     await watch({ set: 's3-test' });
     assert.deepStrictEqual(said, [
-      'reading the boards — 3 of 86 · 20% of 8 cores busy',
+      'working them out — 0 of 4,733,440 settings on coin and shape 1 of 86 · 20% of 8 cores busy',
       'working them out — 95 of 300 settings · 56% of 8 cores busy',
       'working them out — 220 of 300 settings · 50% of 8 cores busy',
       'FAILED — stop the test here',
@@ -2955,9 +2956,8 @@ module.exports = {
     const said = [];
     const build = new Function('said', 'replies', `
       ${lift('function fCpuWords(cpu) {', '\n}\n')}
-      ${lift('const fAcrossWords = (units)', '\n')}
+      ${lift('const fAcrossWords = (units, onUnit)', '\n')}
       ${lift('const fStoppingWords = (run)', '\n')}
-      ${lift('const fReadingWords = (run)', '\n')}
       const fRebuildSay = (text) => { said.push(text); };
       const api = async () => { if (!replies.length) throw new Error('the test ran out of replies'); const r = replies.shift(); if (r === null) throw new Error('no answer'); return r; };
       let ticks = 0;   // no real waiting in a test, and a watcher that never ends is a failure, not a hang
@@ -4384,10 +4384,9 @@ module.exports.theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft = 
     lift('const fRichGoing = (d)', '\n'),
     lift('function fRichOff(d) {', '\n}\n'),
     lift('function fCpuWords(cpu) {', '\n}\n'),
-    lift('const fAcrossWords = (units)', '\n'),
+    lift('const fAcrossWords = (units, onUnit)', '\n'),
     lift('const fRichWhere = (d)', '\n'),
     lift('const fStoppingWords = (run)', '\n'),
-    lift('const fReadingWords = (run)', '\n'),
     lift('function fRichLine(d) {', '\n}\n'),
   ].join('\n')}\nreturn { fRichOff, fRichLine }; })()`);
 
@@ -4417,11 +4416,11 @@ module.exports.theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft = 
   assert.ok(!going.includes('across'), `one coin and shape says across: ${going}`);
   const many = fRichLine({ richOn: { have: 0, need: 640, run: { running: true, done: 6000, of: 60372, units: 3, cpu: { busy: 0.5, cores: 8 } } } });
   assert.ok(many.includes('6,000 of 60,372 settings across 3 coins and shapes'), `a set of several coins and shapes does not say so: ${many}`);
-  // 3.225.0: before the first setting is priced the boards are being read, and the line counts them
-  const reading = fRichLine({ richOn: { have: 0, need: 640, run: { running: true, done: 0, of: 0, reading: { done: 12, of: 86 }, cpu: { busy: 0.2, cores: 8 } } } });
-  assert.strictEqual(reading, 'reading the boards — 12 of 86 · 20% of 8 cores busy', `the boards being read are not counted on the line: ${reading}`);
+  // 3.226.0: the coin and shape the pass is on rides on the line, in place of the bare count of them
+  const on = fRichLine({ richOn: { have: 0, need: 640, run: { running: true, done: 12300, of: 4733440, units: 86, onUnit: { at: 3, of: 86 }, cpu: { busy: 0.2, cores: 8 } } } });
+  assert.strictEqual(on, 'working them out — 12,300 of 4,733,440 settings on coin and shape 3 of 86 · 20% of 8 cores busy', `the coin and shape the pass is on is not on the line: ${on}`);
   assert.ok(fRichLine({ richOn: { have: 0, need: 640, run: { running: true, done: 0, of: 0, cpu: { busy: 0.2, cores: 8 } } } }).startsWith('working them out'),
-    'a run that has not begun reading no longer says working them out');
+    'a run with no count yet no longer says working them out');
   assert.ok(fRichLine({ richOn: { have: 640, need: 640, run: null } }).includes('done'), 'a finished one says so');
   assert.ok(/setting\(s\) in this record set/.test(fRichLine({ richOn: { have: 640, need: 640, run: null } })),
     'a finished one says the numbers cover the survivors rather than the record set');
@@ -4584,7 +4583,7 @@ module.exports.theRebuildPricesEachUnitInPartsAndCountsSettings = function () {
   // count is the plan's, not the note's; the two rebuilds that price a Stage 4
   // set's own survivors still take it from the note
   assert.strictEqual(s.split('run.units = (x || {}).units ?? run.units ?? null;').length - 1, 2, 'not every rebuild of a Stage 4 set takes the unit count from the note');
-  assert.ok(s.includes('run.units = plan.length;'), 'the prep does not say how many coins and shapes it is pricing');
+  assert.ok(s.includes('run.units = left.length;'), 'the prep does not say how many coins and shapes it is pricing');
 };
 
 // THE PRESS ON STEP 6 WORKS OUT ONLY THE COIN AND SHAPE THE WALK IS ON (3.134.0,
@@ -4598,7 +4597,7 @@ module.exports.everyCopyOfThePressWorksOutWhatIsChosenUnderCoin = function () {
   const start = s.slice(s.indexOf('function funnelRichStart(id, state = {}) {'), s.indexOf('function funnelRichStatus(id) {'));
   assert.ok(start.includes("const unit = state && state.unit && state.unit !== 'all' ? String(state.unit) : null;"), 'the press does not read which coin and shape it was aimed at');
   assert.ok(start.includes('const todo = unit ? units.filter((u) => u.key === unit) : units;'), 'the board priced is not the one the press named');
-  assert.ok(start.includes('const got = await rebuildRichFor(doc, p.labels, { unit: p.unit.key, testOnly: true, note:'), 'the pricing is not held to the one coin and shape');
+  assert.ok(start.includes('const got = await rebuildRichFor(doc, missing.labels, { unit: x.unit.key, testOnly: true, shape, pool, note:'), 'the pricing is not held to the one coin and shape');
   assert.ok(start.includes('run.unit = unit;'), 'the status does not carry which coin and shape is being worked out');
   assert.ok(s.slice(s.indexOf('function richStatus(run) {'), s.indexOf('function funnelRichStart(')).includes('unit: run.unit ?? null,'));
   // every coin and shape, counted off the tables and the file alone
@@ -4657,7 +4656,7 @@ module.exports.everyCopyOfThePressWorksOutWhatIsChosenUnderCoin = function () {
   const lift = (head, end) => page.slice(page.indexOf(head), page.indexOf(end, page.indexOf(head)) + end.length);
   // eslint-disable-next-line no-new-func
   const { fRebuildPress, fRichSetOff, fRichSetLine } = new Function(`const esc = (t) => String(t == null ? '' : t);\n${[lift('const fRichOf = (d)', '\n'), lift('const fRichGoing = (d)', '\n'),
-    lift('function fRichOff(d) {', '\n}\n'), lift('function fCpuWords(cpu) {', '\n}\n'), lift('const fAcrossWords = (units)', '\n'), lift('const fRichWhere = (d)', '\n'),
+    lift('function fRichOff(d) {', '\n}\n'), lift('function fCpuWords(cpu) {', '\n}\n'), lift('const fAcrossWords = (units, onUnit)', '\n'), lift('const fRichWhere = (d)', '\n'),
     lift('const fStoppingWords = (run)', '\n'), lift('function fRichLine(d) {', '\n}\n'), lift('function fRichSetOff(d) {', '\n}\n'), lift('function fRichSetLine(d) {', '\n}\n'), lift('function fRebuildPress(d, named) {', '\n}\n')].join('\n')}\nreturn { fRebuildPress, fRichSetOff, fRichSetLine };`)();
   const oneCoin = { unit: 'AAA|||daily-1d', richOn: { have: 0, need: 640, run: null }, richSet: { units: 15, unitsDone: 14 } };
   const oneDone = { unit: 'AAA|||daily-1d', richOn: { have: 640, need: 640, run: null }, richSet: { units: 15, unitsDone: 1 } };
@@ -4721,7 +4720,7 @@ module.exports.thePassAsksForTheTestWindowAlone = function () {
   const work = src('lib/stagework.js');
   assert.ok(work.includes('if (task.testOnly) {') && work.includes('    holdChunks = [];'), 'the unit task no longer honours the flag');
   const start = s.slice(s.indexOf('function funnelRichStart(id, state = {}) {'), s.indexOf('function funnelRichStatus(id) {'));
-  assert.ok(start.includes("rebuildRichFor(doc, p.labels, { unit: p.unit.key, testOnly: true, note:"), 'the pass over a record set prices the held-back window and the null set again');
+  assert.ok(start.includes("rebuildRichFor(doc, missing.labels, { unit: x.unit.key, testOnly: true, shape, pool, note:"), 'the pass over a record set prices the held-back window and the null set again');
   const own = s.slice(s.indexOf('function rebuildSetRichStart('), s.indexOf('function rebuildSetRichStatus('));
   assert.ok(own.includes('rebuildRichFor(parent, labels, { testOnly: true, note:'), 'the press that puts a Stage 4 set\'s own numbers back prices the held-back window again');
   const ride = s.slice(s.indexOf('const worked = plainHeld'), s.indexOf('run.promise = worked'));
@@ -4746,9 +4745,8 @@ module.exports.theStopLandsBetweenCoinsAndShapesAndTheWatcherSaysWhereThePassSto
   };
   const build = (said, replies, st) => new Function('said', 'replies', 'st', `
     ${lift('function fCpuWords(cpu) {', '\n}\n')}
-    ${lift('const fAcrossWords = (units)', '\n')}
+    ${lift('const fAcrossWords = (units, onUnit)', '\n')}
     ${lift('const fStoppingWords = (run)', '\n')}
-    ${lift('const fReadingWords = (run)', '\n')}
     const fRebuildSay = (text) => { said.push(text); };
     const api = async () => { if (!replies.length) throw new Error('the test ran out of replies'); const r = replies.shift(); if (r === null) throw new Error('no answer'); return r; };
     let ticks = 0;   // no real waiting in a test, and a watcher that never ends is a failure, not a hang
@@ -4799,8 +4797,8 @@ module.exports.theStopLandsBetweenCoinsAndShapesAndTheWatcherSaysWhereThePassSto
   const stop = lib.slice(lib.indexOf('function funnelRichStop(id) {'), lib.indexOf('function funnelRichStatus(id) {'));
   assert.ok(stop.includes('richRun.stopRequested = true;') && stop.includes("return { stopping: false, why: 'nothing is being worked out on this record set' };"), 'the stop does not set the flag, or claims to stop what is not going');
   const route = lib.slice(lib.indexOf('function funnelRichStart(id, state = {}) {'), lib.indexOf('function funnelRichStop(id) {'));
-  assert.ok(route.includes('if (run.stopRequested) { stoppedAfter = plan.indexOf(p) + 1; break; }'), 'the pass does not look for the stop between coins and shapes');
-  assert.ok(route.includes('return { settings, units: stoppedAfter ?? plan.length, of: plan.length, stopped: stoppedAfter != null, failures, proof: mergeProofs(proofs), kept };'), 'the answer does not say where the pass stopped');
+  assert.ok(route.includes('if (run.stopRequested) { stoppedAfter = worked; break; }'), 'the pass does not look for the stop between coins and shapes');
+  assert.ok(route.includes('return { settings, units: stoppedAfter ?? worked, of: left.length, stopped: stoppedAfter != null, failures, proof: mergeProofs(proofs), kept };'), 'the answer does not say where the pass stopped');
   assert.ok(lib.includes('stopping: !!run.stopRequested,'), 'the status does not say a stop is coming');
   assert.ok(stages.funnelRichStop('s3-no-such').stopping === false, 'a stop with nothing going claims to stop something');
 };

@@ -7342,21 +7342,19 @@ function fCpuWords(cpu) {
   if (!cpu || cpu.busy == null) return '';
   return ` · ${Math.round(cpu.busy * 100)}% of ${cpu.cores} core${cpu.cores === 1 ? '' : 's'} busy`;
 }
-// the count runs over every coin and shape of the set (3.132.0); a set of more than one says so
-const fAcrossWords = (units) => (Number(units) > 1 ? ` across ${Number(units).toLocaleString()} coins and shapes` : '');
+// the count runs over every coin and shape of the set (3.132.0); a set of more than one says so, and which one the pass is on (3.226.0)
+const fAcrossWords = (units, onUnit) => (onUnit && Number(onUnit.of) > 1 ? ` on coin and shape ${Number(onUnit.at || 0).toLocaleString()} of ${Number(onUnit.of).toLocaleString()}` : (Number(units) > 1 ? ` across ${Number(units).toLocaleString()} coins and shapes` : ''));
 // where the count the read carries was taken: the board the walk is on (3.134.0)
 const fRichWhere = (d) => (d && d.unit && d.unit !== 'all' ? 'on this coin and shape' : 'in this record set');
 // a stop asked for and not yet landed (3.224.0)
 const fStoppingWords = (run) => (run && run.stopping ? ' · stopping after this coin and shape' : '');
-// the boards being read before the first setting is priced (3.225.0), counted on the line until the count of settings takes over
-const fReadingWords = (run) => (run && run.reading && Number(run.reading.of) > 0 && !run.of ? `reading the boards — ${Number(run.reading.done || 0).toLocaleString()} of ${Number(run.reading.of).toLocaleString()}` : null);
 function fRichLine(d) {
   const x = fRichOf(d);
   const run = x.run || {};
   const where = fRichWhere(d);
   if (fRichGoing(d)) {
-    return (run.of ? `working them out — ${Number(run.done || 0).toLocaleString()} of ${Number(run.of).toLocaleString()} settings${fAcrossWords(run.units)}`
-      : (fReadingWords(run) || 'working them out')) + fCpuWords(run.cpu) + fStoppingWords(run);
+    return (run.of ? `working them out — ${Number(run.done || 0).toLocaleString()} of ${Number(run.of).toLocaleString()} settings${fAcrossWords(run.units, run.onUnit)}`
+      : 'working them out') + fCpuWords(run.cpu) + fStoppingWords(run);
   }
   if (run.error) return `FAILED — ${String(run.error)}`;
   if (!x.need) return `there are no settings ${where}, so there is nothing to work out`;
@@ -8650,8 +8648,8 @@ async function fRichWatch(st) {
       // setting in this record set again from its parent set" until something
       // else redrew the screen. `node --check` cannot see an undefined name
       // and no test pressed this loop, which is how it shipped.
-      fRebuildSay((p.of ? `working them out — ${Number(p.done || 0).toLocaleString()} of ${Number(p.of).toLocaleString()} settings${fAcrossWords(p.units)}`
-        : (fReadingWords(p) || 'working them out')) + fCpuWords(p.cpu) + fStoppingWords(p));
+      fRebuildSay((p.of ? `working them out — ${Number(p.done || 0).toLocaleString()} of ${Number(p.of).toLocaleString()} settings${fAcrossWords(p.units, p.onUnit)}`
+        : 'working them out') + fCpuWords(p.cpu) + fStoppingWords(p));
       // eslint-disable-next-line no-await-in-loop
       await new Promise((r) => setTimeout(r, 1500));
     }

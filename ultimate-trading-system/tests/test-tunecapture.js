@@ -558,6 +558,12 @@ module.exports = {
       const labels = board.map((r) => r.label);
       assert.ok(labels.length > 0 && units.length >= 2, 'the chain holds a board on the planted coin and another unit');
       // the test window alone: no held-back figure, no null set, the test money the record's own
+      // -- and THE WORKER THREADS ARE LET GO WHEN THE CALL ENDS (3.226.0): a
+      // call used to leave its pool alive, so the pass leaked eight threads a
+      // coin and shape until the service died at its memory cap
+      const threadsAt = () => (fs.existsSync('/proc/self/task') ? fs.readdirSync('/proc/self/task').length : null);
+      const settleThreads = () => new Promise((resolve) => { setTimeout(resolve, 800); });
+      const threadsBefore = threadsAt();
       const lean = await stages.rebuildRichFor(doc, labels, { unit: c.plant, testOnly: true });
       assert.strictEqual(lean.failures.length, 0, JSON.stringify(lean.failures));
       const pnlOf = new Map(board.map((r) => [r.label, r.avgTest]));
@@ -580,6 +586,27 @@ module.exports = {
         const u = e.units.find((x) => stages.unitKeyOf(x) === c.plant);
         assert.ok(u && u.holdout && Number.isFinite(Number(u.holdout.pnl)), 'the full pricing lost the held-back window');
       }
+      await settleThreads();
+      if (threadsBefore != null) assert.ok(threadsAt() <= threadsBefore + 1, `two calls left worker threads behind: ${threadsBefore} before, ${threadsAt()} after`);
+      // THE WHOLE PASS (3.226.0): what is left is known at the press, off the
+      // tables and the index, before any board is read; the coin and shape the
+      // pass is on rides on the status and reaches the last; what was priced
+      // is exactly what the press said was left; and the pass's one pool of
+      // worker threads is let go at the end
+      const pressedWhole = stages.funnelRichStart(c.s3, {});
+      assert.ok(pressedWhole.of > 0 && pressedWhole.units === units.length, `the press does not know what is left off the tables: ${JSON.stringify([pressedWhole.of, pressedWhole.units])}`);
+      assert.deepStrictEqual(pressedWhole.onUnit, { at: 1, of: units.length }, 'the status at the press does not say which coin and shape it is on');
+      const whole = await settle(() => stages.funnelRichStatus(c.s3), 'the whole pass');
+      assert.strictEqual((whole.failures || []).length, 0, JSON.stringify(whole.failures));
+      assert.strictEqual(whole.units, units.length, 'the whole pass did not work every coin and shape');
+      const wholeSt = stages.funnelRichStatus(c.s3);
+      assert.deepStrictEqual(wholeSt.onUnit, { at: units.length, of: units.length }, 'the coin and shape on the status did not reach the last');
+      assert.strictEqual(wholeSt.done, pressedWhole.of, 'what was priced is not what the press said was left');
+      await settleThreads();
+      if (threadsBefore != null) assert.ok(threadsAt() <= threadsBefore + 1, `the pass left worker threads behind: ${threadsBefore} before, ${threadsAt()} after`);
+      // the store is cleared so the stop can be pressed on a pass with everything left
+      fs.rmSync(stages.funnelRichDir(c.s3), { recursive: true, force: true });
+      assert.strictEqual(stages.readFunnelRich(c.s3), null, 'the cleared store still reads');
       // THE STOP (3.224.0): asked for the moment the pass starts, it lands after
       // the first coin and shape -- that one is written, nothing further is
       // started, and the answer says where it stopped
@@ -595,12 +622,9 @@ module.exports = {
       assert.strictEqual(fs.readdirSync(path.join(stages.funnelRichDir(c.s3), 'units')).length, 1, 'more than the one coin and shape was written');
       assert.strictEqual(stages.funnelRichStop(c.s3).stopping, false, 'a stop with nothing going claims to stop something');
       // THE PRESS AGAIN CARRIES ON: the rest, one file per coin and shape, every one done
-      // -- and THE BOARDS BEING READ ARE COUNTED ON THE STATUS (3.225.0): from
-      // the press, before the first setting is priced, and every one once read
       const pressed = stages.funnelRichStart(c.s3, {});
-      assert.deepStrictEqual(pressed.reading, { done: 0, of: units.length }, 'the status at the press does not say the boards are being read');
+      assert.deepStrictEqual(pressed.onUnit, { at: 1, of: units.length - 1 }, 'the press after a stop does not count the coins and shapes still left');
       const out = await settle(() => stages.funnelRichStatus(c.s3), 'the pass');
-      assert.deepStrictEqual(stages.funnelRichStatus(c.s3).reading, { done: units.length, of: units.length }, 'the count of boards read did not move over every one');
       assert.strictEqual((out.failures || []).length, 0, JSON.stringify(out.failures));
       assert.strictEqual(out.stopped, false);
       assert.strictEqual(out.units, units.length - 1, 'the press after a stop priced what the stopped pass had already written');

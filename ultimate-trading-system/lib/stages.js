@@ -4903,7 +4903,9 @@ async function rebuildRichFor(doc, wantedLabels, opts = {}) {
   }
   const wanted = new Set((wantedLabels || []).map(String));
   if (!wanted.size) throw new Error('nothing was asked for');
-  const shape = relaunchShapeOf(doc);
+  // THE SET'S SHAPE MAY BE HANDED IN (3.226.0): the pass over a record set
+  // builds it once and prices every coin and shape against it
+  const shape = opts.shape || relaunchShapeOf(doc);
   const { parent, settings } = shape;
   // ONE UNIT ONLY, when asked (3.88.0, the ride on Verify): a Stage 4 set's
   // survivors on the set's own unit are priced without the other units, which
@@ -4916,7 +4918,12 @@ async function rebuildRichFor(doc, wantedLabels, opts = {}) {
     heldOn = keep.map((i) => heldOn[i]);
   }
   const use = settings.filter((st) => wanted.has(st.label));
-  const missing = [...wanted].filter((L) => !settings.some((st) => st.label === L));
+  // A LOOKUP, NOT A SCAN (3.226.0): this walked every setting of the set for
+  // every setting asked for -- three thousand million comparisons per coin
+  // and shape on the owner's set, on the service's one thread, with nothing
+  // answered meanwhile
+  const inBlock = new Set(settings.map((st) => st.label));
+  const missing = [...wanted].filter((L) => !inBlock.has(L));
   if (missing.length) {
     throw new Error(`${missing.length} of the settings asked for are not in this set's block `
       + `(first: ${missing[0]}) — it cannot rebuild what it never priced`);
@@ -4942,7 +4949,13 @@ async function rebuildRichFor(doc, wantedLabels, opts = {}) {
   // Cut the way a stage 3 run cuts its units: the votes read once per unit,
   // the settings sliced into parts, every part its own payload. The count
   // moves as parts land and counts settings over every unit.
-  const pool = createPool();
+  // THE WORKERS ARE THE CALLER'S WHEN IT BRINGS THEM, AND LET GO HERE WHEN THEY
+  // ARE THIS CALL'S OWN (3.226.0). The pool built here was never closed: every
+  // call left its worker threads alive, each with its own heap, and the pass
+  // over a record set makes one call per coin and shape -- eight threads a
+  // coin and shape, kept until the service died at its memory cap.
+  const own = !opts.pool;
+  const pool = opts.pool || createPool();
   activePool = pool;
   const workersN = pool.parallel ? pool.workers.length : 1;
   const parts = [];                     // { i: index into records, from, to } -- into the unit's own list
@@ -4959,7 +4972,7 @@ async function rebuildRichFor(doc, wantedLabels, opts = {}) {
         parts.push({ i, from, to });
       }
     });
-  } catch (err) { activePool = null; pool.abort(); throw err; }
+  } catch (err) { activePool = null; if (own) pool.abort(); throw err; }
 
   // si is per-BLOCK on the way back — the worker numbers what it was handed
   // from zero — so the label is what identifies a setting across units.
@@ -4975,7 +4988,8 @@ async function rebuildRichFor(doc, wantedLabels, opts = {}) {
   let done = 0;
   const say = () => { if (opts.note) opts.note(done, ofSettings, { units: records.length }); };
   say();                                // the line reads right before the first part lands
-  await pool.forEach('s3Unit', payloads, (settled, pi) => {
+  try {
+    await pool.forEach('s3Unit', payloads, (settled, pi) => {
     const part = parts[pi];
     const rec = records[part.i];
     if (settled.ok && settled.value) {
@@ -4997,8 +5011,11 @@ async function rebuildRichFor(doc, wantedLabels, opts = {}) {
     }
     done += part.to - part.from;
     say();
-  });
-  activePool = null;
+    });
+  } finally {
+    activePool = null;
+    if (own) pool.abort();
+  }
   for (const e of perSetting.values()) {
     const vals = e.units.map((x) => x.pnl).filter((v) => v != null && Number.isFinite(v));
     e.avgTest = vals.length ? vals.reduce((a, c) => a + c, 0) / vals.length : null;
@@ -7487,9 +7504,8 @@ function richStatus(run) {
     unit: run.unit ?? null,
     // a stop asked for and not yet landed (3.224.0): the coin and shape being priced lands first
     stopping: !!run.stopRequested,
-    // how many of the set's boards the pass has read so far, before the first
-    // setting is priced (3.225.0); null until the pass has begun reading
-    reading: run.reading ?? null,
+    // which coin and shape the pass is on, of how many have work (3.226.0)
+    onUnit: run.onUnit ?? null,
     // beside the count, so the owner can see the box working and not just a
     // number that has not moved
     cpu: cpuLoad(),
@@ -7522,7 +7538,7 @@ function funnelRichStart(id, state = {}) {
   const doc = getSet(id);
   if (!doc) throw new Error(`unknown record set '${id}'`);
   claimOrRefuse();
-  const run = { id: String(id), token: `${id}:${Date.now()}`, done: 0, of: 0, units: null, unit: null, reading: null, result: null, error: null, promise: null };
+  const run = { id: String(id), token: `${id}:${Date.now()}`, done: 0, of: 0, units: null, unit: null, onUnit: null, result: null, error: null, promise: null };
   richRun = run;
   run.promise = (async () => {
     // THE WHOLE RECORD SET, NOT THE RULE'S SURVIVORS (3.102.0, owner order
@@ -7573,56 +7589,80 @@ function funnelRichStart(id, state = {}) {
     const units = unitsOfSet(t, String(id));
     const todo = unit ? units.filter((u) => u.key === unit) : units;
     if (unit && !todo.length) throw new Error(`this set holds no unit called '${unit}'`);
-    const had = readFunnelRich(String(id));
-    const plan = [];
-    let onBoards = 0;
-    // READING THE BOARDS IS COUNTED TOO (3.225.0, owner 2026-09-22: "all i
-    // see on the status is 'working them out...'"). On a set of 86 coins and
-    // shapes the boards take minutes to read before the first setting is
-    // priced, and the line said nothing the whole time. The count of boards
-    // read rides on the status until the count of settings takes over.
-    run.reading = { done: 0, of: todo.length };
-    for (const u of todo) {
-      const board = await funnelBoard(String(id), t, u.key);
-      run.reading.done += 1;
-      onBoards += (board.all || []).length;
-      const missing = richMissingFor(board.all, had, u.key);
-      if (missing.labels.length) plan.push({ unit: u, ...missing });
-    }
-    if (!onBoards) throw new Error('this record set has no settings on its board, so there is nothing to work out');
-    run.units = plan.length;
-    run.of = plan.reduce((s, p) => s + p.labels.length, 0);
-    let kept = had ? { settings: Object.keys(had.settings || {}).length, added: 0, kept: Object.keys(had.settings || {}).length, fields: RICH_FIELDS, testControlUnits: Object.keys(had.testControls || {}).length } : null;
+    // WHAT IS LEFT IS COUNTED OFF THE TABLES AND THE STORE'S INDEX, BEFORE ANY
+    // BOARD IS READ (3.226.0, owner 2026-09-22, the service pinned at its memory
+    // cap under this pass on 86 coins and shapes: "fix the code deficiencies
+    // around performance and resource use related to this function"). The
+    // pass used to read every board first and hold the whole plan -- 4.7
+    // million setting names and the stored money for each -- for the whole of
+    // its run. The tables say how many settings each coin and shape's board
+    // holds and the index says how many its file carries; the difference is
+    // what is left, the same reckoning richSetOf makes when the screen says a
+    // coin and shape is done. The count is on the status from the press, and
+    // each board is read when its turn comes and let go with it.
+    const need = new Map();
+    for (const c of (t.coins || [])) { const k = unitKeyOf(c); need.set(k, (need.get(k) || 0) + (Number(c.rows) || 0)); }
+    if (!todo.some((u) => need.get(u.key) > 0)) throw new Error('this record set has no settings on its board, so there is nothing to work out');
+    const had0 = readFunnelRich(String(id));
+    const carried = (k) => Number((((had0 && had0.units) || {})[k] || {}).settings) || 0;
+    const left = todo.map((u) => ({ unit: u, left: Math.max(0, (need.get(u.key) || 0) - carried(u.key)) })).filter((x) => x.left > 0);
+    run.units = left.length;
+    run.of = left.reduce((s, x) => s + x.left, 0);
+    run.onUnit = { at: 1, of: left.length };
+    let kept = had0 ? { settings: Object.keys(had0.settings || {}).length, added: 0, kept: Object.keys(had0.settings || {}).length, fields: RICH_FIELDS, testControlUnits: Object.keys(had0.testControls || {}).length } : null;
     if (!run.of) {
       return { settings: 0, units: 0, failures: [], kept, nothingMissing: true,
         proof: { ran: false, checked: 0, matched: 0, mismatches: [], why: 'every setting already carried the numbers, so nothing was priced' } };
     }
+    // THE SET'S SHAPE ONCE AND THE WORKERS ONCE, FOR THE WHOLE PASS (3.226.0).
+    // Each coin and shape used to rebuild the set's whole shape -- every
+    // setting folded again -- and build its own pool of worker threads, and
+    // that pool was never let go: eight threads per coin and shape, each with
+    // its own heap, alive until the service died. On 86 coins and shapes that
+    // was the memory cap, reached, and the box paging with nothing answered.
+    // One shape, one pool, closed in the finally whatever ends the pass.
+    const shape = relaunchShapeOf(doc);
+    const pool = createPool();
     // THE PROOF STILL TRAVELS WITH THE ANSWER, per coin and shape against that
     // board's own stored money for each setting, merged at the end.
     const proofs = [];
     const failures = [];
     let settings = 0;
     let doneBefore = 0;
+    let worked = 0;
     let stoppedAfter = null;
-    for (const p of plan) {
-      const got = await rebuildRichFor(doc, p.labels, { unit: p.unit.key, testOnly: true, note: (done) => { run.done = doneBefore + done; } });
-      doneBefore += p.labels.length;
-      run.done = doneBefore;
-      proofs.push(proveRebuild(got.perSetting, p.expect));
-      kept = saveFunnelRich(doc.id, got.perSetting, got.testControls);
-      failures.push(...got.failures);
-      settings += got.settings;
-      // A STOP LANDS BETWEEN COINS AND SHAPES (3.224.0, owner 2026-09-22:
-      // "where's my button to stop the work out function?"). The one being
-      // priced lands and is written, nothing further is started, and the
-      // answer says where it stopped -- the next press carries on from
-      // there, exactly as it does after a service restart.
-      if (run.stopRequested) { stoppedAfter = plan.indexOf(p) + 1; break; }
-    }
+    try {
+      for (const x of left) {
+        run.onUnit = { at: worked + 1, of: left.length };
+        // ONE COIN AND SHAPE AT A TIME, ONLY WHAT IT STILL LACKS, SAVED AS EACH
+        // LANDS (3.139.0, owner order 2026-09-14): its board read here, when its
+        // turn comes, and the board is the truth of what is left -- the tables'
+        // reckoning moves to it
+        const board = await funnelBoard(String(id), t, x.unit.key);
+        const missing = richMissingFor(board.all, readFunnelRich(String(id)), x.unit.key);
+        run.of += missing.labels.length - x.left;
+        if (missing.labels.length) {
+          const got = await rebuildRichFor(doc, missing.labels, { unit: x.unit.key, testOnly: true, shape, pool, note: (done) => { run.done = doneBefore + done; } });
+          doneBefore += missing.labels.length;
+          run.done = doneBefore;
+          proofs.push(proveRebuild(got.perSetting, missing.expect));
+          kept = saveFunnelRich(doc.id, got.perSetting, got.testControls);
+          failures.push(...got.failures);
+          settings += got.settings;
+        }
+        worked++;
+        // A STOP LANDS BETWEEN COINS AND SHAPES (3.224.0, owner 2026-09-22:
+        // "where's my button to stop the work out function?"). The one being
+        // priced lands and is written, nothing further is started, and the
+        // answer says where it stopped -- the next press carries on from
+        // there, exactly as it does after a service restart.
+        if (run.stopRequested) { stoppedAfter = worked; break; }
+      }
+    } finally { activePool = null; pool.abort(); }
     // A RANKING ALREADY READ WAS READ FROM THESE NUMBERS, so it is dropped
     // rather than served beside numbers it never saw (3.102.0).
     funnelRankHoldForget(doc.id);
-    return { settings, units: stoppedAfter ?? plan.length, of: plan.length, stopped: stoppedAfter != null, failures, proof: mergeProofs(proofs), kept };
+    return { settings, units: stoppedAfter ?? worked, of: left.length, stopped: stoppedAfter != null, failures, proof: mergeProofs(proofs), kept };
   })()
     .then((out) => { run.result = out; if (run.of) run.done = run.of; })
     .catch((err) => { run.error = String((err && err.message) || err); });
@@ -7640,7 +7680,7 @@ function funnelRichStop(id) {
 }
 function funnelRichStatus(id) {
   if (!richRun || richRun.id !== String(id)) {
-    return { running: false, none: true, token: null, done: 0, of: 0, reading: null, cpu: cpuLoad(), error: null, result: null };
+    return { running: false, none: true, token: null, done: 0, of: 0, onUnit: null, cpu: cpuLoad(), error: null, result: null };
   }
   return richStatus(richRun);
 }
