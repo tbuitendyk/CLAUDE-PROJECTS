@@ -328,7 +328,8 @@ module.exports = {
     // 3.108.4: through fOpenBoard, the one door the four boxes above also use
     assert.ok(wire.includes('b.onclick = () => fOpenBoard(st.set, b.dataset.fhold);'),
       'walking a row does not choose the coin and shape the way the picker does');
-    assert.ok(wire.includes("document.querySelectorAll('[data-fhold]').forEach"),
+    // 3.229.0: walked inside the table's own box, and walked again after every in-place repaint
+    assert.ok(wire.includes("box.querySelectorAll('[data-fhold]').forEach") && wire.includes("const box = $('#fHoldTableBox') || document;"),
       'the rows are not wired by walking the table just drawn — a listener on the whole page fires once per redraw since load');
     // the three numbers are kept for the SET, not for one coin and shape's walk
     assert.ok(wire.includes('fRememberForSet(st.set, { hold:'), 'the four numbers are forgotten when another coin and shape is walked');
