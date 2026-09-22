@@ -1,16 +1,16 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html — so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "bbb2189cfc45b1590603fa993aeadabcaa8f76e4",
-  "subject": "3.220.4 -- the memory gate counts Table 3.B per unit, one row per short setting, not per coin",
-  "capturedAt": "2026-09-22T04:49:39Z",
+  "commit": "346959a3be7daffd28f7159ad4f3c2a02aaafee9",
+  "subject": "tests: three guards on the test history numbers re-aimed at the folder's lines",
+  "capturedAt": "2026-09-22T17:17:30Z",
   "files": {
     "public/construct.js": {
-      "sha256": "038d50bd209a877ad14889a9fa2a69a5186dc49282303ac8e3ab5aa631e776e0",
-      "bytes": 913965
+      "sha256": "6b2eb19fd14a8714e2a0588cf221896af8fc911ee69d80e57f2a739c7a092f9c",
+      "bytes": 924742
     },
     "public/help-content.js": {
-      "sha256": "d6af561b84f304467392557a5a8e29a719708ee7ef74b8f1b593dba9f056b2e3",
-      "bytes": 170944
+      "sha256": "afa0f7b29e0ee2ffa08e27b708f82106a9ed90da7fa5398dff077db5ce102ccd",
+      "bytes": 173145
     }
   },
   "htmlNotVerified": "public/construct.html, public/trade.html and public/setup.html are served with the release stamped into the head (3.137.0) and, for construct.html, the cache markers rewritten to the content hash of each script, so their served bytes never equal their stored bytes. Nothing is generated from them."
