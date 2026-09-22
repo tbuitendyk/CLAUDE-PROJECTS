@@ -2088,9 +2088,14 @@ const GUARDS = [
     'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows', 'a unit\'s file is written empty and every board reads nothing'],
   [path.join(ROOT, 'lib', 'stages.js'), "      if (old[label]) richSumsTake(blend[label], old[label]);", "",
     'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows', 'a unit priced again is counted twice in the blend\'s average'],
+  // ---- THE SIX BOXES APPLY ON THE PRESS AND REPAINT IN PLACE (3.229.0) ----
+  [path.join(ROOT, 'public', 'construct.js'), "    if (box) box.innerHTML = t ? fHoldTable(t, fHoldBar(st.set), fWalkingUnit(st, d)) : '';\n    wireTable();", "    drawFunnel();",
+    'theWorthWalkingBoxesApplyOnThePressAndRepaintInPlace', 'every change to the boxes reads the whole board again and redraws every panel'],
+  [path.join(ROOT, 'public', 'construct.js'), "  const onLeave = () => (fHoldBar(st.set).auto ? applyNow() : applyState());", "  const onLeave = () => applyNow();",
+    'theWorthWalkingBoxesApplyOnThePressAndRepaintInPlace', 'every box applies itself on change again, auto-apply settings or not'],
   // ---- READ THE RANKING IS BACK IN Worth walking? (3.228.1) ----
-  [path.join(ROOT, 'public', 'construct.js'), "    <div class=\"row\">\n      <button id=\"fHoldRead\"${ready ? '' : ' disabled'}>Read the ranking</button>\n    </div>\n    ${t ? fHoldTable(t, bar, fWalkingUnit(st, d)) : ''}`;", "    ${t ? fHoldTable(t, bar, fWalkingUnit(st, d)) : ''}`;",
-    'readTheRankingSitsInWorthWalkingOnItsOwnRow', 'the section that reads the ranking has no control to read it with again'],
+  [path.join(ROOT, 'public', 'construct.js'), "      <button id=\"fHoldRead\"${ready ? '' : ' disabled'}>Read the ranking</button>\n    </div>\n    <div id=\"fHoldTableBox\">", "    </div>\n    <div id=\"fHoldTableBox\">",
+    'readTheRankingSitsUnderTheWorthWalkingBoxes', 'the section that reads the ranking has no control to read it with again'],
   // ---- THE BOARDS CELLS WRAP INSTEAD OF WIDENING THE TABLE (3.228.0) ----
   [path.join(ROOT, 'public', 'construct.js'), "  return `<div class=\"muted bnums bgrid\"><span>placed ${N(t.placed)}</span>", "  return `<div class=\"muted\" style=\"white-space:nowrap\"><span>placed ${N(t.placed)}</span>",
     'theBoardsFieldAndVerdictCellsWrapInsteadOfWideningTheTable', 'the field figures are one unbreakable line again and set the width of the whole table'],

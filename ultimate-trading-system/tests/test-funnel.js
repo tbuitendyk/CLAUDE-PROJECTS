@@ -4883,14 +4883,41 @@ module.exports.theStageFourTableKeepsTheHeldBackWindowBehindATick = function () 
 // selection for the funnel. there's no such control now"). 3.164.2's sweep
 // carried it off to Step 6 of the walk. It is read back here: drawn once, in
 // the section that holds the boxes it fills, on a row with no field in it.
-module.exports.readTheRankingSitsInWorthWalkingOnItsOwnRow = function () {
+module.exports.readTheRankingSitsUnderTheWorthWalkingBoxes = function () {
   const page = src('public/construct.js');
   const hits = page.split('<button id="fHoldRead"').length - 1;
   assert.strictEqual(hits, 1, `Read the ranking is drawn ${hits} time(s); it is drawn once, in Worth walking?`);
-  // 3.228.2 (owner: "put that button under the fields where it belongs"): under the six boxes, above the table
-  const panel = page.slice(page.indexOf('id="fHoldSort"'), page.indexOf('${t ? fHoldTable(t, bar, fWalkingUnit(st, d)) : \'\'}'));
-  assert.ok(panel.includes('<div class="row">\n      <button id="fHoldRead"${ready ? \'\' : \' disabled\'}>Read the ranking</button>\n    </div>'),
-    'Read the ranking is not on its own row under the boxes it fills, above the table');
+  // 3.228.2 (owner: "put that button under the fields where it belongs"): under the six boxes, above the table;
+  // 3.229.0: in the control row with Apply settings and auto-apply settings, Boards' own row in the same words
+  const panel = page.slice(page.indexOf('id="fHoldSort"'), page.indexOf('<div id="fHoldTableBox">'));
+  assert.ok(panel.includes('<div class="row">\n      <button id="fHoldApply" disabled>Apply settings</button>\n      <label class="c"><input type="checkbox" id="fHoldAuto"${bar.auto ? \' checked\' : \'\'}> auto-apply settings</label>\n      <button id="fHoldRead"${ready ? \'\' : \' disabled\'}>Read the ranking</button>\n    </div>'),
+    'the control row under the boxes is not Apply settings, auto-apply settings and Read the ranking');
   const step6 = page.slice(page.indexOf('function fStep6(d, st, r) {'), page.indexOf('function fStep7(d, st) {'));
   assert.ok(!step6.includes('fHoldRead'), 'Read the ranking is still drawn on Step 6 of the walk');
+};
+
+// THE SIX BOXES APPLY ON THE PRESS, NEVER ON EVERY CHANGE, AND APPLYING
+// REPAINTS THE TABLE IN PLACE (3.229.0, owner 2026-09-22: "STOP redrawing the
+// screen automatically on every field change! that's just nasty"). Every
+// change used to call drawFunnel(), which reads the whole board from the
+// service again and redraws every panel. Read from the wiring: no box applies
+// itself unless auto-apply settings is ticked, keep() draws the table again
+// where it stands and never calls drawFunnel(), and the tick starts off.
+module.exports.theWorthWalkingBoxesApplyOnThePressAndRepaintInPlace = function () {
+  const page = src('public/construct.js');
+  const wire = page.slice(page.indexOf('function fWireHold(st, d) {'), page.indexOf('// WHAT COUNTS AS BEGINNING THE WALK'));
+  const keep = wire.slice(wire.indexOf('const keep = (fields) => {'), wire.indexOf('  };', wire.indexOf('const keep = (fields) => {')));
+  assert.ok(!keep.includes('drawFunnel()'), 'a change to the boxes still redraws the whole Funnel');
+  assert.ok(keep.includes("const box = $('#fHoldTableBox');") && keep.includes('if (box) box.innerHTML = t ? fHoldTable(t, fHoldBar(st.set), fWalkingUnit(st, d)) : \'\';') && keep.includes('wireTable();'),
+    'applying does not draw the table again where it stands');
+  assert.ok(wire.includes("for (const el of [at, on, rk, ch]) if (el) { el.oninput = applyState; el.onchange = onLeave; }")
+    && wire.includes("for (const el of [sh, so]) if (el) el.onchange = onLeave;")
+    && wire.includes('const onLeave = () => (fHoldBar(st.set).auto ? applyNow() : applyState());'),
+    'a box applies itself on change with auto-apply settings unticked');
+  assert.ok(wire.includes("if (applyBtn) applyBtn.onclick = () => { if (!applyBtn.disabled) applyNow(); };"), 'Apply settings does not apply the boxes');
+  assert.ok(!/\.onchange = \(\) => keep\(/.test(wire), 'a box still applies itself straight to the table');
+  const start = page.slice(page.indexOf('const F_HOLD_START = {'), page.indexOf('\n', page.indexOf('const F_HOLD_START = {')));
+  assert.ok(start.includes('auto: false'), 'auto-apply settings does not start unticked');
+  const help = src('public/help-content.js');
+  assert.ok(help.includes('      fHoldApply: {') && help.includes('      fHoldAuto: {'), 'the two new controls have no help');
 };

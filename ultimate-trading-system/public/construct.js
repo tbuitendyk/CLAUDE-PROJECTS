@@ -7498,7 +7498,7 @@ const F_HOLD_COL_WHAT = {
 // the only thing anyone reads is "how much history is behind this number" -- a
 // label that was accurate and unreadable, which is a bad label. So: `settings
 // ranked` counts settings, `chunks a part` counts history, and each says so.
-const F_HOLD_START = { atLeast: null, onHowMany: 4, fewestRanked: 30, fewestChunks: 40, show: 'all', sort: 'set', from: 0 };
+const F_HOLD_START = { atLeast: null, onHowMany: 4, fewestRanked: 30, fewestChunks: 40, show: 'all', sort: 'set', from: 0, auto: false };
 const F_HOLD_PER = 50;
 const fHoldBar = (set) => ({ ...F_HOLD_START, ...(fSetMemory(set).hold || {}) });
 // The reading in hand, for THIS set. Held in the page and not in storage: it is
@@ -7671,10 +7671,21 @@ function fHoldPanel(d, st) {
         id="fHoldSort">${F_HOLD_SORT.map(([k, w]) => `<option value="${k}"${k === bar.sort ? ' selected' : ''}>${esc(w)}</option>`).join('')}</select></label>
       <span id="fHoldMsg" class="note">${esc(ready ? `${t ? '' : 'not read yet - one press reads every coin and shape in this record set'}${partly}`
     : 'no setting in this record set carries what it made in each part of the test window - the press above works that out first')}</span></div>
+    <!-- WHAT IS TYPED AND WHAT IS APPLIED ARE TWO DIFFERENT THINGS (3.229.0, owner
+         2026-09-22: "STOP redrawing the screen automatically on every field
+         change! that's just nasty"). The six boxes above go on with Apply
+         settings, or one by one on leaving a box while auto-apply settings is
+         ticked -- the row Boards' filters carry, in the same words. Applying
+         repaints the table below in place: the reading is in hand and the boxes
+         are arithmetic on it, so nothing is read from the service again and the
+         page does not move. Read the ranking, which takes the reading, keeps
+         the row under the boxes it fills. -->
     <div class="row">
+      <button id="fHoldApply" disabled>Apply settings</button>
+      <label class="c"><input type="checkbox" id="fHoldAuto"${bar.auto ? ' checked' : ''}> auto-apply settings</label>
       <button id="fHoldRead"${ready ? '' : ' disabled'}>Read the ranking</button>
     </div>
-    ${t ? fHoldTable(t, bar, fWalkingUnit(st, d)) : ''}`;
+    <div id="fHoldTableBox">${t ? fHoldTable(t, bar, fWalkingUnit(st, d)) : ''}</div>`;
 }
 
 function fStep6(d, st, r) {
@@ -8843,29 +8854,71 @@ function fWireHold(st, d) {
   // ANY CHANGE TO WHAT IS SHOWN GOES BACK TO PAGE ONE. Page four of a hundred
   // rows is page four of nothing once the bar cuts it to twelve, and a blank
   // table there reads as "no rows clear it".
+  // REPAINTED IN PLACE, NEVER REDRAWN (3.229.0, owner 2026-09-22: "STOP
+  // redrawing the screen automatically on every field change! that's just
+  // nasty"). This called drawFunnel(), which reads the whole board from the
+  // service again -- seconds on a large record set -- and redrew every panel,
+  // for a change that is arithmetic on a reading already in hand. Now the
+  // table under the boxes is drawn again where it stands and nothing else is
+  // touched.
   const keep = (fields) => {
     const back = ['atLeast', 'onHowMany', 'fewestRanked', 'fewestChunks', 'show', 'sort'].some((k) => k in fields);
     fRememberForSet(st.set, { hold: { ...fHoldBar(st.set), ...fields, ...(back ? { from: 0 } : {}) } });
-    drawFunnel();
+    const box = $('#fHoldTableBox');
+    const t = fHoldSeen && fHoldSeen.set === st.set ? fHoldSeen.table : null;
+    if (box) box.innerHTML = t ? fHoldTable(t, fHoldBar(st.set), fWalkingUnit(st, d)) : '';
+    wireTable();
+    applyState();
   };
+  // WHAT IS TYPED AND WHAT IS APPLIED ARE TWO DIFFERENT THINGS (3.229.0): the
+  // six boxes go on together with Apply settings, or one by one on leaving a
+  // box while auto-apply settings is ticked -- Boards' own wiring, in the
+  // same words. The button sleeps while the boxes say what the table already
+  // shows, so typing a value back puts it back to sleep.
   const at = $('#fHoldAtLeast');
-  if (at) at.onchange = () => keep({ atLeast: num(at) });
   const on = $('#fHoldOn');
-  if (on) on.onchange = () => keep({ onHowMany: Math.min(4, num(on, 1) == null ? 4 : num(on, 1)) });
   const rk = $('#fHoldRanked');
-  if (rk) rk.onchange = () => keep({ fewestRanked: num(rk, 3) == null ? 30 : num(rk, 3) });
   const ch = $('#fHoldChunks');
-  if (ch) ch.onchange = () => keep({ fewestChunks: num(ch, 0) == null ? 40 : num(ch, 0) });
   const sh = $('#fHoldShow');
-  if (sh) sh.onchange = () => keep({ show: sh.value });
   const so = $('#fHoldSort');
-  if (so) so.onchange = () => keep({ sort: so.value });
+  const applyBtn = $('#fHoldApply');
+  const autoTick = $('#fHoldAuto');
+  const typed = () => ({
+    atLeast: at ? num(at) : null,
+    onHowMany: on ? Math.min(4, num(on, 1) == null ? 4 : num(on, 1)) : 4,
+    fewestRanked: rk ? (num(rk, 3) == null ? 30 : num(rk, 3)) : 30,
+    fewestChunks: ch ? (num(ch, 0) == null ? 40 : num(ch, 0)) : 40,
+    show: sh ? sh.value : 'all',
+    sort: so ? so.value : 'set',
+  });
+  const applied = () => {
+    const b = fHoldBar(st.set);
+    return { atLeast: b.atLeast, onHowMany: b.onHowMany, fewestRanked: b.fewestRanked, fewestChunks: b.fewestChunks, show: b.show, sort: b.sort };
+  };
+  const same = (a, b) => Object.keys(a).every((k) => a[k] === b[k]);
+  const applyState = () => { if (applyBtn) applyBtn.disabled = !!fHoldBar(st.set).auto || same(typed(), applied()); };
+  const applyNow = () => { if (same(typed(), applied())) applyState(); else keep(typed()); };
+  const onLeave = () => (fHoldBar(st.set).auto ? applyNow() : applyState());
+  for (const el of [at, on, rk, ch]) if (el) { el.oninput = applyState; el.onchange = onLeave; }
+  for (const el of [sh, so]) if (el) el.onchange = onLeave;
+  if (applyBtn) applyBtn.onclick = () => { if (!applyBtn.disabled) applyNow(); };
+  if (autoTick) {
+    autoTick.onchange = () => {
+      fRememberForSet(st.set, { hold: { ...fHoldBar(st.set), auto: autoTick.checked } });
+      // ticking it means "keep it applied", so anything typed and not yet put on goes on now
+      if (autoTick.checked) applyNow(); else applyState();
+    };
+  }
+  applyState();
   // THE PAGING BAR IS THE ONE BOARDS DRAWS, so it says the same things; only
-  // where a page lands is this screen's. Wired by walking what was just drawn.
-  document.querySelectorAll('[data-bpage]').forEach((b) => {
+  // where a page lands is this screen's. Wired by walking what was just drawn,
+  // and walked again after every repaint of the table (3.229.0).
+  function wireTable() {
+  const box = $('#fHoldTableBox') || document;
+  box.querySelectorAll('[data-bpage]').forEach((b) => {
     b.onclick = () => keep({ from: Number(b.dataset.bpage.split(':')[1]) });
   });
-  document.querySelectorAll('[data-bpageto]').forEach((el) => {
+  box.querySelectorAll('[data-bpageto]').forEach((el) => {
     let jumped = false;                 // change fires, the redraw pulls the box out, blur follows: one jump
     const jump = () => {
       if (jumped) return;
@@ -8885,12 +8938,14 @@ function fWireHold(st, d) {
   // through, so a walk started here is a walk like any other. Wired by walking
   // the rows just drawn -- a listener on the whole page would fire once per
   // redraw since load.
-  document.querySelectorAll('[data-fhold]').forEach((b) => {
+  box.querySelectorAll('[data-fhold]').forEach((b) => {
     // THE SAME DOOR THE FOUR BOXES GO THROUGH (3.108.4). A press that says
     // Walk this one and opens a Stage 4 record set instead is the same fault
     // wearing a different control.
     b.onclick = () => fOpenBoard(st.set, b.dataset.fhold);
   });
+  }
+  wireTable();
 }
 
 // WHAT COUNTS AS BEGINNING THE WALK (3.107.0, owner order 2026-09-10). Using

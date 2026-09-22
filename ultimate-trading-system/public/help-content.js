@@ -849,6 +849,14 @@ window.HELP = {
         what: 'The fewest chunks the shortest of the three parts of a coin and shape\'s test window must hold before it is ranked at all. Zero turns this off.',
         more: 'This counts HISTORY, not settings. A shape that decides once a week gets about sixteen chunks a part on today\'s history where one that decides daily gets over a hundred, so each setting\'s figure in a weekly part is a handful of trades. That noise drags every column towards 0.00, which means a short coin and shape reads as worse than it is - you would drop a good one for being short. This floor is what stops that, and it is the number that cuts off the shapes deciding once a week. It is read off the window each run actually recorded, never worked out from the layout.',
       },
+      fHoldApply: {
+        what: 'Puts every box above on at once. Greyed out until a box says something different from what the table is already showing, and greyed out again if you type it back. Not needed while auto-apply settings is ticked.',
+        more: 'Applying re-sorts the table already read; it reads nothing again and moves nothing on the page. Read the ranking is what takes the reading; this only changes what is drawn from it.',
+      },
+      fHoldAuto: {
+        what: 'Ticked, each box goes on the moment you leave it. Unticked, nothing goes on until you press Apply settings.',
+        more: 'The same tick Boards carries under its filters. Off to begin with, because changing six boxes one at a time is six re-sorts of the table when one would do.',
+      },
       fHoldShow: {
         what: 'Which rows the table draws: every coin and shape, only the ones that clear the bar, or only the ones that do not.',
         more: 'Nothing is thrown away. A row hidden here is still counted in the line under the table, which always says how many of the whole set you are looking at.',
