@@ -79,7 +79,24 @@ for (const u of unitKeys) {
     }
   }
   for (const g of G) { if (dU[g] > 0.005) paired[g].unitsUp++; else if (dU[g] < -0.005) paired[g].unitsDown++; }
-  per.push({ u, cp, fp, cc, fc, dU, nC: cRows.length, nF: fRows.length });
+  // THE SETTINGS AN OWNER WOULD ACTUALLY LOOK AT: the control's top 20 on TEST
+  // for this unit (most kept null copies beaten, then test $, ten test trades
+  // or more), paired with the same settings under each gate. Pairing every one
+  // of 3,168 settings is dominated by the thousands that lose money, where
+  // blocking trades helps by construction.
+  const top = usable(cRows).sort((x, y) => (y.bn - x.bn) || (y.t - x.t)).slice(0, 20);
+  const dTop = {};
+  for (const g of G) dTop[g] = { n: 0, dH: 0, better: 0, worse: 0 };
+  for (const c of top) {
+    const fg = fm.get(c.base);
+    for (const g of G) {
+      const f = fg ? fg.get(g) : null;
+      if (!f || f.h == null) continue;
+      const d = f.h - c.h;
+      dTop[g].n++; dTop[g].dH += d; if (d > 0.005) dTop[g].better++; else if (d < -0.005) dTop[g].worse++;
+    }
+  }
+  per.push({ u, cp, fp, cc, fc, dU, dTop, nC: cRows.length, nF: fRows.length, cUsable: usable(cRows).length, fUsable: usable(fRows).length });
 }
 
 if (PART === 'units1' || PART === 'units2') {
@@ -106,7 +123,7 @@ const tally = (pick) => {
     chosen.set(short(f.gate), (chosen.get(short(f.gate)) || 0) + 1);
     verdicts.set(f.fvh || '-', (verdicts.get(f.fvh || '-') || 0) + 1);
   }
-  console.log(`  units: field pick better on held ${better}, same ${same}, worse ${worse}${none ? `, no usable row ${none}` : ''} of ${per.length}`);
+  console.log(`  units: field pick better on held ${better}, same ${same}, worse ${worse}${none ? `, no usable row ${none} (control lacks one on ${per.filter((x) => !x.cUsable).length}, field on ${per.filter((x) => !x.fUsable).length})` : ''} of ${per.length}`);
   console.log(`  held $ summed: control picks ${r0(cH)}, field picks ${r0(fH)} (Δ ${r0(fH - cH)}); held trades ${cHt} vs ${fHt}`);
   console.log(`  test $ summed: control picks ${r0(cT)}, field picks ${r0(fT)}`);
   console.log(`  gate values chosen: ${[...chosen].map(([g, n]) => `${g} x${n}`).join(', ')}`);
@@ -118,9 +135,17 @@ tally('fair');
 console.log('');
 console.log('== per unit, chosen on HELD itself: the ceiling, not a fair read ==');
 tally('ceil');
+const HEAD_ALL = (`  ${'gate'.padEnd(9)} ${'pairs'.padStart(7)} ${'held Δ sum'.padStart(11)} ${'better'.padStart(7)} ${'same'.padStart(7)} ${'worse'.padStart(7)} ${'test Δ sum'.padStart(11)} | held, summed: ${'placed'.padStart(8)} ${'sign-blk'.padStart(8)} ${'min-blk'.padStart(8)} ${'silent'.padStart(8)} | units up/down`);
 console.log('');
-console.log('== paired: every field row against the control row of the same setting on the same unit, no choosing ==');
-console.log(`  ${'gate'.padEnd(9)} ${'pairs'.padStart(7)} ${'held Δ sum'.padStart(11)} ${'better'.padStart(7)} ${'same'.padStart(7)} ${'worse'.padStart(7)} ${'test Δ sum'.padStart(11)} | held, summed: ${'placed'.padStart(8)} ${'sign-blk'.padStart(8)} ${'min-blk'.padStart(8)} ${'silent'.padStart(8)} | units up/down`);
+console.log("== paired on the control's top 20 settings per unit (chosen on TEST as above): the same settings under each gate, judged on HELD ==");
+for (const g of G) {
+  let n = 0; let dH = 0; let better = 0; let worse = 0; let up = 0; let down = 0;
+  for (const x of per) { const t = x.dTop[g]; n += t.n; dH += t.dH; better += t.better; worse += t.worse; if (t.dH > 0.005) up++; else if (t.dH < -0.005) down++; }
+  console.log(`  ${short(g).padEnd(9)} pairs ${n}: held Δ sum ${r0(dH)}, better ${better}, worse ${worse}; units up ${up}, down ${down}`);
+}
+console.log('');
+console.log('== paired over EVERY setting (mostly losers, where blocking helps by construction) ==');
+console.log(HEAD_ALL);
 for (const g of G) {
   const p = paired[g]; const fh = p.fh || {};
   console.log(`  ${short(g).padEnd(9)} ${String(p.n).padStart(7)} ${r0(p.dH).padStart(11)} ${String(p.better).padStart(7)} ${String(p.same).padStart(7)} ${String(p.worse).padStart(7)} ${r0(p.dT).padStart(11)} |               ${r0(fh.placed).padStart(8)} ${r0(fh.blockedSign).padStart(8)} ${r0(fh.blockedMin).padStart(8)} ${r0(fh.silent).padStart(8)} | ${p.unitsUp}/${p.unitsDown}`);
