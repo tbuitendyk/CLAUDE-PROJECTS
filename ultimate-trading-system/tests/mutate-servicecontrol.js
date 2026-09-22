@@ -679,9 +679,16 @@ const GUARDS = [
     'theScreenOffersTheBarAndSendsItWithEveryRead',
     'the box is drawn and saved but every read ignores it — the walk is always read at the default share'],
   // ---- A SETTING CARRIES ITS PLACE IN THE BLOCK TO THE UNIT (3.52.0) ----
-  [path.join(ROOT, 'lib', 'stages.js'), "      const mine = heldOn[pi].map((i) => ({ ...settings[i], si: i }));", "      const mine = heldOn[pi].map((i, k) => ({ ...settings[i], si: k }));",
+  [path.join(ROOT, 'lib', 'stages.js'), "      const mine = heldOn[pi];                                   // numbers into the one block (3.220.2)", "      const mine = heldOn[pi].map((i, k) => k);",
+    'theLaunchHandsEachUnitItsSettingsByNumberAndBuildsAPartAtItsTurn',
+    'a start-again numbers a unit\'s settings from its own list, and a weekly unit files its records at places the plan names differently'],
+  // ---- BY NUMBER INTO THE ONE BLOCK, A PART AT ITS TURN, THE LAUNCH COUNTED (3.220.2) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "  const payloads = { length: parts.length, at: payloadAt };", "  const payloads = Array.from({ length: parts.length }, (_, i) => payloadAt(i));",
     'theStageThreePricingIsHandedOutInParts',
-    'a unit numbers its settings from its own list, and a weekly unit files its records at places the plan names differently'],
+    'every part of every unit is built before the first pricing again -- every unit\'s votes in memory at once'],
+  [path.join(ROOT, 'lib', 'stages.js'), "  const launchBytes = units > 0 ? Math.round((declared == null ? settings : declared) * LAUNCH_SETTING_BYTES + settings * units * LAUNCH_UNIT_INDEX_BYTES) : 0;", "  const launchBytes = 0;",
+    'theBudgetGateDoesTheArithmeticUpFront',
+    'the gate counts the tables alone again, and a launch that cannot fit is let through as tight'],
   // ---- A UNIT WITH NO WEEKDAY VERSION READS 24/5 BOTH WAYS ALIKE (3.52.0) ----
   [path.join(ROOT, 'lib', 'stages.js'), "      const key = `${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, wkApplies ? !!st.weekdaysOnly : false)}`;", "      const key = `${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, !!st.weekdaysOnly)}`;",
     'aUnitHoldsOnlyTheSettingsThatPlaceDifferentOrdersOnIt',

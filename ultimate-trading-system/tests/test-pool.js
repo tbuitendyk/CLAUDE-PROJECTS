@@ -11,6 +11,35 @@ module.exports = {
     assert.strictEqual(p.parallel, false);
     p.abort();
   },
+  // A LAZY LIST (3.220.2): `{ length, at(i) }` is walked like an array, each
+  // payload built once, when its number is taken, in order -- so a stage 3
+  // run of any size holds only the parts in flight.
+  async forEachTakesALazyListAndBuildsEachPayloadOnceInOrder() {
+    const fake = Object.create(Pool.prototype);
+    fake.stopped = false;
+    fake.workers = [1, 2];
+    fake.queue = [];
+    fake.pending = new Map();
+    const ran = [];
+    fake.run = (kind, payload) => new Promise((res) => setTimeout(() => { ran.push(payload.v); res(payload.v * 10); }, payload.v === 1 ? 20 : 2));
+    const built = [];
+    const list = { length: 5, at(i) { built.push(i); return { v: i }; } };
+    const seen = [];
+    await fake.forEach('x', list, (settled, i, payload) => { seen.push([i, settled.value, payload.v]); });
+    assert.deepStrictEqual(built, [0, 1, 2, 3, 4], 'each payload is built once, in the order the lanes took the numbers');
+    assert.deepStrictEqual(seen.map((x) => x[0]).sort((a, b) => a - b), [0, 1, 2, 3, 4], 'every payload settled');
+    for (const [i, v, pv] of seen) { assert.strictEqual(v, i * 10, `payload ${i} ran`); assert.strictEqual(pv, i, 'onSettled is handed the payload that was built'); }
+    // a builder that throws settles that one as a failure and the walk goes on
+    const bad = { length: 3, at(i) { if (i === 1) throw new Error('no votes'); return { v: i }; } };
+    const got = [];
+    await fake.forEach('x', bad, (settled, i) => { got.push([i, settled.ok, settled.error || null]); });
+    got.sort((a, b) => a[0] - b[0]);
+    assert.deepStrictEqual(got, [[0, true, null], [1, false, 'no votes'], [2, true, null]], 'a payload that cannot be built fails alone');
+    // and a plain array still walks as it always did
+    const arr = [];
+    await fake.forEach('x', [{ v: 3 }, { v: 4 }], (settled, i) => { arr.push([i, settled.value]); });
+    assert.deepStrictEqual(arr.sort((a, b) => a[0] - b[0]), [[0, 30], [1, 40]]);
+  },
   async mapPreservesInputOrder() {
     // Results must line up with their INPUTS, not with completion order —
     // this is what lets the orchestrator stay deterministic while workers

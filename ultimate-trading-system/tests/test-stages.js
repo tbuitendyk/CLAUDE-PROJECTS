@@ -424,7 +424,7 @@ module.exports = {
     assert.ok(before.includes('const counted = countDeclared(params, sizes, parentRecords, leans, fieldPairs);'), 'the gates read the count, not the built block — with the leans the launch prices (3.130.0) and the field pairs (3.212.0)');
     assert.ok(!before.includes('settingsFor(params, sizes)') && !before.includes('foldSameTradeSettings('), 'nothing before the answer builds or folds the settings');
     assert.ok(before.includes("if (!counted.kept) throw new Error('the block declared no settings');"), 'an empty block still refuses at the press');
-    assert.ok(before.includes('tallyBudgetFor({ settings: counted.kept, coins: coinsN })') && before.includes('storeBudgetFor({ rows: counted.pricings })'),
+    assert.ok(before.includes('tallyBudgetFor({ settings: counted.kept, coins: coinsN, units: parentRecords.length, declared: counted.declared })') && before.includes('storeBudgetFor({ rows: counted.pricings })'),
       'both budget gates are the count\'s arithmetic — and the disk gate reads what the units hold between them, never settings × units');
     // RE-AIMED 3.187.0: the block is built from the committee shapes its own
     // records carry, which is how the extras reach the fold.
@@ -434,7 +434,7 @@ module.exports = {
     // started again; the launch checks the block, then calls it
     assert.ok(after.indexOf('settings.length !== counted.kept || declaredSettings.length !== counted.declared') < after.indexOf('await runStage3Parts({'),
       'the built block is held against the count before any unit is handed out');
-    assert.ok(src.includes('s3Payload({ doc, parent, rec, settings: mine, fee, nullN })'), 'and the hand-out still reads each unit\'s votes once');
+    assert.ok(src.includes("current = { k: part.k, whole: s3Payload({ doc, parent, rec, settings: null, fee, nullN }) };"), 'and the hand-out still reads each unit\'s votes once, at its turn');
     assert.ok(after.indexOf('if (heldOn[u].length !== counted.perUnit[u]) {') < after.indexOf('await runStage3Parts({'),
       'and what each unit holds is held against the count too, unit by unit');
     assert.ok(after.includes('the cost line and the launch disagree, so nothing was priced'), 'and a disagreement says so and stops');
@@ -851,10 +851,16 @@ module.exports = {
     // THE UNIT'S OWN LIST (3.52.0): a unit is handed only the settings that
     // place different orders on it, each carrying its place in the block, so
     // its records file there whichever part priced them
-    assert.ok(launch.includes('settings: heldOn[pi].map((i) => ({ ...settings[i], si: i }))'), 'a unit is handed its own list, each setting carrying its place in the block');
+    // BY NUMBER INTO THE ONE BLOCK (3.220.2): the place is stamped on the
+    // block once, a unit's list is numbers, and nothing copies a setting per unit
+    assert.ok(launch.includes('stampPlaces(settings);') && launch.includes('const work = parentRecords.map((rec, pi) => ({ rec, idx: heldOn[pi], drop: null }));'),
+      'a unit is handed the NUMBERS of its own settings into the one block, each setting stamped with its place once');
+    assert.ok(!src.includes('{ ...settings[i], si: i }'), 'a setting is copied per unit again — 20.8 million copies on the block that killed the service');
     assert.ok(fn.includes('const partsPerUnit = Math.max(1, Math.min(mine.length, workersN * 4));'), 'enough parts to feed every worker several times over, never more parts than the unit holds');
-    assert.ok(fn.includes('const whole = s3Payload({ doc, parent, rec, settings: mine, fee, nullN });'), 'the votes are read once per unit');
-    assert.ok(fn.includes('payloads.push({ ...whole, settings: mine.slice(from, to) });'), 'each part carries its slice of the unit\'s own list');
+    assert.ok(fn.includes("if (!current || current.k !== part.k) current = { k: part.k, whole: s3Payload({ doc, parent, rec, settings: null, fee, nullN }) };"), 'the votes are read once per unit, at its turn');
+    assert.ok(fn.includes('settings[j - part.from] = block[idx[j]];') && fn.includes('const payloads = { length: parts.length, at: payloadAt };'),
+      'each part reads its settings out of the block by number when the pool asks for it');
+    assert.ok(!fn.includes('payloads.push('), 'every part is built before the first pricing again — every unit\'s votes in memory at once');
     assert.ok(!/siFrom/.test(fn), 'a part no longer numbers its rows from an offset — the place travels on the setting');
     assert.ok(fn.includes("phase: 'pricing the settings', done: doc.perf.partsDone, total: parts.length, word: 'parts', startedMs: tPrice,"), 'progress counts parts as they land');
     assert.ok(fn.includes('if (landed[part.k] === partsOf[part.k]) doc.perf.unitsDone++;'), 'a unit is finished when all of ITS parts have landed — units are cut into different numbers of parts now');
@@ -867,6 +873,28 @@ module.exports = {
       'a setting handed over without its place in the block is refused, not filed at zero');
     assert.strictEqual(task.split('si: st.si').length - 1, 2, 'both row shapes file the record at the setting\'s own place, whichever part priced it');
     assert.ok(!/siFrom/.test(task), 'the unit task no longer numbers rows from an offset');
+  },
+
+  // THE START-AGAIN AND THE POOL HOLD THE SAME RULE (3.220.2): a paused run
+  // started again numbers its units' settings into the one block too, and the
+  // pool takes a lazy list so no part exists before its turn.
+  async theLaunchHandsEachUnitItsSettingsByNumberAndBuildsAPartAtItsTurn() {
+    const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    assert.ok(src.includes('function stampPlaces(block) {\n  for (let i = 0; i < block.length; i++) block[i].si = i;\n  return block;\n}'),
+      'the place in the block is not stamped on the block itself');
+    const again = src.slice(src.indexOf('function continueStage3(id) {'), src.indexOf('\nfunction tallyBudgetFor('));
+    assert.ok(again.length > 1000, 'the start-again is not where it was');
+    assert.ok(again.includes('stampPlaces(settings);'), 'a start-again does not stamp the rebuilt block');
+    assert.ok(again.includes('      const mine = heldOn[pi];                                   // numbers into the one block (3.220.2)'), 'a start-again copies a setting per unit again');
+    assert.ok(again.includes('const todo = mine.filter((i) => !got.has(i));'), 'what is not on disk is not found by number');
+    assert.ok(again.includes('work.push({ rec, idx: [...todo, ...extra].sort((a, b) => a - b), drop: drop.size ? drop : null });'),
+      'a unit is not handed its numbers in block order');
+    assert.ok(again.includes('runStage3Parts({ doc, parent, pool, w, parentRecords, block: settings, work, fee, nullN, keepN, live, t0 })'),
+      'the start-again does not hand the block over');
+    // and the pool walks a lazy list the same way it walks an array
+    const pool = fs.readFileSync(path.join(ROOT, 'lib', 'pool.js'), 'utf8');
+    assert.ok(pool.includes('const at = Array.isArray(payloads) ? (i) => payloads[i] : (i) => payloads.at(i);'), 'the pool cannot take a lazy list');
+    assert.ok(pool.includes('payload = at(i);\n          settled = { ok: true, value: await this.run(kind, payload) };'), 'a payload is not built when its lane takes its number');
   },
 
   // THE COUNT IS THE LAUNCH'S FOLD WITHOUT THE SETTINGS (owner order,
@@ -2805,9 +2833,12 @@ module.exports = {
     // does not declare its cycle count shows no rate and no finish time.
     assert.strictEqual(lib.split('cyclesWord:').length - 1, 4,
       'every long job must declare its cycle count — the three launches and the kept-scramble fill');
-    assert.ok(/phase: 'reading the kept votes', done: k \+ 1, total: work\.length/.test(lib),
-      'the long read before stage 3 dispatch says what it is doing instead of sitting on "writing the plan" — and it '
-      + 'reports through the shared reporter, so it carries a rate and a finish time like every other phase');
+    // 3.220.2: there is no long read before dispatch any more -- a unit's votes
+    // are read at its turn, inside the pricing phase, and that phase reports
+    // from its first part with nothing finished yet
+    assert.ok(!/phase: 'reading the kept votes'/.test(lib), 'a read of every unit\'s votes before the first pricing is back');
+    assert.ok(/phase: 'pricing the settings', done: 0, total: parts\.length, word: 'parts', startedMs: tPrice,/.test(lib),
+      'the pricing phase does not announce itself before the first part lands, so the screen sits on "writing the plan"');
   },
 
   // Notes on a record set: refused while it is being written, saved and
@@ -3155,6 +3186,21 @@ module.exports = {
       'the refusal does not say that the null set size cannot move this number, so it will be tried');
     assert.ok(/each deal is counted as it is priced and never kept/.test(over.message),
       'and it does not say WHY, which is the only thing that makes it believable');
+    // THE LAUNCH'S OWN TERM (3.220.2, owner: "put the launch-time term into the
+    // memory gate so it refuses with the real number"): the block and every
+    // unit's list of the settings it holds, counted beside the tables
+    const noUnits = stages.tallyBudgetFor({ settings: 242176, coins: 17, heapLimitBytes: 3072 * 1048576 });
+    const withUnits = stages.tallyBudgetFor({ settings: 242176, coins: 17, units: 86, declared: 272448, heapLimitBytes: 3072 * 1048576 });
+    assert.strictEqual(noUnits.launchBytes, 0, 'with no units named there is no launch term');
+    assert.strictEqual(withUnits.launchBytes, 272448 * 400 + 242176 * 86 * 16,
+      'the launch term is the declared block at 400 bytes a setting plus every unit\'s list at 16 bytes a number');
+    assert.strictEqual(withUnits.bytes, withUnits.tableBytes + withUnits.launchBytes, 'the gate adds the two');
+    assert.ok(withUnits.share > noUnits.share, 'and the launch term moves the share');
+    assert.ok(/the launch itself about/.test(withUnits.message) && /every unit's list of the settings it holds/.test(withUnits.message),
+      'the message names the launch term');
+    assert.ok(withUnits.fits < noUnits.fits, 'and fewer settings fit once the launch is counted');
+    const small = stages.tallyBudgetFor({ settings: 3168, coins: 17, units: 86, declared: 3564, heapLimitBytes: 3072 * 1048576 });
+    assert.strictEqual(small.band, 'fits', 'the 3,168 × 86 control block still fits without comment');
     // ...and it says how far over the bar the block is, because "shrink it"
     // with no number is an invitation to guess at a screen that takes a moment
     // to answer each time.
@@ -3381,8 +3427,10 @@ module.exports = {
 
     // EVERY PHASE OF EVERY STAGE GOES THROUGH IT — a phase that reports by hand
     // is the one that will be silent, which is exactly how this started.
+    // (3.220.2: reading the kept votes is no longer a phase of its own -- a
+    // unit's votes are read at its turn, inside pricing the settings)
     for (const phase of ['training the LOGREG members', 'training the BOOST members',
-      'reading the kept votes', 'pricing the settings', 'totalling the tables']) {
+      'pricing the settings', 'totalling the tables']) {
       assert.ok(src.includes(`phase: '${phase}'`), `${phase} does not report through the shared reporter`);
     }
     assert.ok(!/doc\.progress = `stage 3:/.test(src) && !/doc\.progress = `reading the kept votes:/.test(src),

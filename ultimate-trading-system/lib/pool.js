@@ -256,24 +256,33 @@ class Pool {
   // lanes, ordering, abort behaviour, the onSettled contract, the fact that a
   // throwing onSettled can never kill the run — is shared, so the two can
   // never drift apart in the ways that matter.
+  // A LAZY LIST (3.220.2): `{ length, at(i) }` builds payload i when a lane is
+  // free for it, and the lanes take the numbers in order, so a long run holds
+  // only the parts in flight. A plain array is walked exactly as before. A
+  // builder that throws settles that one payload as a failure, like a worker
+  // that threw, and the walk goes on.
   async _lanes(kind, payloads, onSettled, collect) {
-    const out = collect ? new Array(payloads.length) : null;
+    const n = payloads.length;
+    const at = Array.isArray(payloads) ? (i) => payloads[i] : (i) => payloads.at(i);
+    const out = collect ? new Array(n) : null;
     let next = 0;
-    const lanes = Math.max(1, Math.min(this.parallel ? this.workers.length : 1, payloads.length));
+    const lanes = Math.max(1, Math.min(this.parallel ? this.workers.length : 1, n));
     const runLane = async () => {
       while (!this.stopped) {
         const i = next++;
-        if (i >= payloads.length) return;
+        if (i >= n) return;
         let settled;
+        let payload = null;
         try {
-          settled = { ok: true, value: await this.run(kind, payloads[i]) };
+          payload = at(i);
+          settled = { ok: true, value: await this.run(kind, payload) };
         } catch (err) {
           settled = { ok: false, error: err && err.message ? err.message : String(err) };
         }
         if (out) out[i] = settled;
         if (onSettled) {
           try {
-            await onSettled(settled, i, payloads[i]);
+            await onSettled(settled, i, payload);
           } catch {
             /* reporting must never kill the run */
           }

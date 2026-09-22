@@ -2253,6 +2253,14 @@ function heldOnFor(settings, records, leans = null, fieldPairs = null) {
   }
   return heldOn;
 }
+// A SETTING CARRIES ITS PLACE IN THE BLOCK (3.52.0), stamped on the block
+// itself, once (3.220.2) -- never onto a copy per unit. `si` is what a record
+// files under and what the plan's names are read by, so it is the setting's
+// index in the kept block and nothing else.
+function stampPlaces(block) {
+  for (let i = 0; i < block.length; i++) block[i].si = i;
+  return block;
+}
 function foldSameTradeSettings(settings, records, leans = null, fieldPairs = null) {
   if (!Array.isArray(records) || !records.length) return { kept: settings, folded: [], heldOn: [], unitFolded: [] };
   const heldOn = heldOnFor(settings, records, leans, fieldPairs);
@@ -3100,7 +3108,7 @@ function startStage3(params) {
   // the budget gate: the whole plan is known here, so a block that cannot
   // fit is refused NOW, with the arithmetic, never discovered mid-total
   const coinsN = new Set(parentRecords.map((r) => r.trade)).size;
-  const heapGate = tallyBudgetFor({ settings: counted.kept, coins: coinsN });
+  const heapGate = tallyBudgetFor({ settings: counted.kept, coins: coinsN, units: parentRecords.length, declared: counted.declared });
   if (heapGate.band === 'refuse') throw new Error(heapGate.message);
   const diskGate = storeBudgetFor({ rows: counted.pricings });
   if (diskGate.band === 'refuse') throw new Error(diskGate.message);
@@ -3215,7 +3223,6 @@ function startStage3(params) {
   // Each phase is timed from ITS OWN start, not from the launch: a rate
   // measured across a phase that has finished tells you nothing about the one
   // you are in, and stage 3's three phases go at wildly different speeds.
-  const tRead = Date.now();
   let tPrice = null;
   // offThread: stage 3's records are the big one — a unit hands back a row per
   // setting, and squashing them here is what starved the other three lanes.
@@ -3256,10 +3263,21 @@ function startStage3(params) {
     });
     saveSet(doc);
     // EVERYTHING A UNIT STILL NEEDS, per unit: at a launch that is every
-    // setting it holds, each carrying its place in the block (3.52.0)
-    const work = parentRecords.map((rec, pi) => ({ rec, settings: heldOn[pi].map((i) => ({ ...settings[i], si: i })), drop: null }));
+    // setting it holds, each carrying its place in the block (3.52.0).
+    //
+    // BY NUMBER INTO THE ONE BLOCK, NEVER A COPY (3.220.2, owner 2026-09-22:
+    // "before hundreds of millions of pricing was not a problem"). This made
+    // one copy of every setting for every unit that held it -- 20.8 million
+    // objects on a 242,176-setting, 86-unit block, about 4 GB against a 3 GB
+    // ceiling -- and the run died writing the plan with nothing priced. The
+    // place in the block is stamped on each setting once; a unit's list is the
+    // NUMBERS of the settings it holds; and a part reads its settings out of
+    // the block as its turn comes (runStage3Parts). What the launch holds is
+    // the block and the lists, and the memory gate counts exactly that.
+    stampPlaces(settings);
+    const work = parentRecords.map((rec, pi) => ({ rec, idx: heldOn[pi], drop: null }));
     live = liveStateFor(parentRecords, {}, {}, {}, w);
-    const landed = await runStage3Parts({ doc, parent, pool, w, parentRecords, work, fee, nullN, keepN, live, t0, tRead });
+    const landed = await runStage3Parts({ doc, parent, pool, w, parentRecords, block: settings, work, fee, nullN, keepN, live, t0 });
     if (!landed) return;
     await finishStage3({ doc, pool, w, parentRecords, settings, coinsN, live });
   })().catch((err) => {
@@ -3307,38 +3325,49 @@ function liveStateFor(parentRecords, agreedMap, controlsMap, windowsMap, w, pric
 // its place in the block so its records file under the same setting
 // numbers they always did, and the line moves as parts land.
 //
-// `work` is one entry per unit still to price: its parent record, the
-// settings to price (each carrying its place in the block), and `drop`, the
+// `work` is one entry per unit still to price: its parent record, `idx`, the
+// numbers (into `block`, the one kept block, each setting stamped with its
+// place) of the settings to price, and `drop`, the
 // setting numbers whose rows are NOT wanted -- a setting priced again only so
 // its agreements and comparisons come back, because those two come back with
 // the pricing and from nowhere else (continueStage3). A launch drops nothing.
 //
 // Resolves true when every part landed; false when the run was paused on the
 // way, in which case the set has already been finished off as paused.
-async function runStage3Parts({ doc, parent, pool, w, parentRecords, work, fee, nullN, keepN, live, t0, tRead }) {
+async function runStage3Parts({ doc, parent, pool, w, parentRecords, block, work, fee, nullN, keepN, live, t0 }) {
   const { agreedMap, controlsMap, windowsMap } = live;
   const workersN = pool.parallel ? pool.workers.length : 1;
-  const parts = [];                     // { k: index into work, from, to } -- into the unit's OWN list
+  const parts = [];                     // { k: index into work, from, to } -- into the unit's OWN list of numbers
   const partsOf = [];                   // how many parts each unit was cut into
-  const payloads = [];
   for (let k = 0; k < work.length; k++) {
-    const { rec, settings: mine } = work[k];
+    const mine = work[k].idx;
     const partsPerUnit = Math.max(1, Math.min(mine.length, workersN * 4));
     const partSize = Math.max(1, Math.ceil(mine.length / partsPerUnit));
-    const whole = s3Payload({ doc, parent, rec, settings: mine, fee, nullN });     // the votes are read once per unit
     let n = 0;
     for (let from = 0; from < mine.length; from += partSize) {
-      const to = Math.min(mine.length, from + partSize);
-      payloads.push({ ...whole, settings: mine.slice(from, to) });
-      parts.push({ k, from, to });
+      parts.push({ k, from, to: Math.min(mine.length, from + partSize) });
       n++;
     }
     partsOf.push(n);
-    if (k % 5 === 4 || k === work.length - 1) {
-      phaseNote(doc, { phase: 'reading the kept votes', done: k + 1, total: work.length, word: 'units', startedMs: tRead });
-      saveSet(doc);
-    }
   }
+  // A PART IS BUILT AS ITS TURN COMES (3.220.2). Every unit's payload used to
+  // be built before the first pricing: every unit's kept votes in memory at
+  // once, and every part's list of settings beside them. Now the pool asks for
+  // part i when a lane is free for it, in order; a unit's votes are read the
+  // first time one of its parts is asked for and kept only until the next
+  // unit's turn, and the part's settings are read out of the one block by
+  // number. What is in memory is one unit's votes and the parts in flight,
+  // whatever the size of the run.
+  let current = null;                   // { k, whole }: the unit whose parts are being handed out, its votes read once
+  const payloadAt = (i) => {
+    const part = parts[i];
+    const { rec, idx } = work[part.k];
+    if (!current || current.k !== part.k) current = { k: part.k, whole: s3Payload({ doc, parent, rec, settings: null, fee, nullN }) };
+    const settings = new Array(part.to - part.from);
+    for (let j = part.from; j < part.to; j++) settings[j - part.from] = block[idx[j]];
+    return { ...current.whole, settings };
+  };
+  const payloads = { length: parts.length, at: payloadAt };
   live.workersN = workersN;
   // the pricing clock starts when the pricing does, and the screen is told
   // at once that this phase has begun with nothing finished yet — otherwise
@@ -3612,15 +3641,16 @@ function continueStage3(id) {
     const controlsMap = { ...cp.controlsMap };
     const windowsMap = { ...(cp.windowsMap || {}) };
     const swk = require('./stagework');
+    stampPlaces(settings);
     const work = [];
     let doneUnits = 0;
     let pricedBase = 0;
     let settingsRepriced = 0;
     for (let pi = 0; pi < parentRecords.length; pi++) {
       const rec = parentRecords[pi];
-      const mine = heldOn[pi].map((i) => ({ ...settings[i], si: i }));
+      const mine = heldOn[pi];                                   // numbers into the one block (3.220.2)
       const got = have.get(rec.u) || new Set();
-      const todo = mine.filter((st) => !got.has(st.si));
+      const todo = mine.filter((i) => !got.has(i));
       pricedBase += mine.length - todo.length;
       // THE AGREEMENTS AND THE COMPARISONS COME BACK WITH THE PRICING AND FROM
       // NOWHERE ELSE, and a part hands back only the ones its own settings read:
@@ -3633,31 +3663,31 @@ function continueStage3(id) {
       const prefix = `${rec.u}|`;
       const haveA = new Set(Object.keys(agreedMap).filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length)));
       const haveC = new Set(Object.keys(controlsMap[unitKeyOf(rec)] || {}));
-      const aKey = (st) => swk.agreedKey(st.decision, swk.agrOf(st));
-      const cKey = (st) => controlKeyOf({ weekdaysOnly: st.weekdaysOnly, tHours: bracketLib.tHoursOn(st.tHours, rec.geometry) });
+      const aKey = (i) => swk.agreedKey(settings[i].decision, swk.agrOf(settings[i]));
+      const cKey = (i) => controlKeyOf({ weekdaysOnly: settings[i].weekdaysOnly, tHours: bracketLib.tHoursOn(settings[i].tHours, rec.geometry) });
       const coveredA = new Set(todo.map(aKey));
       const coveredC = new Set(todo.map(cKey));
       const drop = new Set();
       const extra = [];
-      for (const st of mine) {
-        if (!got.has(st.si)) continue;                       // not on disk: it is in todo already
-        const ka = aKey(st);
-        const kc = cKey(st);
+      for (const i of mine) {
+        if (!got.has(i)) continue;                           // not on disk: it is in todo already
+        const ka = aKey(i);
+        const kc = cKey(i);
         if ((haveA.has(ka) || coveredA.has(ka)) && (haveC.has(kc) || coveredC.has(kc))) continue;
-        extra.push(st);
-        drop.add(st.si);
+        extra.push(i);
+        drop.add(i);
         coveredA.add(ka);
         coveredC.add(kc);
       }
       // a unit whose date ranges were never kept (a set from before 3.85.0)
       // prices one setting again for them, its row thrown away, like the rest
       if (!windowsMap[unitKeyOf(rec)] && !todo.length && !extra.length) {
-        const st = mine.find((x) => got.has(x.si));
-        if (st) { extra.push(st); drop.add(st.si); }
+        const i = mine.find((x) => got.has(x));
+        if (i !== undefined) { extra.push(i); drop.add(i); }
       }
       if (!todo.length && !extra.length) { doneUnits++; continue; }
       settingsRepriced += extra.length;
-      work.push({ rec, settings: [...todo, ...extra].sort((a, b) => a.si - b.si), drop: drop.size ? drop : null });
+      work.push({ rec, idx: [...todo, ...extra].sort((a, b) => a - b), drop: drop.size ? drop : null });
     }
     if (doc.cancelRequested) throw notStarted('paused before it priced anything');
     doc.continued = [...(doc.continued || []), {
@@ -3672,12 +3702,11 @@ function continueStage3(id) {
     doc.progress = `starting again: ${doneUnits.toLocaleString()} of ${parentRecords.length.toLocaleString()} units were already priced`;
     saveSet(doc);
     const t0 = Date.now() - Number((doc.perf || {}).elapsedMs || 0);   // the clock carries on from where it was
-    const tRead = Date.now();
     const w = { records: rowstore.writer(id, 'records', { offThread: true }) };
     const coinsN = new Set(parentRecords.map((r) => r.trade)).size;
     live = liveStateFor(parentRecords, agreedMap, controlsMap, windowsMap, w, pricedBase);
     if (work.length) {
-      const landed = await runStage3Parts({ doc, parent, pool, w, parentRecords, work, fee, nullN, keepN, live, t0, tRead });
+      const landed = await runStage3Parts({ doc, parent, pool, w, parentRecords, block: settings, work, fee, nullN, keepN, live, t0 });
       if (!landed) return;
     }
     await finishStage3({ doc, pool, w, parentRecords, settings, coinsN, live });
@@ -3734,6 +3763,16 @@ const SHARD_SETTINGS_LIMIT = 5000;
 // the disk figure against a real store the same way.
 const TALLY_ATOM_BYTES = 400;        // one setting × one coin, object overhead in
 const TALLY_SETTING_BASE_BYTES = 760; // one ranked entry's own fields, incl. ten kept scrambles
+// THE LAUNCH'S OWN MEMORY, beside the tables' (3.220.2, owner: "put the
+// launch-time term into the memory gate so it refuses with the real number").
+// The block itself -- one object per declared setting, with its name -- and
+// every unit's list of the settings it holds, as numbers into the block, the
+// fold's first pass alive beside the second for a moment. A copy of every
+// setting per unit used to sit here too, at about 200 bytes each and 20.8
+// million of them on the block that killed the service; it is gone
+// (runStage3Parts), and this term is what is left.
+const LAUNCH_SETTING_BYTES = 400;     // one declared setting object with its name
+const LAUNCH_UNIT_INDEX_BYTES = 16;   // one setting number in one unit's list, the fold's first pass alive beside it
 const S3_RECORD_DISK_BYTES = 500;     // one stage 3 record row on disk, gz block share in
 const HEAP_REFUSE_SHARE = 0.8;        // above this share of the ceiling: refuse
 const HEAP_WARN_SHARE = 0.45;         // above this share: run, but say it is tight
@@ -3741,14 +3780,19 @@ const DISK_REFUSE_SHARE = 0.8;        // of the free disk, for the records store
 
 const gbWords = (bytes) => (bytes >= 1073741824 ? `${(bytes / 1073741824).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1048576))} MB`);
 
-function tallyBudgetFor({ settings, coins, heapLimitBytes = null }) {
+function tallyBudgetFor({ settings, coins, units = 0, declared = null, heapLimitBytes = null }) {
   let heap = heapLimitBytes;
   if (heap == null) {
     const r = require('./estimate').boxResources();
     heap = (r.heapCeilingMb || 1792) * 1048576;
   }
   const per = TALLY_SETTING_BASE_BYTES + Math.max(1, coins) * TALLY_ATOM_BYTES;
-  const bytes = Math.round(settings * per);
+  const tableBytes = Math.round(settings * per);
+  // the launch's term counts only where the units are known: the launch and
+  // the count line name them, the totalling of a finished set has nothing to launch
+  const perUnitList = units > 0 ? LAUNCH_SETTING_BYTES + units * LAUNCH_UNIT_INDEX_BYTES : 0;
+  const launchBytes = units > 0 ? Math.round((declared == null ? settings : declared) * LAUNCH_SETTING_BYTES + settings * units * LAUNCH_UNIT_INDEX_BYTES) : 0;
+  const bytes = tableBytes + launchBytes;
   const share = bytes / heap;
   const band = share > HEAP_REFUSE_SHARE ? 'refuse' : (share > HEAP_WARN_SHARE ? 'tight' : 'fits');
   // THE REFUSAL SAYS WHICH DIALS MOVE IT, AND BY HOW MUCH (owner, 2026-08-29:
@@ -3766,16 +3810,17 @@ function tallyBudgetFor({ settings, coins, heapLimitBytes = null }) {
   // It also says how far over the bar the block is. "Shrink it" without a
   // number is an invitation to guess repeatedly at a screen that takes a moment
   // to answer each time.
-  const fits = Math.floor((heap * HEAP_REFUSE_SHARE) / per);
+  const fits = Math.floor((heap * HEAP_REFUSE_SHARE) / (per + perUnitList));
+  const launchWords = launchBytes ? ` and the launch itself about ${gbWords(launchBytes)} (the block, and every unit's list of the settings it holds)` : '';
   const message = band === 'fits' ? null
     : band === 'tight'
-      ? `these tables will need about ${gbWords(bytes)} of the ${gbWords(heap)} the service has — it will run, but it is tight`
-      : `these tables would need about ${gbWords(bytes)} and the service has ${gbWords(heap)} in all — anything above `
-        + `${gbWords(Math.round(heap * HEAP_REFUSE_SHARE))} refuses rather than dying mid-total. The size is settings × coins `
-        + 'and nothing else — the null set size does not change it, because each deal is counted as it is priced and never '
-        + `kept. On ${Math.max(1, coins)} coin(s), ${fits.toLocaleString()} settings fit; this block declares `
+      ? `these tables will need about ${gbWords(tableBytes)}${launchWords}, of the ${gbWords(heap)} the service has — it will run, but it is tight`
+      : `these tables would need about ${gbWords(tableBytes)}${launchWords}, and the service has ${gbWords(heap)} in all — anything above `
+        + `${gbWords(Math.round(heap * HEAP_REFUSE_SHARE))} refuses rather than dying mid-total. The tables are settings × coins`
+        + `${units > 0 ? ' and the launch is settings × units' : ''}, and nothing else — the null set size does not change it, because each deal is counted as it is priced and never `
+        + `kept. On ${Math.max(1, coins)} coin(s)${units > 0 ? ` and ${units} unit(s)` : ''}, ${fits.toLocaleString()} settings fit; this block declares `
         + `${settings.toLocaleString()}. Shrink it with fewer settings, a smaller carry forward, or fewer coins.`;
-  return { bytes, heapBytes: heap, share, band, message, fits };
+  return { bytes, tableBytes, launchBytes, heapBytes: heap, share, band, message, fits };
 }
 
 function storeBudgetFor({ rows, freeBytes = null }) {
