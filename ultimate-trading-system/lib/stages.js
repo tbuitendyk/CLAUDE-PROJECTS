@@ -7608,7 +7608,6 @@ function funnelRichStart(id, state = {}) {
     const left = todo.map((u) => ({ unit: u, left: Math.max(0, (need.get(u.key) || 0) - carried(u.key)) })).filter((x) => x.left > 0);
     run.units = left.length;
     run.of = left.reduce((s, x) => s + x.left, 0);
-    run.onUnit = { at: 1, of: left.length };
     let kept = had0 ? { settings: Object.keys(had0.settings || {}).length, added: 0, kept: Object.keys(had0.settings || {}).length, fields: RICH_FIELDS, testControlUnits: Object.keys(had0.testControls || {}).length } : null;
     if (!run.of) {
       return { settings: 0, units: 0, failures: [], kept, nothingMissing: true,

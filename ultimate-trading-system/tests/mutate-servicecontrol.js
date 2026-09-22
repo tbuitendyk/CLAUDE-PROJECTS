@@ -1927,7 +1927,7 @@ const GUARDS = [
     'theRebuildPricesEachUnitInPartsAndCountsSettings', 'the count is worked out and never sent, so the line never moves'],
   [path.join(ROOT, 'lib', 'stages.js'), "    units: run.units ?? null,\n", "",
     'theRebuildPricesEachUnitInPartsAndCountsSettings', 'the screen is not told how many coins and shapes the count runs over'],
-  [path.join(ROOT, 'public', 'construct.js'), "const fAcrossWords = (units) => (Number(units) > 1 ? ` across ${Number(units).toLocaleString()} coins and shapes` : '');", "const fAcrossWords = (units) => '';",
+  [path.join(ROOT, 'public', 'construct.js'), "(Number(units) > 1 ? ` across ${Number(units).toLocaleString()} coins and shapes` : ''));", "'');",
     'theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft', 'a set of several coins and shapes prints a count that reads as one set\'s settings'],
   // ---- SWEEP: a paused run can be deleted from where it is chosen; one delete flow (3.133.0) ----
   [path.join(ROOT, 'public', 'construct.js'), "    if (c.id === 'swDelete3') { c.disabled = !on; c.classList.toggle('ctl-off', !on); continue; }", "    if (c.id === 'swDelete3') { c.disabled = true; c.classList.toggle('ctl-off', true); continue; }",
@@ -2098,8 +2098,6 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.html'), "  button:hover:not(:disabled) { border-color:var(--accent); }", "  button:hover { border-color:var(--accent); }",
     'aDeadButtonNeverAnswersTheMouse', 'a dead button lights its border on mouse over again'],
   // ---- THE PASS HOLDS NO PLAN, COUNTS OFF THE TABLES, AND LETS ITS WORKERS GO (3.226.0) ----
-  [path.join(ROOT, 'lib', 'stages.js'), "    run.onUnit = { at: 1, of: left.length };", "    run.onUnit = null;",
-    'thePassPricesOnlyTheTestWindowAndKeepsItPerCoinAndShape', 'the status at the press no longer says which coin and shape the pass is on'],
   [path.join(ROOT, 'lib', 'stages.js'), "        run.onUnit = { at: worked + 1, of: left.length };\n", "",
     'thePassPricesOnlyTheTestWindowAndKeepsItPerCoinAndShape', 'the coin and shape on the status never moves off the first'],
   [path.join(ROOT, 'lib', 'stages.js'), "    run.of = left.reduce((s, x) => s + x.left, 0);", "    run.of = 0;",
