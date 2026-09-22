@@ -7652,10 +7652,9 @@ function fHoldPanel(d, st) {
          button would never sit against a field. Everywhere else that sweep gave
          the button its own row under its fields. This one it carried off to
          Step 6 of the walk, where nobody would look for it, and the section
-         built to be read BEFORE any walk lost the control that reads it. -->
-    <div class="row">
-      <button id="fHoldRead"${ready ? '' : ' disabled'}>Read the ranking</button>
-    </div>
+         built to be read BEFORE any walk lost the control that reads it.
+         Under the boxes, the way every read-button on this page sits under its
+         fields (owner, 3.228.2: "put that button under the fields"). -->
     <div class="row" style="align-items:flex-end">
       <label class="f" title="The settings are put in order by the money they made on one part of the test window, then put in order again by their money on another part. This number is how far the two orders agree, from -1 to 1: 1.00 is the same order on both parts, 0.00 no relation at all, below zero the order comes out backwards. A coin and shape clears the bar when its number reaches this on as many of the four boundaries as on how many of the four asks for. Leave it blank and no row can clear the bar, because nothing has been asked of it.">order must agree by at least<input
         id="fHoldAtLeast" type="number" step="0.05" min="-1" max="1" style="width:6rem"
@@ -7672,6 +7671,9 @@ function fHoldPanel(d, st) {
         id="fHoldSort">${F_HOLD_SORT.map(([k, w]) => `<option value="${k}"${k === bar.sort ? ' selected' : ''}>${esc(w)}</option>`).join('')}</select></label>
       <span id="fHoldMsg" class="note">${esc(ready ? `${t ? '' : 'not read yet - one press reads every coin and shape in this record set'}${partly}`
     : 'no setting in this record set carries what it made in each part of the test window - the press above works that out first')}</span></div>
+    <div class="row">
+      <button id="fHoldRead"${ready ? '' : ' disabled'}>Read the ranking</button>
+    </div>
     ${t ? fHoldTable(t, bar, fWalkingUnit(st, d)) : ''}`;
 }
 

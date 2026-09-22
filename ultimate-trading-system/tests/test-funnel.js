@@ -4887,9 +4887,10 @@ module.exports.readTheRankingSitsInWorthWalkingOnItsOwnRow = function () {
   const page = src('public/construct.js');
   const hits = page.split('<button id="fHoldRead"').length - 1;
   assert.strictEqual(hits, 1, `Read the ranking is drawn ${hits} time(s); it is drawn once, in Worth walking?`);
-  const panel = page.slice(page.indexOf('<h3 style="margin-top:0">Worth walking?</h3>'), page.indexOf('id="fHoldAtLeast"'));
+  // 3.228.2 (owner: "put that button under the fields where it belongs"): under the six boxes, above the table
+  const panel = page.slice(page.indexOf('id="fHoldSort"'), page.indexOf('${t ? fHoldTable(t, bar, fWalkingUnit(st, d)) : \'\'}'));
   assert.ok(panel.includes('<div class="row">\n      <button id="fHoldRead"${ready ? \'\' : \' disabled\'}>Read the ranking</button>\n    </div>'),
-    'Read the ranking is not on its own row in Worth walking?, above the boxes it fills');
+    'Read the ranking is not on its own row under the boxes it fills, above the table');
   const step6 = page.slice(page.indexOf('function fStep6(d, st, r) {'), page.indexOf('function fStep7(d, st) {'));
   assert.ok(!step6.includes('fHoldRead'), 'Read the ranking is still drawn on Step 6 of the walk');
 };
