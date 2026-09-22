@@ -1,8 +1,8 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html — so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "e104293cb920a70daaf8fc54f7f89360149eef93",
-  "subject": "3.220.3 -- the field column on Table 3.A and Table 3.B prints the gate the way the setting's own name writes it",
-  "capturedAt": "2026-09-22T04:28:45Z",
+  "commit": "bbb2189cfc45b1590603fa993aeadabcaa8f76e4",
+  "subject": "3.220.4 -- the memory gate counts Table 3.B per unit, one row per short setting, not per coin",
+  "capturedAt": "2026-09-22T04:49:39Z",
   "files": {
     "public/construct.js": {
       "sha256": "038d50bd209a877ad14889a9fa2a69a5186dc49282303ac8e3ab5aa631e776e0",
