@@ -245,7 +245,7 @@
   /* apply settings, auto-apply settings and clear filters are ONE control row
      and line up as one (RULE FOUR) — the tick box is a different height from
      the buttons and would otherwise sit on its own baseline. */
-  .filters .frow { grid-column:1 / -1; justify-self:start; margin-top:.15rem;
+  .filters .frow { grid-column:2 / -1; justify-self:start; margin-top:.15rem;   /* under the boxes' left edge, not the names' (3.228.0) */
     display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
   /* THE TEXT GHOSTS, THE BUTTON DOES NOT (owner order, 2026-08-30). Fading the
      whole button takes its outline with it, and a control that half-vanishes
@@ -276,6 +276,15 @@
      reads in both themes without relying on a colour either one owns */
   tr.pinned > td { background:color-mix(in srgb, var(--accent, #4a9) 16%, transparent); font-weight:600; }
   tr.pinned > td:first-child { box-shadow:inset 3px 0 0 0 var(--accent, #4a9); }
+  /* WORDS OVER NUMBERS IN A BOARDS CELL (3.228.0): a verdict word or a field
+     gate with its figures under it. Left-aligned as prose is, held to a width
+     so the block wraps between its parts instead of setting the width of the
+     whole table. */
+  th .bsort { display:block; min-height:1.15rem; margin-top:.1rem; }
+  th .bsort button { min-width:1.2rem; padding:0 .2rem; line-height:1.1; }
+  td .bwords { text-align:left; max-width:19rem; }
+  td .bnums { font-size:.85em; white-space:normal; line-height:1.3; }
+  td .bgrid { display:grid; grid-template-columns:max-content max-content; column-gap:.7rem; white-space:nowrap; }
   .filters .fstat { text-align:right; font-size:.74rem; color:var(--dim); white-space:nowrap; font-variant-numeric:tabular-nums; min-width:4.5rem; }
   /* a control this run will not use: greyed, never hidden, so the row keeps its
      shape and neighbouring labels keep their context (owner, 2026-07-31) */

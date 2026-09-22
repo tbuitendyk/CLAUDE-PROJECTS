@@ -2088,6 +2088,17 @@ const GUARDS = [
     'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows', 'a unit\'s file is written empty and every board reads nothing'],
   [path.join(ROOT, 'lib', 'stages.js'), "      if (old[label]) richSumsTake(blend[label], old[label]);", "",
     'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows', 'a unit priced again is counted twice in the blend\'s average'],
+  // ---- THE BOARDS CELLS WRAP INSTEAD OF WIDENING THE TABLE (3.228.0) ----
+  [path.join(ROOT, 'public', 'construct.js'), "  return `<div class=\"muted bnums bgrid\"><span>placed ${N(t.placed)}</span>", "  return `<div class=\"muted\" style=\"white-space:nowrap\"><span>placed ${N(t.placed)}</span>",
+    'theBoardsFieldAndVerdictCellsWrapInsteadOfWideningTheTable', 'the field figures are one unbreakable line again and set the width of the whole table'],
+  [path.join(ROOT, 'public', 'construct.js'), "return `<span style=\"white-space:nowrap\">up to ${esc(upTo)} ×${esc(x)}</span>`; }).join(', ')}", "return esc(r); }).join(',')}",
+    'theBoardsFieldAndVerdictCellsWrapInsteadOfWideningTheTable', 'the size rungs are printed as the name\'s shorthand again'],
+  [path.join(ROOT, 'public', 'construct.js'), "const bNoSort = '<span class=\"bsort\"></span>';", "const bNoSort = '';",
+    'theBoardsFieldAndVerdictCellsWrapInsteadOfWideningTheTable', 'a heading that does not sort loses its blank line and its words sit a line lower than the others'],
+  [path.join(ROOT, 'public', 'construct.html'), "  td .bwords { text-align:left; max-width:19rem; }", "  td .bwords { text-align:left; }",
+    'theBoardsFieldAndVerdictCellsWrapInsteadOfWideningTheTable', 'the words-over-numbers block is as wide as its longest line again'],
+  [path.join(ROOT, 'public', 'construct.html'), "  .filters .frow { grid-column:2 / -1;", "  .filters .frow { grid-column:1 / -1;",
+    'theBoardsFieldAndVerdictCellsWrapInsteadOfWideningTheTable', 'the filter buttons start under the names again'],
   // ---- THE PRESS STAYS LIVE WHILE THE SET LACKS THE NUMBERS, AND A DEAD BUTTON NEVER ANSWERS THE MOUSE (3.227.0) ----
   [path.join(ROOT, 'public', 'construct.js'), "  if (x.have < x.need) return false;            // the coin and shape it is aimed at still lacks some\n", "  return x.have >= x.need;\n",
     'theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft', 'the press goes dead on a finished coin and shape with the rest of the set still to do'],

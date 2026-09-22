@@ -281,3 +281,54 @@ module.exports.everyControlsHelpBecomesItsHover = function () {
     a.ok(new RegExp(`hoverFromHelp\\('${key}'\\)`).test(src), `the ${key} draw no longer wires its hovers`);
   }
 };
+
+// THE BOARDS TABLES ARE DESIGNED, NOT ACCUMULATED (3.228.0, owner 2026-09-22,
+// a photograph of Table 3.A: "enumerate all the things wrong with this
+// layout ... make it right"). One unbreakable line of field figures under the
+// verdict word set the width of the whole table and pushed a third of its
+// columns off a 1920-wide screen; the field gate beside it was crushed into
+// five lines with its sizing printed as the name's shorthand; two columns were
+// called verdict; the sort marks wrapped under narrow headings; the counts and
+// the money on one line were formatted two ways; the button row under the
+// filters started at the names' edge, not the boxes'. Read from the source,
+// and run where a function can be run.
+module.exports.theBoardsFieldAndVerdictCellsWrapInsteadOfWideningTheTable = function () {
+  const { assert: a } = require('./helpers');
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'construct.html'), 'utf8');
+  const lift = (head, end) => { const at = src.indexOf(head); a.ok(at > 0, `${head} is gone`); return src.slice(at, src.indexOf(end, at) + end.length); };
+  for (const fn of ['function bFieldNumbers(t) {', 'function bLeanNumbers(parts, confirm, kx, ux) {']) {
+    const body = lift(fn, '\n}\n');
+    a.ok(!/<div[^>]*white-space:nowrap/.test(body), `${fn} still prints its figures as one line that may not wrap`);
+    a.ok(body.includes('class="muted bnums'), `${fn} does not print its figures in the shared block`);
+  }
+  a.ok(/td \.bwords \{[^}]*max-width:\s*19rem/.test(css) && /td \.bwords \{[^}]*text-align:\s*left/.test(css), 'the words-over-numbers block is not held to a width, or is not left-aligned');
+  a.ok(/td \.bnums \{[^}]*white-space:\s*normal/.test(css), 'the figures under a word may not wrap');
+  // the sizing in words, run: the shorthand becomes "up to READ ×MULTIPLE" per rung, and stays on the hover
+  const esc = (t) => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const money = (v) => `${Number(v) < 0 ? '-' : ''}$${Math.abs(Number(v)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const { bFieldGate, bFieldNumbers } = new Function('esc', 'money', `${lift('function bFieldGate(r) {', '\n}\n')}\n${lift('function bFieldNumbers(t) {', '\n}\n')}\nreturn { bFieldGate, bFieldNumbers };`)(esc, money);
+  const cell = bFieldGate({ label: 'count 50% market t41h · argmax auto 24/7 · field agreement≥40 & certainty≥70 sized by certainty ×70:0.75,80:1,90:1.25,100:1.5 silent×1' });
+  a.ok(cell.includes('agreement≥40 &amp; certainty≥70'), `the bars are not on the cell: ${cell}`);
+  a.ok(cell.includes('sized by certainty: <span style="white-space:nowrap">up to 70 ×0.75</span>, <span style="white-space:nowrap">up to 80 ×1</span>, <span style="white-space:nowrap">up to 90 ×1.25</span>, <span style="white-space:nowrap">up to 100 ×1.5</span>, <span style="white-space:nowrap">silent ×1</span>'),
+    `the sizing is not said in words: ${cell}`);
+  a.ok(cell.includes('title="sized by certainty ×70:0.75,80:1,90:1.25,100:1.5 silent×1"'), 'the shorthand is not kept on the hover');
+  a.strictEqual(bFieldGate({ label: 'count 50% market t41h · argmax auto 24/7' }), '<span class="muted">none</span>');
+  const nums = bFieldNumbers({ placed: 3955, blockedSign: 6312, blockedMin: 5999, silent: 0, pnl: 2891.75, size: 4852.3, at1: 1968.71, blockedAt1: -2535.65 });
+  a.ok(nums.includes('class="muted bnums bgrid"') && nums.includes('<span>placed 3,955</span><span>sized $2,891.75</span>') && nums.includes('<span>over size 4,852.3 in all</span>')
+    && nums.includes('<span>silent 0</span><span>blocked at size 1 -$2,535.65</span>') && !nums.includes('$-'),
+    `the figures are not two short columns with every number formatted the one way: ${nums}`);
+  a.ok(/td \.bgrid \{ display:grid; grid-template-columns:max-content max-content/.test(css), 'the figures block is not laid out as two columns');
+  // money on the page carries thousands separators, as every count already did
+  const moneyFn = new Function(`${lift('const money = (v) => {', '\n};\n')}\nreturn money;`)();
+  a.strictEqual(moneyFn(2891.75), '$2,891.75'); a.strictEqual(moneyFn(-2535.65), '-$2,535.65'); a.strictEqual(moneyFn(27.674), '$27.67'); a.strictEqual(moneyFn(null), '—');
+  // two columns called verdict: the confirm's says whose it is, on both tables
+  a.ok(src.includes(">confirm verdict${bRankSortBtn(doc, 'verdict', 'desc')}</th>") && src.includes(">confirm verdict${bCoinSortBtn(view, 'verdict', '↓')}</th>"), 'a column is still called just verdict beside field verdict');
+  // the sort mark is glued to the heading's last word
+  a.ok(src.includes('return `<span class="bsort"><button data-branksort=') && src.includes('return `<span class="bsort"><button data-bcoinsort=') && /th \.bsort \{ display:block; min-height:1\.15rem/.test(css), 'the sort mark is not on its own line under every heading');
+  a.ok(src.includes(">#${bNoSort}</th>") && src.includes(">show in 3.B${bNoSort}</th>"), 'a heading that does not sort has no blank line, so its words sit a line lower than the others');
+  // a tall row reads from its top
+  a.ok(src.includes(`const btd = 'style="padding:.25rem .3rem;vertical-align:top"';`), 'cells of a tall row are not top-aligned');
+  // the button row under the filters starts where the boxes start
+  a.ok(/\.filters \.frow \{ grid-column:2 \/ -1;/.test(css), 'the filter buttons start under the names instead of under the boxes');
+};

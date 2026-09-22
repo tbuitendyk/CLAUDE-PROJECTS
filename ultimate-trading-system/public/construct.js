@@ -156,7 +156,10 @@ function readPanel(title, h, c, stretch) {
 const money = (v) => {
   const ok = (typeof v === 'number' && Number.isFinite(v))
     || (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)));
-  return ok ? `${Number(v) < 0 ? '-' : ''}$${Math.abs(Number(v)).toFixed(2)}` : '—';
+  // THOUSANDS SEPARATED (3.228.0, owner 2026-09-22 on Boards: "3,955" beside
+  // "$2891.75" on one line). Every count on the page is printed through
+  // toLocaleString; the money now is too.
+  return ok ? `${Number(v) < 0 ? '-' : ''}$${Math.abs(Number(v)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
 };
 
 // THE CHOICE LISTS COME FROM THE SYSTEM, NOT FROM THIS PAGE (RULE FIVE).
@@ -4660,8 +4663,9 @@ async function bWireFillUnits(doc) {
     poll();
   };
 }
-const btd = 'style="padding:.25rem .5rem"';
-const btd0 = 'style="padding:.25rem .5rem .25rem 0"';
+// TOP-ALIGNED (3.228.0): a row two or three lines tall reads from its top, and its number, its button and its one-line cells sit on the first line
+const btd = 'style="padding:.25rem .3rem;vertical-align:top"';
+const btd0 = 'style="padding:.25rem .3rem .25rem 0;vertical-align:top"';
 // A ROW IS ONE LINE (owner order, 2026-09-06: "rows taking one or two lines,
 // all because you're wasting an enormous amount of space on each row"). A cell
 // holding one number or one coin has nothing to gain from wrapping, and a
@@ -4677,7 +4681,8 @@ const btdN0 = 'style="padding:.25rem .5rem .25rem 0;white-space:nowrap"';
 // ONCE, at the top, and every row underneath is as narrow as its own numbers.
 // Sitting on the bottom keeps a wrapped heading level with the one-line
 // headings beside it and with its own sort button (RULE FOUR).
-const bth = 'style="padding:.3rem .5rem;max-width:7.5rem;white-space:normal;vertical-align:bottom"';
+// TIGHTER (3.228.0): twenty-five columns share a 1920-wide screen, so a heading may wrap narrower and a cell pads less
+const bth = 'style="padding:.3rem .3rem;max-width:6rem;white-space:normal;vertical-align:bottom"';
 
 // PUT AWAY AND OPEN, ONE CONTROL WHEREVER A SECTION HAS ONE (3.107.0, owner
 // order 2026-09-10: a put away on the Funnel "just like by the Stage 1/2/3
@@ -4783,9 +4788,13 @@ function bLeanNumbers(parts, confirm, kx, ux) {
   const u = (confirm === 'confirmed only' || confirm === 'strictly confirmed') ? 0 : (confirm === 'sized' ? Number(ux ?? 1) : 1);
   const z = confirm === 'strictly confirmed' ? 0 : 1;
   const under = k * P(parts.c) + u * P(parts.u) + z * P(parts.z);
-  const part = (name, x) => `${name} ${money(P(x))} over ${N(x)}`;
-  return `<div class="muted" style="white-space:nowrap;font-size:.85em">${part('confirmed', parts.c)} \u00b7 ${part('unconfirmed', parts.u)} \u00b7 ${part('no lean', parts.z)}`
-    + ` \u00b7 at size 1 ${money(at1)}${confirm && confirm !== 'off' ? ` \u2192 ${esc(confirm)} ${money(under)}` : ''}</div>`;
+  const part = (name, x) => `<span style="white-space:nowrap">${name} ${money(P(x))} over ${N(x)}</span>`;
+  // A BLOCK THAT MAY WRAP, NOT A LINE THAT MAY NOT (3.228.0, owner 2026-09-22
+  // on the field's twin of this: one unbreakable line set the width of the
+  // whole table and pushed a third of its columns off the screen). Each part
+  // holds together; the block holds to a width; the lines break between parts.
+  return `<div class="muted bnums">${part('confirmed', parts.c)} \u00b7 ${part('unconfirmed', parts.u)} \u00b7 ${part('no lean', parts.z)}`
+    + ` \u00b7 <span style="white-space:nowrap">at size 1 ${money(at1)}${confirm && confirm !== 'off' ? ` \u2192 ${esc(confirm)} ${money(under)}` : ''}</span></div>`;
 }
 // THE FIELD'S GATE ON A ROW (FIELD-DESIGN.md section F): the gate in words,
 // and the numbers its verdict rests on printed under the word, as confirm's are
@@ -4806,32 +4815,53 @@ function bFieldGate(r) {
   const cut = tail.indexOf(' sized by ');
   const bars = cut < 0 ? tail : tail.slice(0, cut);          // "agreement≥40 & certainty≥60", "certainty≥70 sign only", "no minimum"
   const sizing = cut < 0 ? '' : tail.slice(cut + 1);         // "sized by certainty ×100:1 silent×1"
-  return `${esc(bars)}${sizing ? ` <span class="muted">${esc(sizing)}</span>` : ''}`;
+  // THE SIZING IN WORDS, NOT THE NAME'S SHORTHAND (3.228.0, owner 2026-09-22:
+  // "×70:0.75,80:1,90:1.25,100:1.5" and "silent×1" printed raw, with nothing
+  // saying what 70:0.75 means). A rung is "up to this read: multiple"
+  // (lib/fieldgate.js parseRungs), so it is said that way, each rung held
+  // together and the block held to a width; the shorthand stays on the hover,
+  // so the cell can still be matched to the setting's name.
+  const m = sizing.match(/^sized by (\S+) ×(\S+) silent×(\S+)$/);
+  const words = m
+    ? `sized by ${esc(m[1])}: ${m[2].split(',').map((r) => { const [upTo, x] = r.split(':'); return `<span style="white-space:nowrap">up to ${esc(upTo)} ×${esc(x)}</span>`; }).join(', ')}, <span style="white-space:nowrap">silent ×${esc(m[3])}</span>`
+    : esc(sizing);
+  return `<div class="bwords">${esc(bars)}${sizing ? `<div class="muted bnums" title="${esc(sizing)}">${words}</div>` : ''}</div>`;
 }
 function bFieldNumbers(t) {
   if (!t) return '';
   const N = (x) => Number(x || 0).toLocaleString();
-  return `<div class="muted" style="white-space:nowrap;font-size:.85em">placed ${N(t.placed)} \u00b7 blocked by sign ${N(t.blockedSign)} \u00b7 by minimum ${N(t.blockedMin)} \u00b7 silent ${N(t.silent)}`
-    + ` \u00b7 sized ${money(t.pnl)} over size ${Number(t.size || 0).toFixed(1)} \u00b7 at size 1 ${money(t.at1)} \u00b7 blocked at size 1 ${money(t.blockedAt1)}</div>`;
+  const size = Number(t.size || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  // TWO SHORT COLUMNS, NOT ONE LONG LINE (3.228.0, owner 2026-09-22: one
+  // unbreakable line of these, 600 px wide, set the width of the whole of
+  // Table 3.A and pushed a third of its columns off a 1920-wide screen). The
+  // counts down the left, the money down the right, four lines under the
+  // word; "in all" says these sum the coins where the column beside them
+  // averages.
+  return `<div class="muted bnums bgrid"><span>placed ${N(t.placed)}</span><span>sized ${money(t.pnl)}</span>`
+    + `<span>blocked by sign ${N(t.blockedSign)}</span><span>over size ${size} in all</span>`
+    + `<span>by minimum ${N(t.blockedMin)}</span><span>at size 1 ${money(t.at1)}</span>`
+    + `<span>silent ${N(t.silent)}</span><span>blocked at size 1 ${money(t.blockedAt1)}</span></div>`;
 }
 function bFieldVerdict(word, totals) {
   if (!word) return '<span class="muted">—</span>';
   const list = (VOCAB && VOCAB.fieldVerdict) || [];
   const hit = list.find((o) => o.value === word);
-  return `<span${hit && hit.why ? ` title="${esc(hit.why)}"` : ''}>${esc(word)}</span>${bFieldNumbers(totals)}`;
+  return `<div class="bwords"><span${hit && hit.why ? ` title="${esc(hit.why)}"` : ''}>${esc(word)}</span>${bFieldNumbers(totals)}</div>`;
 }
 function bVerdict(word, parts = null, confirm = null, kx = null, ux = null) {
   if (!word) return '<span class="muted">—</span>';
   const list = (VOCAB && VOCAB.confirmVerdict) || [];
   const hit = list.find((o) => o.value === word);
-  return `<span${hit && hit.why ? ` title="${esc(hit.why)}"` : ''}>${esc(word)}</span>${bLeanNumbers(parts, confirm, kx, ux)}`;
+  return `<div class="bwords"><span${hit && hit.why ? ` title="${esc(hit.why)}"` : ''}>${esc(word)}</span>${bLeanNumbers(parts, confirm, kx, ux)}</div>`;
 }
+const bNoSort = '<span class="bsort"></span>';   // the mark's line under a heading that does not sort, so its words sit level with the others'
 function bRankSortBtn(doc, key, firstDir) {
   const spec = Array.isArray(doc.sort) ? doc.sort : [];
   const at = spec.findIndex((s) => s.key === key);
   const state = at < 0 ? '·' : (spec[at].dir === 'desc' ? '↓' : '↑');
-  return ` <button data-branksort="${key}" data-brankdir="${firstDir}" style="min-width:1.6rem;padding:0 .25rem"
-    title="click to sort the whole table by this column${firstDir === 'desc' ? ' (high to low first)' : ' (A to Z / low to high first)'}; click again to flip it, a third click puts it away. One column at a time — picking another column replaces this one. Saved on this record set.">${state}</button>`;
+  // ON ITS OWN LINE UNDER THE WORDS, ON EVERY BOARDS HEADING (3.228.0): inline, the mark wrapped under a narrow heading and not under a wide one, so the words sat at two heights; and a word glued to its mark held its column wider than the word. Every heading has the line, sortable or not (bNoSort), so the words align.
+  return `<span class="bsort"><button data-branksort="${key}" data-brankdir="${firstDir}"
+    title="click to sort the whole table by this column${firstDir === 'desc' ? ' (high to low first)' : ' (A to Z / low to high first)'}; click again to flip it, a third click puts it away. One column at a time — picking another column replaces this one. Saved on this record set.">${state}</button></span>`;
 }
 function bWireRankSort(doc, root) {
   if (!$(root)) return;   // the mount went with a redraw; the newer draw wires its own
@@ -5032,8 +5062,8 @@ function bCoinSortBtn(view, key, naturalArrow) {
   const active = (cq.sort || 'share') === key;
   const flippedArrow = naturalArrow === '↓' ? '↑' : '↓';
   const state = !active ? '·' : (cq.flip ? flippedArrow : naturalArrow);
-  return ` <button data-bcoinsort="${key}" data-barrow="${naturalArrow}" style="min-width:1.6rem;padding:0 .25rem"
-    title="one click sorts the whole table by this column${naturalArrow === '↓' ? ' — best first' : ' — A to Z'}; a second click turns it the other way.">${state}</button>`;
+  return `<span class="bsort"><button data-bcoinsort="${key}" data-barrow="${naturalArrow}"
+    title="one click sorts the whole table by this column${naturalArrow === '↓' ? ' — best first' : ' — A to Z'}; a second click turns it the other way.">${state}</button></span>`;
 }
 function bWireCoinSort(root) {
   if (!$(root)) return;   // the mount went with a redraw; the newer draw wires its own
@@ -5627,7 +5657,7 @@ async function bDrawStage1(doc, incomplete, view, mount) {
   ])}
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-        <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place under the sort picked on the columns — settled before any filter, so it still says where the row stands in the whole set.">order</th>
+        <th ${bth.replace('.3rem .3rem', '.3rem .3rem .3rem 0')} title="this unit's place under the sort picked on the columns — settled before any filter, so it still says where the row stands in the whole set.">order${bNoSort}</th>
         <th ${bth} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin${bSortBtn(doc, 'trade', 'asc')}</th>
         <th ${bth} title="the one or two coins this unit is read against — blank for a coin judged on its own">alongside${bSortBtn(doc, 'ctx', 'asc')}</th>
         <th ${bth} title="how long a stretch of prices each decision looks at, and how often a decision is made — fixed when the unit was trained.">chunk shape${bSortBtn(doc, 'geometry', 'asc')}</th>
@@ -5707,8 +5737,8 @@ async function bDrawStage2(doc, incomplete, view, mount) {
   ])}
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-        <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="ticks every record on this page, or clears them. Picks save on this record set, and the stage 3 set-up on Sweep prices exactly the picked records when its records to price says Selected records."><input type="checkbox" data-bpickpage="S2"${rows.length && rows.every((r) => picked.has(r.u)) ? ' checked' : ''}></th>
-        <th ${bth} title="this unit's place under the sort picked on the columns — settled before any filter, so it still says where the row stands in the whole set.">stage 2 order</th>
+        <th ${bth.replace('.3rem .3rem', '.3rem .3rem .3rem 0')} title="ticks every record on this page, or clears them. Picks save on this record set, and the stage 3 set-up on Sweep prices exactly the picked records when its records to price says Selected records."><input type="checkbox" data-bpickpage="S2"${rows.length && rows.every((r) => picked.has(r.u)) ? ' checked' : ''}>${bNoSort}</th>
+        <th ${bth} title="this unit's place under the sort picked on the columns — settled before any filter, so it still says where the row stands in the whole set.">stage 2 order${bNoSort}</th>
         <th ${bth} title="where the same unit ranked at stage 1">stage 1 order${bSortBtn(doc, 's1rank', 'asc')}</th>
         <th ${bth} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin${bSortBtn(doc, 'trade', 'asc')}</th>
         <th ${bth} title="the one or two coins this unit is read against — blank for a coin judged on its own">alongside${bSortBtn(doc, 'ctx', 'asc')}</th>
@@ -5905,13 +5935,13 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   ], ranked && ranked.spread)}
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-        <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="where this setting sits in the table as it is ordered and filtered right now. It is a position, not a score: change the sort or a filter and the same setting gets a different number.">#</th>
-        <th ${bth} style="white-space:nowrap" title="shows, in Table 3.B below, only the coins this setting was priced on and nothing else. Those rows average every decision, band and 24/5 variant of the setting, not just this row's — the rows column there says how many. Press Clear filters under Table 3.B to bring the rest back.">show in 3.B</th>
+        <th ${bth.replace('.3rem .3rem', '.3rem .3rem .3rem 0')} title="where this setting sits in the table as it is ordered and filtered right now. It is a position, not a score: change the sort or a filter and the same setting gets a different number.">#${bNoSort}</th>
+        <th ${bth} style="white-space:nowrap" title="shows, in Table 3.B below, only the coins this setting was priced on and nothing else. Those rows average every decision, band and 24/5 variant of the setting, not just this row's — the rows column there says how many. Press Clear filters under Table 3.B to bring the rest back.">show in 3.B${bNoSort}</th>
         <th ${bth} title="how the members' votes become a call — priced from the kept votes.">decision${bRankSortBtn(doc, 'decision', 'asc')}</th>
         <th ${bth} title="the size a move must reach to count as a move at all. auto is worked out from each coin's own history.">band${bRankSortBtn(doc, 'bandMode', 'asc')}</th>
         <th ${bth} title="whether this setting trades weekdays only.">24/5${bRankSortBtn(doc, 'weekdaysOnly', 'asc')}</th>
         <th ${bth} title="what the coin's own lean changed about the trades, on units whose coin and chunk shape pass on Coins. off: nothing. confirmed only: calls the lean disagreed with were not traded. sized: calls the lean agreed with traded at the confirmed × multiple and calls it disagreed with at the unconfirmed × multiple, printed after it. A dash means no unit of this setting carried a lean.">confirm${bRankSortBtn(doc, 'confirm', 'asc')}</th>
-        <th ${bth} title="what the lean was worth, judged from six numbers summed over this setting's coins on the test window: money and count of the confirmed, the unconfirmed and the no-lean trades. adds nothing: the money with the lean is not above the money at size 1. just leverage: more money, but not more per unit of size deployed — a bigger bet, not a better one. adds value: more money and more per unit of size. better signal: adds value, and the confirmed trades made more per trade than the unconfirmed and than the no-lean ones. Hover the word for the rule it rests on. Empty on a setting with confirm off or with no lean on any of its units.">verdict${bRankSortBtn(doc, 'verdict', 'desc')}</th>
+        <th ${bth} title="what the lean was worth, judged from six numbers summed over this setting's coins on the test window: money and count of the confirmed, the unconfirmed and the no-lean trades. adds nothing: the money with the lean is not above the money at size 1. just leverage: more money, but not more per unit of size deployed — a bigger bet, not a better one. adds value: more money and more per unit of size. better signal: adds value, and the confirmed trades made more per trade than the unconfirmed and than the no-lean ones. Hover the word for the rule it rests on. Empty on a setting with confirm off or with no lean on any of its units.">confirm verdict${bRankSortBtn(doc, 'verdict', 'desc')}</th>
         <th ${bth} title="the field's gate this setting was priced under, as its name writes it: the bars it had to clear (a minimum on agreement, on certainty, or both — joined by &amp; when both must pass, by | when either will do), sign only where the bars were ignored, then what it read to size the trade, the ladder of size rungs and the silent multiple. none on a run that named no field.">field${bRankSortBtn(doc, 'fieldVerdict', 'desc')}</th>
         <th ${bth} title="what the field's gate was worth, judged from the numbers summed over this setting's coins on the test window and printed under the word: calls placed, blocked by sign, blocked by the minimum, silent; the money at the sizes the rungs gave, the same trades at size 1, and the blocked calls at size 1. adds nothing: the sized money is not above every call at size 1 with no gate. just leverage: more money, but not more per unit of size deployed. adds value: more money and more per unit of size. better signal: adds value, and the blocked calls lost money at size 1 — the blocks were right. Hover the word for the rule it rests on. Empty on a setting priced with no gate.">field verdict${bRankSortBtn(doc, 'fieldVerdict', 'desc')}</th>
         <th ${bth} title="average test-window money per coin at the sizes the field's rungs gave, in dollars. Empty on a setting priced with no gate.">field sized $${bRankSortBtn(doc, 'fieldSized', 'desc')}</th>
@@ -5940,7 +5970,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd0} class="muted" style="white-space:nowrap">${(from + i + 1).toLocaleString()}</td>
         <td ${btd} style="white-space:nowrap"><button id="bPin3b" data-bpin3b="${esc(String(r.label).split(' · ')[0])}"
           data-bpindec="${esc(String(r.decision))}" data-bpinband="${esc(String(r.bandMode))}" data-bpinwk="${r.weekdaysOnly ? 1 : 0}"
-          style="white-space:nowrap${bPinnedRow(r) ? ';font-weight:700' : ''}">Show in 3.B</button></td>
+          style="white-space:nowrap;padding:.1rem .4rem${bPinnedRow(r) ? ';font-weight:700' : ''}">Show in 3.B</button></td>
         <td ${btd}>${esc(r.decision)}</td>
         <td ${btd}>${r.bandMode === 'auto' ? 'auto' : `${esc(String(r.bandMode))}%`}</td>
         <td ${btd}>${r.weekdaysOnly ? 'yes' : 'no'}</td>
@@ -5999,7 +6029,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ['setting', 'Table 3.A selection setting', 'text', 'shows only the coins of the setting named here, matched whole. Show in 3.B on a row of Table 3.A fills this in for you and takes every other filter off. Empty shows every setting.', 'wide'],
   ], coins && coins.spread)}
     <div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-bcoinhead style="text-align:left;border-bottom:1px solid var(--line)">
-        <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting with decision, band and 24/5 taken out of its name, so one of these stands for all its decision, band and 24/5 variants at once — they are the records underneath, and the rows column counts them. Table 3.A holds the full settings, which is why it has more rows than this column has values.">SHORT SETTING: DECISION, BAND, 24/5 FACTORED OUT${bCoinSortBtn(view, 'setting', '↑')}</th>
+        <th ${bth.replace('.3rem .3rem', '.3rem .3rem .3rem 0')} title="the setting with decision, band and 24/5 taken out of its name, so one of these stands for all its decision, band and 24/5 variants at once — they are the records underneath, and the rows column counts them. Table 3.A holds the full settings, which is why it has more rows than this column has values.">SHORT SETTING: DECISION, BAND, 24/5 FACTORED OUT${bCoinSortBtn(view, 'setting', '↑')}</th>
         <th ${bth} title="the traded coin and the chunk shape it was priced at, and under them the one or two coins it is read alongside, on rows that have any. All of it is in this one cell, and the row is one setting on one coin at one chunk shape. What is listed after alongside is context only — read against, never bought or sold. Same word, same meaning, as the alongside column on the two tables above.">coin + chunk shape + alongside${bCoinSortBtn(view, 'coin', '↑')}</th>
         <th ${bth} title="what the coin's own lean changed about this coin's trades: off, confirmed only, or sized with its multipliers. One row per value, so the six numbers under verdict are this value's alone.">confirm${bCoinSortBtn(view, 'confirm', '↑')}</th>
         <th ${bth} title="the field's gate this coin's records were priced under, as its name writes it: the bars it had to clear, sign only, what it read to size the trade, the ladder of size rungs and the silent multiple. One row per gate value, so the numbers under field verdict are this value's alone. none on a run that named no field, or on a unit the field has no pair for.">field${bCoinSortBtn(view, 'fieldverdict', '↓')}</th>
@@ -6012,12 +6042,12 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <th ${bth} title="average held-back entries per record.">avg held-back trades${bCoinSortBtn(view, 'trades', '↓')}</th>
         <th ${bth} title="average held-back money minus just holding the coin over the same window.">avg vs always-long${bCoinSortBtn(view, 'vslong', '↓')}</th>` : ''}
         <th ${bth} title="what ACTUALLY agreed at the moments this coin's records spoke, averaged over the records underneath. Every rule fires at or above its bar, so this sits at the share or above it. Measured on the test window.">share that agreed${bCoinSortBtn(view, 'agreed', '↓')}</th>
-        <th ${bth} title="what the coin's own lean was worth on this coin, judged from six numbers summed over the records underneath that carried a lean, on the test window: money and count of the confirmed, the unconfirmed and the no-lean trades. adds nothing: the money with the lean is not above the money at size 1. just leverage: more money, but not more per unit of size deployed. adds value: more money and more per unit of size. better signal: adds value, and the confirmed trades made more per trade than the unconfirmed and than the no-lean ones. Hover the word for the rule it rests on. Empty where no record underneath carried a lean.">verdict${bCoinSortBtn(view, 'verdict', '↓')}</th>
+        <th ${bth} title="what the coin's own lean was worth on this coin, judged from six numbers summed over the records underneath that carried a lean, on the test window: money and count of the confirmed, the unconfirmed and the no-lean trades. adds nothing: the money with the lean is not above the money at size 1. just leverage: more money, but not more per unit of size deployed. adds value: more money and more per unit of size. better signal: adds value, and the confirmed trades made more per trade than the unconfirmed and than the no-lean ones. Hover the word for the rule it rests on. Empty where no record underneath carried a lean.">confirm verdict${bCoinSortBtn(view, 'verdict', '↓')}</th>
         <th ${bth} title="what the field's gate was worth on this coin, judged from the numbers summed over the records underneath on the test window and printed under the word: calls placed, blocked by sign, blocked by the minimum, silent; the money at the rungs' sizes, the same trades at size 1, and the blocked calls at size 1. adds nothing, just leverage, adds value, better signal — hover the word for the rule. Empty where no record underneath was priced under a gate.">field verdict${bCoinSortBtn(view, 'fieldverdict', '↓')}</th>
         <th ${bth} title="average test-window money per record at the sizes the field's rungs gave, in dollars. Empty with no gate.">field sized $${bCoinSortBtn(view, 'fieldsized', '↓')}</th>
         <th ${bth} title="of the calls the members made on the test window, the share the field's gate blocked, as a percentage. Empty with no gate.">field blocked, %${bCoinSortBtn(view, 'fieldblocked', '↑')}</th>
         <th ${bth} title="how many records this row averages — one per decision, band and 24/5 variant of the setting that this coin's units hold; a unit holds only the variants that place different orders on it.">rows${bCoinSortBtn(view, 'rows', '↓')}</th>
-        <th ${bth} title="opens the records themselves below the row.">records</th></tr></thead>
+        <th ${bth} title="opens the records themselves below the row.">records${bNoSort}</th></tr></thead>
       <tbody id="bCoinBody">${cr.map((r) => {
     const k = keyOf(r);
     return `<tr data-bkey="${esc(k)}">
@@ -9884,7 +9914,7 @@ function cSortBtn(field, attr, key, firstDir) {
   const at = list.findIndex((x) => x.key === key);
   const state = at < 0 ? '·' : (list[at].dir === 'desc' ? '↓' : '↑');
   const rank = at < 0 || list.length < 2 ? '' : `<sub>${at + 1}</sub>`;
-  return ` <button data-${attr}="${key}" data-sdir="${firstDir}" style="min-width:1.6rem;padding:0 .25rem"
+  return ` <button data-${attr}="${key}" data-sdir="${firstDir}" style="min-width:1.2rem;padding:0 .2rem"
     title="click to add this column to the sort${firstDir === 'desc' ? ' (high to low first)' : ' (low to high first)'}; click again to flip it, and once more to drop it. Columns sort in the order you click them, and the small number says where each one sits.">${state}${rank}</button>`;
 }
 // WHAT EACH COLUMN OF CHOOSE EARLY, READ LATE SORTS BY.

@@ -1636,8 +1636,8 @@ module.exports = {
     const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
     assert.ok(server.includes('leanUnits: d.leanUnits == null ? null : d.leanUnits, confirmWanted: !!d.confirmWanted'), 'the count route hands the screen the lean count');
     const boards = screens.drawBody('drawBoards');
-    for (const piece of [">confirm${bRankSortBtn(doc, 'confirm', 'asc')}</th>", ">verdict${bRankSortBtn(doc, 'verdict', 'desc')}</th>",
-      '${bConfirm(r)}</td>', ">verdict${bCoinSortBtn(view, 'verdict', '\u2193')}</th>"]) {
+    for (const piece of [">confirm${bRankSortBtn(doc, 'confirm', 'asc')}</th>", ">confirm verdict${bRankSortBtn(doc, 'verdict', 'desc')}</th>",
+      '${bConfirm(r)}</td>', ">confirm verdict${bCoinSortBtn(view, 'verdict', '\u2193')}</th>"]) {
       assert.ok(boards.includes(piece), `Boards must draw: ${piece}`);
     }
     // 3.131.0: each hands the word its six numbers, and the records under a row have their own two verdict cells
