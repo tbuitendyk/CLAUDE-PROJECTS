@@ -233,3 +233,87 @@ module.exports.aRejectedOrderAppearsInTheSetupsIncidents = function () {
       'each incident must carry the executor\'s own detail, not just its name');
   });
 };
+
+// ---- THE SILENT SHORT (owner, 2026-09-22) -----------------------------------
+// Four weeks of shorts failed at the borrow and the screen said nothing was
+// wrong: no order was ever reached, so none of the order-shaped incidents
+// fired, and the decision row sat at "intent shipped — awaiting fill" for a
+// fill that could not come. These pin both halves.
+
+module.exports.aRefusedBorrowReachesTheIncidentsPanel = function () {
+  withJournal([
+    { event: 'INTENT_SEEN', setup_id: 'a', chunk_start: 'c1', side: 'SHORT', utc: '2026-09-21T01:20:04Z' },
+    { event: 'ENTRY_BORROW_FAILED', setup_id: 'a', chunk_start: 'c1', qty: 0.168, http: 401, utc: '2026-09-21T01:20:05Z',
+      reason: 'could not borrow the base to sell; no order was sent' },
+  ], (f) => {
+    const b = view.deriveSetup(view.readJournal(f).events, 'a');
+    assert.ok(b.incidents.some((i) => i.kind === 'ENTRY_BORROW_FAILED'),
+      'a refused borrow must appear in Incidents — it is the whole failure, and the panel '
+      + 'read "none" through every one of them');
+  });
+};
+
+module.exports.aBorrowHandedBackIsAnIncidentToo = function () {
+  withJournal([
+    { event: 'INTENT_SEEN', setup_id: 'a', chunk_start: 'c1', side: 'SHORT', utc: '2026-09-21T01:20:04Z' },
+    { event: 'ENTRY_BORROW_UNWOUND', setup_id: 'a', chunk_start: 'c1', qty: 0.168, ok: true, utc: '2026-09-21T01:20:06Z' },
+  ], (f) => {
+    const b = view.deriveSetup(view.readJournal(f).events, 'a');
+    assert.ok(b.incidents.some((i) => i.kind === 'ENTRY_BORROW_UNWOUND'),
+      'a loan taken and handed back is money moving on a trade that did not happen');
+  });
+};
+
+module.exports.aFailingEntryStopsClaimingItIsAwaitingAFill = function () {
+  withJournal([
+    { event: 'INTENT_SEEN', setup_id: 'a', chunk_start: 'c1', side: 'SHORT', utc: '2026-09-21T01:20:04Z' },
+    { event: 'ENTRY_BORROW_FAILED', setup_id: 'a', chunk_start: 'c1', qty: 0.168, http: 401, utc: '2026-09-21T01:20:05Z' },
+  ], (f) => {
+    const b = view.deriveSetup(view.readJournal(f).events, 'a');
+    const d = b.decisions.find((x) => x.chunk_start === 'c1');
+    assert.strictEqual(d.fate, 'entry failing',
+      'the outcome column said "intent shipped — awaiting fill" while the entry was being '
+      + 'refused — true, and the opposite of useful');
+  });
+};
+
+module.exports.anAbandonedPeriodReadsAsNoTradeNotAsWaiting = function () {
+  withJournal([
+    { event: 'INTENT_SEEN', setup_id: 'a', chunk_start: 'c1', side: 'SHORT', utc: '2026-09-21T01:20:04Z' },
+    { event: 'ENTRY_BORROW_FAILED', setup_id: 'a', chunk_start: 'c1', http: 401, utc: '2026-09-21T02:10:03Z' },
+    { event: 'ENTRY_GAVE_UP', setup_id: 'a', chunk_start: 'c1', attempts: 6, utc: '2026-09-21T02:10:04Z' },
+  ], (f) => {
+    const b = view.deriveSetup(view.readJournal(f).events, 'a');
+    const d = b.decisions.find((x) => x.chunk_start === 'c1');
+    assert.strictEqual(d.fate, 'gave up', 'an abandoned period is not awaiting anything');
+  });
+};
+
+module.exports.aRetryThatFillsIsStillReportedAsFilled = function () {
+  // The guard against the fix over-reaching: a failure followed by a successful
+  // retry is a filled position, and the last word belongs to what happened.
+  withJournal([
+    { event: 'INTENT_SEEN', setup_id: 'a', chunk_start: 'c1', side: 'SHORT', utc: '2026-09-21T01:20:04Z' },
+    { event: 'ENTRY_BORROW_FAILED', setup_id: 'a', chunk_start: 'c1', http: 401, utc: '2026-09-21T01:20:05Z' },
+    { event: 'ENTRY_FILL', setup_id: 'a', chunk_start: 'c1', side: 'SHORT', qty: 0.168, price: 59, exit_due_ts: 2e9, utc: '2026-09-21T01:30:05Z' },
+  ], (f) => {
+    const b = view.deriveSetup(view.readJournal(f).events, 'a');
+    const d = b.decisions.find((x) => x.chunk_start === 'c1');
+    assert.strictEqual(d.fate, 'filled', 'a retry that worked is a filled position');
+  });
+};
+
+module.exports.aRejectedExitDoesNotRelabelTheEntry = function () {
+  // ORDER_REJECT carries the same chunk_start for an EXIT, which says nothing
+  // about how the entry went. Without the action guard a filled position's row
+  // would start reporting its ENTRY as failing, days later.
+  withJournal([
+    { event: 'INTENT_SEEN', setup_id: 'a', chunk_start: 'c1', side: 'LONG', utc: '2026-09-21T01:20:04Z' },
+    { event: 'ENTRY_FILL', setup_id: 'a', chunk_start: 'c1', side: 'LONG', qty: 0.2, price: 100, exit_due_ts: 2e9 },
+    { event: 'ORDER_REJECT', setup_id: 'a', chunk_start: 'c1', action: 'EXIT', http: 400, utc: '2026-09-26T18:20:00Z' },
+  ], (f) => {
+    const b = view.deriveSetup(view.readJournal(f).events, 'a');
+    const d = b.decisions.find((x) => x.chunk_start === 'c1');
+    assert.strictEqual(d.fate, 'filled', "an exit's rejection must not relabel the entry");
+  });
+};

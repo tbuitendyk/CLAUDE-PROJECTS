@@ -402,3 +402,46 @@ module.exports.theOwnersSetupsAreAlwaysOnTheScanTargetList
   = theOwnersSetupsAreAlwaysOnTheScanTargetList;
 module.exports.theScanTargetProseMatchesWhatTheLauncherWillUse
   = theScanTargetProseMatchesWhatTheLauncherWillUse;
+
+// ---- EVERY OUTCOME THE SERVER CAN EMIT HAS WORDS ON THE SCREEN --------------
+// (owner, 2026-09-22). fateTxt() translates the decision row's `fate` into the
+// sentence under the column headed "outcome", and falls through to the raw
+// value for anything it does not know. So a new fate added in view.js without a
+// line in trading.html does not fail anything — it just prints "gave up" at the
+// owner, in the middle of a table of full sentences, on the real-money screen.
+// This pins the two files together, in the direction that actually breaks.
+module.exports.everyFateTheServerEmitsIsRenderedAsASentence = function () {
+  const fs = require('fs');
+  const path = require('path');
+  const ROOT = path.join(__dirname, '..');
+  const viewSrc = fs.readFileSync(path.join(ROOT, 'lib/live/view.js'), 'utf8');
+  const pageSrc = fs.readFileSync(path.join(ROOT, 'public/trading.html'), 'utf8');
+
+  // the fates view.js assigns, read out of the source rather than listed here
+  // (a hand-kept list is the thing that goes stale)
+  const emitted = new Set();
+  // A fate is assigned either as `fate: <expr>` or `.fate = '<x>'`. Both forms
+  // can mention a SIDE in the same expression (`e.side === 'FLAT' ? ... : ...`),
+  // so sides are dropped by name — they are a closed set the executor defines,
+  // not something this check has to guess at.
+  const SIDES = new Set(['LONG', 'SHORT', 'FLAT']);
+  for (const line of viewSrc.split('\n')) {
+    if (!/(^|[^A-Za-z])fate\s*[:=]/.test(line)) continue;
+    // Only what is assigned TO fate: a line may also test an event name
+    // (`e.event === 'ENTRY_GAVE_UP'`) before assigning, and those are not
+    // outcomes. Everything after the last `fate` on the line is the value.
+    const rhs = line.slice(line.lastIndexOf('fate'));
+    for (const m of rhs.matchAll(/'([^']+)'/g)) {
+      if (!SIDES.has(m[1])) emitted.add(m[1]);
+    }
+  }
+  assert.ok(emitted.size >= 5,
+    `expected to find the outcomes view.js assigns, saw ${[...emitted].join(', ')}`);
+
+  const fateTxt = pageSrc.slice(pageSrc.indexOf('const fateTxt='),
+                               pageSrc.indexOf('function untilStr'));
+  const missing = [...emitted].filter((f) => !fateTxt.includes(`'${f}'`));
+  assert.strictEqual(missing.length, 0,
+    `view.js can emit these outcomes and trading.html has no wording for them, so the raw `
+    + `value would be printed on the live screen: ${missing.join(', ')}`);
+};

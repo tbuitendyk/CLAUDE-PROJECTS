@@ -1869,6 +1869,23 @@ def do_run(bx):
                  # skips it (schema-1 keeps no setup_id -> F1 alerter, unchanged).
                  **({"setup_id": it.get("setup_id")} if is2 and it.get("setup_id") else {}))
         if problems or stale:
+            # A SPENT BUDGET IS NEVER SILENT, even on the way out through here.
+            # The give-up is announced by the final attempt itself (see
+            # _give_up_if_budget_spent below), so this path normally sees an
+            # already-renamed file. It is the backstop for the one gap that
+            # leaves: a crash between the sixth attempt and its announcement.
+            # Without it the period would leave "stale" as its only trace —
+            # which is the very mislabelling that hid 2026-09-20 and 21.
+            if (stale and it.get("side") in ("LONG", "SHORT")
+                    and it.get("chunk_start") is not None):
+                _sid = it.get("setup_id") if is2 else None
+                _spent = entry_attempts(journal_events(), it["chunk_start"], _sid)
+                if _spent >= ENTRY_MAX_ATTEMPTS:
+                    jlog("ENTRY_GAVE_UP", chunk_start=it["chunk_start"], file=name,
+                         attempts=_spent, max_attempts=ENTRY_MAX_ATTEMPTS,
+                         reason="entry retry budget spent without a fill; the window "
+                                "then closed before the abandonment was recorded",
+                         **({"setup_id": it["setup_id"]} if is2 else {}))
             jlog("INTENT_INVALID", file=name,
                  problems=problems + ([f"stale({int(age)}s)"] if stale else []),
                  **({"setup_id": it.get("setup_id")} if is2 and it.get("setup_id") else {}))
@@ -2079,6 +2096,37 @@ def do_run(bx):
              attempt=attempt_no, max_attempts=ENTRY_MAX_ATTEMPTS,
              deadline_utc=_utc_str(entry_deadline(it)),
              **({"setup_id": it["setup_id"]} if is2 else {}))
+
+        def _give_up_if_budget_spent(why):
+            """ANNOUNCE THE ABANDONMENT WHEN IT IS DECIDED, NOT A TICK LATER.
+
+            The owner asked (2026-08-16) that a period the box cannot enter be
+            abandoned OUT LOUD. It never once was, and could not be: the
+            announcement lived only on the NEXT tick's budget check, and by that
+            tick the one-hour window has always closed.
+
+            The arithmetic makes it unreachable, not unlucky. Six attempts on a
+            ten-minute timer span 50 minutes; starting ~7 minutes after the
+            intent is minted, the sixth lands near minute 57. The seventh tick
+            is at minute 67 — past the 60-minute deadline — so the staleness
+            check upstream renames the file .bad and returns INTENT_STALE first.
+            The owner reads "stale", which sounds like a clock hiccup, for what
+            was actually six refusals by the venue.
+
+            Seen on 2026-09-20 and 2026-09-21: six ENTRY_BORROW_FAILED, then
+            INTENT_STALE at 02:20, and no ENTRY_GAVE_UP either day.
+
+            So the last attempt says so itself. Same principle as the
+            stand-down, which the owner already had moved to the moment it is
+            decided rather than the moment it is priced.
+            """
+            if attempt_no < ENTRY_MAX_ATTEMPTS:
+                return
+            jlog("ENTRY_GAVE_UP", chunk_start=it["chunk_start"], file=name,
+                 attempts=attempt_no, max_attempts=ENTRY_MAX_ATTEMPTS,
+                 reason=f"entry retry budget spent without a fill: {why}",
+                 **({"setup_id": it["setup_id"]} if is2 else {}))
+            _finish(".bad")
         # WHOSE MONEY. A real schema-2 entry is placed from the PROFILE'S OWN
         # sub-account client, never the shared one — that is the whole point of
         # per-profile routing, and reaching for `bx` here would silently put a
@@ -2102,6 +2150,7 @@ def do_run(bx):
                      http=bcode, body=json.dumps(bbody)[:200],
                      reason="could not borrow the base to sell; no order was sent",
                      **({"setup_id": it["setup_id"]} if is2 else {}))
+                _give_up_if_budget_spent("the borrow was refused every time")
                 continue
             borrowed_for_entry = qty
             jlog("ENTRY_BORROWED", chunk_start=it["chunk_start"], qty=qty,
@@ -2175,6 +2224,11 @@ def do_run(bx):
                 else:
                     set_halt("executor", f"fill deviated {fill_dev:.2%} "
                                          "from decision price")
+        else:
+            # REJECTED. The attempt is spent and the period is not finished, so
+            # this is the other way the budget runs out — and it must sign off
+            # as loudly as the borrow path does.
+            _give_up_if_budget_spent("the venue rejected every order")
 
     # 5) balance snapshot for the screen — only when the REAL rail was active, so a
     # disarmed/halted run returns here exactly as the old early-returns did (paper

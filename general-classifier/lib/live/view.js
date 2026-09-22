@@ -147,6 +147,23 @@ function deriveSetup(events, setupId, extraDecisions = []) {
       }
       continue;
     }
+    // WHAT THE "outcome" COLUMN SAYS WHILE AN ENTRY IS FAILING (owner, 2026-09-22).
+    // A call whose entry never got placed sat at 'seen' — rendered as "intent
+    // shipped — awaiting fill" — for good. True, and useless: on 2026-09-20 and
+    // 21 both shorts were awaiting a fill that could not come, because the
+    // borrow was refused six times. The owner read a row that looked like
+    // patience and was actually a dead trade.
+    //
+    // 'filled' is never downgraded: a retry that succeeds after a failure is a
+    // filled position, and the last word belongs to what actually happened.
+    const dec = decisions[e.chunk_start];
+    if (dec && dec.fate !== 'filled') {
+      if (e.event === 'ENTRY_GAVE_UP') dec.fate = 'gave up';
+      // An EXIT's rejection also carries this chunk_start, and it says nothing
+      // about how the entry went — hence the action guard.
+      else if (e.event === 'ENTRY_BORROW_FAILED'
+               || (e.event === 'ORDER_REJECT' && e.action === 'ENTRY')) dec.fate = 'entry failing';
+    }
     switch (e.event) {
       case 'ENTRY_FILL':
         if (decisions[e.chunk_start]) decisions[e.chunk_start].fate = 'filled';
@@ -234,6 +251,14 @@ function deriveSetup(events, setupId, extraDecisions = []) {
       case 'ORDER_UNKNOWN':
       case 'EXIT_OVERDUE':
       case 'ENTRY_GAVE_UP':
+      // THE BORROW EVENTS (owner, 2026-09-22). A short that cannot borrow never
+      // reaches an order, so none of the order-shaped incidents above fire and
+      // the panel read "none — clean" through four weeks of failing shorts.
+      // ENTRY_BORROW_UNWOUND rides along: a loan handed back behind a rejected
+      // sell is money that moved, and the owner should see it even though the
+      // executor recovered correctly.
+      case 'ENTRY_BORROW_FAILED':
+      case 'ENTRY_BORROW_UNWOUND':
       case 'INTENT_STALE':
       case 'INTENT_INVALID':
       case 'MIRROR_BREAK':

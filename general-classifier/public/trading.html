@@ -622,6 +622,17 @@ const fateTxt=(f)=>{const s=String(f||'');
   if(s==='filled')return'filled — position opened';
   if(s==='stand down'||s==='flat — no trade')return'no trade taken';
   if(s==='seen')return'intent shipped — awaiting fill';
+  // A CALL THAT COULD NOT BE PLACED SAYS SO (owner, 2026-09-22). Both of these
+  // used to render as 'intent shipped — awaiting fill', which reads as patience
+  // and meant a dead trade: the 20 and 21 September shorts were refused the
+  // borrow six times each and the column never stopped saying they were waiting.
+  // 'recorded' comes off the profile's own decision log for a call the box has
+  // not reported seeing yet. It had no wording at all, so the table printed the
+  // bare word "recorded" among full sentences — found by the contract check
+  // added with this change, not by anyone looking.
+  if(s==='recorded')return'decided — not yet confirmed by the box';
+  if(s==='entry failing')return'entry failing — retrying';
+  if(s==='gave up')return'no trade — the entry could not be placed';
   return s;};
 function untilStr(iso){ if(!iso)return''; const ms=Date.parse(iso)-Date.now(); if(ms<=0)return'now / due';
   const h=Math.floor(ms/3.6e6),m=Math.floor(ms%3.6e6/6e4),s=Math.floor(ms%6e4/1e3);
