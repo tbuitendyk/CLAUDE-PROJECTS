@@ -8,6 +8,8 @@
 // choosing at all. Reads the two record stores. Writes nothing, starts nothing.
 //
 //   arg: <fieldSetId>+<controlId>            the summary
+//        <fieldSetId>+<controlId>+top5       Table 3.B's top 5 on the control, under the field too
+//        <fieldSetId>+<controlId>+top5held   the same, ordered by held $
 //        <fieldSetId>+<controlId>+units1     units 1-43, one line each
 //        <fieldSetId>+<controlId>+units2     units 44 onward
 const fs = require('fs');
@@ -32,7 +34,7 @@ function load(id) {
       const row = {
         base, gate: gate || '', t: Number(r.pnl) || 0, tt: Number(r.trades) || 0,
         h: r.holdout ? (Number(r.holdout.pnl) || 0) : null, ht: r.holdout ? (Number(r.holdout.trades) || 0) : null,
-        bn: nt.filter((v) => r.pnl > v).length, np: nt.length,
+        bn: nt.filter((v) => r.pnl > v).length, np: nt.length, nt,
         fh: r.field ? r.field.hold : null, fvh: r.fieldVerdict ? r.fieldVerdict.hold : null,
       };
       if (!units.has(unit)) units.set(unit, new Map());
@@ -48,6 +50,47 @@ const unitKeys = [...C.units.keys()].sort();
 const gates = new Set();
 for (const m of F.units.values()) for (const g of m.values()) for (const k of g.keys()) gates.add(k);
 const G = [...gates];
+
+// TOP 5 OF TABLE 3.B ON THE CONTROL, AND THE SAME ROWS UNDER THE FIELD (owner,
+// 2026-09-22: "look at the top 5 performers on control and then give best
+// field results from the same top 5"). A Table 3.B row is one short setting
+// (decision, band and 24/5 factored out) on one coin + chunk shape + alongside,
+// averaging its variants -- built here the way the table builds it, ordered
+// as the screen orders it: beat the kept null money, then avg test $.
+if (PART === 'top5' || PART === 'top5held') {
+  const cellOf = (base) => String(base).split(' · ')[0];
+  const agg = (set) => {
+    const out = new Map();
+    for (const [u, m] of set.units) for (const [base, gm] of m) for (const [g, r] of gm) {
+      const k = `${u}|${cellOf(base)}|${g}`;
+      if (!out.has(k)) out.set(k, { u, cell: cellOf(base), gate: g, n: 0, t: 0, tt: 0, h: 0, ht: 0, hn: 0, nt: [], fvh: [] });
+      const a = out.get(k);
+      a.n++; a.t += r.t; a.tt += r.tt;
+      if (r.h != null) { a.h += r.h; a.ht += r.ht; a.hn++; }
+      r.nt.forEach((v, i) => { a.nt[i] = (a.nt[i] || 0) + v; });
+      if (r.fvh) a.fvh.push(r.fvh);
+    }
+    for (const a of out.values()) {
+      a.avgT = a.t / a.n; a.avgTT = a.tt / a.n; a.avgH = a.hn ? a.h / a.hn : null; a.avgHT = a.hn ? a.ht / a.hn : null;
+      a.bn = a.nt.filter((v) => a.avgT > v / a.n).length; a.np = a.nt.length;
+    }
+    return out;
+  };
+  const byHeld = PART === 'top5held';
+  const cRows = [...agg(C).values()].filter((a) => a.avgH != null).sort(byHeld ? (x, y) => (y.avgH - x.avgH) : (x, y) => (y.bn - x.bn) || (y.avgT - x.avgT));
+  const fAll = agg(F);
+  console.log(`top 5 rows of Table 3.B on the control, ordered by ${byHeld ? 'avg held $ (the sealed window: a ceiling, not the screen order)' : 'beat the kept null money then avg test $ (the screen order)'}; each with the same row under both gate values of the field set (${cRows.length} rows on the control)`);
+  cRows.slice(0, 5).forEach((c, i) => {
+    console.log(`${i + 1}. ${c.u}  ${c.cell}  (${c.n} rows averaged)`);
+    console.log(`   control: test $ ${r0(c.avgT)} over ${r0(c.avgTT)} trades, beat ${c.bn}/${c.np} · held $ ${r0(c.avgH)} over ${r0(c.avgHT)} trades`);
+    for (const g of G) {
+      const f = fAll.get(`${c.u}|${c.cell}|${g}`);
+      if (!f) { console.log(`   ${short(g)}: no row`); continue; }
+      console.log(`   ${short(g)}: test $ ${r0(f.avgT)} over ${r0(f.avgTT)} trades, beat ${f.bn}/${f.np} · held $ ${r0(f.avgH)} over ${r0(f.avgHT)} trades · Δ held ${r0(f.avgH == null || c.avgH == null ? null : f.avgH - c.avgH)} · held verdict ${f.fvh.join(' / ') || '-'}`);
+    }
+  });
+  process.exit(0);
+}
 const rowsOf = (set, u) => { const out = []; const m = set.units.get(u); if (m) for (const g of m.values()) for (const r of g.values()) out.push(r); return out; };
 const usable = (rows) => rows.filter((r) => r.tt >= 10 && r.h != null);
 const fair = (rows) => usable(rows).sort((x, y) => (y.bn - x.bn) || (y.t - x.t))[0] || null;
