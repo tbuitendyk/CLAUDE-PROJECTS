@@ -1,16 +1,16 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html — so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "be3334da6390f981028ea08c5db95744bacca0e4",
-  "subject": "3.228.2 -- Read the ranking sits under the six boxes it works with",
-  "capturedAt": "2026-09-22T21:16:11Z",
+  "commit": "48d301bcb1c3ab9f68198d9a9f9b8bc27413f971",
+  "subject": "3.229.0 -- the Worth walking? boxes apply on Apply settings and repaint the table in place; nothing redraws on a change",
+  "capturedAt": "2026-09-22T21:39:44Z",
   "files": {
     "public/construct.js": {
-      "sha256": "c3f0bd9a70e466c4f8acf3945f55734d2c4f56bc2a15075648b3f713b6233fd2",
-      "bytes": 933085
+      "sha256": "5cc82b86a0854f07c997c6d2eca6f0ce12ada5fec0aded07cc14fb3f6d59f100",
+      "bytes": 936282
     },
     "public/help-content.js": {
-      "sha256": "d87c99c26d94196cd2ef17b3b00e0b37058b93ba2da73806b7b4824a069b0106",
-      "bytes": 173723
+      "sha256": "a684e2875701b5d4049223d61174913648f6f3df98e205356444cd401ba2325c",
+      "bytes": 174504
     }
   },
   "htmlNotVerified": "public/construct.html, public/trade.html and public/setup.html are served with the release stamped into the head (3.137.0) and, for construct.html, the cache markers rewritten to the content hash of each script, so their served bytes never equal their stored bytes. Nothing is generated from them."
