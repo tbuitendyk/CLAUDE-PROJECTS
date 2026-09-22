@@ -7346,13 +7346,15 @@ function fCpuWords(cpu) {
 const fAcrossWords = (units) => (Number(units) > 1 ? ` across ${Number(units).toLocaleString()} coins and shapes` : '');
 // where the count the read carries was taken: the board the walk is on (3.134.0)
 const fRichWhere = (d) => (d && d.unit && d.unit !== 'all' ? 'on this coin and shape' : 'in this record set');
+// a stop asked for and not yet landed (3.224.0)
+const fStoppingWords = (run) => (run && run.stopping ? ' · stopping after this coin and shape' : '');
 function fRichLine(d) {
   const x = fRichOf(d);
   const run = x.run || {};
   const where = fRichWhere(d);
   if (fRichGoing(d)) {
     return (run.of ? `working them out — ${Number(run.done || 0).toLocaleString()} of ${Number(run.of).toLocaleString()} settings${fAcrossWords(run.units)}`
-      : 'working them out') + fCpuWords(run.cpu);
+      : 'working them out') + fCpuWords(run.cpu) + fStoppingWords(run);
   }
   if (run.error) return `FAILED — ${String(run.error)}`;
   if (!x.need) return `there are no settings ${where}, so there is nothing to work out`;
@@ -7555,7 +7557,12 @@ function fHoldTable(t, bar, walking) {
 // carries the numbers and says how many settings were left out.
 function fRebuildPress(d, named) {
   const blend = !(d && d.unit);
+  // THE STOP BESIDE THE PRESS (3.224.0, owner: "where's my button to stop the
+  // work out function?"). Live only while the pass is going; it lets the coin
+  // and shape being priced land and starts no further one. Drawn on every
+  // copy of the press so the owner is never on a copy without it.
   return `<button ${named ? 'id="fRebuild" ' : ''}class="pri" data-frebuild="1"${(blend ? fRichSetOff(d) : fRichOff(d)) ? ' disabled' : ''}>Work out the test history numbers</button>
+      <button ${named ? 'id="fRichStop" ' : ''}data-frichstop="1"${fRichGoing(d) ? '' : ' disabled'} title="lets the coin and shape being priced land and prices no further. What has landed is kept beside the record set, and pressing Work out the test history numbers again carries on from there.">Stop after this coin and shape</button>
       <span ${named ? 'id="fRebuildMsg" ' : ''}data-frebuildmsg="1" class="note">${esc(blend ? fRichSetLine(d) : fRichLine(d))}</span>`;
 }
 // every copy of it says the same thing, because they are the same press
@@ -8578,12 +8585,31 @@ async function fRichWatch(st) {
       // eslint-disable-next-line no-await-in-loop
       const p = await fAskThrough(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, fRebuildSay);
       if (p.error) { fRebuildSay(`FAILED — ${p.error}`); return; }
+      // NOTHING IS BEING WORKED OUT ANY MORE (3.224.0): the service restarted
+      // under the pass. What landed is kept, and the press carries on from
+      // there -- said, and the screen drawn again so the press is live.
+      if (p.none) {
+        st.rebuiltSaid = 'nothing is being worked out on this record set any more — the service restarted under the pass. What landed is kept; press Work out the test history numbers again to carry on from there';
+        fSave();
+        fRichWatching = false;
+        drawFunnel();
+        return;
+      }
       if (p.result) {
         const out = p.result;
         // the tables of the set are not built yet, so there were no survivors
         // to work anything out for. Said plainly; nothing was priced.
         if (out.totalling || out.waiting) {
           fRebuildSay(out.waiting || 'the tables of this set are being worked out — this step reads them when they land');
+          return;
+        }
+        // A STOP LANDED (3.224.0): the coin and shape being priced landed and
+        // was written, nothing further was started, and the press carries on
+        if (out.stopped) {
+          st.rebuiltSaid = `stopped after ${Number(out.units || 0).toLocaleString()} of ${Number(out.of || 0).toLocaleString()} coin(s) and shape(s) — what landed is kept; press Work out the test history numbers again to carry on from there`;
+          fSave();
+          fRichWatching = false;
+          drawFunnel();
           return;
         }
         st.rebuilt = true;
@@ -8623,7 +8649,7 @@ async function fRichWatch(st) {
       // else redrew the screen. `node --check` cannot see an undefined name
       // and no test pressed this loop, which is how it shipped.
       fRebuildSay((p.of ? `working them out — ${Number(p.done || 0).toLocaleString()} of ${Number(p.of).toLocaleString()} settings${fAcrossWords(p.units)}`
-        : 'working them out') + fCpuWords(p.cpu));
+        : 'working them out') + fCpuWords(p.cpu) + fStoppingWords(p));
       // eslint-disable-next-line no-await-in-loop
       await new Promise((r) => setTimeout(r, 1500));
     }
@@ -8680,6 +8706,18 @@ function fWireHold(st, d) {
   // and the one a refusal on step 6 carries. They are the same press, so they
   // sleep together and say the same thing.
   const rbs = [...document.querySelectorAll('[data-frebuild]')];
+  // THE STOP (3.224.0): live while the pass is going, dead otherwise; a press
+  // on it asks the service to land the coin and shape being priced and start
+  // no further one, and the watcher reads where it stopped
+  const stops = [...document.querySelectorAll('[data-frichstop]')];
+  for (const sb of stops) {
+    sb.onclick = async () => {
+      stops.forEach((b) => { b.disabled = true; });
+      const r = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild/stop`, {}, WHERE_FUNNEL);
+      if (!r) { stops.forEach((b) => { b.disabled = !fRichGoing(d); }); return; }
+      fRebuildSay(r.stopping ? 'stopping — the coin and shape being priced lands first, then nothing further is started' : `nothing to stop — ${r.why}`);
+    };
+  }
   for (const rb of rbs) {
     if (rb.disabled) continue;
     rb.onclick = async () => {
@@ -8697,6 +8735,7 @@ function fWireHold(st, d) {
       const unitNow = blend ? 'all' : d.unit;
       const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, { unit: unitNow }, WHERE_FUNNEL);
       if (!started) { rbs.forEach((b) => { b.disabled = false; }); fRebuildSay(blend ? fRichSetLine(d) : fRichLine(d)); return; }
+      stops.forEach((b) => { b.disabled = false; });   // the stop wakes with the pass
       await fRichWatch(st);
     };
   }

@@ -2088,6 +2088,13 @@ const GUARDS = [
     'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows', 'a unit\'s file is written empty and every board reads nothing'],
   [path.join(ROOT, 'lib', 'stages.js'), "      if (old[label]) richSumsTake(blend[label], old[label]);", "",
     'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows', 'a unit priced again is counted twice in the blend\'s average'],
+  // ---- THE STOP BESIDE THE PRESS (3.224.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "      if (run.stopRequested) { stoppedAfter = plan.indexOf(p) + 1; break; }", "",
+    'thePassPricesOnlyTheTestWindowAndKeepsItPerCoinAndShape', 'the stop is taken and the pass goes on pricing every coin and shape regardless'],
+  [path.join(ROOT, 'public', 'construct.js'), "      if (p.none) {\n        st.rebuiltSaid = 'nothing is being worked out on this record set any more", "      if (false) {\n        st.rebuiltSaid = 'nothing is being worked out on this record set any more",
+    'theStopLandsBetweenCoinsAndShapesAndTheWatcherSaysWhereThePassStopped', 'a service restart under the pass leaves the watcher saying working them out for ever'],
+  [path.join(ROOT, 'public', 'construct.js'), "        if (out.stopped) {\n          st.rebuiltSaid = `stopped after", "        if (false) {\n          st.rebuiltSaid = `stopped after",
+    'theStopLandsBetweenCoinsAndShapesAndTheWatcherSaysWhereThePassStopped', 'a stop that landed is read as the pass finishing, and the line claims every coin and shape carries the numbers'],
   // ---- A MISSED ANSWER IS ASKED THROUGH (3.222.2) ----
   [path.join(ROOT, 'public', 'construct.js'), '    if (p) return p;\n    missed++;', '    return p;\n    missed++;',
     'theWatcherAsksAgainWhenTheServiceMissesAnAnswer', 'one unanswered ask ends the watch again, under a pass that is still running'],

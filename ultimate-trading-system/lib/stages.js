@@ -7485,6 +7485,8 @@ function richStatus(run) {
     units: run.units ?? null,
     // the one coin and shape the press was aimed at, or null for every one (3.134.0)
     unit: run.unit ?? null,
+    // a stop asked for and not yet landed (3.224.0): the coin and shape being priced lands first
+    stopping: !!run.stopRequested,
     // beside the count, so the owner can see the box working and not just a
     // number that has not moved
     cpu: cpuLoad(),
@@ -7591,6 +7593,7 @@ function funnelRichStart(id, state = {}) {
     const failures = [];
     let settings = 0;
     let doneBefore = 0;
+    let stoppedAfter = null;
     for (const p of plan) {
       const got = await rebuildRichFor(doc, p.labels, { unit: p.unit.key, testOnly: true, note: (done) => { run.done = doneBefore + done; } });
       doneBefore += p.labels.length;
@@ -7599,15 +7602,31 @@ function funnelRichStart(id, state = {}) {
       kept = saveFunnelRich(doc.id, got.perSetting, got.testControls);
       failures.push(...got.failures);
       settings += got.settings;
+      // A STOP LANDS BETWEEN COINS AND SHAPES (3.224.0, owner 2026-09-22:
+      // "where's my button to stop the work out function?"). The one being
+      // priced lands and is written, nothing further is started, and the
+      // answer says where it stopped -- the next press carries on from
+      // there, exactly as it does after a service restart.
+      if (run.stopRequested) { stoppedAfter = plan.indexOf(p) + 1; break; }
     }
     // A RANKING ALREADY READ WAS READ FROM THESE NUMBERS, so it is dropped
     // rather than served beside numbers it never saw (3.102.0).
     funnelRankHoldForget(doc.id);
-    return { settings, units: plan.length, failures, proof: mergeProofs(proofs), kept };
+    return { settings, units: stoppedAfter ?? plan.length, of: plan.length, stopped: stoppedAfter != null, failures, proof: mergeProofs(proofs), kept };
   })()
     .then((out) => { run.result = out; if (run.of) run.done = run.of; })
     .catch((err) => { run.error = String((err && err.message) || err); });
   return richStatus(run);
+}
+// THE STOP (3.224.0): asked for here, honoured between coins and shapes above.
+// Nothing is aborted mid-pricing: the coin and shape being priced lands and
+// is written, and what has landed is kept, so the next press carries on.
+function funnelRichStop(id) {
+  if (!richRun || richRun.id !== String(id) || richRun.result || richRun.error) {
+    return { stopping: false, why: 'nothing is being worked out on this record set' };
+  }
+  richRun.stopRequested = true;
+  return { stopping: true, done: richRun.done, of: richRun.of };
 }
 function funnelRichStatus(id) {
   if (!richRun || richRun.id !== String(id)) {
@@ -10765,7 +10784,7 @@ module.exports = {
   CAPTURE_WINDOWS, CAPTURE_NONE, CAPTURE_NOT_YET,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,
-  listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichDir, richUnitFile,
+  listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichDir, richUnitFile, funnelRichStop,
   unitKeyOf, unitNameOf, unitsOfSet, boardRowOf, loadUnitBoard, funnelBoard, funnelAcross, FUNNEL_RICH_V,
   testWindowOfUnit, exposureOf,
   funnelAcrossStart, funnelAcrossStatus, funnelCrossesStart, funnelCrossesStatus, funnelCrosses,

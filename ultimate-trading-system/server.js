@@ -947,6 +947,8 @@ app.post('/api/funnel/:id/rankhold', (req, res) => {
 // through the same POST would restart a reading that failed, on every poll.
 app.get('/api/funnel/:id/rankhold', (req, res) => res.json(stages.funnelRankHoldStatus(req.params.id, req.query || {})));
 app.get('/api/funnel/:id/rebuild', (req, res) => res.json(stages.funnelRichStatus(req.params.id)));
+// the stop beside the press (3.224.0): lands between coins and shapes
+app.post('/api/funnel/:id/rebuild/stop', (req, res) => res.json(stages.funnelRichStop(req.params.id)));
 
 // HOW MANY THE RULE ON SCREEN WOULD KEEP (3.81.0, owner order). Asked while the
 // two limits on step 6 are being typed, so it must be cheap and it must be the

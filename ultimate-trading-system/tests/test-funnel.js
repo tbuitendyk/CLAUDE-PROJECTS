@@ -2340,7 +2340,7 @@ module.exports = {
   async pressingWorkOutTheMissingNumbersPrepsTheWholeRecordSet() {
     const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     const press = page.slice(page.indexOf("const rbs = [...document.querySelectorAll('[data-frebuild]')];"),
-      page.indexOf("const rbs = [...document.querySelectorAll('[data-frebuild]')];") + 1400);
+      page.indexOf("const rbs = [...document.querySelectorAll('[data-frebuild]')];") + 2600);   // the stop's wiring sits in front of the press's (3.224.0)
     assert.ok(!/labels: \[\]/.test(press), 'the press asks for an empty list of settings again, which the service refuses');
     // 3.102.0: the whole board is prepped, so the press has no rule to pick and
     // none to name. A rule sent here would be a rule that decides what gets
@@ -2905,6 +2905,7 @@ module.exports = {
     const build = new Function('said', 'replies', 'sleepMs', `
       ${lift('function fCpuWords(cpu) {', '\n}\n')}
       ${lift('const fAcrossWords = (units)', '\n')}
+      ${lift('const fStoppingWords = (run)', '\n')}
       const fRebuildSay = (text) => { said.push(text); };
       // a reply of null is an ask the service did not answer
       const api = async () => { if (!replies.length) throw new Error('the test ran out of replies'); const r = replies.shift(); if (r === null) throw new Error('no answer'); return r; };
@@ -2950,6 +2951,7 @@ module.exports = {
     const build = new Function('said', 'replies', `
       ${lift('function fCpuWords(cpu) {', '\n}\n')}
       ${lift('const fAcrossWords = (units)', '\n')}
+      ${lift('const fStoppingWords = (run)', '\n')}
       const fRebuildSay = (text) => { said.push(text); };
       const api = async () => { if (!replies.length) throw new Error('the test ran out of replies'); const r = replies.shift(); if (r === null) throw new Error('no answer'); return r; };
       const setTimeout = (fn) => fn();
@@ -4377,6 +4379,7 @@ module.exports.theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft = 
     lift('function fCpuWords(cpu) {', '\n}\n'),
     lift('const fAcrossWords = (units)', '\n'),
     lift('const fRichWhere = (d)', '\n'),
+    lift('const fStoppingWords = (run)', '\n'),
     lift('function fRichLine(d) {', '\n}\n'),
   ].join('\n')}\nreturn { fRichOff, fRichLine }; })()`);
 
@@ -4642,18 +4645,20 @@ module.exports.everyCopyOfThePressWorksOutWhatIsChosenUnderCoin = function () {
   // eslint-disable-next-line no-new-func
   const { fRebuildPress, fRichSetOff, fRichSetLine } = new Function(`const esc = (t) => String(t == null ? '' : t);\n${[lift('const fRichOf = (d)', '\n'), lift('const fRichGoing = (d)', '\n'),
     lift('function fRichOff(d) {', '\n}\n'), lift('function fCpuWords(cpu) {', '\n}\n'), lift('const fAcrossWords = (units)', '\n'), lift('const fRichWhere = (d)', '\n'),
-    lift('function fRichLine(d) {', '\n}\n'), lift('function fRichSetOff(d) {', '\n}\n'), lift('function fRichSetLine(d) {', '\n}\n'), lift('function fRebuildPress(d, named) {', '\n}\n')].join('\n')}\nreturn { fRebuildPress, fRichSetOff, fRichSetLine };`)();
+    lift('const fStoppingWords = (run)', '\n'), lift('function fRichLine(d) {', '\n}\n'), lift('function fRichSetOff(d) {', '\n}\n'), lift('function fRichSetLine(d) {', '\n}\n'), lift('function fRebuildPress(d, named) {', '\n}\n')].join('\n')}\nreturn { fRebuildPress, fRichSetOff, fRichSetLine };`)();
   const oneCoin = { unit: 'AAA|||daily-1d', richOn: { have: 0, need: 640, run: null }, richSet: { units: 15, unitsDone: 14 } };
   const oneDone = { unit: 'AAA|||daily-1d', richOn: { have: 640, need: 640, run: null }, richSet: { units: 15, unitsDone: 1 } };
   const allOf = { unit: null, richOn: { have: 640, need: 640, run: null }, richSet: { units: 15, unitsDone: 1 } };
   const allDone = { unit: null, richOn: { have: 640, need: 640, run: null }, richSet: { units: 15, unitsDone: 15 } };
-  assert.ok(!/ disabled/.test(fRebuildPress(oneCoin, true)) && /on this coin and shape/.test(fRebuildPress(oneCoin, true)),
+  // the press's own button, not the stop drawn beside it (3.224.0), which is dead while nothing is going
+  const pressOf = (html) => html.slice(0, html.indexOf('</button>'));
+  assert.ok(!/ disabled/.test(pressOf(fRebuildPress(oneCoin, true))) && /on this coin and shape/.test(fRebuildPress(oneCoin, true)),
     'with a coin and shape chosen and nothing worked out, the press is dead or does not say it is this coin and shape');
-  assert.ok(/ disabled/.test(fRebuildPress(oneDone, true)) && /done — all 640 setting\(s\) on this coin and shape carry them/.test(fRebuildPress(oneDone, true)),
+  assert.ok(/ disabled/.test(pressOf(fRebuildPress(oneDone, true))) && /done — all 640 setting\(s\) on this coin and shape carry them/.test(fRebuildPress(oneDone, true)),
     'with the chosen coin and shape done, the press is live or is read off the other fourteen');
-  assert.ok(!/ disabled/.test(fRebuildPress(allOf, true)) && /1 of 15 coin\(s\) and shape\(s\) carry them/.test(fRebuildPress(allOf, true)),
+  assert.ok(!/ disabled/.test(pressOf(fRebuildPress(allOf, true))) && /1 of 15 coin\(s\) and shape\(s\) carry them/.test(fRebuildPress(allOf, true)),
     'with all units together chosen and fourteen coins and shapes to go, the press is dead or does not count them');
-  assert.ok(/ disabled/.test(fRebuildPress(allDone, true)) && /done — every one of the 15 coin\(s\) and shape\(s\)/.test(fRebuildPress(allDone, true)),
+  assert.ok(/ disabled/.test(pressOf(fRebuildPress(allDone, true))) && /done — every one of the 15 coin\(s\) and shape\(s\)/.test(fRebuildPress(allDone, true)),
     'with every coin and shape done, the press beside all units together is live');
   assert.strictEqual(fRichSetOff(allOf), false);
   assert.ok(fRichSetLine({ unit: null, richOn: { have: 0, need: 640, run: { running: true, done: 10, of: 640, cpu: null } }, richSet: { units: 15, unitsDone: 1 } }).startsWith('working them out'), 'while it works the line is not the working line');
@@ -4708,6 +4713,81 @@ module.exports.thePassAsksForTheTestWindowAlone = function () {
   assert.ok(own.includes('rebuildRichFor(parent, labels, { testOnly: true, note:'), 'the press that puts a Stage 4 set\'s own numbers back prices the held-back window again');
   const ride = s.slice(s.indexOf('const worked = plainHeld'), s.indexOf('run.promise = worked'));
   assert.ok(ride.includes('rebuildRichFor(parent, labels, { unit: doc.unit, note:') && !ride.includes('testOnly'), 'the held-back ride asks for the test window alone, and reads a held-back window that was never priced');
+};
+
+// THE STOP BESIDE THE PRESS, AND WHERE A STOP OR A RESTART LEFT THE PASS
+// (3.224.0, owner 2026-09-22: "where's my button to stop the work out
+// function?" and "what's involved in making the work out function restartable
+// from a paused job?"). The stop asks the service to land the coin and shape
+// being priced and start no further one; the pass checks between coins and
+// shapes and its answer says where it stopped; the watcher says so, and says
+// so too when the service restarted under the pass, so the press is live
+// again to carry on. The stop itself is pressed for real in
+// tests/test-tunecapture.js; here the watcher is run and the wiring read.
+module.exports.theStopLandsBetweenCoinsAndShapesAndTheWatcherSaysWhereThePassStopped = async function () {
+  const page = src('public/construct.js');
+  const lift = (head, end) => {
+    const at = page.indexOf(head);
+    assert.ok(at > 0, `${head} is gone`);
+    return page.slice(at, page.indexOf(end, at) + end.length);
+  };
+  const build = (said, replies, st) => new Function('said', 'replies', 'st', `
+    ${lift('function fCpuWords(cpu) {', '\n}\n')}
+    ${lift('const fAcrossWords = (units)', '\n')}
+    ${lift('const fStoppingWords = (run)', '\n')}
+    const fRebuildSay = (text) => { said.push(text); };
+    const api = async () => { if (!replies.length) throw new Error('the test ran out of replies'); const r = replies.shift(); if (r === null) throw new Error('no answer'); return r; };
+    const setTimeout = (fn) => fn();
+    let fRichWatching = false;
+    let fHoldSeen = null;
+    let fHoldAsked = null;
+    let drawn = 0;
+    const fSave = () => {};
+    const drawFunnel = () => { drawn++; };
+    ${lift('async function fAskThrough(path, say) {', '\n}\n')}
+    ${lift('async function fRichWatch(st) {', '\n}\n')}
+    return fRichWatch(st).then(() => ({ drawn, watching: fRichWatching }));
+  `)(said, replies, st);
+  // a stop asked for: the line says so while the coin and shape lands, and the
+  // answer says where it stopped; the screen is drawn again with the press live
+  const said = [];
+  const st = { set: 's3-test' };
+  const out = await build(said, [
+    { running: true, done: 10, of: 40, units: 2, stopping: true, cpu: { busy: 0.5, cores: 8 } },
+    { result: { stopped: true, units: 1, of: 2, settings: 20, failures: [], proof: { ran: true, checked: 20, matched: 20 } } },
+  ], st);
+  assert.deepStrictEqual(said, ['working them out — 10 of 40 settings across 2 coins and shapes · 50% of 8 cores busy · stopping after this coin and shape'],
+    'the line does not say a stop is coming');
+  assert.strictEqual(st.rebuiltSaid, 'stopped after 1 of 2 coin(s) and shape(s) — what landed is kept; press Work out the test history numbers again to carry on from there');
+  assert.ok(!st.rebuilt && out.drawn === 1 && out.watching === false, 'a stop is read as the pass finishing, or the screen is not drawn again');
+  // the service restarted under the pass: said, the screen drawn again, the watch ended
+  const said2 = [];
+  const st2 = { set: 's3-test' };
+  const out2 = await build(said2, [
+    { running: true, done: 10, of: 40, cpu: null },
+    { running: false, none: true, token: null, done: 0, of: 0, error: null, result: null },
+  ], st2);
+  assert.deepStrictEqual(said2, ['working them out — 10 of 40 settings']);
+  assert.match(st2.rebuiltSaid, /^nothing is being worked out on this record set any more — the service restarted under the pass\. What landed is kept; press Work out the test history numbers again to carry on from there$/);
+  assert.ok(out2.drawn === 1 && out2.watching === false, 'a restart under the pass leaves the watcher asking for ever');
+  // THE STOP ON THE SCREEN: beside every copy of the press, live only while the
+  // pass is going, wired to the door; the door and the flag behind it
+  const press = lift('function fRebuildPress(d, named) {', '\n}\n');
+  assert.ok(press.includes(`<button \${named ? 'id="fRichStop" ' : ''}data-frichstop="1"\${fRichGoing(d) ? '' : ' disabled'}`), 'the stop is not drawn beside every copy of the press, or is live while nothing is going');
+  assert.ok(press.includes('>Stop after this coin and shape</button>'), 'the stop does not say what it does');
+  assert.ok(page.includes("const r = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild/stop`, {}, WHERE_FUNNEL);"), 'the stop is not wired to its door');
+  assert.ok(page.includes("stops.forEach((b) => { b.disabled = false; });   // the stop wakes with the pass"), 'the stop stays dead when the press starts the pass');
+  assert.ok(page.includes("fRebuildSay(r.stopping ? 'stopping — the coin and shape being priced lands first, then nothing further is started' : `nothing to stop — ${r.why}`);"), 'a stop pressed says nothing');
+  const srv = src('server.js');
+  assert.ok(srv.includes("app.post('/api/funnel/:id/rebuild/stop', (req, res) => res.json(stages.funnelRichStop(req.params.id)));"), 'the door is not served');
+  const lib = src('lib/stages.js');
+  const stop = lib.slice(lib.indexOf('function funnelRichStop(id) {'), lib.indexOf('function funnelRichStatus(id) {'));
+  assert.ok(stop.includes('richRun.stopRequested = true;') && stop.includes("return { stopping: false, why: 'nothing is being worked out on this record set' };"), 'the stop does not set the flag, or claims to stop what is not going');
+  const route = lib.slice(lib.indexOf('function funnelRichStart(id, state = {}) {'), lib.indexOf('function funnelRichStop(id) {'));
+  assert.ok(route.includes('if (run.stopRequested) { stoppedAfter = plan.indexOf(p) + 1; break; }'), 'the pass does not look for the stop between coins and shapes');
+  assert.ok(route.includes('return { settings, units: stoppedAfter ?? plan.length, of: plan.length, stopped: stoppedAfter != null, failures, proof: mergeProofs(proofs), kept };'), 'the answer does not say where the pass stopped');
+  assert.ok(lib.includes('stopping: !!run.stopRequested,'), 'the status does not say a stop is coming');
+  assert.ok(stages.funnelRichStop('s3-no-such').stopping === false, 'a stop with nothing going claims to stop something');
 };
 
 // THE STAGE 4 RECORD SET KEEPS ITS HELD-BACK ROW BEHIND A TICK (3.140.0, owner

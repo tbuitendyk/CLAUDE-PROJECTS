@@ -580,11 +580,26 @@ module.exports = {
         const u = e.units.find((x) => stages.unitKeyOf(x) === c.plant);
         assert.ok(u && u.holdout && Number.isFinite(Number(u.holdout.pnl)), 'the full pricing lost the held-back window');
       }
-      // THE PRESS OVER THE WHOLE SET: one file per coin and shape, every one done
+      // THE STOP (3.224.0): asked for the moment the pass starts, it lands after
+      // the first coin and shape -- that one is written, nothing further is
+      // started, and the answer says where it stopped
+      stages.funnelRichStart(c.s3, {});
+      const ask = stages.funnelRichStop(c.s3);
+      assert.strictEqual(ask.stopping, true, `the stop was refused: ${ask.why}`);
+      assert.strictEqual(stages.funnelRichStatus(c.s3).stopping, true, 'the status does not say a stop is coming');
+      const halted = await settle(() => stages.funnelRichStatus(c.s3), 'the stopped pass');
+      assert.strictEqual(halted.stopped, true, 'the pass did not stop');
+      assert.deepStrictEqual([halted.units, halted.of], [1, units.length], `the pass stopped after ${halted.units} of ${halted.of}, not after the first`);
+      const part = stages.readFunnelRich(c.s3);
+      assert.strictEqual(part.unitsDone, 1, 'the coin and shape being priced when the stop landed was not written');
+      assert.strictEqual(fs.readdirSync(path.join(stages.funnelRichDir(c.s3), 'units')).length, 1, 'more than the one coin and shape was written');
+      assert.strictEqual(stages.funnelRichStop(c.s3).stopping, false, 'a stop with nothing going claims to stop something');
+      // THE PRESS AGAIN CARRIES ON: the rest, one file per coin and shape, every one done
       stages.funnelRichStart(c.s3, {});
       const out = await settle(() => stages.funnelRichStatus(c.s3), 'the pass');
       assert.strictEqual((out.failures || []).length, 0, JSON.stringify(out.failures));
-      assert.strictEqual(out.units, units.length, 'the pass did not price every coin and shape');
+      assert.strictEqual(out.stopped, false);
+      assert.strictEqual(out.units, units.length - 1, 'the press after a stop priced what the stopped pass had already written');
       assert.ok(out.proof && out.proof.ran && out.proof.checked > 0 && out.proof.matched === out.proof.checked, `the proof failed: ${JSON.stringify(out.proof)}`);
       const dir = stages.funnelRichDir(c.s3);
       assert.deepStrictEqual(fs.readdirSync(dir).sort(), ['blend.json', 'index.json', 'units'], 'the store is not the folder of index, sums and units');
