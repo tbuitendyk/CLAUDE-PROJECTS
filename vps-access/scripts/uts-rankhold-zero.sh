@@ -11,7 +11,7 @@ cd /opt/ultimate-trading-system || exit 1
 curl -sS --max-time 30 "http://127.0.0.1:8094/api/funnel/$ID/rankhold?atLeast=&onHowMany=4&fewestRanked=30&fewestChunks=40" > /tmp/uts-rh3.json
 node --max-old-space-size=1500 -e '
 const fs = require("fs");
-const stages = require("./lib/stages"); const rowstore = require("./lib/rowstore");
+const stages = require("./lib/stages"); const rowstore = require("./lib/rowstore"); const FG = require("./lib/fieldgate");
 const id = process.argv[1];
 const d = JSON.parse(fs.readFileSync("/tmp/uts-rh3.json", "utf8"));
 if (!d.result) { console.log("no reading in hand:", JSON.stringify(d).slice(0, 160)); process.exit(0); }
@@ -34,7 +34,9 @@ for (const u of zero) {
   const votes = rowstore.readBlocks(shape.parent.id, "votes", Array.from({ length: rec.blocks.votes[1] - rec.blocks.votes[0] }, (_, i) => rec.blocks.votes[0] + i)).map((x) => x.row).filter((r) => r.u === rec.u);
   const test = votes.filter((v) => v.w === 0).sort((a, b) => a.ts - b.ts);
   const n = test.length, c1 = Math.floor(n / 3), c2 = Math.floor((2 * n) / 3);
-  const spoke = (v) => Array.isArray(v.m) && v.m.some((x) => x != null && Number.isFinite(Number(x)));
+  const flat = (x) => (Array.isArray(x) ? x.flatMap(flat) : [x]);
+  const spoke = (v) => flat(v.m).some((x) => x != null && Number.isFinite(Number(x)) && Number(x) !== 0);
+  if (test[0]) console.log(`   a vote row: keys ${Object.keys(test[0]).join(",")}; m = ${JSON.stringify(test[0].m).slice(0, 100)}; a last-third row m = ${JSON.stringify((test[n - 1] || {}).m).slice(0, 100)}`);
   const part = (from, to) => { const s = test.slice(from, to); return `${s.length} periods ${s.length ? day(s[0].ts) + " to " + day(s[s.length - 1].ts) : ""}, ${s.filter(spoke).length} with any member vote`; };
   console.log(`   parent votes on test: ${n} periods (members ${rec.specs.length})`);
   console.log(`      first third:  ${part(0, c1)}`);
@@ -43,7 +45,8 @@ for (const u of zero) {
   // the field pair
   let fp = null; try { fp = stages.fieldPayloadFor(doc, rec); } catch (e) { console.log("   field: " + e.message); }
   if (fp) {
-    const days = fp.days || []; const speaking = days.filter((x) => x && x.speaking && x.sign);
+    const days = Array.isArray(fp.days) ? fp.days : (FG.daysFromColumns ? FG.daysFromColumns(fp.days) : []); const speaking = days.filter((x) => x && x.speaking && x.sign);
+    if (!Array.isArray(fp.days)) console.log(`   field days come as columns: ${Object.keys(fp.days || {}).join(",")}`);
     const inThird = (from, to) => { if (!test.length) return "-"; const a = test[from] ? test[from].ts : null, b = test[Math.max(from, to - 1)] ? test[Math.max(from, to - 1)].ts : null; return speaking.filter((x) => x.ts >= a && x.ts <= b).length; };
     console.log(`   field pair ${fp.key}: ${days.length} days, ${speaking.length} speaking with a sign, ${days.length ? day(days[0].ts) + " to " + day(days[days.length - 1].ts) : ""}, full at ${fp.fullAt ? day(fp.fullAt) : "?"}`);
     console.log(`      speaking days inside the test thirds: ${inThird(0, c1)} / ${inThird(c1, c2)} / ${inThird(c2, n)}`);
