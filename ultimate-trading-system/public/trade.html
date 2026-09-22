@@ -1024,7 +1024,7 @@ async function drawLive(){
         <b>member votes</b> = the committee in order — UP = long, DOWN = short, no call = named no direction ·
         <b>call</b> = what the quorum decided · <b>field</b> = what the coin’s decision field said and what its gate made of the call ·
         <b>outcome</b> = what the executor did with it</div>
-      <table><thead><tr>${th('entry (UTC)','entryUtc','text-align:left')}${th('window','chunk','text-align:left')}${th('member votes','votes','text-align:left')}${th('call','side','text-align:left')}${th('field','field','text-align:left')}${th('outcome','fate','text-align:left')}</tr></thead><tbody>
+      <table><thead><tr>${th('entry (UTC)','entryUtc','text-align:left')}${th('window','chunk','text-align:left')}${th('member votes','votes','text-align:left')}${th('call','side','text-align:left')}${th('field','field','text-align:left')}${th('outcome','outcome','text-align:left')}</tr></thead><tbody>
       ${(st.decisions||[]).length?st.decisions.map(dec=>{
         // Each member's vote carries the page's direction colours: UP green,
         // DOWN red, no call muted. Read as a row of words they were all the same

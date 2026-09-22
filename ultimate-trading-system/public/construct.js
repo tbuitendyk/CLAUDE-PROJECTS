@@ -4320,7 +4320,10 @@ let bTallyPoll = null;   // asks again while a set's tables are totalling
 // works because waitWrap reads it before its first await.
 function bPollRedraw() {
   waitSilent = true;
-  try { holdScrollMemory(); return drawBoards().then(() => holdScrollMemory()); } finally { waitSilent = false; }
+  // AND IT REPAINTS THE STAGE 3 TABLE ALONE WHILE THAT TABLE STANDS (3.222.1):
+  // a whole-page redraw empties the page for a moment, and the browser's clamp
+  // to that short page moved the owner every four seconds. See bRepaintTable.
+  try { holdScrollMemory(); return ($('#bT3') && bDrawn[3] ? bRepaintTable(3) : drawBoards()).then(() => holdScrollMemory()); } finally { waitSilent = false; }
 }
 function bView() {
   try { return JSON.parse(localStorage.getItem(BOARDS_VIEW_KEY) || '{}') || {}; } catch (_) { return {}; }
@@ -4536,6 +4539,7 @@ async function drawBoards() {
   for (const stage of [1, 2, 3]) {
     const mount = $(`#bS${stage}`);
     const sel = selOf[stage];
+    bDrawn[stage] = null;   // until a finished set's table stands below (bRepaintTable reads it)
     if (!mount) continue;
     if (!sel) {
       mount.innerHTML = `<p class="note">${sets.some((x) => x.stage === stage) ? 'nothing picked' : 'no record sets of this stage on this box yet — start one on Sweep'}</p>`;
@@ -4577,23 +4581,33 @@ async function drawBoards() {
       $(`#bT${stage}`).innerHTML = `<div class="panel"><p class="note">${esc(doc.name)} is ${esc(doc.status)}${doc.progress ? ` — ${esc(doc.progress)}` : ''}.${canContinue ? ' It can be started again from the stage 3 section on Sweep.' : ''} Its tables appear when it lands.</p></div>`;
       continue;
     }
-    const incomplete = doc.status === 'incomplete'
-      // ITS OWN MARKER, NOT THE OUTAGE ONE (2026-08-29). This wore
-      // data-role="incomplete", the marker draw() puts on the "a read failed"
-      // banner — and they mean opposite things. That one says the screen could
-      // not be drawn; this one says the set really is short those units and the
-      // numbers below are true but partial. Sharing a marker made the browser
-      // harness report a perfectly honest record set as a broken screen, and
-      // would have let a real outage hide behind a legitimate notice.
-      ? `<div class="panel" data-role="set-incomplete" style="border-color:var(--neg)"><b class="neg">THIS SET DOES NOT MATCH ITS OWN PLAN.</b>
-       ${Number((doc.counts || {}).failures || 0)} unit(s) failed and are missing from every table below — read the numbers accordingly.
-       ${doc.stage === 1 ? `<div class="row" style="margin-top:.5rem"><button id="bFillUnits" data-bfillunits="${esc(doc.id)}">Put the missing units back</button>
-       <span id="bFillUnitsSaid" class="note"></span></div>` : ''}</div>` : '';
-    if (doc.stage === 1) await bDrawStage1(doc, incomplete, view, `#bT${stage}`);
-    else if (doc.stage === 2) await bDrawStage2(doc, incomplete, view, `#bT${stage}`);
-    else await bDrawStage3(doc, incomplete, view, `#bT${stage}`);
-    if (doc.stage === 1 && doc.status === 'incomplete') bWireFillUnits(doc);
+    bDrawn[stage] = doc.id;
+    await bDrawTable(doc, view, `#bT${stage}`);
   }
+}
+
+// THE TABLE OF ONE FINISHED SET, DRAWN ONTO ITS MOUNT (3.222.1): the marker
+// where the set is short, then the stage's own tables, then the put-back
+// wiring that marker carries on a stage 1 set. drawBoards draws every open
+// section's table through it and bRepaintTable repaints one table through
+// it, so the two can never draw a table two different ways.
+async function bDrawTable(doc, view, mount) {
+  const incomplete = doc.status === 'incomplete'
+    // ITS OWN MARKER, NOT THE OUTAGE ONE (2026-08-29). This wore
+    // data-role="incomplete", the marker draw() puts on the "a read failed"
+    // banner — and they mean opposite things. That one says the screen could
+    // not be drawn; this one says the set really is short those units and the
+    // numbers below are true but partial. Sharing a marker made the browser
+    // harness report a perfectly honest record set as a broken screen, and
+    // would have let a real outage hide behind a legitimate notice.
+    ? `<div class="panel" data-role="set-incomplete" style="border-color:var(--neg)"><b class="neg">THIS SET DOES NOT MATCH ITS OWN PLAN.</b>
+     ${Number((doc.counts || {}).failures || 0)} unit(s) failed and are missing from every table below — read the numbers accordingly.
+     ${doc.stage === 1 ? `<div class="row" style="margin-top:.5rem"><button id="bFillUnits" data-bfillunits="${esc(doc.id)}">Put the missing units back</button>
+     <span id="bFillUnitsSaid" class="note"></span></div>` : ''}</div>` : '';
+  if (doc.stage === 1) await bDrawStage1(doc, incomplete, view, mount);
+  else if (doc.stage === 2) await bDrawStage2(doc, incomplete, view, mount);
+  else await bDrawStage3(doc, incomplete, view, mount);
+  if (doc.stage === 1 && doc.status === 'incomplete') bWireFillUnits(doc);
 }
 
 // PUTTING BACK THE UNITS A RUN LOST (3.73.0, owner order 2026-09-06: "can you
@@ -4623,7 +4637,7 @@ async function bWireFillUnits(doc) {
       return;
     }
     if (st.error) { said.innerHTML = `<span class="warn">${esc(st.error)}</span>`; return; }
-    if (st.missing === 0) { said.textContent = 'every unit is back — reopening'; drawBoards(); return; }
+    if (st.missing === 0) { said.textContent = 'every unit is back — reopening'; bRepaintTable(1); return; }
     said.innerHTML = `<span class="warn">${Number(st.missing || 0).toLocaleString()} still missing${st.why ? ` — ${esc(st.why)}` : ''}</span>`;
   };
   // WHY IT CANNOT BE PRESSED, BEFORE IT IS PRESSED. The service refuses a set
@@ -4723,7 +4737,7 @@ function bWireSort(doc, root) {
         spec.splice(at, 1);
       }
       const out = await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/sort`, { sort: spec });
-      if (out) drawBoardsHoldingPlace();
+      if (out) bRepaintTable(doc.stage);
     };
   });
 }
@@ -4830,7 +4844,7 @@ function bWireRankSort(doc, root) {
         : cur.dir === first ? [{ key, dir: first === 'desc' ? 'asc' : 'desc' }]
           : [];
       const out = await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/sort`, { sort: spec });
-      if (out) drawBoardsHoldingPlace();
+      if (out) bRepaintTable(3);
     };
   });
 }
@@ -4902,48 +4916,69 @@ async function bRedrawPeggedTo(selector) {
   }));
 }
 
-// THE COINS TABLE HOLDS STILL (owner orders, 2026-08-27: "the page must not
-// move" on Apply, and again on the records buttons). ANY redraw of the every-
-// coin table — Apply, a column sort, a records open/close, a page turn —
-// measures where its line of column headings sits in the window and puts it
-// back at exactly that height afterwards, whatever the new rows did to the
-// page's length. The scroll memory is held shut around the nudge (the page
-// moving itself never writes it) and then told the pegged place.
-async function bRedrawPeggedToCoinHead() {
-  const head = document.querySelector('[data-bcoinhead]');
-  const pegTop = head ? head.getBoundingClientRect().top : null;
-  await drawBoards();
+// ---- A TABLE REPAINTS IN PLACE (3.222.1) ----------------------------------
+// (owner, 2026-09-21: "why when i apply filters to the stage 2 table does the
+// screen jump? can't you fix ALL of these or are you wanting me to report
+// Every Single One that isn't coded properly?")
+//
+// Every control that belongs to a table -- Apply settings, auto-apply
+// settings, Clear filters, Revert filters, Prev, Next and the page box, the
+// column sort buttons, the table's own arrow, Show in 3.B, show the held-back
+// window, the records buttons, Check this set, Stop after this unit, Undo the
+// unfinished run, Drop the settings the block does not declare, Fill in the
+// missing settings, and the every-few-seconds ask while a set totals -- used
+// to redraw the WHOLE Boards page and then put the place back. The page is
+// emptied to three short sections first; the browser clamps the view up to
+// the end of what exists; that clamp fires a scroll event exactly like the
+// wheel, and on the stage 1, stage 2 and Table 3.A paths nothing held the
+// memory shut, so the clamped spot was written down as the owner's place and
+// the "restore" restored the clamp. The pegged paths (Table 3.B's) had the
+// same emptying in the middle: up for the seconds the redraw took, then back.
+//
+// Now a table control reads its set again and redraws ONLY its own mount --
+// #bT1, #bT2 or #bT3 -- through the same bDrawTable that drawBoards uses.
+// Nothing above the table is touched, so the page never goes short. The
+// table's top edge (or Table 3.B's heading line, for its own controls) is
+// measured before and put back after all the same, for the one move the
+// browser can still make: a table that got shorter under an owner scrolled
+// past its new end. The memory is held shut across the move and told the
+// place afterwards. The whole-page draw stays for what really changes the
+// page: a record set picked or deleted, a section put away or opened, a
+// rename, and a set that stopped being finished under its table.
+//
+// opts.peg: a selector to hold still instead of the mount's top edge.
+// opts.scrollTo: bring that element onto the screen instead of holding still
+// (Show in 3.B is pressed from the table above and its answer is the table
+// below, so holding still would leave the answer off the bottom).
+const bDrawn = { 1: null, 2: null, 3: null };   // the id of the set whose table stands on each mount
+const bStageOfKey = (key) => (key === 'S1' ? 1 : key === 'S2' ? 2 : 3);
+async function bRepaintTable(stage, opts = {}) {
+  const mountId = `#bT${stage}`;
+  const id = bDrawn[stage];
+  if (!$(mountId) || !id) return drawBoardsHoldingPlace();   // no table of that stage stands on the page: the page is what changes
+  const pegSel = opts.peg && document.querySelector(opts.peg) ? opts.peg : mountId;
+  const pegTop = document.querySelector(pegSel).getBoundingClientRect().top;
+  const got = await apiOr(`api/stageset/${encodeURIComponent(id)}`, null);
+  const doc = got && got.set;
+  // a set that stopped being finished under its table (a fill-in just
+  // started, say) changes its section, not only its table
+  if (!doc || (doc.status !== 'done' && doc.status !== 'incomplete')) return drawBoardsHoldingPlace();
+  if (bTallyPoll) { clearTimeout(bTallyPoll); bTallyPoll = null; }   // the stage 3 draw arms its own again if it must
+  holdScrollMemory();
+  await bDrawTable(doc, bView(), mountId);
   holdScrollMemory();
   requestAnimationFrame(() => requestAnimationFrame(() => {
     holdScrollMemory();
-    const again = document.querySelector('[data-bcoinhead]');
-    if (pegTop != null && again) {
-      window.scrollBy(0, again.getBoundingClientRect().top - pegTop);
-      rememberScroll(tab);
-    } else {
-      restoreScroll(tab);   // the table did not come back (e.g. totalling) — the old rule
-    }
-  }));
-}
-
-// SHOW IN 3.B BRINGS TABLE 3.B TO YOU. Every other change to that table holds
-// the page still on purpose, because the owner is already looking at it. This
-// one is pressed from the table ABOVE and its whole point is the table below,
-// so holding still would leave the answer off the bottom of the screen.
-async function bRedrawScrolledToCoinHead() {
-  await drawBoards();
-  holdScrollMemory();
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    holdScrollMemory();
-    const head = document.querySelector('[data-bcoinhead]');
-    if (head) {
+    const to = opts.scrollTo ? document.querySelector(opts.scrollTo) : null;
+    if (to) {
       // its own heading and filters sit above the head row, so land a little
       // higher than the row itself or they are cut off the top
-      window.scrollBy(0, head.getBoundingClientRect().top - 180);
-      rememberScroll(tab);
+      window.scrollBy(0, to.getBoundingClientRect().top - 180);
     } else {
-      restoreScroll(tab);
+      const again = document.querySelector(pegSel);
+      if (again) window.scrollBy(0, again.getBoundingClientRect().top - pegTop);
     }
+    rememberScroll(tab);
   }));
 }
 
@@ -4952,11 +4987,13 @@ function bWirePager(root) {
   const goTo = (key, from) => {
     if (key === 'S3C') {
       bSaveView({ coins: { ...(bView().coins || {}), offset: from } });
-      bRedrawPeggedToCoinHead();
     } else {
       bSaveView({ [`from${key}`]: from });
-      drawBoards().then(() => restoreScroll(tab));
     }
+    // pegged to the pager itself -- the thing under the pointer. A last page
+    // is shorter than the others, and a table pegged by its top would carry
+    // the pager up and off the screen exactly as the owner pressed it.
+    bRepaintTable(bStageOfKey(key), { peg: `[data-bpage^="${key}:"]` });
   };
   $(root).querySelectorAll('[data-bpage]').forEach((btn) => {
     btn.onclick = () => {
@@ -5006,7 +5043,7 @@ function bWireCoinSort(root) {
       const cq = bView().coins || {};
       const active = (cq.sort || 'share') === key;
       bSaveView({ coins: { ...cq, sort: key, flip: active ? !cq.flip : false, offset: 0 } });
-      bRedrawPeggedToCoinHead();
+      bRepaintTable(3, { peg: '[data-bcoinhead]' });
     };
   });
 }
@@ -5071,8 +5108,7 @@ async function bApplyFilters(root, key, doc) {
   if ((key === 'S1' || key === 'S2') && doc && doc.id) {
     await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/filters`, { filters: next });
   }
-  if (key === 'S3C' || key === 'S3R') bRedrawPeggedToCoinHead();
-  else drawBoards().then(() => restoreScroll(tab));
+  bRepaintTable(bStageOfKey(key), key === 'S3C' ? { peg: '[data-bcoinhead]' } : {});
 }
 // spec: [id, name shown, kind, tooltip, options?]  kind: 'text' | 'num' | 'pick'
 // ONE VALUE, PRINTED SO IT CAN BE COMPARED DOWN A COLUMN. Whole numbers keep
@@ -5166,7 +5202,7 @@ function bWireFilters(root, doc) {
       const all = { ...(bView().filters || {}) };
       all.S3C = { ...(bView().s3cBeforePin || {}) };
       bSaveView({ filters: all, s3cBeforePin: null, s3cPin: null, openS3: [], coins: { ...(bView().coins || {}), offset: 0 } });
-      bRedrawPeggedToCoinHead();
+      bRepaintTable(3, { peg: '[data-bcoinhead]' });
     };
   });
   $(root).querySelectorAll('[data-bfilterclear]').forEach((btn) => {
@@ -5177,8 +5213,7 @@ function bWireFilters(root, doc) {
       bSaveView({ filters: all, [`from${key}`]: 0, ...(key === 'S3C' ? { s3cBeforePin: null, s3cPin: null } : {}) });
       // and off the record set too, or the boxes empty while the carry stays cut
       if ((key === 'S1' || key === 'S2') && doc && doc.id) await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/filters`, { filters: {} });
-      if (key === 'S3C' || key === 'S3R') bRedrawPeggedToCoinHead();
-      else drawBoards().then(() => restoreScroll(tab));
+      bRepaintTable(bStageOfKey(key), key === 'S3C' ? { peg: '[data-bcoinhead]' } : {});
     };
   });
 }
@@ -5196,7 +5231,7 @@ function bWireTableFold(root) {
       const key = btn.dataset.btablefold;
       all[key] = !bTableOpen(key);
       bSaveView({ tables: all });
-      drawBoards().then(() => restoreScroll(tab));
+      bRepaintTable(bStageOfKey(key));
     };
   });
 }
@@ -6014,7 +6049,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   // selections"). Every column sorts on one click and every filter asks again
   // the moment it changes, so a button whose only job was to re-ask had
   // nothing left to do. The page still holds perfectly still on every one of
-  // those redraws — see bRedrawPeggedToCoinHead.
+  // those redraws — see bRepaintTable.
   // opening or closing a row's records must not move the page either (owner
   // order, 2026-08-27) — same peg, same rule
   // SHOW IN 3.B: pin the every-coin table to this one setting's coins. The
@@ -6046,7 +6081,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         openS3: 'all',                 // every coin's records, opened
         coins: { ...(bView().coins || {}), offset: 0 },
       });
-      bRedrawScrolledToCoinHead();
+      bRepaintTable(3, { scrollTo: '[data-bcoinhead]' });
     };
   });
   const hb = $(mount).querySelector('#bHeldBack');
@@ -6061,7 +6096,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         // tryPost has already said why in a dialog; nothing held-back is drawn on a failed write
         if (!r) { bHeldBack = false; hb.checked = false; return; }
       }
-      bRedrawPeggedToCoinHead();
+      bRepaintTable(3, { peg: '[data-bcoinhead]' });
     };
   }
   $(mount).querySelectorAll('[data-brec]').forEach((btn) => {
@@ -6070,7 +6105,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       const keys = new Set(bView().openS3 === 'all' ? [...openKeys] : (bView().openS3 || []));
       if (keys.has(k)) { keys.delete(k); } else { keys.add(k); }
       bSaveView({ openS3: [...keys] });
-      bRedrawPeggedToCoinHead();
+      bRepaintTable(3, { peg: '[data-bcoinhead]' });
     };
   });
   $(mount).querySelectorAll('[data-bcheck]').forEach((btn) => {
@@ -6080,7 +6115,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       const id = btn.dataset.bcheck;
       const res = await apiOr(`api/stageset/${id}/check`, { error: 'the service did not answer' });
       bSaveView({ checked: { id, res } });
-      drawBoards().then(() => restoreScroll(tab));
+      bRepaintTable(3);
     };
   });
   $(mount).querySelectorAll('[data-bstopfill]').forEach((btn) => {
@@ -6088,7 +6123,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       btn.disabled = true;
       btn.textContent = 'stopping…';
       try { await post(`api/stageset/${btn.dataset.bstopfill}/fill-in/stop`, {}); } catch (err) { alert(err.message); }
-      drawBoards().then(() => restoreScroll(tab));
+      bRepaintTable(3);
     };
   });
   $(mount).querySelectorAll('[data-bundoappend]').forEach((btn) => {
@@ -6101,7 +6136,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       btn.disabled = true;
       btn.textContent = 'starting…';
       try { await post(`api/stageset/${btn.dataset.bundoappend}/undo-append`, {}); } catch (err) { alert(err.message); }
-      drawBoards().then(() => restoreScroll(tab));
+      bRepaintTable(3);
     };
   });
   $(mount).querySelectorAll('[data-bdrop]').forEach((btn) => {
@@ -6115,7 +6150,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       btn.disabled = true;
       btn.textContent = 'starting…';
       try { await post(`api/stageset/${btn.dataset.bdrop}/drop-undeclared`, {}); } catch (err) { alert(err.message); }
-      drawBoards().then(() => restoreScroll(tab));
+      bRepaintTable(3);
     };
   });
   $(mount).querySelectorAll('[data-bfillin]').forEach((btn) => {
@@ -6128,7 +6163,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       btn.disabled = true;
       btn.textContent = 'starting…';
       try { await post(`api/stageset/${btn.dataset.bfillin}/fill-in`, {}); } catch (err) { alert(err.message); }
-      drawBoards().then(() => restoreScroll(tab));
+      bRepaintTable(3);
     };
   });
   if ((filling && filling.running)
@@ -9180,6 +9215,7 @@ drawHistory = waitWrap(drawHistory);
 drawTune = waitWrap(drawTune);
 drawGreenlight = waitWrap(drawGreenlight);
 drawFunnel = waitWrap(drawFunnel);
+bRepaintTable = waitWrap(bRepaintTable);   // a table's own repaint shows the same box (3.222.1)
 drawHelp = waitWrap(drawHelp);
 
 // WHAT IS TYPED IN THE COIN BOX, remembered across flips the way every other

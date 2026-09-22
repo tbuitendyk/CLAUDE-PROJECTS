@@ -255,6 +255,7 @@ module.exports.theDecisionRowCarriesWhatTheFieldSaidOnBothBooks = function () {
   const page = fs.readFileSync(path.join(ROOT, 'public', 'trade.html'), 'utf8');
   assert.strictEqual(page.split('Daily decision history').length - 1, 1, 'one decision table, drawn for both books');
   assert.ok(page.includes("${th('field','field','text-align:left')}"), 'the field heading, described');
+  assert.ok(page.includes("${th('outcome','outcome','text-align:left')}") && !page.includes("th('outcome','fate'"), 'the outcome heading, described: its hover is keyed to the column key');
   assert.ok(/^  field:'what the coin’s own decision field said on this decision and what its gate made of the call\./m.test(page), 'its description in the column key');
   assert.ok(page.includes('const f=dec.field;'), 'the cell reads the row\'s field');
   assert.ok(page.includes('<td colspan="6" class="empty">no decisions recorded yet</td>'), 'the empty row spans the six columns');

@@ -2991,11 +2991,12 @@ module.exports = {
         'the every-coin table shows each row-set\'s avg test $');
       // the coins table holds still on EVERY redraw and sorts on one click
       // (owner orders, 2026-08-27)
-      assert.ok(src.includes('function bRedrawPeggedToCoinHead('), 'the one peg serves every redraw of the coins table');
-      assert.ok(src.includes('bSaveView({ openS3: [...keys] });\n      bRedrawPeggedToCoinHead();'),
-        'opening or closing a row\'s records redraws pegged — the page does not move');
-      assert.ok(src.split('bRedrawPeggedToCoinHead();').length - 1 >= 4,
-        'Apply, the records buttons, the coins page turn and the column sorts all redraw pegged');
+      // -- since 3.222.1 by repainting the table in place, pegged to its heading line
+      assert.ok(src.includes('async function bRepaintTable(stage, opts = {}) {'), 'the one repaint serves every control of the coins table');
+      assert.ok(src.includes("bSaveView({ openS3: [...keys] });\n      bRepaintTable(3, { peg: '[data-bcoinhead]' });"),
+        'opening or closing a row\'s records repaints pegged — the page does not move');
+      assert.ok(src.split("bRepaintTable(3, { peg: '[data-bcoinhead]' });").length - 1 >= 4,
+        'the records buttons, the column sorts, Revert filters and the held-back tick all repaint pegged');
       assert.ok(src.includes('data-bcoinsort'), 'the coins columns carry one-click sort buttons');
       assert.ok(src.includes('flip: active ? !cq.flip : false'), 'a second click on the same column turns the order');
     }
@@ -4191,8 +4192,8 @@ module.exports = {
     assert.ok(/s3cBeforePin: null/.test(ui), 'the remembered filters are never let go of, so the button never goes away');
     // it takes the reader TO Table 3.B rather than holding still: it is
     // pressed from the table above and the answer is the one below
-    assert.ok(/bRedrawScrolledToCoinHead\(\);/.test(ui), 'pinning does not bring Table 3.B onto the screen');
-    assert.ok(/async function bRedrawScrolledToCoinHead\(\)/.test(ui), 'the scroll-to helper is gone');
+    assert.ok(/bRepaintTable\(3, \{ scrollTo: '\[data-bcoinhead\]' \}\);/.test(ui), 'pinning does not bring Table 3.B onto the screen');
+    assert.ok(/const to = opts\.scrollTo \? document\.querySelector\(opts\.scrollTo\) : null;/.test(ui), 'the repaint cannot bring a table onto the screen');
     // the box has to be able to show a whole setting name
     assert.ok(/opts === 'wide' \? ' style="width:26rem"' : ''/.test(ui),
       'a text filter cannot be widened, so the setting box cannot show what is in it');
@@ -6766,7 +6767,7 @@ module.exports = {
     assert.ok(wire.includes("const tables = ['Table 3.A', 'Table 3.B', ...(openKeys.size ? ['records'] : [])];"), 'the look does not say which tables were open');
     assert.ok(wire.includes('const r = await tryPost(`api/stageset/${doc.id}/held-back-look`, { tables });'), 'ticking on writes no look');
     assert.ok(wire.includes('if (!r) { bHeldBack = false; hb.checked = false; return; }'), 'a failed write still draws the held-back columns');
-    assert.ok(wire.indexOf('tryPost(') < wire.indexOf('bRedrawPeggedToCoinHead();'), 'the columns are drawn before the look is written');
+    assert.ok(wire.indexOf('tryPost(') < wire.indexOf("bRepaintTable(3, { peg: '[data-bcoinhead]' });"), 'the columns are drawn before the look is written');
     // EVERY held-back column of the three tables sits inside the tick, head and
     // cell alike. Read within the stage 3 drawer: the Funnel's cut table draws
     // avg held-back $ too, and that is the once-only look the cut is for.

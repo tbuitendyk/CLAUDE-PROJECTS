@@ -102,11 +102,78 @@ module.exports = {
     assert.ok(/holdScrollMemory\(\);/.test(helper) && /rememberScroll\(tab\);/.test(helper),
       'the memory is held shut around the move and told the place afterwards');
     assert.ok(/requestAnimationFrame\(\(\) => requestAnimationFrame\(/.test(helper), 'it waits for the new content to be laid out first');
-    for (const fn of ['function bWireSort(', 'function bWireRankSort(']) {
+    // since 3.222.1 a sort repaints its own table in place rather than the whole page held still
+    for (const [fn, call] of [['function bWireSort(', 'if (out) bRepaintTable(doc.stage);'], ['function bWireRankSort(', 'if (out) bRepaintTable(3);']]) {
       const start = src.indexOf(fn);
       const body = src.slice(start, src.indexOf('\n}\n', start));
-      assert.ok(body.includes('if (out) drawBoardsHoldingPlace();'), `${fn} redraws holding the page where it is`);
-      assert.ok(!body.includes('restoreScroll('), `${fn} must not restore from the memory the clamp can overwrite`);
+      assert.ok(body.includes(call), `${fn} repaints its own table where it stands`);
+      assert.ok(!body.includes('restoreScroll(') && !body.includes('drawBoards('), `${fn} must not redraw the whole page`);
+    }
+  },
+
+  // EVERY TABLE CONTROL ON BOARDS REPAINTS ITS OWN TABLE IN PLACE (3.222.1,
+  // owner 2026-09-21: "why when i apply filters to the stage 2 table does the
+  // screen jump? can't you fix ALL of these or are you wanting me to report
+  // Every Single One that isn't coded properly?"). A whole-page redraw empties
+  // the page for a moment, and the browser's clamp to the short page is a
+  // scroll the memory could not tell from the owner's. Now a table's controls
+  // read the set again and redraw only its own mount, through the one
+  // bDrawTable that drawBoards draws with, holding the table's top edge (or
+  // Table 3.B's heading line) still; the whole-page draw stays for what
+  // changes the page. Pressed for real in tests/ui-boards.js.
+  async everyTableControlOnBoardsRepaintsItsOwnTableInPlace() {
+    const src = CONSTRUCT_NOW();
+    const at = src.indexOf('async function bRepaintTable(stage, opts = {}) {');
+    assert.ok(at > 0, 'the in-place repaint exists');
+    const helper = src.slice(at, src.indexOf('\n}\n', at));
+    const peg = helper.indexOf('const pegTop = document.querySelector(pegSel).getBoundingClientRect().top;');
+    const draw = helper.indexOf('await bDrawTable(doc, bView(), mountId);');
+    const back = helper.indexOf('window.scrollBy(0, again.getBoundingClientRect().top - pegTop);');
+    assert.ok(peg > 0 && draw > peg && back > draw, 'the peg is not measured before the table is redrawn and put back after it');
+    assert.ok(helper.indexOf('holdScrollMemory();') > 0 && helper.indexOf('holdScrollMemory();') < back && helper.includes('rememberScroll(tab);'),
+      'the memory is not held shut across the move and told the place afterwards');
+    assert.ok(/requestAnimationFrame\(\(\) => requestAnimationFrame\(/.test(helper), 'it waits for the new rows to be laid out first');
+    assert.ok(helper.includes('if (!$(mountId) || !id) return drawBoardsHoldingPlace();'), 'a repaint with no table standing must fall back to the whole page held in place');
+    assert.ok(helper.includes("if (!doc || (doc.status !== 'done' && doc.status !== 'incomplete')) return drawBoardsHoldingPlace();"),
+      'a set that stopped being finished under its table changes its section, so the page is what redraws');
+    assert.ok(helper.includes('window.scrollBy(0, to.getBoundingClientRect().top - 180);'), 'Show in 3.B no longer brings Table 3.B onto the screen');
+    // ONE table drawer for the page draw and the repaint
+    const tbl = src.indexOf('async function bDrawTable(doc, view, mount) {');
+    assert.ok(tbl > 0, 'the one table drawer is gone');
+    const drawer = src.slice(tbl, src.indexOf('\n}\n', tbl));
+    assert.ok(drawer.includes('if (doc.stage === 1) await bDrawStage1(doc, incomplete, view, mount);')
+      && drawer.includes('else if (doc.stage === 2) await bDrawStage2(doc, incomplete, view, mount);')
+      && drawer.includes('else await bDrawStage3(doc, incomplete, view, mount);'), 'the drawer does not draw all three stages');
+    const boards = src.slice(src.indexOf('async function drawBoards() {'), tbl);
+    assert.ok(boards.includes('bDrawn[stage] = doc.id;\n    await bDrawTable(doc, view, `#bT${stage}`);'),
+      'drawBoards does not draw its tables through the one drawer, or does not say which set stands on each mount');
+    assert.ok(boards.includes('bDrawn[stage] = null;   // until a finished set'), 'a mount with no finished set under it still claims one');
+    // the every-few-seconds ask repaints the stage 3 table alone while it stands
+    assert.ok(src.includes("return ($('#bT3') && bDrawn[3] ? bRepaintTable(3) : drawBoards()).then(() => holdScrollMemory());"),
+      'the every-few-seconds ask redraws the whole page under a standing table');
+    assert.ok(src.includes('bRepaintTable = waitWrap(bRepaintTable);'), 'a repaint shows no wait box');
+    // EVERY control that belongs to a table goes through it, and none of the old redraws remain
+    for (const gone of ['bRedrawPeggedToCoinHead', 'bRedrawScrolledToCoinHead', 'drawBoards().then(() => restoreScroll(tab))']) {
+      assert.ok(!src.includes(gone), `a table control still redraws the whole page: ${gone}`);
+    }
+    const sites = [
+      ['bRepaintTable(bStageOfKey(key), { peg: `[data-bpage^="${key}:"]` });', 'the page turns of every table, pegged to the pager under the pointer'],
+      ['if (out) bRepaintTable(doc.stage);\n    };\n  });\n}\n\n// THE RANKED TABLE SORTS BY ONE PICKED COLUMN', 'the stage 1 and 2 column sorts'],
+      ['if (out) bRepaintTable(3);\n    };\n  });\n}\n\n// A REDRAW THAT LEAVES THE PAGE WHERE IT IS', "Table 3.A's column sorts"],
+      ["bSaveView({ coins: { ...cq, sort: key, flip: active ? !cq.flip : false, offset: 0 } });\n      bRepaintTable(3, { peg: '[data-bcoinhead]' });", "Table 3.B's column sorts"],
+      ["  bRepaintTable(bStageOfKey(key), key === 'S3C' ? { peg: '[data-bcoinhead]' } : {});\n}\n// spec: [id, name shown, kind, tooltip, options?]", 'Apply settings and auto-apply settings'],
+      ["bSaveView({ filters: all, s3cBeforePin: null, s3cPin: null, openS3: [], coins: { ...(bView().coins || {}), offset: 0 } });\n      bRepaintTable(3, { peg: '[data-bcoinhead]' });", 'Revert filters'],
+      ["await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/filters`, { filters: {} });\n      bRepaintTable(bStageOfKey(key), key === 'S3C' ? { peg: '[data-bcoinhead]' } : {});", 'Clear filters'],
+      ['bSaveView({ tables: all });\n      bRepaintTable(bStageOfKey(key));', "a table's own arrow"],
+      ["bRepaintTable(3, { scrollTo: '[data-bcoinhead]' });\n    };\n  });\n  const hb = $(mount).querySelector('#bHeldBack');", 'Show in 3.B'],
+      ["if (!r) { bHeldBack = false; hb.checked = false; return; }\n      }\n      bRepaintTable(3, { peg: '[data-bcoinhead]' });", 'show the held-back window'],
+      ["bSaveView({ openS3: [...keys] });\n      bRepaintTable(3, { peg: '[data-bcoinhead]' });", 'the records buttons'],
+      ['bSaveView({ checked: { id, res } });\n      bRepaintTable(3);', 'Check this set'],
+      ["said.textContent = 'every unit is back — reopening'; bRepaintTable(1); return;", 'the stage 1 put-back'],
+    ];
+    for (const [text, what] of sites) assert.ok(src.includes(text), `${what} does not repaint in place`);
+    for (const tail of ['fill-in/stop', 'undo-append', 'drop-undeclared', 'fill-in']) {
+      assert.ok(src.includes(`/${tail}\`, {}); } catch (err) { alert(err.message); }\n      bRepaintTable(3);`), `${tail} does not repaint in place`);
     }
   },
 };
