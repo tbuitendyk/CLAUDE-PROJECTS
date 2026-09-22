@@ -682,6 +682,13 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "      const mine = heldOn[pi];                                   // numbers into the one block (3.220.2)", "      const mine = heldOn[pi].map((i, k) => k);",
     'theLaunchHandsEachUnitItsSettingsByNumberAndBuildsAPartAtItsTurn',
     'a start-again numbers a unit\'s settings from its own list, and a weekly unit files its records at places the plan names differently'],
+  // ---- THE GATE COLUMN PRINTS THE GATE (3.220.3) ----
+  [path.join(ROOT, 'public', 'construct.js'), "  const at = named.indexOf(' · field ');", "  const at = -1;",
+    'theFieldColumnPrintsTheGateTheWayTheSettingsNameWritesIt',
+    'every gated row prints none, and two gate values read as twins again'],
+  [path.join(ROOT, 'lib', 'stagework.js'), "  if (s.field === undefined) s.field = r.field ? fieldGate.gateRecord(r.field) : null;", "  if (s.field === undefined) s.field = r.field ? { read: r.field.read, rungs: r.field.rungs, silent: r.field.silent } : null;",
+    'theGateIsAColumnASortAndAFloorOnBothTables',
+    'the ranked row goes back to a gate with no bars'],
   // ---- BY NUMBER INTO THE ONE BLOCK, A PART AT ITS TURN, THE LAUNCH COUNTED (3.220.2) ----
   [path.join(ROOT, 'lib', 'stages.js'), "  const payloads = { length: parts.length, at: payloadAt };", "  const payloads = Array.from({ length: parts.length }, (_, i) => payloadAt(i));",
     'theStageThreePricingIsHandedOutInParts',

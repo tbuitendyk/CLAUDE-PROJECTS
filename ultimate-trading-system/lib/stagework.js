@@ -1989,7 +1989,9 @@ function tallyFold(acc, r, blockIdx, agreedAt = null) {
   // the overlay are summed per coin (3.130.0)
   if (s.confirm === undefined) { s.confirm = r.confirm ?? 'off'; s.kx = r.lean ? r.lean.kx : null; s.ux = r.lean ? r.lean.ux : null; }
   // the field's gate rides the setting too (FIELD-DESIGN.md section F)
-  if (s.field === undefined) s.field = r.field ? { read: r.field.read, minimum: r.field.minimum, signOnly: !!r.field.signOnly, rungs: r.field.rungs, silent: r.field.silent } : null;
+  // the WHOLE gate, both bars (3.220.3): this copied a one-bar shape the
+  // record stopped carrying at 3.218.0, so the ranked row's gate had no bars
+  if (s.field === undefined) s.field = r.field ? fieldGate.gateRecord(r.field) : null;
   let c = s.perCoin.get(r.trade);
   if (!c) { c = { test: 0, testN: 0, ttr: 0, ttrN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0, ld: 0, ldN: 0, rung: 0, rungN: 0, voices: 0, voicesN: 0, agr: 0, agrN: 0 }; s.perCoin.set(r.trade, c); }
   c.test += r.pnl || 0; c.testN++;

@@ -85,7 +85,7 @@ function theGateIsAnAxisThatMultipliesOnlyWhereTheFieldCovers() {
 
 // THE RECORD ROW, THE TABLES, THE SORTS AND THE FLOORS.
 async function theGateIsAColumnASortAndAFloorOnBothTables() {
-  assert.strictEqual(stages.TALLY_V, 10, 'the tables carry the field from version 10; an older table is rebuilt on open');
+  assert.strictEqual(stages.TALLY_V, 11, 'the tables carry the field from version 10 and the ranked row its two bars from 11; an older table is rebuilt on open');
   const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
   assert.ok(/>field\$\{bRankSortBtn\(doc, 'fieldVerdict', 'desc'\)\}/.test(ui), 'Table 3.A has no field column');
   assert.ok(/>field verdict\$\{bRankSortBtn\(doc, 'fieldVerdict', 'desc'\)\}/.test(ui), 'Table 3.A has no field verdict column, or it does not sort');
@@ -152,6 +152,7 @@ async function theGateIsAColumnASortAndAFloorOnBothTables() {
     assert.strictEqual(by(2).fieldVerdict, null);
     assert(Math.abs(by(0).fieldBlocked - (2 / 14) * 100) < 1e-9, `field blocked on setting 0 is 2 of 14 calls, got ${by(0).fieldBlocked}`);
     assert.strictEqual(by(0).field.rungs, '50:1,100:2', 'the gate rides the ranked row');
+    assert.ok('agreeMin' in by(0).field && 'certMin' in by(0).field && 'rule' in by(0).field, 'the ranked row carries the gate\'s two bars and their rule, not a retired one-bar shape (3.220.3)');
     stages.setSetSort(id, [{ key: 'fieldSized', dir: 'desc' }]);
     assert.deepStrictEqual(stages.stage3Ranked(id, 0, 10).rows.map((r) => r.fieldSized), [20, 4, null], 'Table 3.A does not sort by field sized $, or a missing value does not sit last');
     stages.setSetSort(id, [{ key: 'fieldVerdict', dir: 'desc' }]);
@@ -204,7 +205,44 @@ function theWorkerPricesAWindowUnderTheGate() {
   assert.deepStrictEqual(seen[seen.length - 1], [1, 0, -1, 0], 'the rich pass reads the calls actually taken');
 }
 
+// THE GATE COLUMN PRINTS THE GATE (3.220.3, owner report 2026-09-22: "doubles
+// of the rows -- what is being permuted that I can't see?"). The printer read
+// `minimum`, a name the record stopped carrying at 3.218.0, so every gate
+// value printed "≥undefined" and rows that differed only in the certainty bar
+// read as twins. It now reads the gate's part of the setting's own name, which
+// one function writes, and this drives the shipped printer with the names
+// gateLabel writes.
+async function theFieldColumnPrintsTheGateTheWayTheSettingsNameWritesIt() {
+  const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const at = ui.indexOf('function bFieldGate(r) {');
+  assert.ok(at > 0, 'the gate printer is gone');
+  const src = ui.slice(at, ui.indexOf('\n}\n', at) + 2);
+  const esc = (x) => String(x ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  // eslint-disable-next-line no-new-func
+  const bFieldGate = new Function('esc', `${src}; return bFieldGate;`)(esc);
+  const fg = require('../lib/fieldgate');
+  const g60 = { read: 'certainty', agreeMin: 40, certMin: 60, rule: 'both', signOnly: false, rungs: '100:1', silent: 1 };
+  const g70 = { ...g60, certMin: 70 };
+  const row60 = bFieldGate({ fieldLabel: fg.gateLabel(g60) });
+  const row70 = bFieldGate({ fieldLabel: fg.gateLabel(g70) });
+  assert.ok(row60.includes('agreement≥40 &amp; certainty≥60') && row60.includes('sized by certainty ×100:1 silent×1'), `Table 3.B prints the bars and the sizing: ${row60}`);
+  assert.notStrictEqual(row60, row70, 'two gate values that differ only in the certainty bar print alike — the doubles the owner saw');
+  assert.ok(!/undefined/.test(row60 + row70), 'the printer still reads a name the record does not carry');
+  // Table 3.A hands the whole setting name; the gate's part is read out of it
+  const ranked = bFieldGate({ label: `trained market t89h · argmax auto 24/7${fg.gateLabel({ ...g60, certMin: null, signOnly: true })}` });
+  assert.ok(ranked.includes('agreement≥40 sign only') && ranked.includes('sized by certainty'), `Table 3.A prints the gate off the setting's name: ${ranked}`);
+  assert.ok(bFieldGate({ label: 'trained market t89h · argmax auto 24/7' }).includes('none') && bFieldGate({ fieldLabel: '' }).includes('none'), 'a row priced with no gate prints none');
+  const either = bFieldGate({ fieldLabel: fg.gateLabel({ ...g60, rule: 'either' }) });
+  assert.ok(either.includes('agreement≥40 | certainty≥60'), `either is written with its own mark: ${either}`);
+  // and nothing on the page or in the totals reads the retired name
+  assert.ok(!/\bg\.minimum\b|field\.minimum\b/.test(ui), 'the page still reads a one-bar minimum off a gate');
+  const work = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stagework.js'), 'utf8');
+  assert.ok(work.includes('if (s.field === undefined) s.field = r.field ? fieldGate.gateRecord(r.field) : null;'), 'the ranked row does not keep the whole gate');
+  assert.ok(!work.includes('minimum: r.field.minimum'), 'the totals still copy the retired one-bar shape');
+}
+
 module.exports = {
+  theFieldColumnPrintsTheGateTheWayTheSettingsNameWritesIt,
   theGateIsAnAxisThatMultipliesOnlyWhereTheFieldCovers,
   theGateIsAColumnASortAndAFloorOnBothTables,
   theWorkerPricesAWindowUnderTheGate,

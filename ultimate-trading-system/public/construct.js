@@ -4698,10 +4698,24 @@ function bLeanNumbers(parts, confirm, kx, ux) {
 }
 // THE FIELD'S GATE ON A ROW (FIELD-DESIGN.md section F): the gate in words,
 // and the numbers its verdict rests on printed under the word, as confirm's are
+// THE GATE, PRINTED THE WAY THE SETTING'S OWN NAME WRITES IT (3.220.3, owner
+// report 2026-09-22: "doubles of the rows -- what is being permuted that I
+// can't see?"). This read `minimum` off the gate, a name the record stopped
+// carrying at 3.218.0 when the gate became two bars, so every gate value
+// printed the same "≥undefined" and two rows that differed only in the
+// certainty bar read as twins. The name a setting was priced under is on
+// every row -- Table 3.A's whole label, Table 3.B's fieldLabel -- and its
+// field part is written by ONE function (lib/fieldgate.js gateLabel), so it
+// is read back from there and can never disagree with the name.
 function bFieldGate(r) {
-  const g = r && r.field;
-  if (!g) return '<span class="muted">none</span>';
-  return `${esc(g.read)} \u2265${esc(String(g.minimum))}${g.signOnly ? ' <span class="muted">sign only</span>' : ''} <span class="muted">\u00d7${esc(String(g.rungs))} silent\u00d7${esc(String(g.silent))}</span>`;
+  const named = r && r.fieldLabel != null ? String(r.fieldLabel) : String((r && r.label) || '');
+  const at = named.indexOf(' · field ');
+  if (at < 0) return '<span class="muted">none</span>';
+  const tail = named.slice(at + ' · field '.length);
+  const cut = tail.indexOf(' sized by ');
+  const bars = cut < 0 ? tail : tail.slice(0, cut);          // "agreement≥40 & certainty≥60", "certainty≥70 sign only", "no minimum"
+  const sizing = cut < 0 ? '' : tail.slice(cut + 1);         // "sized by certainty ×100:1 silent×1"
+  return `${esc(bars)}${sizing ? ` <span class="muted">${esc(sizing)}</span>` : ''}`;
 }
 function bFieldNumbers(t) {
   if (!t) return '';
@@ -5786,7 +5800,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <th ${bth} title="whether this setting trades weekdays only.">24/5${bRankSortBtn(doc, 'weekdaysOnly', 'asc')}</th>
         <th ${bth} title="what the coin's own lean changed about the trades, on units whose coin and chunk shape pass on Coins. off: nothing. confirmed only: calls the lean disagreed with were not traded. sized: calls the lean agreed with traded at the confirmed × multiple and calls it disagreed with at the unconfirmed × multiple, printed after it. A dash means no unit of this setting carried a lean.">confirm${bRankSortBtn(doc, 'confirm', 'asc')}</th>
         <th ${bth} title="what the lean was worth, judged from six numbers summed over this setting's coins on the test window: money and count of the confirmed, the unconfirmed and the no-lean trades. adds nothing: the money with the lean is not above the money at size 1. just leverage: more money, but not more per unit of size deployed — a bigger bet, not a better one. adds value: more money and more per unit of size. better signal: adds value, and the confirmed trades made more per trade than the unconfirmed and than the no-lean ones. Hover the word for the rule it rests on. Empty on a setting with confirm off or with no lean on any of its units.">verdict${bRankSortBtn(doc, 'verdict', 'desc')}</th>
-        <th ${bth} title="the field's gate this setting was priced under: what it read (agreement or certainty), the minimum the read had to reach, sign only where the minimum was ignored, the ladder of size rungs and the silent multiple. none on a run that named no field.">field${bRankSortBtn(doc, 'fieldVerdict', 'desc')}</th>
+        <th ${bth} title="the field's gate this setting was priced under, as its name writes it: the bars it had to clear (a minimum on agreement, on certainty, or both — joined by &amp; when both must pass, by | when either will do), sign only where the bars were ignored, then what it read to size the trade, the ladder of size rungs and the silent multiple. none on a run that named no field.">field${bRankSortBtn(doc, 'fieldVerdict', 'desc')}</th>
         <th ${bth} title="what the field's gate was worth, judged from the numbers summed over this setting's coins on the test window and printed under the word: calls placed, blocked by sign, blocked by the minimum, silent; the money at the sizes the rungs gave, the same trades at size 1, and the blocked calls at size 1. adds nothing: the sized money is not above every call at size 1 with no gate. just leverage: more money, but not more per unit of size deployed. adds value: more money and more per unit of size. better signal: adds value, and the blocked calls lost money at size 1 — the blocks were right. Hover the word for the rule it rests on. Empty on a setting priced with no gate.">field verdict${bRankSortBtn(doc, 'fieldVerdict', 'desc')}</th>
         <th ${bth} title="average test-window money per coin at the sizes the field's rungs gave, in dollars. Empty on a setting priced with no gate.">field sized $${bRankSortBtn(doc, 'fieldSized', 'desc')}</th>
         <th ${bth} title="of the calls the members made on the test window, the share the field's gate blocked — by sign or by the minimum — as a percentage. Empty on a setting priced with no gate.">field blocked, %${bRankSortBtn(doc, 'fieldBlocked', 'asc')}</th>
@@ -5876,7 +5890,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting with decision, band and 24/5 taken out of its name, so one of these stands for all its decision, band and 24/5 variants at once — they are the records underneath, and the rows column counts them. Table 3.A holds the full settings, which is why it has more rows than this column has values.">SHORT SETTING: DECISION, BAND, 24/5 FACTORED OUT${bCoinSortBtn(view, 'setting', '↑')}</th>
         <th ${bth} title="the traded coin and the chunk shape it was priced at, and under them the one or two coins it is read alongside, on rows that have any. All of it is in this one cell, and the row is one setting on one coin at one chunk shape. What is listed after alongside is context only — read against, never bought or sold. Same word, same meaning, as the alongside column on the two tables above.">coin + chunk shape + alongside${bCoinSortBtn(view, 'coin', '↑')}</th>
         <th ${bth} title="what the coin's own lean changed about this coin's trades: off, confirmed only, or sized with its multipliers. One row per value, so the six numbers under verdict are this value's alone.">confirm${bCoinSortBtn(view, 'confirm', '↑')}</th>
-        <th ${bth} title="the field's gate this coin's records were priced under: what it read, the minimum, sign only, the ladder of size rungs and the silent multiple. One row per gate value, so the numbers under field verdict are this value's alone. none on a run that named no field, or on a unit the field has no pair for.">field${bCoinSortBtn(view, 'fieldverdict', '↓')}</th>
+        <th ${bth} title="the field's gate this coin's records were priced under, as its name writes it: the bars it had to clear, sign only, what it read to size the trade, the ladder of size rungs and the silent multiple. One row per gate value, so the numbers under field verdict are this value's alone. none on a run that named no field, or on a unit the field has no pair for.">field${bCoinSortBtn(view, 'fieldverdict', '↓')}</th>
         ${bHeldBack ? `<th ${bth} title="of the head-to-heads between this coin's held-back money and its null-set deals, the share it won.">beat its own null set${bCoinSortBtn(view, 'share', '↓')}</th>` : ''}
         <th ${bth} title="of the kept scrambled copies of this whole table, how many this row's avg test $ beat. Two things make it different from beat its own null set: it reads TEST money, not held-back, so nothing here opens the sealed window; and each copy is the WHOLE table scrambled the same way, so a row has to beat what the shuffle managed across every setting, not just its own scrambled twins. Empty on a set that kept none - set null set money kept on Sweep before the run.">beat the kept null money${bCoinSortBtn(view, 'beatnoise', '↓')}</th>
         ${bHeldBack ? `<th ${bth} title="how many head-to-heads the share rests on.">comparisons${bCoinSortBtn(view, 'pairs', '↓')}</th>` : ''}

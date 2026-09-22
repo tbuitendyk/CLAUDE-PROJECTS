@@ -3859,7 +3859,7 @@ function storeBudgetFor({ rows, freeBytes = null }) {
 // Line by line, no single string is ever longer than one entry, and the size
 // of the whole stops mattering. Derived, so the old one is not migrated: it
 // reads as an older shape and is rebuilt (RULE NINE).
-const TALLY_V = 10;  // 10 (3.212.0): the field's gate, its numbers and its verdict on both tables; 9 (3.207.0): the every-coin rows sum test trades; 8 (3.131.0): one coin row per value of confirm; 7 (3.130.0): the confirm dial, the lean parts and the verdict
+const TALLY_V = 11;  // 11 (3.220.3): the ranked row keeps the gate's two bars, not a retired one-bar shape; 10 (3.212.0): the field's gate, its numbers and its verdict on both tables; 9 (3.207.0): the every-coin rows sum test trades; 8 (3.131.0): one coin row per value of confirm; 7 (3.130.0): the confirm dial, the lean parts and the verdict
 
 // ---- WHAT THE MEMBERS ACTUALLY DID -------------------------------------------
 //
