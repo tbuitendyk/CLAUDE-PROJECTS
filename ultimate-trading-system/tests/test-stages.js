@@ -1090,7 +1090,7 @@ module.exports = {
     }
     for (const f of ['s3-mtqf7tp2-2.funnelrich.json', 's3-abc-1-tally.json.gz', 's3-abc-1-agreed.json.gz',
       's3-abc-1-capture.json.gz', 's3-abc-1-halflife-r1.json.gz', 's3-abc-1-reserve-LTCUSDT.json.gz',
-      's3-abc-1.funnelrich.json.v4', 'checkpoints', 's3-abc-1__keptfigs', 'notes.txt']) {
+      's3-abc-1.funnelrich.json.v4', 's3-abc-1.funnelrich', 'checkpoints', 's3-abc-1__keptfigs', 'notes.txt']) {
       assert.ok(!stages.isSetDocument(f), `${f} is not a set document and the listing would parse it as one`);
     }
     // AND THE LISTING USES IT, so the rule is not a spare part

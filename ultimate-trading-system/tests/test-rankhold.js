@@ -84,7 +84,7 @@ module.exports = {
     } finally {
       try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
       try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
-      try { fs.rmSync(stages.funnelRichFile(id), { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(stages.funnelRichDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
     }
   },
 

@@ -67,7 +67,7 @@ async function chain(tag, windowLayout = 'reserve61') {
     }
     for (const id of made.slice().reverse()) {
       try { stages.deleteSet(id, id); } catch (_) { /* never written */ }
-      try { fs.rmSync(stages.funnelRichFile(id), { force: true }); } catch (_) { /* none */ }
+      try { fs.rmSync(stages.funnelRichDir(id), { recursive: true, force: true }); } catch (_) { /* none */ }
       try { fs.rmSync(path.join(SETS_DIR, `${id}-agreed.json.gz`), { force: true }); } catch (_) { /* none */ }
       try { fs.rmSync(stages.captureFile(id), { force: true }); } catch (_) { /* none */ }
       for (const f of fs.readdirSync(SETS_DIR)) if (f.startsWith(`${id}-halflife-`)) { try { fs.rmSync(path.join(SETS_DIR, f), { force: true }); } catch (_) { /* none */ } }

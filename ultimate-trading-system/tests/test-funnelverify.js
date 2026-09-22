@@ -94,7 +94,7 @@ async function fixture(opts = {}) {
       }
       if (f.includes(stamp)) { try { fs.rmSync(path.join(SETS_DIR, f), { force: true, recursive: true }); } catch (_) { /* fixture */ } }
     }
-    try { fs.rmSync(stages.funnelRichFile(id), { force: true }); } catch (_) { /* fixture */ }
+    try { fs.rmSync(stages.funnelRichDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
     try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
     try { fs.rmSync(rowstore.storeDir(parentId), { recursive: true, force: true }); } catch (_) { /* fixture */ }
   };
@@ -636,14 +636,14 @@ module.exports = {
     const f = await fixture();
     try {
       const labels = [...new Set(require('../lib/rowstore').readAll(f.id, 'records').map((r) => r.label))];
-      const settings = {};
-      for (const l of labels) settings[l] = { maxDrawdown: 50, units: { [f.keys[0]]: { maxDrawdown: 50 }, [f.keys[1]]: { maxDrawdown: 50 } } };
-      fs.writeFileSync(stages.funnelRichFile(f.id), JSON.stringify({ v: stages.FUNNEL_RICH_V, savedAt: new Date().toISOString(), release: 'test', settings }));
+      // the parent's numbers, written through the one writer (3.223.0): every
+      // setting carries 50 on both coins and shapes
+      stages.saveFunnelRich(f.id, new Map(labels.map((l) => [l, { label: l, units: f.units.map((u) => ({ ...u, rich: { test: { maxDrawdown: 50 } } })) }])));
       const doc = await cutOn(f, { rule: { allowed: { gate: ['active'] }, floors: { maxDrawdown: { max: 100 } } } });
       assert.strictEqual(doc.counts.survivors, 2);
       assert.deepStrictEqual(setsOf(doc.id), [], 'a new rule has no held set');
       assert.strictEqual(doc.rich[doc.survivors[0].label].maxDrawdown, 50, 'the set keeps its own copy of the number the rule reads');
-      fs.rmSync(stages.funnelRichFile(f.id), { force: true });      // the parent's file goes: a re-total, a deletion
+      fs.rmSync(stages.funnelRichDir(f.id), { recursive: true, force: true });      // the parent's store goes: a re-total, a deletion
       const dry = await stages.judgeDry(doc.id, 'held');
       assert.strictEqual(dry.refused, null, `the set's own copy still replays: ${dry.refused}`);
       assert.deepStrictEqual({ same: dry.footing.same, onParent: dry.footing.sameOnParent, nowOnParent: dry.footing.nowOnParent }, { same: true, onParent: false, nowOnParent: 0 });

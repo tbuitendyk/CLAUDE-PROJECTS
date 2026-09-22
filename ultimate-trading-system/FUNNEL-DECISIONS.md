@@ -265,8 +265,12 @@ made while building it that the design did not already settle.
     d)` otherwise. Ten copies of 524,832 settings on every redraw was the cost
     of doing it the other way.
 57. **The rebuilt numbers are kept in a sidecar beside the set** —
-    `<id>.funnelrich.json`, keyed by setting label, one number per setting
-    averaged across its units. They used to leave with the rebuild's reply and
+    since 3.223.0 a folder, `<id>.funnelrich/`, with one file per coin and
+    shape, the blend's running sums beside them and a small index (until
+    then one file, `<id>.funnelrich.json`, rewritten whole as each coin and
+    shape landed, which on a set of 4.7 million rows grew towards half a
+    gigabyte and held the service's one thread for minutes at a time); keyed
+    by setting label, one number per setting averaged across its units. They used to leave with the rebuild's reply and
     nothing held them, so a limit on `worst losing streak allowed` refused
     every row: no row carried one. That is the fourth defect found this round.
     Stage 3 still does not grow (ruling 4); the sidecar is derived and is

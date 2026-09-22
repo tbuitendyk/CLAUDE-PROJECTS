@@ -73,7 +73,7 @@ async function chain(tag) {
     }
     for (const id of made.slice().reverse()) {
       try { stages.deleteSet(id, id); } catch (_) { /* never written */ }
-      try { fs.rmSync(stages.funnelRichFile(id), { force: true }); } catch (_) { /* none */ }
+      try { fs.rmSync(stages.funnelRichDir(id), { recursive: true, force: true }); } catch (_) { /* none */ }
       try { fs.rmSync(path.join(SETS_DIR, `${id}-agreed.json.gz`), { force: true }); } catch (_) { /* none */ }
       try { fs.rmSync(stages.captureFile(id), { force: true }); } catch (_) { /* none */ }
       for (const f of fs.readdirSync(SETS_DIR)) if (f.startsWith(`${id}-halflife-`)) { try { fs.rmSync(path.join(SETS_DIR, f), { force: true }); } catch (_) { /* none */ } }
@@ -537,5 +537,78 @@ module.exports = {
     assert.ok(/chosenStop: chosen \? \{ survivor: t\.label, stopPct: chosen\.stopPct/.test(st), 'the scan does not carry the survivor\'s stop as a row');
     // the panel's presses are held, in words, when nothing can be forced onto
     assert.ok(ui.includes('<button id="stopCustomApply" ${stopHeld ? `disabled title="${esc(stopHeldWhy)}"`') && ui.includes('<button id="stopClear" ${stopHeld ? `disabled title="${esc(stopHeldWhy)}"`'), 'the presses are not held when no survivor is picked');
+  },
+
+  // THE PASS PRICES ONLY WHAT IT KEEPS, AND KEEPS IT PER COIN AND SHAPE
+  // (3.223.0, owner 2026-09-22 on a set of 4.7 million rows: "fix the Work out
+  // the test history numbers to be able to work with a large data set like
+  // this"). Run, not read, on the check's own chain: the pass asked for the
+  // test window alone prices no held-back window and no null set, and its
+  // test money is the record's own to the cent; the press over the whole set
+  // lands one file per coin and shape in the folder, the index counts every
+  // one as done, a unit's board reads its own numbers and the blend the
+  // average; pressed again with nothing to do it leaves the store untouched.
+  async thePassPricesOnlyTheTestWindowAndKeepsItPerCoinAndShape() {
+    const c = await chain('rich');
+    try {
+      const doc = stages.getSet(c.s3);
+      const t = stages.readTally(c.s3);
+      const units = stages.unitsOfSet(t, c.s3);
+      const board = await stages.loadUnitBoard(c.s3, t, c.plant);
+      const labels = board.map((r) => r.label);
+      assert.ok(labels.length > 0 && units.length >= 2, 'the chain holds a board on the planted coin and another unit');
+      // the test window alone: no held-back figure, no null set, the test money the record's own
+      const lean = await stages.rebuildRichFor(doc, labels, { unit: c.plant, testOnly: true });
+      assert.strictEqual(lean.failures.length, 0, JSON.stringify(lean.failures));
+      const pnlOf = new Map(board.map((r) => [r.label, r.avgTest]));
+      let checked = 0;
+      for (const [label, e] of lean.perSetting) {
+        const u = e.units.find((x) => stages.unitKeyOf(x) === c.plant);
+        assert.ok(u, `${label} has no entry for the planted coin`);
+        assert.strictEqual(u.holdout, null, `${label}: the test window alone still priced the held-back window`);
+        assert.strictEqual(u.rich.hold, null, `${label}: the test window alone still carries held-back figures`);
+        assert.strictEqual(u.rich.controls, null, 'the four held-back comparisons were priced');
+        assert.ok(u.rich.test && Number.isFinite(Number(u.rich.test.maxDrawdown)), `${label}: no test figures`);
+        assert.strictEqual(cents(u.pnl), cents(pnlOf.get(label)), `${label}: the test money is not the record's own`);
+        checked++;
+      }
+      assert.strictEqual(checked, labels.length);
+      assert.ok(lean.testControls[c.plant], 'the four things a rule has to beat on the test window still ride back');
+      // and the full pricing, which the held-back ride asks for, still prices the held-back window
+      const full = await stages.rebuildRichFor(doc, labels.slice(0, 2), { unit: c.plant });
+      for (const e of full.perSetting.values()) {
+        const u = e.units.find((x) => stages.unitKeyOf(x) === c.plant);
+        assert.ok(u && u.holdout && Number.isFinite(Number(u.holdout.pnl)), 'the full pricing lost the held-back window');
+      }
+      // THE PRESS OVER THE WHOLE SET: one file per coin and shape, every one done
+      stages.funnelRichStart(c.s3, {});
+      const out = await settle(() => stages.funnelRichStatus(c.s3), 'the pass');
+      assert.strictEqual((out.failures || []).length, 0, JSON.stringify(out.failures));
+      assert.strictEqual(out.units, units.length, 'the pass did not price every coin and shape');
+      assert.ok(out.proof && out.proof.ran && out.proof.checked > 0 && out.proof.matched === out.proof.checked, `the proof failed: ${JSON.stringify(out.proof)}`);
+      const dir = stages.funnelRichDir(c.s3);
+      assert.deepStrictEqual(fs.readdirSync(dir).sort(), ['blend.json', 'index.json', 'units'], 'the store is not the folder of index, sums and units');
+      assert.strictEqual(fs.readdirSync(path.join(dir, 'units')).length, units.length, 'one file per coin and shape');
+      const rich = stages.readFunnelRich(c.s3);
+      assert.strictEqual(rich.unitsDone, units.length, 'the index does not count every coin and shape as done');
+      assert.strictEqual(stages.richAllIn(rich), true, 'a finished prep does not read as finished');
+      for (const u of units) {
+        // eslint-disable-next-line no-await-in-loop
+        const n = (await stages.loadUnitBoard(c.s3, t, u.key)).length;
+        assert.strictEqual(rich.units[u.key].settings, n, `${u.key}: the index does not count the unit's settings`);
+      }
+      // a unit's board reads its own numbers, the blend the average
+      const laid = stages.withFunnelRich(board, rich);
+      const own = rich.unit(c.plant);
+      assert.ok(laid.length && laid.every((r) => r.maxDrawdown === own[r.label].maxDrawdown), 'a unit board row reads something other than the unit\'s own number');
+      const blend = stages.withFunnelRich(t.ranked.slice(0, 5), rich);
+      assert.ok(blend.length && blend.every((r) => Number.isFinite(r.maxDrawdown)), 'the blend does not read the average once every coin and shape is in');
+      // pressed again there is nothing to do, and the store is untouched
+      const before = fs.readFileSync(path.join(dir, 'index.json'), 'utf8');
+      stages.funnelRichStart(c.s3, {});
+      const again = await settle(() => stages.funnelRichStatus(c.s3), 'the second pass');
+      assert.strictEqual(again.nothingMissing, true, 'a second press priced what the store already carries');
+      assert.strictEqual(fs.readFileSync(path.join(dir, 'index.json'), 'utf8'), before, 'a press with nothing to do rewrote the store');
+    } finally { c.cleanup(); }
   },
 };
