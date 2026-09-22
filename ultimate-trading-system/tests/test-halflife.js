@@ -28,7 +28,15 @@ async function waitSet(id, label, ms = 10 * 60 * 1000) {
   const t0 = Date.now();
   for (;;) {
     const doc = stages.getSet(id);
-    if (doc && doc.status !== 'running') return doc;
+    // ENDED MEANS ENDED (3.220.2, a race the suite lost): the status flips to
+    // done BEFORE the tables are totalled, and the set is the box's one heavy
+    // job until they land -- so wait for the run to let go and the totalling
+    // to finish, the way test-stages.js's untilEnded does
+    if (doc && doc.status !== 'running' && stages.stageRunning() !== id) {
+      const tally = stages.tallyRunPromise();
+      if (tally) await tally.catch(() => {});
+      return stages.getSet(id);
+    }
     if (Date.now() - t0 > ms) throw new Error(`${label} did not finish`);
     // eslint-disable-next-line no-await-in-loop
     await new Promise((resolve) => { setTimeout(resolve, 250); });
