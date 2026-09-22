@@ -1902,7 +1902,8 @@ module.exports = {
       }
     }
     const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
-    assert.ok(ui.includes("${d.totalling ? 'the tables for this set are being worked out - ' : ''}<b>${esc(said)}</b>"), 'the page calls every wait a totalling');
+    // 3.230.0: the same line says a unit table or a blend is being worked out, and marks a failure
+    assert.ok(ui.includes("${d.totalling ? 'the tables for this set are being worked out - ' : ''}<b${failed ? ' class=\"warn\"' : ''}>${esc(said)}</b>"), 'the page calls every wait a totalling');
   },
 
   // TWO FAULTS THE OWNER MET ON STEP 2 (2026-09-04: "it's like the interface

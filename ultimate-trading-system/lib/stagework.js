@@ -2244,11 +2244,19 @@ function mergeTallyAcc(acc, part) {
 }
 // TASK: fold one shard of the records store — a list of whole blocks, each
 // read exactly once, each row tagged with the block it came from.
-async function s3TallyShardTask({ id, blocks, agreedAt = null }) {
+async function s3TallyShardTask({ id, blocks, agreedAt = null, keep = null }) {
   const rowstore = require('./rowstore');
+  // ONLY THE KEPT COINS AND SHAPES when the caller names them (3.230.0): the
+  // blend of what the filter on Table 3.C keeps is this same fold over those
+  // rows alone, and a block may hold rows of coins and shapes that are not kept
+  const { unitKeyOf } = require('./unittable');
+  const keepSet = Array.isArray(keep) ? new Set(keep) : null;
   const acc = newTallyAcc();
   for (const bIdx of blocks) {
-    for (const got of rowstore.readBlocks(id, 'records', [bIdx])) tallyFold(acc, got.row, bIdx, agreedAt);
+    for (const got of rowstore.readBlocks(id, 'records', [bIdx])) {
+      if (keepSet && !keepSet.has(unitKeyOf(got.row))) continue;
+      tallyFold(acc, got.row, bIdx, agreedAt);
+    }
   }
   return serializeTallyAcc(acc);
 }

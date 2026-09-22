@@ -3155,7 +3155,7 @@ module.exports = {
       'the every-coin table orders by its columns now — the ordering box and its Apply must be gone');
     // the start buttons still sleep while a run is going (demand 12)
     assert.ok(screens.drawBody('drawSweep').includes('b.disabled = !!held'), 'the start buttons must sleep while ANY heavy job is going (3.163.0)');
-    assert.ok(body.includes('bWireFilters(mount)') || src.includes('bWireFilters(mount)'), 'the filters must be wired, not merely drawn');
+    assert.ok(body.includes('bWireFilters(mount, doc)') || src.includes('bWireFilters(mount, doc)'), 'the filters must be wired, not merely drawn');
   },
 
   // The agreement dial is fully exposed on the screen — every rule the engine

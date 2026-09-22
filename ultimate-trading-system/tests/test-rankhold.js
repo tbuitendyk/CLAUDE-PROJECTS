@@ -264,9 +264,12 @@ module.exports = {
   async theBarNeverCausesABoardToBeReadAgain() {
     const st = src('lib/stages.js');
     const start = st.slice(st.indexOf('function funnelRankHoldStart(id, bar = {}) {'), st.indexOf('function funnelRankHoldForget('));
-    assert.ok(start.includes('if (holdRun && holdRun.result && holdRun.id === String(id)) return holdAnswer(holdRun, bar);'),
+    // 3.230.0: the answer is cut to what the filter on Table 3.C keeps, off the reading already in hand
+    assert.ok(start.includes('if (holdRun && holdRun.result && holdRun.id === String(id)) return holdAnswer(holdRun, bar, keptUnitKeysNow(id));'),
       'a set already read is read again when the bar moves');
-    assert.ok(st.includes('result: run.result ? { ...RH.withBar(run.result, bar), setId: run.id } : null,'),
+    // 3.230.0: the rows the bar goes onto are the reading in hand, cut to what the filter on Table 3.C keeps
+    assert.ok(st.includes('result: rows ? { ...RH.withBar(rows, bar), setId: run.id, unitFilter } : null,')
+      && st.includes('const rows = all && cut && cut.kept ? all.filter((u) => cut.kept.has(u.unit)) : all;'),
       'the bar is not laid onto the reading in hand, so the two cannot be separate steps');
     // and the run holds the reading BEFORE the bar, or there is nothing to re-bar
     const read = st.slice(st.indexOf('async function funnelRankHoldRead('), st.indexOf('const holdAnswer ='));

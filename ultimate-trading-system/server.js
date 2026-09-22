@@ -1437,6 +1437,24 @@ app.post('/api/stageset/:id/filters', (req, res) => {
   try { return res.json(stages.setSetFilters(req.params.id, (req.body || {}).filters)); }
   catch (err) { return res.status(400).json({ error: String(err.message || err) }); }
 });
+// TABLE 3.C: EVERY UNIT (3.230.0): one row per coin and shape under the filter
+// stored on the set, and the door that stores that filter. A set whose unit
+// table is still being worked out answers with how far that has got, the
+// tables' own shape, and the page asks again.
+app.get('/api/stageset/:id/units', (req, res) => {
+  let out;
+  try { out = stages.stage3Units(req.params.id, req.query || {}); } catch (err) { return res.status(400).json({ error: String(err.message || err) }); }
+  if (!out) {
+    const t = stages.ensureTally(req.params.id);
+    if (t.totalling || t.waiting || t.failed) return res.json({ totalling: t.totalling || null, waiting: t.waiting || null, failed: t.failed || null });
+    return res.status(404).json({ error: 'this set has no totalled tables yet' });
+  }
+  return res.json(out);
+});
+app.post('/api/stageset/:id/unitfilter', (req, res) => {
+  try { return res.json(stages.setUnitFilter(req.params.id, (req.body || {}).filters)); }
+  catch (err) { return res.status(400).json({ error: String(err.message || err) }); }
+});
 // WHAT A STAGE 2 LAUNCH WOULD CARRY (3.220.0): the stage 1 table in its saved
 // order under its saved filters, counted, so the set-up says it before the press
 app.get('/api/stageset/:id/carry', (req, res) => {

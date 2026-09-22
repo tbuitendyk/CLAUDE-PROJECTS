@@ -5098,11 +5098,20 @@ async function buildAgreedTable(doc, pool = null, note = null) {
 }
 function ensureAgreedTable(id) { return readAgreed(id); }
 
-async function buildTally(doc, pool = null, note = null) {
+async function buildTally(doc, pool = null, note = null, opts = {}) {
   const id = doc.id;
   const sw = require('./stagework');
   const agreedAt = readAgreed(id);
-  const blocks = rowstore.blocksOf(id, 'records') || [];
+  // A BLEND OF SOME COINS AND SHAPES, NOT ALL (3.230.0): `opts.keep` is the set
+  // of unit keys the fold reads and `opts.blocks` the blocks that hold them; a
+  // row of any other coin and shape in those blocks is passed over. The fold
+  // is the one rule either way, so the kept blend is the whole blend would be
+  // if the set held only those coins and shapes. `opts.memory` hands the
+  // tables back instead of writing the set's own file.
+  const keep = opts.keep instanceof Set ? opts.keep : null;
+  const keepList = keep ? [...keep] : null;
+  // block NUMBERS, in both cases: the store lists its blocks and the fold reads them by position
+  const blocks = Array.isArray(opts.blocks) ? opts.blocks.slice() : (rowstore.blocksOf(id, 'records') || []).map((_, i) => i);
   const acc = sw.newTallyAcc();
   const settingsCount = (doc.plan || {}).settings || 0;
   // Sharded across the pool when one is in hand and the store is big enough
@@ -5116,7 +5125,7 @@ async function buildTally(doc, pool = null, note = null) {
     const per = Math.ceil(blocks.length / lanes);
     const shards = [];
     for (let at = 0; at < blocks.length; at += per) {
-      shards.push({ id, agreedAt, blocks: Array.from({ length: Math.min(per, blocks.length - at) }, (_, k) => at + k) });
+      shards.push({ id, agreedAt, blocks: blocks.slice(at, at + per), keep: keepList });
     }
     let doneShards = 0;
     if (note) note(0, shards.length);
@@ -5130,9 +5139,13 @@ async function buildTally(doc, pool = null, note = null) {
     // Block by block, yielding between blocks: this fold runs on the one
     // thread the pages share, and "totalling in the background" must be true
     // there — a synchronous 8.7M-row fold froze every screen for minutes.
-    for (let bi = 0; bi < blocks.length; bi++) {
-      for (const x of rowstore.readBlocks(id, 'records', [bi])) sw.tallyFold(acc, x.row, bi, agreedAt);
-      if (note) note(bi + 1, blocks.length);
+    for (let i = 0; i < blocks.length; i++) {
+      const bi = blocks[i];
+      for (const x of rowstore.readBlocks(id, 'records', [bi])) {
+        if (keep && !keep.has(unitKeyOf(x.row))) continue;
+        sw.tallyFold(acc, x.row, bi, agreedAt);
+      }
+      if (note) note(i + 1, blocks.length);
       await new Promise((resolve) => { setImmediate(resolve); });
     }
   }
@@ -5145,7 +5158,9 @@ async function buildTally(doc, pool = null, note = null) {
   // the set, where the screen prints it under the tables; it clears the
   // moment the records find their answers again.
   const keptAnswers = agreedAt ? Object.keys(agreedAt).length : 0;
-  if (keptAnswers && acc.agreedMiss && !acc.agreedHit) {
+  if (opts.memory) {
+    // a blend handed back in memory writes nothing on the set
+  } else if (keptAnswers && acc.agreedMiss && !acc.agreedHit) {
     doc.agreedError = `none of the ${acc.rows.toLocaleString()} records found its answer among the ${keptAnswers.toLocaleString()} kept, `
       + 'so the records and the answers are keyed differently. A set priced under 3.205.0 to 3.206.1 with a plateau share '
       + '(the +plateau in quorum by) has this: its records do not carry the share its answers were filed under. Price the set again.';
@@ -5262,6 +5277,7 @@ async function buildTally(doc, pool = null, note = null) {
     acc.perCoin.delete(key);
   }
   const out = { v: TALLY_V, builtAt: new Date().toISOString(), rows: acc.rows, ranked, coins };
+  if (opts.memory) return out;
   // WRITTEN STREAMING, entry by entry. Stringifying a 177,408-setting tally
   // in one piece is a second whole copy of it at the worst moment — part of
   // what put the first totalling over the heap. The stream writes the same
@@ -5520,6 +5536,7 @@ function deleteSet(id, confirm) {
   }
   rowstore.remove(doc.id);
   try { fs.rmSync(tallyFile(doc.id), { force: true }); } catch (_) { /* may not exist */ }
+  try { fs.rmSync(unitsFile(doc.id), { force: true }); } catch (_) { /* may not exist */ }
   try { fs.rmSync(fieldFile(doc.id), { force: true }); } catch (_) { /* may not exist */ }
   try { fs.rmSync(setFile(doc.id), { force: true }); } catch (_) { /* reported below */ }
   dropCheckpoint(doc.id);
@@ -6096,6 +6113,11 @@ function boardRowOf(r, unitKey) {
     beat: r.beat ?? null, pairs: r.pairs ?? null,
     noiseTest: Array.isArray(r.noiseTest) ? r.noiseTest : null,
     noiseHold: Array.isArray(r.noiseHold) ? r.noiseHold : null,
+    // THE FIELD'S GATE ON THE TEST WINDOW (3.230.0): its totals as the record
+    // keeps them -- the money at the rungs' sizes, the placed trades at size 1,
+    // the blocked calls at size 1 and the four counts -- so Table 3.C can say
+    // what a coin and shape made with and without the gate. null with no gate.
+    field: r.field && r.field.test ? r.field.test : null,
   };
 }
 let unitBoardInHand = { id: null, builtAt: null, key: null, rows: null };
@@ -6126,13 +6148,65 @@ async function loadUnitBoard(id, t, unitKey) {
 // is asked for by name, 'all'. The read and the cut both resolve here, so the
 // board that was walked and the board that is cut cannot be two boards.
 const blendBoard = (t) => ({ unit: null, name: null, all: t.ranked || [] });
-async function funnelBoard(id, t, unitKey) {
+// THE BLEND OF THE COINS AND SHAPES THE FILTER ON TABLE 3.C KEEPS (3.230.0):
+// the same fold the tables are totalled by, over the kept coins and shapes
+// alone, held in memory for the filter it was read for. Worked out in the
+// background and polled, exactly as a totalling is: a blend of half the board
+// is minutes of reading, and a page must never wait on a request for it.
+let blendRun = null;   // { id, hash, done, total, error, rows, promise }
+let blendInHand = { id: null, hash: null, rows: null };
+const blendHashOf = (t, kept) => require('crypto').createHash('sha1').update(JSON.stringify([t.builtAt, t.rows, [...kept].sort()])).digest('hex').slice(0, 16);
+function ensureBlend(id, t, kept) {
+  const key = String(id);
+  const hash = blendHashOf(t, kept);
+  if (blendInHand.id === key && blendInHand.hash === hash && blendInHand.rows) return { ready: true, rows: blendInHand.rows };
+  if (blendRun && !blendRun.error && !blendRun.rows) {
+    if (blendRun.id === key && blendRun.hash === hash) return { building: { done: blendRun.done, total: blendRun.total } };
+    return { waiting: 'another blend is being worked out — one at a time' };
+  }
+  if (blendRun && blendRun.error && blendRun.id === key && blendRun.hash === hash) return { failed: blendRun.error };
+  if (activeSet) return { waiting: 'a run is going — the blend of the kept coins and shapes is worked out when the box is free' };
+  if (tallyRun && !tallyRun.error) return { waiting: 'the tables are totalling — the blend of the kept coins and shapes is worked out when they land' };
+  const doc = getSet(key);
+  if (!doc) return { failed: `unknown record set '${key}'` };
+  const units = unitsOfSet(t, key).filter((u) => kept.has(u.key));
+  const blocks = [...new Set(units.flatMap((u) => u.blocks))].sort((a, b) => a - b);
+  const run = { id: key, hash, done: 0, total: blocks.length, error: null, rows: null, promise: null };
+  blendRun = run;
+  run.promise = (async () => {
+    let pool = null;
+    try {
+      const settingsCount = (doc.plan || {}).settings || 0;
+      if (blocks.length >= 8 && settingsCount <= SHARD_SETTINGS_LIMIT) pool = createPool();
+      const out = await buildTally(doc, pool, (dn, tn) => { run.done = dn; run.total = tn; }, { keep: kept, blocks, memory: true });
+      run.rows = out.ranked;
+      blendInHand = { id: key, hash, rows: out.ranked };
+    } catch (err) {
+      run.error = String((err && err.message) || err);
+    } finally {
+      if (pool) pool.abort();
+    }
+  })();
+  return { building: { done: 0, total: blocks.length } };
+}
+// Test hook: settle when the blend in flight (if any) has finished.
+function blendWait() { return blendRun && blendRun.promise ? blendRun.promise : Promise.resolve(); }
+// `kept` is the set of unit keys the filter on Table 3.C keeps, or null when
+// no filter is set. With one, `all units together` is the blend of those coins
+// and shapes alone, and nothing chosen lands on the first of them.
+async function funnelBoard(id, t, unitKey, kept = null) {
   const key = unitKey == null ? '' : String(unitKey);
-  if (key === 'all') return blendBoard(t);
   const units = unitsOfSet(t, id);
-  const unit = key ? units.find((u) => u.key === key) : units[0];
+  if (key === 'all') {
+    if (!kept || kept.size === units.length) return blendBoard(t);
+    const b = ensureBlend(id, t, kept);
+    if (b.ready) return { unit: null, name: null, all: b.rows };
+    return { unit: null, name: null, all: [], pending: b };
+  }
+  const first = kept ? units.find((u) => kept.has(u.key)) : units[0];
+  const unit = key ? units.find((u) => u.key === key) : first;
   if (key && !unit) throw new Error(`this set holds no unit called '${key}'`);
-  if (!unit) return blendBoard(t);            // a set with no units has only the blend
+  if (!unit) return funnelBoard(id, t, 'all', kept);   // a set with no units, or a filter that keeps none, has only the blend
   return { unit: unit.key, name: unit.name, all: await loadUnitBoard(id, t, unit.key) };
 }
 
@@ -6156,13 +6230,17 @@ async function funnelAcross(id, state = {}, note = null) {
   // THE REBUILT NUMBERS ARE LAID ON, per unit, so a rule with a limit on the
   // worst losing streak reads each unit's own rather than keeping nothing
   const rich = readFunnelRich(id);
-  const out = { unit: here, rule, units: [] };
-  const others = units.filter((u) => u.key !== here).length;
+  // only the coins and shapes the filter on Table 3.C keeps (3.230.0)
+  const cut = keptUnitKeys(id, t);
+  if (cut.pending) throw new Error('the unit table the filter on Table 3.C reads is being worked out — the other coins and shapes cannot be read until it lands');
+  const inCut = (u) => !cut.kept || cut.kept.has(u.key);
+  const out = { unit: here, rule, units: [], unitFilter: cut.kept ? { kept: cut.kept.size, of: cut.of } : null };
+  const others = units.filter((u) => u.key !== here && inCut(u)).length;
   // the same bar the walk is read under, per unit against that unit's own copies
   const barFor = (k) => F.barOf({ k, barPct: state.barPct });
   if (note) note(0, others);
   for (const u of units) {
-    if (u.key === here) continue;
+    if (u.key === here || !inCut(u)) continue;
     // eslint-disable-next-line no-await-in-loop
     const board = withFunnelRich(await loadUnitBoard(id, t, u.key), rich);
     const kept = S4.applyRule(board, rule);
@@ -6307,9 +6385,24 @@ async function funnelRead(id, state = {}) {
 
   const F = require('./funnel');
   const S4 = require('./funnelset');
+  // WHAT THE FILTER ON TABLE 3.C KEEPS (3.230.0) decides which coins and shapes
+  // this screen offers, ranks and blends. A walk left on a coin and shape the
+  // filter has since hidden lands on the first one it keeps, and the reply
+  // says so; a filter whose table is still being worked out is answered with
+  // that, never applied as "everything".
+  const cut = keptUnitKeys(id, t);
+  if (cut.pending) return { ...cut.pending, unitTable: cut.pending };
+  let unitWant = state.unit;
+  let hidden = null;
+  if (cut.kept && unitWant != null && String(unitWant) !== 'all' && !cut.kept.has(String(unitWant))) {
+    // named the way the screen names a coin and shape, never by its key
+    hidden = ((unitsOfSet(t, id).find((u) => u.key === String(unitWant)) || {}).name) || String(unitWant);
+    unitWant = cut.first || 'all';
+  }
   // THE BOARD IS THE CHOSEN UNIT'S RECORDS (§17), or the blended table when
   // `all units together` is chosen. Nothing below cares which.
-  const board = await funnelBoard(id, t, state.unit);
+  const board = await funnelBoard(id, t, unitWant, cut.kept);
+  if (board.pending) return { blending: board.pending };
   // THE REBUILT NUMBERS ARE LAID ON FIRST, so a limit on the worst losing
   // streak has something to read (§16, step 6). Rows keep what they carry.
   const rich = readFunnelRich(id);
@@ -6366,7 +6459,7 @@ async function funnelRead(id, state = {}) {
   // list, an alongside list or a shape list out of a joined-up name without
   // taking the name apart again -- and a screen that re-derives what the
   // service already knows is a second place for the two to disagree.
-  const units = unitsOfSet(t, id).map((u) => ({
+  const units = unitsOfSet(t, id).filter((u) => !cut.kept || cut.kept.has(u.key)).map((u) => ({
     key: u.key, name: u.name, trade: u.trade, ctx1: u.ctx1 || null, ctx2: u.ctx2 || null, geometry: u.geometry,
   }));
   // ON A UNIT'S BOARD, "elsewhere" IS THE OTHER UNITS (§17.3), read by a
@@ -6415,6 +6508,10 @@ async function funnelRead(id, state = {}) {
     unit: board.unit,
     unitName: board.name,
     units,
+    // what the filter on Table 3.C keeps (3.230.0): null with no filter set;
+    // `hidden` names the coin and shape this walk was left on when the filter
+    // no longer keeps it, and the board above is the first one it does
+    unitFilter: cut.kept ? { kept: cut.kept.size, of: cut.of, hidden } : null,
     step,
     rule,
     ruleSentence: S4.ruleSentence(rule),
@@ -6798,8 +6895,15 @@ async function funnelRankHoldRead(id, note = null) {
 }
 // The reading, with the owner's three numbers laid on it. Kept in ONE place
 // (lib/rankhold.js) so a screen can never work out a pass for itself.
-const holdAnswer = (run, bar) => {
+// `cut` is what the filter on Table 3.C keeps (3.230.0): the rows it does not
+// keep are left out of the table and its counts, and the answer says how many
+const holdAnswer = (run, bar, cut = null) => {
   const RH = require('./rankhold');
+  const all = run.result || null;
+  const rows = all && cut && cut.kept ? all.filter((u) => cut.kept.has(u.unit)) : all;
+  const unitFilter = !all ? null
+    : cut && cut.kept ? { kept: rows.length, of: all.length, pending: false }
+      : cut && cut.pending ? { kept: all.length, of: all.length, pending: true } : null;
   return {
     running: !run.result && !run.error,
     token: run.token,
@@ -6807,7 +6911,7 @@ const holdAnswer = (run, bar) => {
     of: run.of,
     startedAt: new Date(run.startedAt).toISOString(),
     error: run.error,
-    result: run.result ? { ...RH.withBar(run.result, bar), setId: run.id } : null,
+    result: rows ? { ...RH.withBar(rows, bar), setId: run.id, unitFilter } : null,
   };
 };
 const holdNone = (id) => ({ running: false, none: true, token: null, done: 0, of: 0, startedAt: null, error: null, result: null, setId: String(id) });
@@ -6817,10 +6921,10 @@ const holdNone = (id) => ({ running: false, none: true, token: null, done: 0, of
 // from what is in hand however the numbers have moved since.
 function funnelRankHoldStart(id, bar = {}) {
   if (holdRun && !holdRun.result && !holdRun.error) {
-    if (holdRun.id === String(id)) return holdAnswer(holdRun, bar);
+    if (holdRun.id === String(id)) return holdAnswer(holdRun, bar, keptUnitKeysNow(id));
     throw new Error(`the ranking of ${holdRun.id} is being read — one reading at a time`);
   }
-  if (holdRun && holdRun.result && holdRun.id === String(id)) return holdAnswer(holdRun, bar);
+  if (holdRun && holdRun.result && holdRun.id === String(id)) return holdAnswer(holdRun, bar, keptUnitKeysNow(id));
   const richNow = richBusy();
   if (richNow) throw new Error(`${richNow} — reading the ranking would fight it for the same boards`);
   if (othersBusy()) throw new Error(`${othersBusy()} — the same boards, one reading at a time`);
@@ -6841,7 +6945,161 @@ function funnelRankHoldStart(id, bar = {}) {
 function funnelRankHoldForget(id) { if (holdRun && holdRun.id === String(id)) holdRun = null; }
 function funnelRankHoldStatus(id, bar = {}) {
   if (!holdRun || holdRun.id !== String(id)) return holdNone(id);
-  return holdAnswer(holdRun, bar);
+  return holdAnswer(holdRun, bar, keptUnitKeysNow(id));
+}
+
+// ---- TABLE 3.C: EVERY UNIT, kept beside the set (3.230.0, owner order
+// 2026-09-22: "filter out garbage units before wasting time with funneling
+// them") -----------------------------------------------------------------------
+//
+// One row per coin and shape, worked out from its own board (lib/unittable.js
+// holds the arithmetic) and kept in one file beside the set. It is a DERIVED
+// file: built again when the tables it reads from move -- the tally, or the
+// numbers the pass beside the set rebuilt -- and never migrated (RULE NINE).
+// Built in the background and polled, the totalling's shape: eighty-six
+// boards is minutes of reading, and no request waits on it.
+const UNITS_V = 1;
+const unitsFile = (id) => path.join(SETS_DIR, `${String(id).replace(/[^A-Za-z0-9._-]+/g, '_')}.units.json`);
+let unitTableRun = null;   // { id, done, of, error, promise }
+let unitTableInHand = { id: null, mtimeMs: 0, size: 0, table: null };
+function readUnitTable(id) {
+  const key = String(id);
+  let st = null;
+  try { st = fs.statSync(unitsFile(key)); } catch (_) { return null; }
+  if (unitTableInHand.id === key && unitTableInHand.table && unitTableInHand.mtimeMs === st.mtimeMs && unitTableInHand.size === st.size) return unitTableInHand.table;
+  const table = readJsonOr(unitsFile(key), null);
+  if (!table || table.v !== UNITS_V || !Array.isArray(table.units)) return null;
+  unitTableInHand = { id: key, mtimeMs: st.mtimeMs, size: st.size, table };
+  return table;
+}
+// fresh means built from the tables that stand now: the same totalling and the
+// same numbers beside the set. Either moving makes it stale, never wrong-and-served.
+const unitTableFresh = (table, t, rich) => !!(table && table.v === UNITS_V && t && table.tallyBuiltAt === t.builtAt
+  && (table.richSavedAt || null) === ((rich && rich.savedAt) || null));
+async function buildUnitTable(doc, t, note = null) {
+  const UT = require('./unittable');
+  const id = String(doc.id);
+  const rich = readFunnelRich(id);
+  const recorded = (((doc || {}).windows || {}).units) || {};
+  const units = unitsOfSet(t, id);
+  const rows = [];
+  if (note) note(0, units.length);
+  for (const u of units) {
+    // eslint-disable-next-line no-await-in-loop
+    const board = withFunnelRich(await loadUnitBoard(id, t, u.key), rich);
+    const w = recorded[u.key];
+    const n = w && w.test && Number(w.test.chunks);
+    const chunksAPart = Number.isFinite(n) && n > 0 ? Math.floor(n / 3) : null;
+    const testControls = rich && rich.testControls ? rich.testControls[u.key] || null : null;
+    rows.push({
+      unit: u.key, name: u.name, trade: u.trade, ctx1: u.ctx1 || null, ctx2: u.ctx2 || null, geometry: u.geometry, at: rows.length,
+      ...UT.unitSummaryOf(board, { chunksAPart, testControls }),
+    });
+    if (note) note(rows.length, units.length);
+  }
+  const table = {
+    v: UNITS_V, builtAt: new Date().toISOString(), release: require('../package.json').version,
+    tallyBuiltAt: t.builtAt, richSavedAt: rich ? rich.savedAt : null, units: rows,
+  };
+  atomicWrite(unitsFile(id), JSON.stringify(table));
+  unitTableInHand = { id: null, mtimeMs: 0, size: 0, table: null };
+  return table;
+}
+// { ready, table } | { building: { done, of } } | { waiting } | { failed } | { none }
+function ensureUnitTable(id) {
+  const key = String(id);
+  if (unitTableRun) {
+    if (unitTableRun.id === key) {
+      return unitTableRun.error ? { failed: unitTableRun.error } : { building: { done: unitTableRun.done, of: unitTableRun.of } };
+    }
+    if (!unitTableRun.error) return { waiting: 'the unit table of another record set is being worked out — one at a time' };
+    unitTableRun = null;   // a dead attempt for another set does not block this one
+  }
+  const t = readTally(key);
+  if (!t) return { none: true };
+  const doc = getSet(key);
+  if (!doc || doc.stage !== 3) return { none: true };
+  const rich = readFunnelRich(key);
+  const have = readUnitTable(key);
+  if (unitTableFresh(have, t, rich)) return { ready: true, table: have };
+  // NOT UNDER A PASS OVER THE SAME BOARDS: the pass rewrites the numbers this
+  // reads, a ranking reading holds the same boards, and a run has the box
+  const busy = stageRunning() ? 'a run is going' : (richBusy() || holdBusy() || (tallyRun && !tallyRun.error ? 'the tables are totalling' : null));
+  if (busy) return { waiting: `${busy} — the unit table is worked out when the box is free` };
+  const run = { id: key, done: 0, of: 0, error: null, promise: null };
+  unitTableRun = run;
+  run.promise = buildUnitTable(doc, t, (dn, of) => { run.done = dn; run.of = of; })
+    .then(() => { if (unitTableRun === run) unitTableRun = null; })
+    .catch((err) => { run.error = String((err && err.message) || err); });
+  return { building: { done: 0, of: 0 } };
+}
+// Test hook: settle when the build in flight (if any) has finished.
+function unitTableWait() { return unitTableRun && unitTableRun.promise ? unitTableRun.promise : Promise.resolve(); }
+
+// THE FILTER LIVES ON THE RECORD SET, not in the browser (owner order): the
+// Funnel reads it, so a filter that only one screen knew about could not cut
+// what the Funnel offers. Validated through the one definition of what a
+// filter on this table is, so a box the table offers and the set refuses
+// cannot exist.
+const unitFilterOf = (doc) => ((doc && doc.unitFilter && typeof doc.unitFilter === 'object') ? doc.unitFilter : {});
+function setUnitFilter(id, filters) {
+  const UT = require('./unittable');
+  const doc = getSet(String(id || ''));
+  if (!doc) throw new Error('unknown record set');
+  if (doc.stage !== 3) throw new Error('Table 3.C is a stage 3 table — this record set is not one');
+  if (doc.status === 'running') throw new Error('the record set is still being written — the filter saves after it finishes');
+  const clean = UT.cleanFilter(filters);
+  doc.unitFilter = Object.keys(clean).length ? clean : null;
+  saveSet(doc);
+  return { id: doc.id, unitFilter: doc.unitFilter };
+}
+// WHICH COINS AND SHAPES THE FILTER KEEPS, for everything on the Funnel that
+// offers, ranks or blends them. `kept` is null when no filter is set (nothing
+// is cut); `pending` says the table the filter reads is not ready, so the cut
+// cannot be made yet -- never made silently as "everything".
+function keptUnitKeys(id, t) {
+  const key = String(id);
+  const doc = getSet(key);
+  const filter = unitFilterOf(doc);
+  const units = unitsOfSet(t, key);
+  if (!Object.keys(filter).length) return { kept: null, of: units.length, pending: null, first: units[0] ? units[0].key : null };
+  const st = ensureUnitTable(key);
+  if (!st.ready) {
+    const pending = st.building ? { building: st.building } : st.failed ? { failed: st.failed } : { waiting: st.waiting || 'the unit table is not ready' };
+    return { kept: null, of: units.length, pending, first: null };
+  }
+  const rows = require('./unittable').applyFilter(st.table.units, filter);
+  const kept = new Set(rows.map((r) => r.unit));
+  const order = units.filter((u) => kept.has(u.key));
+  return { kept, of: units.length, pending: null, first: order[0] ? order[0].key : null };
+}
+// the same, for a caller that has no tally in hand and a filter may not apply to
+const keptUnitKeysNow = (id) => { const t = readTally(String(id)); return t ? keptUnitKeys(id, t) : { kept: null, of: 0, pending: null, first: null }; };
+
+// THE TABLE AS THE SCREEN ASKS FOR IT: the stored filter applied, one column's
+// sort, a page. null with no tables; `pending` while the table is being built.
+function stage3Units(id, query = {}) {
+  const key = String(id);
+  const t = readTally(key);
+  if (!t) return null;
+  const doc = getSet(key);
+  const filter = unitFilterOf(doc);
+  const st = ensureUnitTable(key);
+  if (!st.ready) return { pending: st, unitFilter: filter };
+  const UT = require('./unittable');
+  const all = st.table.units;
+  const kept = UT.applyFilter(all, filter);
+  const sort = UT.SORTS.includes(query.sort) ? query.sort : 'set';
+  const flip = !!(query.flip && query.flip !== '0' && query.flip !== 'false');
+  kept.sort(UT.orderBy(sort, flip));
+  const from = Math.max(0, Math.floor(num(query.offset, 0)));
+  const limit = Math.max(1, Math.min(500, Math.floor(num(query.limit, 100))));
+  const spread = cachedSpread(`3U|${key}|${st.table.builtAt}|${JSON.stringify(filter)}`, () => spreadOf(kept, UT.FILTER_DEFS));
+  return {
+    total: kept.length, of: all.length, removed: all.length - kept.length, from, spread, sort, flip,
+    unitFilter: filter, builtAt: st.table.builtAt, columns: UT.COLUMN_KEYS,
+    rows: kept.slice(from, from + limit),
+  };
 }
 
 // ---- the rebuilt numbers, kept beside the set --------------------------------
@@ -10816,6 +11074,7 @@ module.exports = {
   missingSettingsIn, nextSettingNumber,
   rebuildRichFor, proveRebuild, firstDigitOf, funnelRead, sliceRowsFor, againstTestControls,
   funnelRankHoldRead, funnelRankHoldStart, funnelRankHoldStatus,
+  unitsFile, readUnitTable, buildUnitTable, ensureUnitTable, unitTableWait, stage3Units, setUnitFilter, unitFilterOf, keptUnitKeys, ensureBlend, blendWait, UNITS_V,
   funnelRichStart, funnelRichStatus, cpuLoad, funnelKeeps,
   continueStage3, readCheckpoint, hasCheckpoint, checkpointFile, writeCheckpoint, CHECKPOINT_V,
   windowsOfSet, newestDataOf,

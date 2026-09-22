@@ -4666,6 +4666,10 @@ async function bWireFillUnits(doc) {
 // TOP-ALIGNED (3.228.0): a row two or three lines tall reads from its top, and its number, its button and its one-line cells sit on the first line
 const btd = 'style="padding:.25rem .3rem;vertical-align:top"';
 const btd0 = 'style="padding:.25rem .3rem .25rem 0;vertical-align:top"';
+// TABLE 3.C IS ONE LINE A ROW (owner order, 2026-09-22: "make the rows ONE
+// line each"): every cell holds one figure or one name, so nothing in it wraps
+const btdU = 'style="padding:.25rem .3rem;white-space:nowrap;vertical-align:top"';
+const btdU0 = 'style="padding:.25rem .3rem .25rem 0;white-space:nowrap;vertical-align:top"';
 // A ROW IS ONE LINE (owner order, 2026-09-06: "rows taking one or two lines,
 // all because you're wasting an enormous amount of space on each row"). A cell
 // holding one number or one coin has nothing to gain from wrapping, and a
@@ -5017,6 +5021,8 @@ function bWirePager(root) {
   const goTo = (key, from) => {
     if (key === 'S3C') {
       bSaveView({ coins: { ...(bView().coins || {}), offset: from } });
+    } else if (key === 'S3U') {
+      bSaveView({ units: { ...(bView().units || {}), offset: from } });
     } else {
       bSaveView({ [`from${key}`]: from });
     }
@@ -5076,6 +5082,138 @@ function bWireCoinSort(root) {
       bRepaintTable(3, { peg: '[data-bcoinhead]' });
     };
   });
+}
+
+// ---- TABLE 3.C: EVERY UNIT (3.230.0, owner order 2026-09-22) ----------------
+//
+// One row per coin and shape, on one line, under Table 3.B: the readings that
+// tell a coin and shape worth walking from one that is not, every column
+// sorting on one click and every one with a filter box. The filter is saved on
+// the record set, because the Funnel reads it.
+//
+// THE WORDS OF EVERY COLUMN ARE WRITTEN OUT HERE, where the closed word list
+// can see them. The arithmetic behind each and the order of the columns are
+// the service's, and a test holds this list to the service's list.
+//   [key, heading, which way is good, filter box id, filter box name, kind, hover]
+const B_UNIT_COLS = [
+  ['settings', 'settings', 'high', 'minSettings', 'settings at least', 'count',
+    'how many settings this coin and shape holds. One setting is one combination of entry, gate, d, t, trail and arm together with its decision, band and 24/5 variant.'],
+  ['inMoneyPct', 'in the money, %', 'high', 'minInMoney', 'in the money at least, %', 'pct',
+    'the share of the settings whose test-window money is above zero.'],
+  ['avgTest', 'avg test $', 'high', 'minAvgTest', 'avg test $ at least', 'money',
+    'average test-window money per setting, as priced: under the field\'s gate on a set that has one.'],
+  ['avgTestNoGate', 'avg test $, no gate', 'high', 'minAvgTestNoGate', 'avg test $ with no gate at least', 'money',
+    'average test-window money per setting with every call taken at size 1 and no gate: the same trades before the field\'s gate sized or blocked them. On a set priced with no gate this is the same figure as avg test $.'],
+  ['perTrade', '$ per trade', 'high', 'minPerTrade', '$ per trade at least', 'money',
+    'all the test-window money of every setting divided by all their test-window trades, as priced.'],
+  ['perTradeNoGate', '$ per trade, no gate', 'high', 'minPerTradeNoGate', '$ per trade with no gate at least', 'money',
+    'the same with every call taken at size 1 and no gate; the blocked calls count as trades too.'],
+  ['midTest', 'middle test $', 'high', 'minMidTest', 'middle test $ at least', 'money',
+    'the test-window money of the middle setting: half the settings made more, half made less.'],
+  ['bestTest', 'best test $', 'high', 'minBestTest', 'best test $ at least', 'money',
+    'the test-window money of the best single setting.'],
+  ['inMoney1', '1st part in the money, %', 'high', 'minInMoney1', '1st part in the money at least, %', 'pct',
+    'the share of the settings above zero in the first part of the test window. Empty until Work out the test history numbers has run on the Funnel.'],
+  ['inMoney2', '2nd part in the money, %', 'high', 'minInMoney2', '2nd part in the money at least, %', 'pct',
+    'the share of the settings above zero in the second part of the test window.'],
+  ['inMoney3', '3rd part in the money, %', 'high', 'minInMoney3', '3rd part in the money at least, %', 'pct',
+    'the share of the settings above zero in the third part of the test window.'],
+  ['allThreePct', 'all three parts in the money, %', 'high', 'minAllThree', 'all three parts in the money at least, %', 'pct',
+    'the share of the settings above zero in every one of the three parts.'],
+  ['loseAllPct', 'losing in all three parts, %', 'low', 'maxLoseAll', 'losing in all three parts at most, %', 'pct',
+    'the share of the settings below zero in every one of the three parts.'],
+  ['h12', 'first → second', 'high', 'minH12', 'first → second at least', 'hold',
+    'the settings are put in order by what they made in the first part of the test window, and that order is scored on the second part. 1.00 is the same order on both, 0.00 no relation at all, below zero the order comes out backwards.'],
+  ['h23', 'second → third', 'high', 'minH23', 'second → third at least', 'hold',
+    'ordered by the second part of the test window, scored on the third.'],
+  ['h13', 'first → third', 'high', 'minH13', 'first → third at least', 'hold',
+    'ordered by the first part of the test window, scored on the third — the widest gap of the four, because a whole part sits between them.'],
+  ['h123', 'first two → third', 'high', 'minH123', 'first two → third at least', 'hold',
+    'ordered by the first two parts of the test window added together, scored on the third.'],
+  ['top30Third', 'top 30 in the third $', 'high', 'minTop30Third', 'top 30 in the third $ at least', 'money',
+    'the 30 best settings by the first two parts of the test window: what they made, on average, in the third part, which they were not chosen on.'],
+  ['best30Beats', 'best 30 beat copies', 'high', 'minBest30Beats', 'best 30 beat copies at least', 'beats',
+    'of the kept scrambled copies, how many the 30 best settings by test money beat as a group: their average real money against the same settings\' average money on each copy.'],
+  ['boardBeats', 'board beats copies', 'high', 'minBoardBeats', 'board beats copies at least', 'beats',
+    'the whole board\'s average test money against the kept scrambled copies: how many of the copies it beats.'],
+  ['beatLongPct', 'beat always long, %', 'high', 'minBeatLong', 'beat always long at least, %', 'pct',
+    'the share of the settings whose test money beats always long over the same window at their own hold length. Empty until Work out the test history numbers has run.'],
+  ['bestVsLong', 'best vs always long $', 'high', 'minBestVsLong', 'best vs always long $ at least', 'money',
+    'the best single setting\'s test money minus always long over the same window at its hold length.'],
+  ['midTrades', 'middle test trades', 'high', 'minMidTrades', 'middle test trades at least', 'trades',
+    'the test-window trades of the middle setting: half the settings traded more often, half less.'],
+  ['fieldBlocked', 'field blocked, %', 'low', 'maxFieldBlocked', 'field blocked at most, %', 'pct',
+    'of the calls the members made on the test window, the share the field\'s gate blocked. Empty with no gate.'],
+  ['streakBest30', 'worst losing streak $, best 30', 'low', 'maxStreakBest30', 'worst losing streak $ of the best 30 at most', 'money',
+    'the worst losing streak of the middle one of the 30 best settings by test money. Empty until Work out the test history numbers has run.'],
+  ['winsBest30', 'trades won, %, best 30', 'high', 'minWinsBest30', 'trades won of the best 30 at least, %', 'pct',
+    'of every test-window trade the 30 best settings by test money made, the share that won.'],
+  ['chunksAPart', 'chunks a part', 'high', 'minChunksAPart', 'chunks a part at least', 'count',
+    'how many chunks the shortest of the three parts of this coin and shape\'s test window holds, read off what the run recorded.'],
+];
+// one figure, printed by its kind; nothing is ever printed as a nought
+function bUnitCell(r, c) {
+  const v = r[c[0]];
+  if (v == null || !Number.isFinite(Number(v))) return '<span class="muted">—</span>';
+  switch (c[5]) {
+    case 'money': return bMoney(Number(v));
+    case 'pct': return `${Number(v).toFixed(1)}%`;
+    case 'hold': return `<span${v < 0 ? ' class="neg"' : ''}>${Number(v).toFixed(2)}</span>`;
+    case 'trades': return Number(v).toFixed(1);
+    case 'beats': return `${Number(v).toLocaleString()} of ${Number(r.copies || 0).toLocaleString()}`;
+    default: return Number(v).toLocaleString();
+  }
+}
+// ONE CLICK ON A COLUMN SORTS THE UNIT TABLE BY IT, its good way first -- high
+// first where high is good, low first where low is, A to Z on the name -- and
+// a second click turns the order round; the pick lives with the table's view
+function bUnitSortBtn(view, key, naturalArrow) {
+  const uq = view.units || {};
+  const active = (uq.sort || 'set') === key;
+  const flippedArrow = naturalArrow === '↓' ? '↑' : '↓';
+  const state = !active ? '·' : (uq.flip ? flippedArrow : naturalArrow);
+  return `<span class="bsort"><button data-bunitsort="${key}" data-barrow="${naturalArrow}"
+    title="one click sorts the whole table by this column${naturalArrow === '↓' ? ' — best first' : ' — best first, which here is the lowest, or A to Z'}; a second click turns it the other way.">${state}</button></span>`;
+}
+function bWireUnitSort(root) {
+  if (!$(root)) return;   // the mount went with a redraw; the newer draw wires its own
+  $(root).querySelectorAll('[data-bunitsort]').forEach((btn) => {
+    btn.onclick = () => {
+      const key = btn.dataset.bunitsort;
+      const uq = bView().units || {};
+      const active = (uq.sort || 'set') === key;
+      bSaveView({ units: { ...uq, sort: key, flip: active ? !uq.flip : false, offset: 0 } });
+      bRepaintTable(3, { peg: '[data-bunithead]' });
+    };
+  });
+}
+function bUnitsSection(doc, units, view) {
+  const head = `<div class="t3break"></div>
+    <p class="t3head"><b>Table 3.C: Every unit</b> — one row for each coin and shape: the traded coin, the coins it is read alongside and the chunk shape, on one line, worked out from its own records and from the numbers Work out the test history numbers rebuilt for them. The filter on this table is saved on this record set and the Funnel reads it: its coin box, Worth walking?, all units together and the rule steps see only the coins and shapes this filter keeps.</p>`;
+  if (!units) return `${head}<p class="note"><b class="warn">the unit table could not be read</b> — the service did not answer for it.</p>`;
+  if (units.pending) {
+    const pd = units.pending;
+    const b = pd.building;
+    return `${head}<p class="note">${pd.failed ? `<b class="warn">the unit table could not be worked out:</b> ${esc(pd.failed)}`
+      : pd.waiting ? `the unit table is not worked out yet — ${esc(pd.waiting)}. This page asks again every few seconds.`
+        : `working out the unit table: <b>${Number((b && b.done) || 0).toLocaleString()} of ${Number((b && b.of) || 0).toLocaleString()} coins and shapes</b> — building in the background; the table appears here when it lands. This page asks again every few seconds and leaves your place on it alone.`}</p>`;
+  }
+  // THE BOXES SHOW WHAT THE RECORD SET HOLDS, never what this browser last
+  // typed: the filter lives on the set, and the set is the one truth of it
+  bSetFilters('S3U', units.unitFilter || {});
+  const specs = B_UNIT_COLS.map((c) => [c[3], c[4], 'num', c[6]]);
+  const arrow = (c) => (c[2] === 'low' ? '↑' : '↓');
+  const rows = (units.rows || []).map((r) => `<tr>
+        <td ${btdU0}>${bCoin(r)} <span class="muted">${esc(bGeo(r.geometry))}</span>${r.ctx1 ? ` <span class="muted">${esc(`+ ${[r.ctx1, r.ctx2].filter(Boolean).join(' + ')}`)}</span>` : ''}</td>
+        ${B_UNIT_COLS.map((c) => `<td ${btdU}>${bUnitCell(r, c)}</td>`).join('')}</tr>`).join('');
+  return `${head}
+    ${bFilterGrid('S3U', specs, units.spread)}
+    <div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-bunithead style="text-align:left;border-bottom:1px solid var(--line)">
+        <th ${bth.replace('.3rem .3rem', '.3rem .3rem .3rem 0')} title="the traded coin and the chunk shape it was priced at, and beside them the one or two coins it is read alongside, on rows that have any. Anything after the + is context only — read against, never bought or sold.">coin and shape${bUnitSortBtn(view, 'name', '↑')}</th>
+        ${B_UNIT_COLS.map((c) => `<th ${bth} title="${esc(c[6])}">${esc(c[1])}${bUnitSortBtn(view, c[0], arrow(c))}</th>`).join('')}</tr></thead>
+      <tbody>${rows || `<tr><td colspan="${1 + B_UNIT_COLS.length}" class="empty">nothing cleared the floors</td></tr>`}</tbody></table></div>
+    ${bShown({ total: units.total || 0, of: units.of || 0 })}
+    ${bPager(units.total || 0, units.from || 0, 100, 'S3U')}`;
 }
 
 // ---- WHAT EVERY TABLE ON THIS SCREEN GETS (owner order, 2026-08-28) -------
@@ -5138,7 +5276,13 @@ async function bApplyFilters(root, key, doc) {
   if ((key === 'S1' || key === 'S2') && doc && doc.id) {
     await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/filters`, { filters: next });
   }
-  bRepaintTable(bStageOfKey(key), key === 'S3C' ? { peg: '[data-bcoinhead]' } : {});
+  // AND TABLE 3.C'S FILTER LIVES ON THE RECORD SET TOO (3.230.0): the Funnel
+  // reads it, so it has to be where the Funnel can. A save the service refuses
+  // has already said why; the table is left as it stands.
+  if (key === 'S3U' && doc && doc.id) {
+    if (!(await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/unitfilter`, { filters: next }))) return;
+  }
+  bRepaintTable(bStageOfKey(key), key === 'S3C' ? { peg: '[data-bcoinhead]' } : key === 'S3U' ? { peg: '[data-bunithead]' } : {});
 }
 // spec: [id, name shown, kind, tooltip, options?]  kind: 'text' | 'num' | 'pick'
 // ONE VALUE, PRINTED SO IT CAN BE COMPARED DOWN A COLUMN. Whole numbers keep
@@ -5243,7 +5387,8 @@ function bWireFilters(root, doc) {
       bSaveView({ filters: all, [`from${key}`]: 0, ...(key === 'S3C' ? { s3cBeforePin: null, s3cPin: null } : {}) });
       // and off the record set too, or the boxes empty while the carry stays cut
       if ((key === 'S1' || key === 'S2') && doc && doc.id) await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/filters`, { filters: {} });
-      bRepaintTable(bStageOfKey(key), key === 'S3C' ? { peg: '[data-bcoinhead]' } : {});
+      if (key === 'S3U' && doc && doc.id) await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/unitfilter`, { filters: {} });
+      bRepaintTable(bStageOfKey(key), key === 'S3C' ? { peg: '[data-bcoinhead]' } : key === 'S3U' ? { peg: '[data-bunithead]' } : {});
     };
   });
 }
@@ -5852,13 +5997,16 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     offset: coinsQ.offset || 0, limit: 100,
   }).toString();
   const rankQs = new URLSearchParams({ from, n: 100, heldBack: bHeldBack ? '1' : '', ...bFilters('S3R') }).toString();
-  const [ranked, coins, gap, filling, dropping, undoing] = await Promise.all([
+  const unitsQ = view.units || {};
+  const unitsQs = new URLSearchParams({ sort: unitsQ.sort || 'set', flip: unitsQ.flip ? '1' : '', offset: unitsQ.offset || 0, limit: 100 }).toString();
+  const [ranked, coins, gap, filling, dropping, undoing, units] = await Promise.all([
     apiOr(`api/stageset/${doc.id}/ranked?${rankQs}`, null),
     apiOr(`api/stageset/${doc.id}/coins?${qs}`, null),
     apiOr(`api/stageset/${doc.id}/missing`, null),
     apiOr(`api/stageset/${doc.id}/fill-in/status`, null),
     apiOr(`api/stageset/${doc.id}/drop-undeclared/status`, null),
     apiOr(`api/stageset/${doc.id}/undo-append/status`, null),
+    apiOr(`api/stageset/${doc.id}/units?${unitsQs}`, null),
   ]);
   // A finished set whose tables are missing totals itself when opened (the
   // durable fix, owner order 2026-08-27): the service reports how far the
@@ -6073,6 +6221,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   }).join('') || '<tr><td colspan="19" class="empty">nothing cleared the floors</td></tr>'}</tbody></table></div>
     ${bShown({ total: (coins && coins.total) || 0, of: ((coins && coins.total) || 0) + ((coins && coins.removed) || 0) })}
     ${bPager((coins && coins.total) || 0, coinsQ.offset || 0, 100, 'S3C')}
+    ${bUnitsSection(doc, units, view)}
   </div>`)) return;
   // THE ORDERING BOX AND ITS Apply ARE GONE (owner order, 2026-08-28: "remove
   // obsolete ordering selections as we can do all row ordering by column
@@ -6197,13 +6346,15 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     };
   });
   if ((filling && filling.running)
-    || (dropping && dropping.running) || (undoing && undoing.running)) {
+    || (dropping && dropping.running) || (undoing && undoing.running)
+    || (units && units.pending && (units.pending.building || units.pending.waiting))) {
     bTallyPoll = setTimeout(() => { if (tab === 'boards') bPollRedraw(); }, 4000);
   }
   bWirePager(mount);
   bWireRankSort(doc, mount);
   bWireCoinSort(mount);
-  bWireFilters(mount);
+  bWireUnitSort(mount);
+  bWireFilters(mount, doc);
   bWireTableFold(mount);
   // opened records rows, fetched and slotted under their coin row
   for (const k of openKeys) {
@@ -6514,16 +6665,26 @@ async function drawFunnel() {
         pick one on the Boards section.</p></div>`;
     return;
   }
-  if (d.totalling || d.waiting) {
+  if (d.totalling || d.waiting || d.building || d.blending || d.failed) {
     // what is being worked out, in the totalling's own words -- the phase,
-    // the count -- and the page asks again, as Boards does
+    // the count -- and the page asks again, as Boards does. The unit table
+    // Table 3.C reads and the blend of the coins and shapes its filter keeps
+    // (3.230.0) are worked out the same way and said the same way.
     const tp = d.totalling && typeof d.totalling === 'object' ? d.totalling : null;
+    const ub = d.building && typeof d.building === 'object' ? d.building : null;
+    const bl = d.blending && typeof d.blending === 'object' ? d.blending : null;
     const said = tp
       ? `${tp.phase || 'totalling the tables'}: ${Number(tp.done || 0).toLocaleString()} of ${Number(tp.total || 0).toLocaleString()} ${tp.word || 'parts'}`
-      : String(d.totalling || d.waiting);
+      : ub ? `working out the unit table the filter on Table 3.C reads: ${Number(ub.done || 0).toLocaleString()} of ${Number(ub.of || 0).toLocaleString()} coins and shapes`
+        : bl && bl.building ? `blending the coins and shapes the filter on Table 3.C keeps: ${Number(bl.building.done || 0).toLocaleString()} of ${Number(bl.building.total || 0).toLocaleString()} parts`
+          : bl && bl.failed ? `the blend of the coins and shapes the filter on Table 3.C keeps could not be worked out: ${bl.failed}`
+            : bl && bl.waiting ? String(bl.waiting)
+              : d.failed ? `could not be worked out: ${d.failed}`
+                : String(d.totalling || d.waiting);
+    const failed = !!(d.failed || (bl && bl.failed));
     $('#view').innerHTML = `<div class="panel"><h3 style="margin-top:0">Funnel</h3>
-      <p class="note">${d.totalling ? 'the tables for this set are being worked out - ' : ''}<b>${esc(said)}</b> - this page asks again in a few seconds</p></div>`;
-    setTimeout(() => { if (tab === 'funnel') drawFunnel(); }, 4000);
+      <p class="note">${d.totalling ? 'the tables for this set are being worked out - ' : ''}<b${failed ? ' class="warn"' : ''}>${esc(said)}</b>${failed ? '' : ' - this page asks again in a few seconds'}</p></div>`;
+    if (!failed) setTimeout(() => { if (tab === 'funnel') drawFunnel(); }, 4000);
     return;
   }
   // THE FIRST VISIT TO A SET IS ON ITS FIRST UNIT, named by the reply. The
@@ -6531,6 +6692,14 @@ async function drawFunnel() {
   // what is saved are one unit's -- a walk saved for that unit earlier may
   // stand at another step than the one just read.
   if (!st.unit) {
+    fUnitChoose(st.set, d.unit || 'all');
+    fState = null;
+    return drawFunnel();
+  }
+  // A WALK LEFT ON A COIN AND SHAPE THE FILTER ON TABLE 3.C NO LONGER KEEPS
+  // (3.230.0) was answered with the first one it keeps: the choice follows the
+  // reply, so what is drawn and what is remembered are the same board
+  if (d.unitFilter && d.unitFilter.hidden && (d.unit || 'all') !== st.unit) {
     fUnitChoose(st.set, d.unit || 'all');
     fState = null;
     return drawFunnel();
@@ -7566,7 +7735,9 @@ function fHoldTable(t, bar, walking) {
     ${bPager(all.length, from, F_HOLD_PER, 'WH')}
     <p class="note">${Number(all.length).toLocaleString()} of ${Number(t.of).toLocaleString()} row(s) match what <b>show</b> is set to -
       <b>${Number(t.passing).toLocaleString()}</b> clear the bar, <b>${Number(t.failing).toLocaleString()}</b> do not,
-      <b>${Number(t.unreadable).toLocaleString()}</b> could not be read.</p>
+      <b>${Number(t.unreadable).toLocaleString()}</b> could not be read.${
+  t.unitFilter && t.unitFilter.pending ? ' The filter on Table 3.C is not applied here yet: the unit table it reads is still being worked out.'
+    : t.unitFilter ? ` The filter on Table 3.C keeps ${Number(t.unitFilter.kept).toLocaleString()} of ${Number(t.unitFilter.of).toLocaleString()} coins and shapes, and only those are listed.` : ''}</p>
     <p class="note">Each column ranks the settings on one part of the test window and reads the money on another:
       <b>first → second</b> puts them in order by what they made in the first part and scores that order on the
       second. <b>1.00</b> is the same order on both parts, <b>0.00</b> no relation at all, and a number below zero is
@@ -8029,6 +8200,10 @@ function fTitle(d, st, name, away, open) {
     <p class="note" style="margin:.35rem 0 0">${(d.cuts || []).filter((c) => c.mine).length} Stage 4 record set(s) have been cut from this coin and shape,
       and the box offers all ${(d.cuts || []).length} cut from this stage 3 record set - one from another coin and shape says which.
       Choose <b>new rule</b> to walk the steps again and cut another.</p>
+    ${d.unitFilter ? `<p class="note" style="margin:.35rem 0 0">the filter on Table 3.C keeps <b>${Number(d.unitFilter.kept).toLocaleString()}</b> of
+      ${Number(d.unitFilter.of).toLocaleString()} coins and shapes, and the coin box, Worth walking?, all units together and the rule steps read those alone${
+  d.unitFilter.hidden ? ` - the coin and shape this walk was left on, <b>${esc(d.unitFilter.hidden)}</b>, is not among them, so this walk is on the first one it keeps` : ''}.
+      Change the filter under Table 3.C on Boards.</p>` : ''}
     <h3 id="fTitleName" style="margin:.55rem 0 0">${esc(name)}</h3>`;
 }
 // what the bold name says while the steps are being walked

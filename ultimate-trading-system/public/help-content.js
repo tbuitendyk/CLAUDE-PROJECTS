@@ -569,6 +569,23 @@ window.HELP = {
         + 'A set that finished with failed units carries an INCOMPLETE banner: it does not match its own plan, '
         + 'and every table under the banner is missing those units. The held-back window appears only on stage 3 '
         + 'tables, because only stage 3 prices it.'],
+      ['Table 3.C: Every unit, and the filter the Funnel reads',
+        'Under Table 3.B a stage 3 set draws one row for each coin and shape \u2014 the traded coin, the coins it is read '
+        + 'alongside, and the chunk shape \u2014 on one line, worked out from that coin and shape\u2019s own records and from '
+        + 'the numbers Work out the test history numbers rebuilt for them on the Funnel. The columns say how many of its '
+        + 'settings are in the money, what they made on average, with and without the field\u2019s gate and per trade, how '
+        + 'the middle and the best setting did, how many settings are in the money in each of the three parts of the '
+        + 'test window and in all three, the four comparisons Worth walking? reads, what the top of the order made in '
+        + 'the third part, how the best 30 and the whole board do against the kept scrambled copies, how many settings '
+        + 'beat always long, how often it trades, how much the field blocked, the worst losing streak and the trades won '
+        + 'of the best 30, and the chunks a part. Every column sorts on one click and every one has a filter box, with '
+        + 'the four numbers beside it.\n\n'
+        + 'The filter on this table is saved on the record set, and the Funnel reads it: the coin box there offers only '
+        + 'the coins and shapes it keeps, Worth walking? lists only those, all units together blends only those, and the '
+        + 'rule steps walk only those. A column that needs the rebuilt numbers stays empty until Work out the test history '
+        + 'numbers has run, and a filter set on an empty column hides the row \u2014 a coin and shape with no figure has not '
+        + 'cleared anything. The table is worked out again in the background whenever the tables or the rebuilt numbers '
+        + 'move, and says so while it is.'],
     ],
     controls: {
       bHeldBack: {
@@ -690,6 +707,13 @@ window.HELP = {
         'A stage 3 sweep prices every setting you asked for against every coin. That is often half a million rows, and the only thing anyone can do with half a million rows by hand is sort them and take the top one.\n\nThat is the worst possible move. The best of half a million tries looks good even when there is nothing there at all - that is simply what maximums do. So this screen never asks you to pick a row. It walks a fixed set of steps that ask, in order: which of the dials actually changes the result, what shape that change has, whether two dials matter together, whether the answer holds up somewhere else, whether the good settings have good neighbours or stand alone, and how ugly the ride was.\n\nWhat comes out is a RULE - a description like "t between 65 and 113 hours, gate active, drawdown under 400" - and the settings that match it. A rule is worth having because the same rule can be run against scrambled data to see whether it finds anything there too. A single row cannot be checked that way, which is why picking one is a dead end.'],
       ['Why every number here is test money',
         'A sweep splits its history into three parts: one to learn from, one to try things on, and one that is held back and never looked at.\n\nThe held-back part is the only honest judge you get, and it stops being honest the moment you use it to CHOOSE. If you sort half a million rows by held-back money and take the best, you have fitted to it just as surely as if you had trained on it.\n\nSo every figure on this screen comes from the try-things-on part. The held-back part is opened once, at the very end, on the handful that survive - and then it still means something.'],
+      ['Which coins and shapes this screen offers',
+        'Table 3.C on Boards draws one row per coin and shape, and the filter set there is saved on the record set. This '
+        + 'screen reads it: the coin box offers only the coins and shapes that filter keeps, Worth walking? lists only '
+        + 'those, all units together is the blend of those alone, and the rule steps walk only those. Work out the test '
+        + 'history numbers still runs over every coin and shape in the record set, because half of Table 3.C\u2019s columns '
+        + 'are worked out from what it rebuilds. A walk left on a coin and shape the filter no longer keeps opens on the '
+        + 'first one it does keep, and the line under the coin box says so.'],
     ],
     intro: 'Turns a stage 3 board of hundreds of thousands of priced settings into a small set worth investigating, '
       + 'by walking a fixed sequence of readings rather than letting you sort a table and pick the winner. '
