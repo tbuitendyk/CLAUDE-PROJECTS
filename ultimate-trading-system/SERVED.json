@@ -1,16 +1,16 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html — so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "fcef216332618405846cfb07d384ac337f3b7240",
-  "subject": "3.226.0 -- Work out the test history numbers lets its worker threads go, holds no plan, and counts off the tables",
-  "capturedAt": "2026-09-22T19:41:52Z",
+  "commit": "de282f3e64b193abeb86b03053fc14be4fe0a57e",
+  "subject": "3.227.1 -- a status line that did nothing goes, and two guards are aimed at lines as they are written now",
+  "capturedAt": "2026-09-22T19:57:53Z",
   "files": {
     "public/construct.js": {
-      "sha256": "3d736b67f327fa2b6553bd120d9c722e98e185f9d7b18149d6972e8720fd6fb9",
-      "bytes": 927717
+      "sha256": "d90e5d4d577a8c3ebf2f5dca3f1e232cb7535913b4c8015b6d6953727e0033a1",
+      "bytes": 929577
     },
     "public/help-content.js": {
-      "sha256": "9aeaf0fa5857aa77a4b98d3770cdaea4dd21ea2c96b8a215ef5e32b6db2e8739",
-      "bytes": 173468
+      "sha256": "d87c99c26d94196cd2ef17b3b00e0b37058b93ba2da73806b7b4824a069b0106",
+      "bytes": 173723
     }
   },
   "htmlNotVerified": "public/construct.html, public/trade.html and public/setup.html are served with the release stamped into the head (3.137.0) and, for construct.html, the cache markers rewritten to the content hash of each script, so their served bytes never equal their stored bytes. Nothing is generated from them."
