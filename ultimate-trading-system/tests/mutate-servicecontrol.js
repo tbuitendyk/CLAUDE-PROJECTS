@@ -682,6 +682,13 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "      const mine = heldOn[pi];                                   // numbers into the one block (3.220.2)", "      const mine = heldOn[pi].map((i, k) => k);",
     'theLaunchHandsEachUnitItsSettingsByNumberAndBuildsAPartAtItsTurn',
     'a start-again numbers a unit\'s settings from its own list, and a weekly unit files its records at places the plan names differently'],
+  // ---- THE TABLES ARE COUNTED PER UNIT (3.220.4) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "  const shortSettings = Math.ceil(settings / v);", "  const shortSettings = settings;",
+    'theBudgetGateDoesTheArithmeticUpFront',
+    'every decision, band and 24/5 variant is counted as a row of its own, and a block that fits reads tight'],
+  [path.join(ROOT, 'lib', 'stages.js'), "  const rows = shortSettings * u;                                       // Table 3.B rows", "  const rows = shortSettings;                                           // Table 3.B rows",
+    'theBudgetGateDoesTheArithmeticUpFront',
+    'the tables are counted for one unit whatever the run holds, and the block that would die totalling reads fits'],
   // ---- THE GATE COLUMN PRINTS THE GATE (3.220.3) ----
   [path.join(ROOT, 'public', 'construct.js'), "  const at = named.indexOf(' · field ');", "  const at = -1;",
     'theFieldColumnPrintsTheGateTheWayTheSettingsNameWritesIt',

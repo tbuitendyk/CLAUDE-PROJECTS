@@ -424,7 +424,7 @@ module.exports = {
     assert.ok(before.includes('const counted = countDeclared(params, sizes, parentRecords, leans, fieldPairs);'), 'the gates read the count, not the built block — with the leans the launch prices (3.130.0) and the field pairs (3.212.0)');
     assert.ok(!before.includes('settingsFor(params, sizes)') && !before.includes('foldSameTradeSettings('), 'nothing before the answer builds or folds the settings');
     assert.ok(before.includes("if (!counted.kept) throw new Error('the block declared no settings');"), 'an empty block still refuses at the press');
-    assert.ok(before.includes('tallyBudgetFor({ settings: counted.kept, coins: coinsN, units: parentRecords.length, declared: counted.declared })') && before.includes('storeBudgetFor({ rows: counted.pricings })'),
+    assert.ok(before.includes('tallyBudgetFor({ settings: counted.kept, units: parentRecords.length, variants: variantsOf(params), declared: counted.declared })') && before.includes('storeBudgetFor({ rows: counted.pricings })'),
       'both budget gates are the count\'s arithmetic — and the disk gate reads what the units hold between them, never settings × units');
     // RE-AIMED 3.187.0: the block is built from the committee shapes its own
     // records carry, which is how the extras reach the fold.
@@ -3165,15 +3165,17 @@ module.exports = {
   async theBudgetGateDoesTheArithmeticUpFront() {
     const GB = 1073741824;
     // fits / tight / refuse, with the numbers said in the message
-    const fits = stages.tallyBudgetFor({ settings: 2772, coins: 17, heapLimitBytes: 1792 * 1048576 });
+    // the calibration block was seventeen units of one coin each, so units
+    // stand where coins stood and the numbers are the ones that were measured
+    const fits = stages.tallyBudgetFor({ settings: 2772, units: 17, heapLimitBytes: 1792 * 1048576 });
     assert.strictEqual(fits.band, 'fits', 'the design-scale block fits without comment');
     assert.strictEqual(fits.message, null);
     // the calibration pin: the exact block that killed the old totalling
     // reads as TIGHT under the reshaped one — it runs, and it says so
-    const owners = stages.tallyBudgetFor({ settings: 177408, coins: 17, heapLimitBytes: 1792 * 1048576 });
+    const owners = stages.tallyBudgetFor({ settings: 177408, units: 17, heapLimitBytes: 1792 * 1048576 });
     assert.strictEqual(owners.band, 'tight', `the 177,408 × 17 block must read tight, got ${owners.band} at share ${owners.share}`);
     assert.ok(/it will run, but it is tight/.test(owners.message));
-    const over = stages.tallyBudgetFor({ settings: 1000000, coins: 17, heapLimitBytes: 1792 * 1048576 });
+    const over = stages.tallyBudgetFor({ settings: 1000000, units: 17, heapLimitBytes: 1792 * 1048576 });
     assert.strictEqual(over.band, 'refuse');
     assert.ok(/refuses rather than dying mid-total/.test(over.message) && /Shrink it with fewer settings/.test(over.message),
       'the refusal says why and what to shrink');
@@ -3189,8 +3191,8 @@ module.exports = {
     // THE LAUNCH'S OWN TERM (3.220.2, owner: "put the launch-time term into the
     // memory gate so it refuses with the real number"): the block and every
     // unit's list of the settings it holds, counted beside the tables
-    const noUnits = stages.tallyBudgetFor({ settings: 242176, coins: 17, heapLimitBytes: 3072 * 1048576 });
-    const withUnits = stages.tallyBudgetFor({ settings: 242176, coins: 17, units: 86, declared: 272448, heapLimitBytes: 3072 * 1048576 });
+    const noUnits = stages.tallyBudgetFor({ settings: 242176, heapLimitBytes: 3072 * 1048576 });
+    const withUnits = stages.tallyBudgetFor({ settings: 242176, units: 86, declared: 272448, heapLimitBytes: 3072 * 1048576 });
     assert.strictEqual(noUnits.launchBytes, 0, 'with no units named there is no launch term');
     assert.strictEqual(withUnits.launchBytes, 272448 * 400 + 242176 * 86 * 16,
       'the launch term is the declared block at 400 bytes a setting plus every unit\'s list at 16 bytes a number');
@@ -3199,8 +3201,24 @@ module.exports = {
     assert.ok(/the launch itself about/.test(withUnits.message) && /every unit's list of the settings it holds/.test(withUnits.message),
       'the message names the launch term');
     assert.ok(withUnits.fits < noUnits.fits, 'and fewer settings fit once the launch is counted');
-    const small = stages.tallyBudgetFor({ settings: 3168, coins: 17, units: 86, declared: 3564, heapLimitBytes: 3072 * 1048576 });
+    const small = stages.tallyBudgetFor({ settings: 3168, units: 86, declared: 3564, heapLimitBytes: 3072 * 1048576 });
     assert.strictEqual(small.band, 'fits', 'the 3,168 × 86 control block still fits without comment');
+    // THE TABLES ARE COUNTED PER UNIT (3.220.4, owner order 2026-09-22): the
+    // 169,248-setting block on 86 units read "tight" at 1.2 GB by coins when
+    // Table 3.B would have held 7.3 million rows; by units it refuses, and one
+    // gate value of it, 56,416 settings, fits
+    const doubles = stages.tallyBudgetFor({ settings: 169248, units: 86, variants: 2, declared: 204336, heapLimitBytes: 3072 * 1048576 });
+    assert.strictEqual(doubles.rows, 84624 * 86, 'Table 3.B rows are short settings × units, decision being a sub-row');
+    assert.strictEqual(doubles.band, 'refuse', `the block that would die totalling reads ${doubles.band} at share ${doubles.share}`);
+    assert.ok(/on each of the 86 unit\(s\)/.test(doubles.message) && /7,277,664 rows/.test(doubles.message) && !/coin\(s\)/.test(doubles.message),
+      `the refusal counts units and rows, never coins: ${doubles.message}`);
+    const oneGate = stages.tallyBudgetFor({ settings: 56416, units: 86, variants: 2, declared: 68112, heapLimitBytes: 3072 * 1048576 });
+    assert.strictEqual(oneGate.band, 'fits', `one gate value of it fits, got ${oneGate.band} at share ${oneGate.share}`);
+    assert.ok(stages.tallyBudgetFor({ settings: 56416, units: 86, variants: 1, declared: 68112, heapLimitBytes: 3072 * 1048576 }).bytes > oneGate.bytes,
+      'a block that permutes nothing has a row per setting per unit, and costs more');
+    // and the variants are read off the block's own axes
+    assert.strictEqual(stages.variantsOf({ permuteDecision: true, permuteBand: true, permuteWeekdays: true }), 16, 'decision × band × 24/5');
+    assert.strictEqual(stages.variantsOf({ decision: 'argmax', band: 'auto' }), 1);
     // ...and it says how far over the bar the block is, because "shrink it"
     // with no number is an invitation to guess at a screen that takes a moment
     // to answer each time.
@@ -3210,11 +3228,11 @@ module.exports = {
     `the refusal must state both numbers; got: ${over.message}`);
     // the arithmetic behind that: it is settings x coins and NOTHING else, so
     // the same block on the same coins is the same size whatever the nulls are
-    const a19 = stages.tallyBudgetFor({ settings: 50000, coins: 5, nullN: 19, heapLimitBytes: 1792 * 1048576 });
-    const a99 = stages.tallyBudgetFor({ settings: 50000, coins: 5, nullN: 99, heapLimitBytes: 1792 * 1048576 });
+    const a19 = stages.tallyBudgetFor({ settings: 50000, units: 5, nullN: 19, heapLimitBytes: 1792 * 1048576 });
+    const a99 = stages.tallyBudgetFor({ settings: 50000, units: 5, nullN: 99, heapLimitBytes: 1792 * 1048576 });
     assert.strictEqual(a19.bytes, a99.bytes,
       'the tally size moved with the null set size — every deal is folded into a running count and never kept, so it must not');
-    assert.ok(stages.tallyBudgetFor({ settings: 50000, coins: 10, heapLimitBytes: 1792 * 1048576 }).bytes > a19.bytes,
+    assert.ok(stages.tallyBudgetFor({ settings: 50000, units: 10, heapLimitBytes: 1792 * 1048576 }).bytes > a19.bytes,
       'the tally size does not grow with the coins, which is one of the two things it IS made of');
     assert.ok(/GB/.test(over.message), 'the refusal carries the arithmetic, not just a verdict');
     // disk: rows against what is actually free

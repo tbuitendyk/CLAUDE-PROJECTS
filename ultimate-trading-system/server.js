@@ -1347,9 +1347,8 @@ app.post('/api/stage3-count', (req, res) => {
       plateauUnits: d.plateauUnits == null ? null : d.plateauUnits,
       leanSource: d.leanSource || null };
     const units = d.units ?? Math.max(0, Math.floor(Number(b.units) || 0));
-    const coins = d.coins ?? Math.max(1, Math.floor(Number(b.coins) || 1));
     if (units > 0) {
-      out.heap = stages.tallyBudgetFor({ settings: d.settings, coins, units, declared: d.declared });
+      out.heap = stages.tallyBudgetFor({ settings: d.settings, units, variants: stages.variantsOf(b), declared: d.declared });
       out.disk = stages.storeBudgetFor({ rows: d.units != null ? d.pricings : d.settings * units });
     }
     return res.json(out);

@@ -3108,7 +3108,7 @@ function startStage3(params) {
   // the budget gate: the whole plan is known here, so a block that cannot
   // fit is refused NOW, with the arithmetic, never discovered mid-total
   const coinsN = new Set(parentRecords.map((r) => r.trade)).size;
-  const heapGate = tallyBudgetFor({ settings: counted.kept, coins: coinsN, units: parentRecords.length, declared: counted.declared });
+  const heapGate = tallyBudgetFor({ settings: counted.kept, units: parentRecords.length, variants: variantsOf(params), declared: counted.declared });
   if (heapGate.band === 'refuse') throw new Error(heapGate.message);
   const diskGate = storeBudgetFor({ rows: counted.pricings });
   if (diskGate.band === 'refuse') throw new Error(diskGate.message);
@@ -3458,7 +3458,7 @@ async function finishStage3({ doc, pool, w, parentRecords, settings, coinsN, liv
   doc.status = okN === parentRecords.length ? 'done' : 'incomplete';
   doc.progress = doc.status === 'incomplete' ? `finished with ${doc.failures.length} unit(s) missing — the set does not match its own plan` : 'totalling the tables';
   saveSet(doc);
-  const tallyGate = tallyBudgetFor({ settings: settings.length, coins: coinsN });
+  const tallyGate = tallyBudgetFor({ settings: settings.length, units: parentRecords.length, variants: variantsOf(doc.params) });
   let lastTallySave = 0;
   const tTally = Date.now();
   const tallyNote = (dn, tn) => {
@@ -3780,14 +3780,32 @@ const DISK_REFUSE_SHARE = 0.8;        // of the free disk, for the records store
 
 const gbWords = (bytes) => (bytes >= 1073741824 ? `${(bytes / 1073741824).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1048576))} MB`);
 
-function tallyBudgetFor({ settings, coins, units = 0, declared = null, heapLimitBytes = null }) {
+// HOW MANY FULL SETTINGS ONE TABLE 3.B ROW STANDS FOR (3.220.4). The coins
+// table keys on the short setting -- decision, band and 24/5 factored out and
+// kept as its sub-rows -- so a block that permutes them has that many fewer
+// rows per unit than settings. Read off the block's own axes, never typed.
+function variantsOf(params) {
+  const { decisions, bands, weekdays } = blockAxesFor(params || {});
+  return Math.max(1, decisions.length * bands.length * weekdays.length);
+}
+// THE TABLES ARE COUNTED PER UNIT, NOT PER COIN (3.220.4, owner order
+// 2026-09-22, after a 169,248-setting block on 86 units of 17 coins read
+// "tight" at 1.2 GB when Table 3.B would have held 7.3 million rows, about
+// 2.9 GB). Table 3.A is one entry per setting; Table 3.B is one row per short
+// setting on each UNIT -- a coin read alongside two different coins is two
+// units and two rows. The old term multiplied by coins, which equals units
+// only on a singles chain, where it was calibrated.
+function tallyBudgetFor({ settings, units = 0, variants = 1, declared = null, heapLimitBytes = null }) {
   let heap = heapLimitBytes;
   if (heap == null) {
     const r = require('./estimate').boxResources();
     heap = (r.heapCeilingMb || 1792) * 1048576;
   }
-  const per = TALLY_SETTING_BASE_BYTES + Math.max(1, coins) * TALLY_ATOM_BYTES;
-  const tableBytes = Math.round(settings * per);
+  const v = Math.max(1, Math.floor(Number(variants) || 1));
+  const u = Math.max(1, Math.floor(Number(units) || 0));
+  const shortSettings = Math.ceil(settings / v);
+  const rows = shortSettings * u;                                       // Table 3.B rows
+  const tableBytes = Math.round(settings * TALLY_SETTING_BASE_BYTES + rows * TALLY_ATOM_BYTES);
   // the launch's term counts only where the units are known: the launch and
   // the count line name them, the totalling of a finished set has nothing to launch
   const perUnitList = units > 0 ? LAUNCH_SETTING_BYTES + units * LAUNCH_UNIT_INDEX_BYTES : 0;
@@ -3810,17 +3828,20 @@ function tallyBudgetFor({ settings, coins, units = 0, declared = null, heapLimit
   // It also says how far over the bar the block is. "Shrink it" without a
   // number is an invitation to guess repeatedly at a screen that takes a moment
   // to answer each time.
-  const fits = Math.floor((heap * HEAP_REFUSE_SHARE) / (per + perUnitList));
+  // per setting: its ranked entry, its share of a coin row on each unit, and its place in the launch
+  const perSetting = TALLY_SETTING_BASE_BYTES + (u * TALLY_ATOM_BYTES) / v + perUnitList;
+  const fits = Math.floor((heap * HEAP_REFUSE_SHARE) / perSetting);
   const launchWords = launchBytes ? ` and the launch itself about ${gbWords(launchBytes)} (the block, and every unit's list of the settings it holds)` : '';
+  const rowsWords = `one entry per setting and one row per short setting on each of the ${u.toLocaleString()} unit(s) — ${rows.toLocaleString()} rows, decision, band and 24/5 being a row's sub-rows`;
   const message = band === 'fits' ? null
     : band === 'tight'
-      ? `these tables will need about ${gbWords(tableBytes)}${launchWords}, of the ${gbWords(heap)} the service has — it will run, but it is tight`
-      : `these tables would need about ${gbWords(tableBytes)}${launchWords}, and the service has ${gbWords(heap)} in all — anything above `
-        + `${gbWords(Math.round(heap * HEAP_REFUSE_SHARE))} refuses rather than dying mid-total. The tables are settings × coins`
+      ? `these tables will need about ${gbWords(tableBytes)} (${rowsWords})${launchWords}, of the ${gbWords(heap)} the service has — it will run, but it is tight`
+      : `these tables would need about ${gbWords(tableBytes)} (${rowsWords})${launchWords}, and the service has ${gbWords(heap)} in all — anything above `
+        + `${gbWords(Math.round(heap * HEAP_REFUSE_SHARE))} refuses rather than dying mid-total. The tables are one row per short setting per unit`
         + `${units > 0 ? ' and the launch is settings × units' : ''}, and nothing else — the null set size does not change it, because each deal is counted as it is priced and never `
-        + `kept. On ${Math.max(1, coins)} coin(s)${units > 0 ? ` and ${units} unit(s)` : ''}, ${fits.toLocaleString()} settings fit; this block declares `
-        + `${settings.toLocaleString()}. Shrink it with fewer settings, a smaller carry forward, or fewer coins.`;
-  return { bytes, tableBytes, launchBytes, heapBytes: heap, share, band, message, fits };
+        + `kept. On ${u.toLocaleString()} unit(s), ${fits.toLocaleString()} settings fit; this block declares `
+        + `${settings.toLocaleString()}. Shrink it with fewer settings, a smaller carry forward, or fewer units.`;
+  return { bytes, tableBytes, launchBytes, rows, heapBytes: heap, share, band, message, fits };
 }
 
 function storeBudgetFor({ rows, freeBytes = null }) {
@@ -4495,7 +4516,6 @@ function missingSettingsOf(id) {
   if (hit) return hit;
 
   const held = (doc.plan || {}).settingLabels || [];
-  const coins = Array.isArray((doc.params || {}).universe) ? doc.params.universe.length : 1;
   // ONE definition, read both ways round: what the block declares and the set
   // does not hold, and what it holds and the block does not declare.
   const missing = undeclaredIn(declared, held).size;
@@ -4507,7 +4527,7 @@ function missingSettingsOf(id) {
     units: (doc.plan || {}).units || 0,
     pricings: missing * ((doc.plan || {}).units || 0)
       * (1 + Math.max(0, Math.floor(num((doc.params || {}).nullN, 19))) + Math.max(0, Math.floor(num((doc.params || {}).keepN, 0)))),
-    gate: tallyBudgetFor({ settings: declared.length, coins }),
+    gate: tallyBudgetFor({ settings: declared.length, units: (doc.plan || {}).units || 0, variants: variantsOf(doc.params) }),
     appends: (doc.appends || []).length,
     surplus,
     drops: (doc.drops || []).length,
@@ -4576,8 +4596,7 @@ async function appendMissingSettings(doc, pool = null, note = null, asked = null
   if (!missing.length) return { already: true, settings: settings.length };
 
   // both gates, on what the set WOULD hold, before a single row is priced
-  const coinsN = Array.isArray((doc.params || {}).universe) ? doc.params.universe.length : 1;
-  const heapGate = tallyBudgetFor({ settings: held.length + missing.length, coins: coinsN });
+  const heapGate = tallyBudgetFor({ settings: held.length + missing.length, units: records.length, variants: variantsOf(doc.params) });
   if (heapGate.band === 'refuse') throw new Error(heapGate.message);
   const diskGate = storeBudgetFor({ rows: missing.length * records.length });   // the ceiling; the units hold at most this
   if (diskGate.band === 'refuse') throw new Error(diskGate.message);
@@ -5277,7 +5296,8 @@ function ensureTally(id) {
   // caught in software, so the gate is the protection, said on the screen
   const gate = tallyBudgetFor({
     settings: (doc.plan || {}).settings || 0,
-    coins: Array.isArray((doc.params || {}).universe) ? doc.params.universe.length : 1,
+    units: (doc.plan || {}).units || 0,
+    variants: variantsOf(doc.params),
   });
   if (gate.band === 'refuse') {
     if (doc.tallyError !== gate.message) { doc.tallyError = gate.message; saveSet(doc); }
@@ -10626,7 +10646,7 @@ module.exports = {
   startStage1, startStage2, startStage3,
   missingUnitsOf, unitFillRefusal, fillMissingUnitsStart, fillMissingUnitsStatus, rebuildRanking,
   stage1Table, stage1Ordered, stage1Carry, stage1CarryPreview, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
-  settingsFor, unitsFor, unitsForPassers, unitMembers, isSetDocument, shapesOf, foldPlateauShares, agreementsFor, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, confirmWanted, confirmLeansFor, coinsSourceOf, confirmLabel, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
+  settingsFor, unitsFor, unitsForPassers, unitMembers, isSetDocument, shapesOf, foldPlateauShares, agreementsFor, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, variantsOf, confirmWanted, confirmLeansFor, coinsSourceOf, confirmLabel, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
   fieldAxesFor, certaintyRefusal, fieldPairsFor, fieldFile, writeFieldSidecar, readFieldSidecar, fieldPayloadFor,
   setSetPicked, pickedOf, unitsChoiceOf, stage3RecordsFor, PICK_CHOICES, PICK_LABELS, stage3UnitsFor,
   setSetNotes, setSetName, nextNames, nextFreeName, nameTaken, setSetSort, setSetFilters, recordHeldBackLook, stage2Rows, stage2Ordered, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
