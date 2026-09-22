@@ -178,13 +178,14 @@ module.exports = {
     assert.ok(task.includes('const out = C.foldOf(probsFor(dealIdx, slice), decision, share);'), 'its calls come from there, folded');
     assert.ok(!/committee\.callsOf\(probsFor\(dealIdx, slice\)/.test(task) && !/committee\.callsOf\(trainProbs\(\)/.test(task), 'the pricing still reads the members\' own calls past the fold');
     assert.ok(task.includes('const levelFor = (agr, decision) => C.levelFor(agr, decision);'), 'and what is enough');
-    assert.ok(task.includes('const out = C.agreedOn(decision, agr);'), 'and what agreed');
+    // ...except under quorum by field (3.221.0), which never read the members: there the share that agreed is a reading beside the decision
+    assert.ok(task.includes("const out = agr.rule === 'field' ? agreedWithField(decision, agr) : C.agreedOn(decision, agr);"), 'and what agreed');
     for (const gone of ['agreement.voiceGroups(', 'agreement.ownHistoryBar(', 'Math.ceil((agr.pct / 100) * n)']) {
       assert.ok(!task.includes(gone), `the pricing keeps a copy of its own: ${gone}`);
     }
     const live = fs.readFileSync(path.join(ROOT, 'lib', 'live', 'stagesignal.js'), 'utf8');
     assert.ok(live.includes('const C = committee.committeeOn({ specs, memberProbsTest: members.map((m) => m.probs.slice(0, nTest)), taus, plateaus: cfg.plateaus || [], speaking });'), 'the live path shapes its committee through the same definition, plateaus and all');
-    assert.ok(live.includes('const stream = C.streamOf(decision, agr, momentProbs);'), 'and reads the stream');
+    assert.ok(live.includes('    stream = C.streamOf(decision, agr, momentProbs);'), 'and reads the stream');
     assert.ok(live.includes('const call = stream[stream.length - 1] || 0;'), 'at its last moment, the target, so +hold reads the moments before it and never after');
     assert.ok(!/ownHistoryBar|voiceGroups/.test(live), 'and keeps no copy of the arithmetic');
     // the live signal path decides through the stage path and nothing else (3.97.0: the older engine's branch is gone)
