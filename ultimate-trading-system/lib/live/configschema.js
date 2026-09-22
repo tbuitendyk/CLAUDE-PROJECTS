@@ -79,6 +79,11 @@ function validateConfig(cfg) {
         if (!AGREE_BARS.includes(a.bar)) fail(errors, `agreement.bar: must be one of ${AGREE_BARS.join(', ')}`);
         if (!Number.isFinite(a.pct) || a.pct < 0 || a.pct > 100) fail(errors, 'agreement.pct: must be a share from 0 to 100');
       }
+      // THE FIELD ALONE NEEDS A FIELD (3.221.0): under that rule the call is
+      // the field's own sign, so a configuration naming none could never decide
+      if (a.rule === 'field' && !(cfg.field && typeof cfg.field === 'object' && cfg.field.gate)) {
+        fail(errors, 'agreement.rule: field reads the field alone, and this configuration names no field');
+      }
       if (!COPY_PCTS.includes(a.copy)) fail(errors, `agreement.copy: must be one of ${COPY_PCTS.join(', ')}`);
       if (typeof a.both !== 'boolean') fail(errors, 'agreement.both: must be boolean');
       if (!Number.isInteger(a.persist) || a.persist < 0) fail(errors, 'agreement.persist: must be an integer 0 or more');

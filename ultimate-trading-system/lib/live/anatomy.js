@@ -85,7 +85,8 @@ function describeAnatomy(cfg, opts = {}) {
     if (!a) return null;
     const { RULE_WORDS, READS_NO_BAR } = require('../agreement');
     const what = RULE_WORDS[a.rule] || a.rule;
-    const bar = READS_NO_BAR.has(a.rule) ? 'no bar: the winning side is taken whatever its margin'
+    const bar = a.rule === 'field' ? 'no bar: the field\'s own sign is the call, and the members are not read'
+      : READS_NO_BAR.has(a.rule) ? 'no bar: the winning side is taken whatever its margin'
       : (a.bar === 'own' ? `enough when it reaches what this committee itself reached on its test slice at strictness ${a.pct}%` : `enough at ${a.pct}% of ${a.rule === 'voices' ? 'the independent voices' : a.rule === 'families' ? 'the kinds of evidence' : 'the members'}`);
     const extras = [a.rule === 'voices' ? `two members count as one voice when they agree ${a.copy}% of the time` : null, a.both ? 'the winning side must hold at least one member of each kind' : null, a.persist ? `the same call must have stood for ${a.persist} moment(s) before it is acted on` : null, a.plateau != null ? `a plateau casts its one vote when ${a.plateau}% of its trained members call the same side` : null].filter(Boolean);
     return `${what}; ${bar}${extras.length ? `; ${extras.join('; ')}` : ''}`;

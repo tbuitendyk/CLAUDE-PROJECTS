@@ -31,13 +31,31 @@ const inputFor = (map, geometry, lookbackHours) => require('./fieldrun').inputFo
 //   startTs    the target chunk's start
 //   call       the members' call, 1, -1 or 0
 //   seedText   the pair's key, so the slid copies are the lab's
-function fieldAtDecision(map, geometry, dials, gate, startTs, call, seedText) {
+// the field rebuilt from the closed history, once, for whoever reads it
+function buildFor(map, geometry, dials, seedText) {
   const geo = GEOMETRIES[geometry];
   const backs = Array.isArray(dials.lookbackHours) && dials.lookbackHours.length
     ? dials.lookbackHours.map(Number)
     : (dials.lookbackDays || []).map((d) => Number(d) * 24);
   const input = inputFor(map, geometry, backs);
   const built = F.buildField(input, { ...dials, lookbackHours: backs, seedText: seedText || '' });
+  return { geo, built };
+}
+// THE FIELD'S SIGN AT EACH OF SEVERAL DECISIONS (3.221.0): under quorum by
+// field the live path's call is the field's own sign at the moment decided,
+// and +hold reads the moments before it -- the field built once, read at each
+// moment's own decision instant exactly as the pricing reads it, nothing (0)
+// where the field has no day for the moment or does not speak on it.
+function fieldSignsAt(map, geometry, dials, startTsList, seedText) {
+  const { geo, built } = buildFor(map, geometry, dials, seedText);
+  return startTsList.map((startTs) => {
+    const ts = windowLib.decisionAt(map, startTs, geo).ts;
+    const day = F.readAt(built.days, ts);
+    return day && day.ts === ts && day.speaking && (day.sign === 1 || day.sign === -1) ? day.sign : 0;
+  });
+}
+function fieldAtDecision(map, geometry, dials, gate, startTs, call, seedText) {
+  const { geo, built } = buildFor(map, geometry, dials, seedText);
   const ts = windowLib.decisionAt(map, startTs, geo).ts;
   const day = F.readAt(built.days, ts);
   const exact = !!(day && day.ts === ts);
@@ -68,4 +86,4 @@ function largestMultipleOf(field) {
   return Math.max(1, most);
 }
 
-module.exports = { inputFor, fieldAtDecision, largestMultipleOf };
+module.exports = { inputFor, fieldAtDecision, fieldSignsAt, largestMultipleOf };

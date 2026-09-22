@@ -2074,6 +2074,21 @@ const GUARDS = [
     'theSetupPageCanAlwaysBeReloadedToStartTheEngine', 'the Setup link on Construct leaves the usual address, which the website\'s routing keeps alive, for one the owner never typed'],
   [path.join(ROOT, 'public', 'trade.html'), '<a class="toptab" href="setup.html">Setup</a>', '<a class="toptab" href="svc/setup.html">Setup</a>',
     'theSetupPageCanAlwaysBeReloadedToStartTheEngine', 'the Setup link on Trade leaves the usual address, which the website\'s routing keeps alive, for one the owner never typed'],
+  // THE FIELD AS THE CALL (3.221.0)
+  [path.join(ROOT, 'lib', 'agreement.js'), "  if (rule === 'field') {\n    const s = ctx.fieldSigns ? ctx.fieldSigns[i] : 0;\n    return s === 1 || s === -1 ? s : 0;\n  }\n", '',
+    'theFieldRuleTakesTheFieldsSignAsTheCallAndReadsNoMember', 'quorum by field falls through to a head count of the members, and the field is never the trigger'],
+  [path.join(ROOT, 'lib', 'agreement.js'), "if (c && mods.bothModels && rule !== 'field') {", 'if (c && mods.bothModels) {',
+    'theFieldRuleTakesTheFieldsSignAsTheCallAndReadsNoMember', 'both kinds silences the field wherever the members are of one kind'],
+  [path.join(ROOT, 'lib', 'stagework.js'), "      fieldSigns: agr.rule === 'field' ? fieldSignsFor(dealIdx, slice) : null,", '      fieldSigns: null,',
+    'theFieldAloneIsACallOnlyWhereAFieldIsNamed', 'the pricing hands the rule no signs and every setting under the field places nothing'],
+  [path.join(ROOT, 'lib', 'stages.js'), "  if (rules.includes('field') && !fieldNamed) {", '  if (false) {',
+    'noSettingNameCarriesACommitteeSize', 'quorum by field with no field named is priced silently as a rule that calls nothing'],
+  [path.join(ROOT, 'lib', 'stages.js'), "agreement.AGREE_RULES.filter((r) => r !== 'field' || fieldNamed)", 'agreement.AGREE_RULES.slice()',
+    'noSettingNameCarriesACommitteeSize', 'a permute of quorum by on a run naming no field is refused outright instead of leaving the field out'],
+  [path.join(ROOT, 'lib', 'live', 'stagesignal.js'), "if (agr.rule === 'field') {\n    if (!(cfg.field && cfg.field.gate))", "if (false) {\n    if (!(cfg.field && cfg.field.gate))",
+    'theFieldsOwnSignIsTheCallUnderQuorumByField', 'a live setup under quorum by field is decided by the members after all, and never places what the field said'],
+  [path.join(ROOT, 'lib', 'live', 'configschema.js'), "if (a.rule === 'field' && !(cfg.field && typeof cfg.field === 'object' && cfg.field.gate)) {", 'if (false) {',
+    'theFieldsOwnSignIsTheCallUnderQuorumByField', 'a configuration under quorum by field with no field passes the schema and fails at its first decision'],
 ];
 
 const only = process.argv[2] || '';

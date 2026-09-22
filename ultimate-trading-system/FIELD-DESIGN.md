@@ -594,3 +594,34 @@ then section I steps 1 to 4 and 6, built, tested and deployed in that order,
 and step 5 handed to the owner to run. Step 7, the retirements, stays with
 the owner as section I says. The running record of the loop — decisions,
 parked items, what reached the box — is `LOOP-FIELD.md`.
+
+## N. The field as the trigger (owner, 2026-09-22)
+
+The owner: "i imagine that that would be useful right about now if we wanted
+to try using the coin field as a completely independent trade trigger." As
+built in section F the field can only veto or size a call the members made;
+a moment with no member call is skipped before the field is read.
+
+**3.221.0 adds a sixth `quorum by` choice, `field`.** On every day the field
+named under `The field` speaks, its sign is the call and the members are not
+read: no head count, no lean, no bar. `quorum bar`, `share` and `both kinds`
+are left out of its name and off its records (it reads no bar, like
+`trained`); `hold` still applies. The bars under `The field` are then the
+whole trigger, and `size rungs` size what passes. It is refused by name on a
+run that names no field, and a `permute` of `quorum by` leaves it out on such
+a run, said on the count line.
+
+**Its null set is honest.** The reason `always` was stripped applies to any
+trigger that never reads the votes: a null set made of the members' votes
+with the calendar shuffled ties every comparison. Under `field` a null-set
+deal shuffles the FIELD's calendar by the same order the votes are dealt by,
+so the kept null money is the field's own days with the calendar taken away.
+
+**The live path decides the same way.** Under this rule a setup's call is the
+field's own sign at the decision, read exactly as stage 3 read it (+hold reads
+the moments before); the members are still trained and their votes recorded
+beside it, and the gate still sizes the call. A setup under this rule that
+names no field is refused.
+
+The `share that agreed` column under this rule says how many members would
+have called the same way — a reading beside the decision, not part of it.

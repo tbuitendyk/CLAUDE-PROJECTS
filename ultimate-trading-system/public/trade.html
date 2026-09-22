@@ -674,7 +674,7 @@ function cfgRow(l,v){ return `<div class="cfgrow"><span class="lbl">${l}</span><
 // "Paper Books" and "Live Trading" share, so the two sides cannot differ.
 function agreeWords(a){
   if(!a) return '—';
-  const bar=a.rule==='trained'?'no bar':`${a.pct==null?'?':a.pct+'%'} of ${a.bar==='own'?"the committee's own reach":'all members'}`;
+  const bar=(a.rule==='trained'||a.rule==='field')?'no bar':`${a.pct==null?'?':a.pct+'%'} of ${a.bar==='own'?"the committee's own reach":'all members'}`;
   return `${esc(a.rule)} · ${bar}${a.copy!=null?` · alike at ${a.copy}%`:''}${a.both?' · +both':''}${a.persist?` · +hold ${a.persist}`:''}${a.plateau!=null?` · plateau ${a.plateau}%`:''}${a.rung!=null?` · rung ${a.rung}`:''}`;
 }
 async function drawDetail(){

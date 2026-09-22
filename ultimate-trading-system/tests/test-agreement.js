@@ -338,4 +338,38 @@ module.exports = {
     assert.deepStrictEqual(a.agreementStream(ctx, 'trained', null, { persist: 1 }), [0, 1],
       'a hold still needs the call to have stood already');
   },
+
+  // THE FIELD ALONE (3.221.0, owner 2026-09-22: "use the coin field as a
+  // completely independent trade trigger"). Under quorum by field the call at
+  // a moment is the field's own sign, handed in as ctx.fieldSigns, and the
+  // members are not read: a committee unanimous the other way changes nothing.
+  // The stream is as long as the field's days even with no member calls at
+  // all; both kinds is ignored, because it is a test of the members; hold
+  // still applies; and with no signs handed in the rule calls nothing, never
+  // falling back on the members.
+  theFieldRuleTakesTheFieldsSignAsTheCallAndReadsNoMember() {
+    const up = P(0.1, 0.2, 0.7);
+    const ctx = {
+      calls: [[1, 1, 1, 1, 1], [1, 1, 1, 1, 1]], probs: [[up, up, up, up, up], [up, up, up, up, up]],
+      models: ['logreg', 'logreg'], families: ['a', 'b'], weights: [1, 1],
+      fieldSigns: [-1, 0, 1, 1, 2],
+    };
+    assert.ok(a.AGREE_RULES.includes('field') && a.READS_NO_BAR.has('field') && typeof a.RULE_WORDS.field === 'string',
+      'field is a way of weighing that reads no bar, and it has its words');
+    const want = [-1, 0, 1, 1, 0];
+    assert.deepStrictEqual(a.agreementStream(ctx, 'field', null), want,
+      'the call is the field\'s sign: against two unanimous members, nothing where it does not speak, nothing for a sign that is not one');
+    for (const level of [0, 1, 2, 1e6, -Infinity, null]) {
+      assert.deepStrictEqual(a.agreementStream(ctx, 'field', level), want, `a bar of ${level} changed what field did, and it must read no bar at all`);
+    }
+    assert.strictEqual(a.ownHistoryBar(ctx, 5, 'field', 100), -Infinity, 'the own history bar must refuse to give the field a number');
+    assert.deepStrictEqual(a.agreementStream({ calls: [], fieldSigns: [1, -1, 0] }, 'field', null), [1, -1, 0],
+      'with no members at all the field still speaks, for as many days as it has');
+    assert.deepStrictEqual(a.agreementStream(ctx, 'field', null, { bothModels: true }), want,
+      'one kind of member cannot silence the field: both kinds is a test of the members, which it never reads');
+    assert.deepStrictEqual(a.agreementStream(ctx, 'field', null, { persist: 1 }), [0, 0, 0, 1, 0],
+      'a hold still needs the field\'s call to have stood already');
+    assert.deepStrictEqual(a.agreementStream({ ...ctx, fieldSigns: null }, 'field', null), [0, 0, 0, 0, 0],
+      'without the field\'s signs the rule calls nothing, and never falls back on the members');
+  },
 };

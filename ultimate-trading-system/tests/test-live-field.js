@@ -320,6 +320,93 @@ module.exports.theFieldReachesTheLastDecisionTheCandlesReach = function () {
   }
 };
 
+// ---- THE FIELD AS THE CALL (3.221.0, FIELD-DESIGN.md section N; owner: "use
+// the coin field as a completely independent trade trigger") -- under quorum
+// by field the live path's call is the field's own sign at the moment decided,
+// read exactly as the gate reads it; the members are trained and recorded
+// beside it; the schema and the decision both refuse a setup under the rule
+// that names no field; Trade and the anatomy say what the rule does.
+module.exports.theFieldsOwnSignIsTheCallUnderQuorumByField = async function () {
+  const fieldlive = require('../lib/fieldlive');
+  const agreement = require('../lib/agreement');
+  const wm = require('../lib/windowmove');
+  const { validateConfig } = require('../lib/live/configschema');
+  const an = require('../lib/live/anatomy');
+  const signal = require('../lib/live/signal');
+  // the sign at each of several moments is the sign the gate reads at each one
+  const map = new Map();
+  const start = Date.UTC(2026, 6, 23);
+  for (let h = 0; h < 60 * 24; h++) {
+    const ts = start + h * HOUR;
+    const p = 100 + Math.sin(h / 7) * 3 + Math.cos(h / 31) * 2;
+    map.set(ts, { ts, open: p, high: p + 1, low: p - 1, close: p + 0.2, quoteVolume: 1000 });
+  }
+  const dials = { windowDays: 30, halfLifeDays: 10, floor: 0.05, bands: [0.5, 1], lookbackHours: [24, 48], evidenceCap: 10, leastEvidence: 1, copies: 4 };
+  const starts = wm.windowMoves(map, 'daily-3d', [24], { keepUnclosed: true }).ts.slice(-12);
+  const signs = fieldlive.fieldSignsAt(map, 'daily-3d', dials, starts, 'x');
+  assert.strictEqual(signs.length, 12, 'one sign per moment, in order');
+  let spoke = 0;
+  starts.forEach((startTs, i) => {
+    const one = fieldlive.fieldAtDecision(map, 'daily-3d', dials, GATE, startTs, 1, 'x');
+    const expect = one.day != null && one.speaking && (one.sign === 1 || one.sign === -1) ? one.sign : 0;
+    assert.strictEqual(signs[i], expect, `moment ${i}: the sign taken as the call must be the sign the gate reads`);
+    if (expect) spoke++;
+  });
+  assert.ok(spoke > 0, 'the fixture is wrong if the field speaks on none of the last twelve days');
+  assert.deepStrictEqual(fieldlive.fieldSignsAt(map, 'daily-3d', dials, [start - 24 * HOUR], 'x'), [0], 'a moment the field has no day for is no call');
+  assert.deepStrictEqual(agreement.agreementStream({ calls: [], fieldSigns: signs }, 'field', null, {}), signs, 'the stream the live path reads is the engine\'s own');
+  // the schema: a configuration under the rule carries a field, or it is refused
+  const underField = (cfg) => ({ ...cfg, agreement: { ...cfg.agreement, rule: 'field', bar: null, pct: null } });
+  assert.strictEqual(validateConfig(underField(FIELD_CONFIG)).ok, true, validateConfig(underField(FIELD_CONFIG)).errors.join('; '));
+  const noField = validateConfig(underField(PLAIN_CONFIG));
+  assert.strictEqual(noField.ok, false, 'a configuration under quorum by field with no field passed the schema');
+  assert.ok(noField.errors.some((e) => e === 'agreement.rule: field reads the field alone, and this configuration names no field'), noField.errors.join('; '));
+  // the anatomy says what the rule does, in the engine's own words
+  const step = an.describeAnatomy(underField(FIELD_CONFIG), {}).pipeline.find((s) => /^4\. COMMITTEE/.test(s));
+  assert.ok(/the field alone: on every day the field speaks, its sign is the call and the members are not read; no bar: the field's own sign is the call, and the members are not read/.test(step), step);
+  // and Trade prints no bar for it, on both books through the one function
+  const page = fs.readFileSync(path.join(ROOT, 'public', 'trade.html'), 'utf8');
+  assert.ok(page.includes("const bar=(a.rule==='trained'||a.rule==='field')?'no bar':"), 'the setup detail prints a bar for a rule that reads none');
+  // THE DECISION on the fabricated combo: the call is the field's own sign,
+  // the members are recorded beside it, the gate sizes it, and the recompute
+  // and Paper Books read the same
+  const { geo, maps, chunks } = await withData();
+  const entryMs = (geo.entryOffsetH || 0) * HOUR;
+  const targets = chunks.filter((c) => maps.trade.get(c.startTs + entryMs) && c.startTs > FREEZE).sort((a, b) => a.startTs - b.startTs);
+  const setup = { ...FIELD_SETUP, id: 'field-test-rule', configSnapshot: underField(FIELD_CONFIG) };
+  let placed = null;
+  for (const t of targets.slice(0, 40)) {
+    const got = await signal.computeSignal(setup, t.startTs + entryMs + 60000);
+    assert.ok(got.ok && got.actionable, JSON.stringify(got).slice(0, 200));
+    const f = got.intent.field;
+    assert.ok(Array.isArray(got.intent.per_member) && got.intent.per_member.length === MEMBERS.length, 'the members still vote and are recorded beside the field');
+    assert.notStrictEqual(f.why, 'blocked by sign', 'the field cannot disagree with its own sign');
+    if (f.sign === 1 || f.sign === -1) {
+      assert.ok(f.size > 0, `with the minimum at 0 the field's own call is sized, never blocked: ${JSON.stringify(f)}`);
+      assert.strictEqual(got.intent.side, f.sign === 1 ? 'LONG' : 'SHORT', `the call is the field's own sign: ${JSON.stringify(f)}`);
+      placed = { t, got };
+      break;
+    }
+    assert.strictEqual(got.intent.side, 'FLAT', `no sign, no call: ${JSON.stringify(f)}`);
+    assert.strictEqual(f.why, 'no call');
+  }
+  assert.ok(placed, 'no decision in forty was placed under the field\'s own sign');
+  const re = await signal.computeSignalForChunk(setup, placed.t.startTs);
+  assert.ok(re.found);
+  assert.strictEqual(re.side, placed.got.intent.side);
+  assert.strictEqual(re.input_hash, placed.got.intent.input_hash);
+  const paper = await signal.computeSignal({ ...setup, state: 'paper' }, placed.t.startTs + entryMs + 60000);
+  assert.ok(paper.ok && paper.actionable);
+  assert.strictEqual(paper.intent.side, placed.got.intent.side, 'Paper Books reads what Live Trading reads (RULE TWO)');
+  assert.deepStrictEqual(paper.intent.field, placed.got.intent.field);
+  // a setup under the rule with no field is refused, never decided by the members
+  let bare;
+  try {
+    bare = await signal.computeSignal({ ...PLAIN_SETUP, id: 'field-test-rule-bare', configSnapshot: underField(PLAIN_CONFIG) }, targets[0].startTs + entryMs + 60000);
+  } catch (err) { bare = { ok: false, error: err.message }; }
+  assert.ok(!(bare.ok && bare.actionable) && /names no field/.test(JSON.stringify(bare)), JSON.stringify(bare).slice(0, 300));
+};
+
 module.exports.zzz_cleanupFabricatedSymbols = function () {
   cleanup();
   for (const sym of SYMS) {

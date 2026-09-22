@@ -29,6 +29,7 @@ const { splitAndLabel } = require('../bracketwork');
 const sw = require('../stagework');
 const { tuneTau } = require('../pipeline');
 const committee = require('../committee');
+const agreement = require('../agreement');
 
 const HOUR_MS = 3600000;
 const SIDE_MAP = { 1: 'LONG', '-1': 'SHORT', 0: 'FLAT' };
@@ -128,7 +129,22 @@ async function stageCommitteeCallFor(cfg, target, closed, allChunks, maps, geo, 
   const speaking = new Set(members.map((m, mi) => (m.saved && m.saved.kind === 'silent' ? -1 : mi)).filter((mi) => mi >= 0));
   const C = committee.committeeOn({ specs, memberProbsTest: members.map((m) => m.probs.slice(0, nTest)), taus, plateaus: cfg.plateaus || [], speaking });
   const momentProbs = members.map((m) => m.probs.slice(nTest));
-  const stream = C.streamOf(decision, agr, momentProbs);
+  // THE FIELD AS THE CALL (3.221.0): under quorum by field the members are
+  // trained and their votes recorded as ever, but the call is the field's own
+  // sign at this decision, read exactly as stage 3 read it, and +hold reads
+  // the field at the moments before. A setup under this rule that names no
+  // field is refused, never quietly decided by the members.
+  let stream;
+  let membersCall;
+  if (agr.rule === 'field') {
+    if (!(cfg.field && cfg.field.gate)) throw new Error('stage signal: quorum by field reads the field alone, and this setup names no field');
+    const signs = require('../fieldlive').fieldSignsAt(maps.trade, cfg.branch.geometry, cfg.field.dials, moments.map((m) => m.startTs), `${cfg.combo.trade}|${cfg.branch.geometry}`);
+    stream = agreement.agreementStream({ calls: [], fieldSigns: signs }, 'field', null, { persist: agr.persist });
+    membersCall = null;
+  } else {
+    stream = C.streamOf(decision, agr, momentProbs);
+    membersCall = stream[stream.length - 1] || 0;
+  }
   const call = stream[stream.length - 1] || 0;
   const perMember = committee.callsOf(momentProbs, decision, taus).map((calls) => calls[calls.length - 1]);
   const entryTs = target.startTs + (geo.entryOffsetH || 0) * HOUR_MS;
@@ -159,7 +175,7 @@ async function stageCommitteeCallFor(cfg, target, closed, allChunks, maps, geo, 
       ...(field ? { field: { sign: field.sign, agreement: field.agreement, certainty: field.certainty, size: field.size, why: field.why } } : {}),
     }))
     .digest('hex').slice(0, 16);
-  return { call: gatedCall, membersCall: call, perMember, side, priceAt, inputHash, entryTs, agreement: agr, level, members: members.length, testSlice: nTest, field };
+  return { call: gatedCall, membersCall, perMember, side, priceAt, inputHash, entryTs, agreement: agr, level, members: members.length, testSlice: nTest, field };
 }
 
 module.exports = { stageCommitteeCallFor, trainStageCommittee, agreementOf, trainingWeightsFor };

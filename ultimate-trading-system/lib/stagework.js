@@ -41,6 +41,7 @@ const { NOTIONAL, feeRate } = require('./paper');
 const confirmLib = require('./confirm');
 const windowLib = require('./windowmove');
 const fieldGate = require('./fieldgate');
+const { readAt: readFieldAt } = require('./field');
 const { tuneTau } = require('./pipeline');
 const { directionalCall } = require('./paper');
 const { mulberry32 } = require('./rng');
@@ -1471,6 +1472,8 @@ async function s3UnitTask(task) {
       calls: f.calls, models, families,
       probs: agreement.READS_LEANS.has(agr.rule) ? f.probs : null,
       weights: agr.rule === 'voices' ? voicesFor(decision, agr.copy, agr.plateau).weights : null,
+      // the field's own sign at each moment, for the rule that reads nothing else (3.221.0)
+      fieldSigns: agr.rule === 'field' ? fieldSignsFor(dealIdx, slice) : null,
     };
     ctxCache.set(key, ctx);
     return ctx;
@@ -1498,10 +1501,32 @@ async function s3UnitTask(task) {
   // on the TEST slice only, through the shared definition; cached per way of
   // asking, because which moments speak does not depend on the trade shape.
   const agreedCache = new Map();
+  // UNDER QUORUM BY FIELD the share that agreed is what the members would
+  // have said: how many of their own calls matched the field's call at the
+  // moments the field spoke, as a share of the voters. The rule never read
+  // them, so this is a reading beside the decision, not part of it.
+  const agreedWithField = (decision, agr) => {
+    const spoke = streamFor(decision, agr, -1, 'test');
+    const calls = ctxFor(decision, agr, -1, 'test').calls;
+    const denom = calls.length;
+    let sum = 0; let n = 0; let lo = Infinity; let hi = -Infinity;
+    for (let i = 0; i < spoke.length; i++) {
+      const c = spoke[i];
+      if (!c) continue;
+      let got = 0;
+      for (let m = 0; m < calls.length; m++) if (calls[m][i] === c) got++;
+      sum += got; n++;
+      if (got < lo) lo = got;
+      if (got > hi) hi = got;
+    }
+    const pct = (v) => (v / denom) * 100;
+    return (n && denom) ? { agreed: pct(sum / n), agreedLow: pct(lo), agreedHigh: pct(hi), agreedN: n }
+      : { agreed: null, agreedLow: null, agreedHigh: null, agreedN: 0 };
+  };
   const agreedFor = (decision, agr) => {
     const key = agreedKey(decision, agr);
     if (agreedCache.has(key)) return agreedCache.get(key);
-    const out = C.agreedOn(decision, agr);
+    const out = agr.rule === 'field' ? agreedWithField(decision, agr) : C.agreedOn(decision, agr);
     agreedCache.set(key, out);
     return out;
   };
@@ -1572,6 +1597,31 @@ async function s3UnitTask(task) {
   const decisionTsOf = (chunksArr, tradeMap) => chunksArr.map((c) => windowLib.decisionAt(tradeMap, c.startTs, geo).ts);
   const fieldTsTest = fieldDays ? decisionTsOf(testChunks, maps.trade) : null;
   const fieldTsHold = fieldDays && holdChunks.length ? decisionTsOf(holdChunks, holdTrade) : null;
+  // THE FIELD AS THE CALL (3.221.0, owner: "use the coin field as a completely
+  // independent trade trigger"). Under quorum by field the call at each
+  // decision moment is the field's own sign on that day -- nothing where it
+  // has no day or does not speak -- and a null-set deal shuffles the field's
+  // calendar by the SAME order the members' votes are dealt by, so the
+  // field's null set is the field's own days with the calendar taken away,
+  // never the members' votes, which this rule never reads. A unit the field
+  // has no pair for calls nothing under it.
+  const fieldSignCache = new Map();
+  const fieldSignsFor = (dealIdx, slice) => {
+    const key = `${dealIdx}|${slice}`;
+    if (fieldSignCache.has(key)) return fieldSignCache.get(key);
+    const tsList = slice === 'hold' ? fieldTsHold : fieldTsTest;
+    const len = slice === 'hold' ? holdChunks.length : nTest;
+    const base = new Array(len).fill(0);
+    if (fieldDays && tsList) {
+      for (let i = 0; i < len; i++) {
+        const day = readFieldAt(fieldDays, tsList[i]);
+        if (day && day.speaking && (day.sign === 1 || day.sign === -1)) base[i] = day.sign;
+      }
+    }
+    const out = dealIdx >= 0 ? deals[dealIdx][slice].map((k) => base[k]) : base;
+    fieldSignCache.set(key, out);
+    return out;
+  };
   const priceField = (cell, chunksArr, idxs, callsAll, tradeMap, tsAll, gate, bandPct, wantRich) => priceFieldWindow(
     pick(callsAll, idxs), pick(tsAll, idxs), fieldDays, gate,
     (list) => bracketLib.simCell(cell, pick(chunksArr, idxs), list, tradeMap, geo, bandPct, fee), wantRich,

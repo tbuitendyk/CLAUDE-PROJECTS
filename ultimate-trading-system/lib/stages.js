@@ -2020,9 +2020,16 @@ function plateauPctOrRefuse(raw) {
 // member from a walk set -- which is every run that existed before they did,
 // and what `sizes` alone has always meant.
 function agreementsFor(params, sizes, shapes = null) {
+  // THE FIELD ALONE IS A CHOICE ONLY WHERE A FIELD IS NAMED (3.221.0): a
+  // permute leaves it out on a run that names none, and asking for it by
+  // name on such a run is refused in words, never quietly priced as count.
+  const fieldNamed = params.fieldId != null && String(params.fieldId) !== '' && String(params.fieldId) !== 'none';
   const rules = params.agreePermuteRule
-    ? agreement.AGREE_RULES.slice()
+    ? agreement.AGREE_RULES.filter((r) => r !== 'field' || fieldNamed)
     : [agreement.AGREE_RULES.includes(params.agreeRule) ? params.agreeRule : 'count'];
+  if (rules.includes('field') && !fieldNamed) {
+    throw new Error('quorum by field reads the field alone — name a field under The field, or pick another quorum by');
+  }
   const bars = params.agreePermuteBar
     ? agreement.AGREE_BARS.slice()
     : [agreement.AGREE_BARS.includes(params.agreeBar) ? params.agreeBar : 'all'];
@@ -2060,7 +2067,9 @@ function agreementsFor(params, sizes, shapes = null) {
       // used when the rule never looked at it (RULE NINE: a record says what
       // it is). Only both kinds and hold still multiply it; those it reads.
       if (agreement.READS_NO_BAR.has(rule)) {
-        for (const bothModels of boths) {
+        // both kinds is a test of the members, and the field never reads them:
+        // one setting, never a +both twin that would price the same trades
+        for (const bothModels of (rule === 'field' ? [false] : boths)) {
           for (const persist of persists) {
             out.push({ rule, bar: null, pct: null, copy, bothModels, persist });
           }
@@ -2985,6 +2994,11 @@ function stage3Declared(b) {
     // said here, not refused: the dials stay live so the owner can change them
     fieldWarn = certaintyRefusal(fieldAxes.gates, got.doc);
   } catch (err) { fieldError = err.message; }
+  // a permute of quorum by leaves the field alone out where no field is
+  // named, and the count line says so rather than pricing five and calling it every choice (3.221.0)
+  if (!fieldWarn && (b || {}).agreePermuteRule && !fieldAxes.fieldId) {
+    fieldWarn = 'quorum by field is not among the permuted choices, because no field is named under The field';
+  }
   const counted = countDeclared(b || {}, sizes, records || [], leans, fieldPairs);
   out.settings = counted.kept;
   out.leanUnits = counted.leanUnits;

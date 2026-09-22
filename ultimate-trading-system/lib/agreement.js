@@ -93,7 +93,7 @@ function voiceGroups(callArrays, upTo, threshold = COPY_DEFAULT / 100) {
 // count would have picked. It is the only way of weighing that reads no bar,
 // because training had none, and it exists so the conditions a unit was
 // trained under can be said as one stage 3 setting instead of approximately.
-const AGREE_RULES = ['count', 'conviction', 'voices', 'families', 'trained'];
+const AGREE_RULES = ['count', 'conviction', 'voices', 'families', 'trained', 'field'];
 const AGREE_BARS = ['all', 'own'];
 // HOW ALIKE TWO MEMBERS HAVE TO BE TO COUNT AS ONE VOICE. This was a default
 // argument nobody ever passed, so a single number decided whether the voices
@@ -109,10 +109,11 @@ const RULE_WORDS = {
   voices: 'how many INDEPENDENT voices say the same thing',
   families: 'how many different kinds of evidence agree',
   trained: 'the way the units were trained: every lean added up, the winning side taken whatever the margin',
+  field: 'the field alone: on every day the field speaks, its sign is the call and the members are not read',
 };
 // The one way of weighing that reads no bar. Said once, here, so the screen,
 // the block builder and the pricing cannot disagree about it.
-const READS_NO_BAR = new Set(['trained']);
+const READS_NO_BAR = new Set(['trained', 'field']);
 // THE WAYS OF WEIGHING THAT READ HOW HARD EACH MEMBER LEANS, rather than only
 // which side it picked. The caller builds the leans only for these, because
 // building them is not free — and a rule missing from this list reads `null`
@@ -163,6 +164,15 @@ function agreementAt(ctx, i, rule, level) {
     let s2 = 0;
     for (let m = 0; m < calls.length; m++) s2 += netLean(ctx.probs[m][i]);
     return Math.sign(s2);
+  }
+  // THE FIELD ALONE (3.221.0, owner 2026-09-22: "use the coin field as a
+  // completely independent trade trigger"). The call is the field's own sign
+  // on the decision's day, handed in as ctx.fieldSigns by whoever built the
+  // context -- nothing where the field has no day or does not speak -- and
+  // the members are not read at all: no head count, no lean, no bar.
+  if (rule === 'field') {
+    const s = ctx.fieldSigns ? ctx.fieldSigns[i] : 0;
+    return s === 1 || s === -1 ? s : 0;
   }
   const { winner } = sides(calls, i);
   if (!winner) return 0;
@@ -254,11 +264,14 @@ function achievedAt(ctx, i, rule, winner) {
 //   persist    — the same call must have stood for this many moments before
 //                it is acted on
 function agreementStream(ctx, rule, level, mods = {}) {
-  const n = ctx.calls[0] ? ctx.calls[0].length : 0;
+  // the field's stream is as long as the field's days handed in; every other
+  // rule's is as long as the members' calls
+  const n = rule === 'field' && ctx.fieldSigns ? ctx.fieldSigns.length : (ctx.calls[0] ? ctx.calls[0].length : 0);
   const out = new Array(n);
   for (let i = 0; i < n; i++) {
     let c = agreementAt(ctx, i, rule, level);
-    if (c && mods.bothModels) {
+    // both kinds is a test of the members, and the field never reads them
+    if (c && mods.bothModels && rule !== 'field') {
       const kinds = new Set();
       for (let m = 0; m < ctx.calls.length; m++) if (ctx.calls[m][i] === c) kinds.add(ctx.models[m]);
       if (kinds.size < 2) c = 0;

@@ -391,9 +391,16 @@ window.HELP = {
           + 'families is how many different KINDS of evidence agree. The 8 members read four slices of the '
           + 'numbers between them; two members reading the same slice agreeing is weaker evidence than one price '
           + 'reader and one volume reader agreeing, and this is the only choice that can say so. Its bar is '
-          + 'coarse by nature — with four kinds there are only four steps.',
+          + 'coarse by nature — with four kinds there are only four steps.\n\n'
+          + 'field is the field alone. On every day the field named under The field speaks, its sign is the call, '
+          + 'and the members are not read: no head count, no lean, no bar. The bars under The field — agreement '
+          + 'minimum, certainty minimum, must pass — are then the whole trigger, and size rungs size what passes. '
+          + 'Quorum bar, share and both kinds are left out of its name and off its records, hold still applies, and '
+          + 'its null set is the field\'s own days with the calendar shuffled, never the members\' votes. With no '
+          + 'field named it is refused, and permute leaves it out. The share that agreed column then says how many '
+          + 'members would have called the same way — a reading beside the decision, not part of it.',
       },
-      swPermAgreeRule: { what: 'Price every quorum by choice as its own setting in the block.' },
+      swPermAgreeRule: { what: 'Price every quorum by choice as its own setting in the block — field only where a field is named under The field.' },
       swAgreeBar: {
         what: 'WHAT THE BAR IS A SHARE OF. The other half of the quorum.',
         more: 'all of them sets the bar as a share of what EXISTS. 75% of 8 members is 6 of them, worked out from '

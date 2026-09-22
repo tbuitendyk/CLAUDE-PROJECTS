@@ -241,7 +241,29 @@ async function theFieldColumnPrintsTheGateTheWayTheSettingsNameWritesIt() {
   assert.ok(!work.includes('minimum: r.field.minimum'), 'the totals still copy the retired one-bar shape');
 }
 
+// THE FIELD AS THE CALL IN THE PRICING (3.221.0, FIELD-DESIGN.md section N).
+// The unit task hands the rule the field's own sign at each moment -- nothing
+// on a day the field does not speak -- shuffled for a null set by the same
+// deal as the votes; the share that agreed is read beside the decision; and
+// the count line says when a permute of quorum by leaves the choice out.
+function theFieldAloneIsACallOnlyWhereAFieldIsNamed() {
+  const work = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stagework.js'), 'utf8');
+  assert.ok(work.includes("      fieldSigns: agr.rule === 'field' ? fieldSignsFor(dealIdx, slice) : null,"), 'the pricing does not hand the rule the field\'s signs');
+  assert.ok(work.includes('        if (day && day.speaking && (day.sign === 1 || day.sign === -1)) base[i] = day.sign;'), 'a day the field does not speak on is not a call');
+  assert.ok(work.includes('    const out = dealIdx >= 0 ? deals[dealIdx][slice].map((k) => base[k]) : base;'), 'a null-set deal does not shuffle the field\'s calendar by the votes\' own deal');
+  assert.ok(work.includes("    const out = agr.rule === 'field' ? agreedWithField(decision, agr) : C.agreedOn(decision, agr);"), 'the share that agreed under the field is not read beside the decision');
+  // the count line
+  const cell = { entry: 'market', gate: 'directional', tHours: 65 };
+  assert.strictEqual(stages.stage3Declared({ cell, agreePermuteRule: true }).fieldWarn,
+    'quorum by field is not among the permuted choices, because no field is named under The field');
+  assert.strictEqual(stages.stage3Declared({ cell }).fieldWarn, null, 'nothing to say when quorum by is not permuted');
+  assert.strictEqual(stages.stage3Declared({ cell, agreePermuteRule: true }).settings, 5, 'the count prices the five choices a run with no field can read');
+  const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  assert.ok(ui.includes("(got.fieldWarn || '')"), 'the count line does not print what the count said about the field');
+}
+
 module.exports = {
+  theFieldAloneIsACallOnlyWhereAFieldIsNamed,
   theFieldColumnPrintsTheGateTheWayTheSettingsNameWritesIt,
   theGateIsAnAxisThatMultipliesOnlyWhereTheFieldCovers,
   theGateIsAColumnASortAndAFloorOnBothTables,

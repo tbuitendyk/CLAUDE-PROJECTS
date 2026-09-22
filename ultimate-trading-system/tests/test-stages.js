@@ -216,7 +216,7 @@ module.exports = {
       assert.ok(!/\/6|\/8|\/10|q\d/.test(x.label), `a committee size leaked into a name: ${x.label}`);
       // trained reads no bar and no share, so it carries neither in its name;
       // every other way of weighing opens with its rule and its share
-      assert.ok(/^(count|conviction|voices|families) \d+%/.test(x.label) || /^trained\b/.test(x.label),
+      assert.ok(/^(count|conviction|voices|families) \d+%/.test(x.label) || /^(trained|field)\b/.test(x.label),
         `name must open with the rule and its share: ${x.label}`);
     }
     // ONE dial, every committee size: the same share is a legal setting for a
@@ -230,6 +230,15 @@ module.exports = {
     const rules = new Set(stages.settingsFor({ cell: { entry: 'market', tHours: 89 }, agreePermuteRule: true }, [1]).map((x) => x.agreeRule));
     assert.deepStrictEqual([...rules].sort(), ['conviction', 'count', 'families', 'trained', 'voices'],
       'unusual was never a way of weighing — it is count against the own history bar, and the bar is its own dial now');
+    // THE FIELD ALONE IS A CHOICE ONLY WHERE A FIELD IS NAMED (3.221.0): a
+    // permute on a run naming none leaves it out (above), a run naming one
+    // gets it, and asking for it by name with no field is refused in words
+    const named = new Set(stages.settingsFor({ cell: { entry: 'market', tHours: 89 }, agreePermuteRule: true, fieldId: 'f-x', fieldAgreeMin: '40', fieldRungs: '100:1' }, [1]).map((x) => x.agreeRule));
+    assert.deepStrictEqual([...named].sort(), ['conviction', 'count', 'families', 'field', 'trained', 'voices'],
+      'with a field named, quorum by field is among the permuted choices');
+    assert.throws(() => stages.settingsFor({ cell: { entry: 'market', tHours: 89 }, agreeRule: 'field' }, [1]),
+      /quorum by field reads the field alone — name a field under The field, or pick another quorum by/,
+      'field by name with no field must be refused, never priced as a rule that calls nothing');
     // ...AND SO DOES EACH BAR, with the bar written into the name, because the
     // same share means two different things under the two of them
     const bars = stages.settingsFor({ cell: { entry: 'market', tHours: 89 }, agreeRule: 'count', agreePct: 75, agreePermuteBar: true }, [1]);
@@ -5998,12 +6007,22 @@ module.exports = {
     // and the list of rules that read no bar is the engine's, not a copy: a
     // second one added tomorrow is held to all of the above without anybody
     // remembering to come back here
+    // (the field alone needs a field named, or it is refused rather than priced)
+    const aField = { fieldId: 'f-x', fieldAgreeMin: '40', fieldRungs: '100:1' };
     for (const rule of agreement.AGREE_RULES) {
       if (!agreement.READS_NO_BAR.has(rule)) continue;
-      const one = stages.settingsFor({ cell, agreeRule: rule, agreePermuteBar: true, agreePermutePct: true }, [1]);
+      const one = stages.settingsFor({ cell, agreeRule: rule, agreePermuteBar: true, agreePermutePct: true, ...(rule === 'field' ? aField : {}) }, [1]);
       assert.strictEqual(one.length, 1, `${rule} reads no bar and must be one setting`);
       assert.deepStrictEqual([one[0].agreeBar, one[0].agreePct], [null, null], `${rule} must store neither`);
     }
+    // AND THE FIELD ALONE NEVER GAINS A +both TWIN (3.221.0): both kinds is a
+    // test of the members, which the field never reads, so permuting it would
+    // price the same trades twice under two names; hold is not a bar and still applies
+    const fieldMods = stages.settingsFor({ cell, agreeRule: 'field', agreePermuteBoth: true, agreePermutePersist: true, ...aField }, [1]);
+    assert.ok(fieldMods.length > 1 && fieldMods.some((st) => st.agreePersist > 0), 'hold is not a bar and must still reach the block under the field');
+    assert.ok(fieldMods.every((st) => !st.agreeBoth && !/\+both/.test(st.label)), `the field gained a +both twin: ${fieldMods.map((st) => st.label).join(' | ')}`);
+    assert.ok(fieldMods.every((st) => /^field(?: \+hold\d+)? market t60h$/.test(st.label.split(' \u00b7 ')[0])),
+      `the field's name must carry neither a bar nor a share: ${fieldMods.map((st) => st.label).join(' | ')}`);
   },
 
   // A ROW WRITTEN UNDER A NO-BAR RULE SAYS SO ON THE SCREEN rather than
