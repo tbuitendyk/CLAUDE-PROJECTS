@@ -179,6 +179,7 @@ async function theGateIsAColumnASortAndAFloorOnBothTables() {
   } finally {
     try { fs.unlinkSync(file); } catch (_) { /* gone */ }
     try { fs.unlinkSync(path.join(SETS_DIR, `${id}-tally.json.gz`)); } catch (_) { /* gone */ }
+    try { fs.unlinkSync(path.join(SETS_DIR, `${id}-agreed.json.gz`)); } catch (_) { /* gone */ }
     rowstore.remove(id);
   }
 }

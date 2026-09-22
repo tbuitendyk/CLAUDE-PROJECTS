@@ -80,6 +80,7 @@ async function untilEnded(id, ms = 30000) {
 function rmSet(id) {
   try { fs.rmSync(path.join(SETS_DIR, `${id}.json`), { force: true }); } catch (_) { /* fixture */ }
   try { fs.rmSync(path.join(SETS_DIR, `${id}-tally.json.gz`), { force: true }); } catch (_) { /* fixture */ }
+  try { fs.rmSync(path.join(SETS_DIR, `${id}-agreed.json.gz`), { force: true }); } catch (_) { /* fixture */ }
   try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
 }
 function cleanLaunchParent(pid) {
@@ -92,6 +93,7 @@ function cleanLaunchParent(pid) {
   for (const id of [pid, ...kids]) {
     try { fs.rmSync(path.join(SETS_DIR, `${id}.json`), { force: true }); } catch (_) { /* fixture */ }
     try { fs.rmSync(path.join(SETS_DIR, `${id}-tally.json.gz`), { force: true }); } catch (_) { /* fixture */ }
+    try { fs.rmSync(path.join(SETS_DIR, `${id}-agreed.json.gz`), { force: true }); } catch (_) { /* fixture */ }
     try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
     try { fs.rmSync(path.join(MANIFEST_DIR, `${id}.json`), { force: true }); } catch (_) { /* fixture */ }
   }
@@ -508,6 +510,7 @@ module.exports = {
       for (const id of [pid, child, ...strays].filter(Boolean)) {
         try { fs.rmSync(path.join(SETS_DIR, `${id}.json`), { force: true }); } catch (_) { /* fixture */ }
         try { fs.rmSync(path.join(SETS_DIR, `${id}-tally.json.gz`), { force: true }); } catch (_) { /* fixture */ }
+        try { fs.rmSync(path.join(SETS_DIR, `${id}-agreed.json.gz`), { force: true }); } catch (_) { /* fixture */ }
         try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
         try { fs.rmSync(path.join(MANIFEST_DIR, `${id}.json`), { force: true }); } catch (_) { /* fixture */ }
       }
@@ -1560,6 +1563,7 @@ module.exports = {
     } finally {
       try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
       try { fs.rmSync(path.join(SETS_DIR, `${id}-tally.json.gz`), { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(path.join(SETS_DIR, `${id}-agreed.json.gz`), { force: true }); } catch (_) { /* fixture */ }
       try { fs.rmSync(path.join(SETS_DIR, `${id}.json`), { force: true }); } catch (_) { /* fixture */ }
     }
   },
@@ -2194,6 +2198,7 @@ module.exports = {
     } finally {
       try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* fixture */ }
       try { fs.rmSync(path.join(SETS_DIR, `${id}-tally.json.gz`), { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(path.join(SETS_DIR, `${id}-agreed.json.gz`), { force: true }); } catch (_) { /* fixture */ }
     }
   },
 
@@ -2495,6 +2500,7 @@ module.exports = {
     } finally {
       try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
       try { fs.rmSync(path.join(SETS_DIR, `${id}-tally.json.gz`), { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(path.join(SETS_DIR, `${id}-agreed.json.gz`), { force: true }); } catch (_) { /* fixture */ }
       try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
     }
   },
@@ -2559,6 +2565,7 @@ module.exports = {
       for (const m of made) {
         try { fs.rmSync(m.file, { force: true }); } catch (_) { /* fixture */ }
         try { fs.rmSync(path.join(SETS_DIR, `${m.id}-tally.json.gz`), { force: true }); } catch (_) { /* fixture */ }
+        try { fs.rmSync(path.join(SETS_DIR, `${m.id}-agreed.json.gz`), { force: true }); } catch (_) { /* fixture */ }
         try { fs.rmSync(rowstore.storeDir(m.id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
       }
     }
@@ -3068,6 +3075,7 @@ module.exports = {
     } finally {
       try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
       try { fs.rmSync(path.join(SETS_DIR, `${id}-tally.json.gz`), { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(path.join(SETS_DIR, `${id}-agreed.json.gz`), { force: true }); } catch (_) { /* fixture */ }
       try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
     }
   },
@@ -3678,6 +3686,7 @@ module.exports = {
     } finally {
       try { fs.unlinkSync(file); } catch (_) { /* gone */ }
       try { fs.unlinkSync(path.join(SETS_DIR, `${id}-tally.json.gz`)); } catch (_) { /* gone */ }
+      try { fs.unlinkSync(path.join(SETS_DIR, `${id}-agreed.json.gz`)); } catch (_) { /* gone */ }
       rowstore.remove(id);
     }
   },
@@ -3786,6 +3795,7 @@ module.exports = {
     } finally {
       try { fs.unlinkSync(file); } catch (_) { /* gone */ }
       try { fs.unlinkSync(path.join(SETS_DIR, `${id}-tally.json.gz`)); } catch (_) { /* gone */ }
+      try { fs.unlinkSync(path.join(SETS_DIR, `${id}-agreed.json.gz`)); } catch (_) { /* gone */ }
       rowstore.remove(id);
     }
   },
@@ -3965,6 +3975,7 @@ module.exports = {
     } finally {
       try { fs.unlinkSync(file); } catch (_) { /* gone */ }
       try { fs.unlinkSync(path.join(SETS_DIR, `${id}-tally.json.gz`)); } catch (_) { /* gone */ }
+      try { fs.unlinkSync(path.join(SETS_DIR, `${id}-agreed.json.gz`)); } catch (_) { /* gone */ }
       rowstore.remove(id);
     }
   },
@@ -4013,6 +4024,7 @@ module.exports = {
     } finally {
       try { fs.unlinkSync(file); } catch (_) { /* gone */ }
       try { fs.unlinkSync(path.join(SETS_DIR, `${id}-tally.json.gz`)); } catch (_) { /* gone */ }
+      try { fs.unlinkSync(path.join(SETS_DIR, `${id}-agreed.json.gz`)); } catch (_) { /* gone */ }
       rowstore.remove(id);
     }
   },
@@ -4160,6 +4172,7 @@ module.exports = {
     } finally {
       try { fs.unlinkSync(file); } catch (_) { /* gone */ }
       try { fs.unlinkSync(path.join(SETS_DIR, `${id}-tally.json.gz`)); } catch (_) { /* gone */ }
+      try { fs.unlinkSync(path.join(SETS_DIR, `${id}-agreed.json.gz`)); } catch (_) { /* gone */ }
       rowstore.remove(id);
     }
   },
@@ -6730,6 +6743,7 @@ module.exports = {
     } finally {
       for (const x of [id, s1, busy]) { try { fs.unlinkSync(setFile(x)); } catch (_) { /* gone */ } }
       try { fs.unlinkSync(path.join(SETS_DIR, `${id}-tally.json.gz`)); } catch (_) { /* gone */ }
+      try { fs.unlinkSync(path.join(SETS_DIR, `${id}-agreed.json.gz`)); } catch (_) { /* gone */ }
       rowstore.remove(id);
     }
   },

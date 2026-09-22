@@ -103,7 +103,7 @@ async function unitFixture(opts = {}) {
   await w.close();
   const t = await stages.buildTally(doc);
   const cleanup = () => {
-    for (const f of [path.join(SETS_DIR, `${id}.json`), path.join(SETS_DIR, `${id}-tally.json.gz`), stages.funnelRichFile(id)]) {
+    for (const f of [path.join(SETS_DIR, `${id}.json`), path.join(SETS_DIR, `${id}-tally.json.gz`), path.join(SETS_DIR, `${id}-agreed.json.gz`), stages.funnelRichFile(id)]) {
       try { fs.rmSync(f, { force: true }); } catch (_) { /* fixture */ }
     }
     try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
