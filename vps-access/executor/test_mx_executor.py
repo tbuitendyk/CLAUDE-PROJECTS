@@ -1449,6 +1449,102 @@ class ExecutorTest(unittest.TestCase):
         self.assertEqual(before, len(MockBinance.orders), "no order is sent after the budget")
         self.assertFalse(any(n.endswith(".json") for n in os.listdir(self.x.INTENTS)))
 
+    def test_the_final_failed_attempt_announces_the_give_up_itself(self):
+        """THE ANNOUNCEMENT THAT COULD NEVER FIRE (owner asked for it 2026-08-16).
+
+        ENTRY_GAVE_UP lived only on the NEXT tick's budget check, and on the
+        real ten-minute cadence that tick is always past the one-hour window,
+        so the staleness check upstream consumed the intent first and the
+        owner read "stale" instead. Six attempts span 50 minutes from roughly
+        minute 7, so the sixth lands near minute 57 and the seventh tick at 67.
+
+        The existing budget test seeds six attempts into the journal and runs a
+        SEVENTH tick, which is exactly the situation production can never
+        reach — which is why it passed for five weeks over an announcement that
+        had never once been made.
+
+        So: the sixth failing attempt must announce it in the SAME run, with no
+        further tick and nothing seeded.
+        """
+        MockBinance.loan_fails = True          # the 2026-09 failure mode
+        self.write_intent(side="SHORT", chunk="2026-08-07T00:00Z")
+        for _ in range(self.x.ENTRY_MAX_ATTEMPTS):
+            self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertEqual(self.x.ENTRY_MAX_ATTEMPTS,
+                         sum(1 for e in self.x.journal_events()
+                             if e.get("event") == "ENTRY_ATTEMPT"),
+                         "the budget should be exactly spent, no more and no less")
+        self.assertIn("ENTRY_GAVE_UP", ev,
+                      "the last attempt must abandon the period OUT LOUD, in its own run — "
+                      "waiting for a further tick is what made this unreachable")
+        self.assertFalse(any(n.endswith(".json") for n in os.listdir(self.x.INTENTS)),
+                         "an abandoned period does not leave a live intent behind")
+
+    def test_the_give_up_does_not_fire_while_attempts_remain(self):
+        # The mirror: five failures is not an abandonment, and the sixth tick
+        # must still be allowed to take the trade.
+        MockBinance.loan_fails = True
+        self.write_intent(side="SHORT", chunk="2026-08-07T00:00Z")
+        for _ in range(self.x.ENTRY_MAX_ATTEMPTS - 1):
+            self.x.do_run(self.bx())
+        self.assertNotIn("ENTRY_GAVE_UP", self.events(),
+                         "five refusals is a retry, not an abandonment")
+        MockBinance.loan_fails = False         # the owner fixes it in time
+        self.x.do_run(self.bx())
+        self.assertIn("ENTRY_FILL", self.events(),
+                      "the last attempt inside the budget must still be able to trade")
+
+    def test_a_reject_streak_halts_the_box_before_the_budget_can_be_spent(self):
+        # WHAT THE INSTRUMENT TAUGHT ME while writing the test above. I assumed
+        # a rejected order would spend the budget the way a refused borrow does.
+        # It cannot: three CONSECUTIVE rejects trip the reject-kill first, the
+        # box halts, and the remaining ticks skip entries entirely. So on the
+        # reject path the halt is the loud signal, not the give-up. Pinned here
+        # because the next person will make the same assumption I did.
+        MockBinance.reject_orders = True
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z")
+        for _ in range(self.x.ENTRY_MAX_ATTEMPTS):
+            self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("HALT_SET", ev, "three consecutive rejects halt the box")
+        self.assertEqual(self.x.REJECT_LIMIT,
+                         sum(1 for e in self.x.journal_events()
+                             if e.get("event") == "ENTRY_ATTEMPT"),
+                         "attempts stop at the reject limit, well short of the budget")
+
+    def test_a_rejected_order_announces_the_give_up_when_the_kill_is_not_in_the_way(self):
+        # The else-branch on the reject path is still real: rejects that are not
+        # CONSECUTIVE reset the kill counter, so a period can genuinely run out
+        # of budget on rejections alone. Rather than stage an interleaving that
+        # would test the kill counter more than the give-up, the kill is lifted
+        # for this one test so the branch under test is the branch exercised.
+        self.x.REJECT_LIMIT = self.x.ENTRY_MAX_ATTEMPTS + 1
+        MockBinance.reject_orders = True
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z")
+        for _ in range(self.x.ENTRY_MAX_ATTEMPTS):
+            self.x.do_run(self.bx())
+        self.assertNotIn("HALT_SET", self.events(), "the kill is out of the way here")
+        self.assertIn("ENTRY_GAVE_UP", self.events(),
+                      "a budget spent on rejections is abandoned as loudly as one "
+                      "spent on refused borrows")
+
+    def test_a_budget_spent_before_a_crash_is_still_announced_when_the_window_shuts(self):
+        # The backstop. Six attempts on the record but no announcement (a crash
+        # between the last attempt and its journal line), and the window has now
+        # closed. The period must not sign off as merely "stale".
+        for i in range(self.x.ENTRY_MAX_ATTEMPTS):
+            self.x.jlog("ENTRY_ATTEMPT", chunk_start="2026-08-07T00:00Z",
+                        side="SHORT", attempt=i + 1)
+        self.write_intent(side="SHORT", chunk="2026-08-07T00:00Z",
+                          age=self.x.ENTRY_RETRY_WINDOW_S + 60)
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("ENTRY_STALE" if False else "INTENT_STALE", ev)
+        self.assertIn("ENTRY_GAVE_UP", ev,
+                      "six refusals then a closed window is an abandonment, and the record "
+                      "must say so rather than leaving 'stale' as the whole story")
+
     def test_giving_up_is_terminal_for_a_reshipped_intent(self):
         # ENTRY_GAVE_UP must end the period for good — a control plane that
         # re-ships the same intent cannot restart the budget.

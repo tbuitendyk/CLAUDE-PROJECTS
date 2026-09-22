@@ -124,4 +124,31 @@ echo "$r" | grep -q "examined NOTHING" \
   && { echo "$r"; fail "a check that examined 8 decisions must not page as examining nothing"; }
 echo "PASS 9: a working drift check is silent"
 
+# A SHORT THAT CANNOT BORROW MUST PAGE (owner, 2026-09-22).
+#
+# Between 2026-08-24 and 2026-09-21 every live short failed at the borrow: six
+# ENTRY_BORROW_FAILED a day, 401/-1002, no order ever sent. None of the kinds
+# this alerter watched could fire, because all of them are about an order and
+# no order was reached. The owner's only signal was a single INTENT_STALE an
+# hour later, which reads as a clock hiccup. Four weeks of silence.
+J7="$T/j-borrow.jsonl"; S7="$T/s-borrow.json"; M7="$T/m-borrow.json"
+cat > "$J7" <<EOF
+{"event":"ENTRY_BORROW_FAILED","setup_id":"s-brw","chunk_start":"c1","qty":0.168,"http":401,"ts":$NOW}
+EOF
+echo '{"results":[]}' > "$M7"
+r=$(LIVE_ALERT_DRYRUN=1 LIVE_MIRROR_FILE="$M7" LIVE_ALERT_STATE="$S7" bash "$HERE/live-alert.sh" "$J7")
+echo "$r" | grep -q "s-brw: ENTRY_BORROW_FAILED" \
+  || { echo "$r"; fail "a refused borrow must page — it is the whole failure, and no order event can stand in for it"; }
+echo "PASS 10: a refused borrow pages"
+
+# ...and so does the abandonment at the end of the retry budget.
+J8="$T/j-gaveup.jsonl"; S8="$T/s-gaveup.json"
+cat > "$J8" <<EOF
+{"event":"ENTRY_GAVE_UP","setup_id":"s-brw","chunk_start":"c1","attempts":6,"ts":$NOW}
+EOF
+r=$(LIVE_ALERT_DRYRUN=1 LIVE_MIRROR_FILE="$M7" LIVE_ALERT_STATE="$S8" bash "$HERE/live-alert.sh" "$J8")
+echo "$r" | grep -q "s-brw: ENTRY_GAVE_UP" \
+  || { echo "$r"; fail "an abandoned period must page on this rail too — it was on the F1 alerter from 2026-08-16 and never added here"; }
+echo "PASS 11: an abandoned entry pages"
+
 echo "ALL live-alert fixture checks PASS"

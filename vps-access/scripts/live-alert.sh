@@ -39,7 +39,18 @@ MIRROR_STALE_S = 3 * 3600.0
 # schema-2 incident kinds worth a page, keyed per setup. FIXED_STOP is a page
 # (a protective stop fired — the owner should know), the rest are faults.
 INCIDENT_EVENTS = {"KILL_PRICE_DRIFT", "FIXED_STOP", "EXIT_OVERDUE",
-                   "PAPER_EXIT_DEFERRED", "INTENT_STALE"}
+                   "PAPER_EXIT_DEFERRED", "INTENT_STALE",
+                   # A SHORT THAT CANNOT BORROW PAGES (owner, 2026-09-22). None of
+                   # the events above fire when the borrow is refused, because no
+                   # order is ever reached — so four weeks of failing shorts sent
+                   # the owner exactly one signal, "stale", which reads as a clock
+                   # hiccup rather than six refusals by the venue. ENTRY_GAVE_UP
+                   # was on the F1 alerter's list from 2026-08-16 and was never
+                   # added here; a missed entry is as reportable on this rail as
+                   # on that one. ENTRY_BORROW_UNWOUND means a loan was taken and
+                   # handed back, which is money moving on a trade that did not
+                   # happen.
+                   "ENTRY_BORROW_FAILED", "ENTRY_GAVE_UP", "ENTRY_BORROW_UNWOUND"}
 # INTENT_INVALID carries its reasons in `problems`; allowlist-class refusals
 # are per-setup faults worth a page (a setup the control plane ships but the
 # box refuses is a configuration break, invisible otherwise).

@@ -62,6 +62,12 @@ INCIDENT_EVENTS = {"RECONCILE_MISMATCH", "RECONCILE_UNREADABLE", "KILL_PRICE_DRI
                    # spent without a fill, so the model called a trade the box never
                    # took. A missed entry is exactly as reportable as a bad one.
                    "ENTRY_GAVE_UP",
+                   # ENTRY_BORROW_FAILED / _UNWOUND (owner, 2026-09-22): a short
+                   # whose loan is refused sends no order at all, so ORDER_REJECT
+                   # above cannot fire and the failure paged nobody. Added on both
+                   # alerters in the same change — an asymmetry between the rails
+                   # is an oversight, not a decision.
+                   "ENTRY_BORROW_FAILED", "ENTRY_BORROW_UNWOUND",
                    # ARM-REFUSAL events (GAP-4, 2026-08-11 e2e review): the box journals
                    # these when it REFUSES an arm request. A bad HMAC or a replayed nonce
                    # is a tampering/mis-config signal, and a no-secret/stale refusal means
