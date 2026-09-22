@@ -2081,6 +2081,11 @@ const GUARDS = [
     'everyTableControlOnBoardsRepaintsItsOwnTableInPlace', 'a repaint shows no wait box, and a slow one looks like a dead button'],
   [path.join(ROOT, 'public', 'construct.js'), "  bRepaintTable(bStageOfKey(key), key === 'S3C' ? { peg: '[data-bcoinhead]' } : {});\n}\n// spec: [id, name shown, kind, tooltip, options?]", "  drawBoards().then(() => restoreScroll(tab));\n}\n// spec: [id, name shown, kind, tooltip, options?]",
     'everyTableControlOnBoardsRepaintsItsOwnTableInPlace', 'Apply settings goes back to redrawing the whole page, and the screen jumps on every apply'],
+  // ---- A MISSED ANSWER IS ASKED THROUGH (3.222.2) ----
+  [path.join(ROOT, 'public', 'construct.js'), '    if (p) return p;\n    missed++;', '    return p;\n    missed++;',
+    'theWatcherAsksAgainWhenTheServiceMissesAnAnswer', 'one unanswered ask ends the watch again, under a pass that is still running'],
+  [path.join(ROOT, 'public', 'construct.js'), "      const p = await fAskThrough(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, fRebuildSay);", "      const p = await api(`api/funnel/${encodeURIComponent(st.set)}/rebuild`).catch(() => null);\n      if (!p) return;",
+    'theWatcherAsksAgainWhenTheServiceMissesAnAnswer', 'the pass\'s watcher goes back to giving up silently on one missed ask'],
   // THE FIELD AS THE CALL (3.221.0)
   [path.join(ROOT, 'lib', 'agreement.js'), "  if (rule === 'field') {\n    const s = ctx.fieldSigns ? ctx.fieldSigns[i] : 0;\n    return s === 1 || s === -1 ? s : 0;\n  }\n", '',
     'theFieldRuleTakesTheFieldsSignAsTheCallAndReadsNoMember', 'quorum by field falls through to a head count of the members, and the field is never the trigger'],

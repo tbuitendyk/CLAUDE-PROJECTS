@@ -7768,6 +7768,32 @@ function fRuleClauses(st) {
 // quietly show a different set under the same name.
 const F_NEW = 'new';
 
+// ASKING THROUGH A MISSED ANSWER (3.222.2; owner 2026-09-22, on a set of 4.7
+// million rows: a line saying the service had stopped and nothing had been
+// written stood under a pass that was still running -- "maybe it's a
+// spurious message" -- "fix the watcher in that case to not bail out too
+// soon"). A pass that size keeps the service too busy to answer every ask,
+// and every watcher on this screen took ONE unanswered ask as the service
+// being gone: it printed that line, claimed nothing had been written -- which
+// was false, the pass writes as each coin and shape lands -- and stopped
+// watching while the pass went on. Now a watcher asks again, says how long
+// the service has gone unanswered, and gives up on nothing: only an answer
+// -- a result or an error -- ends a watch. `say` gets the waiting line.
+async function fAskThrough(path, say) {
+  let missed = 0;
+  const since = Date.now();
+  for (;;) {
+    // eslint-disable-next-line no-await-in-loop
+    const p = await api(path).catch(() => null);
+    if (p) return p;
+    missed++;
+    const secs = Math.round((Date.now() - since) / 1000);
+    say(`the service has not answered for ${secs}s (${missed} ask${missed === 1 ? '' : 's'}) — it is busy or gone; asking again`);
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((r) => setTimeout(r, Math.min(15000, 2000 * missed)));
+  }
+}
+
 // HOW FAR THE CUT HAS GOT, asked every second until it is done (3.67.0). The
 // count on the line beside the button is the settings the rule has been read
 // against so far, so a long cut says it is moving rather than sitting silent.
@@ -7775,8 +7801,7 @@ async function fCutFollow(st) {
   const msg = () => $('#fCutMsg');
   for (;;) {
     // eslint-disable-next-line no-await-in-loop
-    const s = await api(`api/funnel/${encodeURIComponent(st.set)}/cut`).catch(() => null);
-    if (!s) { if (msg()) msg().textContent = 'the service stopped answering - nothing was written'; return null; }
+    const s = await fAskThrough(`api/funnel/${encodeURIComponent(st.set)}/cut`, (t) => { if (msg()) msg().textContent = t; });
     if (s.error) { if (msg()) msg().textContent = `FAILED - ${s.error}`; return null; }
     if (s.result) return s.result;
     if (msg()) msg().textContent = s.of ? `writing - ${Number(s.done).toLocaleString()} of ${Number(s.of).toLocaleString()} settings read` : 'writing';
@@ -8432,8 +8457,7 @@ function fWireCut(d, st, cd) {
     if (!started) { sr.disabled = false; $('#fSetRebuildMsg').textContent = ''; return; }
     for (;;) {
       // eslint-disable-next-line no-await-in-loop
-      const p = await api(`api/funnel/set/${encodeURIComponent(cd.set.id)}/rebuild`).catch(() => null);
-      if (!p) { sr.disabled = false; $('#fSetRebuildMsg').textContent = 'the service stopped answering - nothing was written'; return; }
+      const p = await fAskThrough(`api/funnel/set/${encodeURIComponent(cd.set.id)}/rebuild`, (t) => { $('#fSetRebuildMsg').textContent = t; });
       if (p.error) { sr.disabled = false; $('#fSetRebuildMsg').textContent = `FAILED - ${p.error}`; return; }
       if (p.result) {
         sr.disabled = false;
@@ -8552,8 +8576,7 @@ async function fRichWatch(st) {
   try {
     for (;;) {
       // eslint-disable-next-line no-await-in-loop
-      const p = await api(`api/funnel/${encodeURIComponent(st.set)}/rebuild`).catch(() => null);
-      if (!p) { fRebuildSay('the service stopped answering — nothing was written'); return; }
+      const p = await fAskThrough(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, fRebuildSay);
       if (p.error) { fRebuildSay(`FAILED — ${p.error}`); return; }
       if (p.result) {
         const out = p.result;
@@ -8623,9 +8646,9 @@ async function fHoldPoll(st) {
   try {
     for (;;) {
       // eslint-disable-next-line no-await-in-loop
-      const p = await api(`api/funnel/${encodeURIComponent(st.set)}/rankhold?${fHoldQuery(fHoldBar(st.set))}`).catch(() => null);
+      const p = await fAskThrough(`api/funnel/${encodeURIComponent(st.set)}/rankhold?${fHoldQuery(fHoldBar(st.set))}`,
+        (t) => { const m = $('#fHoldMsg'); if (m) m.textContent = t; });
       const msg = $('#fHoldMsg');
-      if (!p) { if (msg) msg.textContent = 'the service stopped answering — nothing was read'; return; }
       if (p.error) { if (msg) msg.textContent = `FAILED — ${p.error}`; return; }
       if (p.result) {
         fHoldSeen = { set: st.set, table: p.result };

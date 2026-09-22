@@ -2878,13 +2878,15 @@ module.exports = {
       ${lift('function fCpuWords(cpu) {', '\n}\n')}
       ${lift('const fAcrossWords = (units)', '\n')}
       const fRebuildSay = (text) => { said.push(text); };
-      const api = async () => { if (!replies.length) throw new Error('the test ran out of replies'); return replies.shift(); };
+      // a reply of null is an ask the service did not answer
+      const api = async () => { if (!replies.length) throw new Error('the test ran out of replies'); const r = replies.shift(); if (r === null) throw new Error('no answer'); return r; };
       const setTimeout = (fn) => fn();          // no real waiting in a test
       let fRichWatching = false;
       let fHoldSeen = null;
       let fHoldAsked = null;
       const fSave = () => {};
       const drawFunnel = () => {};
+      ${lift('async function fAskThrough(path, say) {', '\n}\n')}
       ${lift('async function fRichWatch(st) {', '\n}\n')}
       return fRichWatch;
     `);
@@ -2899,6 +2901,69 @@ module.exports = {
       'working them out — 220 of 300 settings · 50% of 8 cores busy',
       'FAILED — stop the test here',
     ], 'the watcher does not say how far it has got on every poll');
+  },
+
+  // A MISSED ANSWER IS ASKED THROUGH, NEVER TAKEN AS THE END (3.222.2; owner
+  // 2026-09-22: "the service stopped answering — nothing was written" stood
+  // under a pass that was still running on 4.7 million rows -- "maybe it's a
+  // spurious message ... fix the watcher in that case to not bail out too
+  // soon"). Run, not read: the service misses two asks in a row in the middle
+  // of the pass, the watcher says so and keeps asking, and the pass's own
+  // answer is what ends the watch. Then every watcher on the screen is held to
+  // the one helper, and the line that claimed nothing had been written is gone.
+  async theWatcherAsksAgainWhenTheServiceMissesAnAnswer() {
+    const page = src('public/construct.js');
+    const lift = (head, end) => {
+      const at = page.indexOf(head);
+      assert.ok(at > 0, `${head} is gone`);
+      return page.slice(at, page.indexOf(end, at) + end.length);
+    };
+    const said = [];
+    const build = new Function('said', 'replies', `
+      ${lift('function fCpuWords(cpu) {', '\n}\n')}
+      ${lift('const fAcrossWords = (units)', '\n')}
+      const fRebuildSay = (text) => { said.push(text); };
+      const api = async () => { if (!replies.length) throw new Error('the test ran out of replies'); const r = replies.shift(); if (r === null) throw new Error('no answer'); return r; };
+      const setTimeout = (fn) => fn();
+      let fRichWatching = false;
+      let fHoldSeen = null;
+      let fHoldAsked = null;
+      const fSave = () => {};
+      const drawFunnel = () => {};
+      ${lift('async function fAskThrough(path, say) {', '\n}\n')}
+      ${lift('async function fRichWatch(st) {', '\n}\n')}
+      return fRichWatch;
+    `);
+    const st = { set: 's3-test' };
+    await build(said, [
+      { done: 95, of: 300, cpu: { busy: 0.56, cores: 8 } },
+      null, null,
+      { done: 220, of: 300, cpu: { busy: 0.5, cores: 8 } },
+      { result: { settings: 300, proof: { ran: true, checked: 300, differed: 0 } } },
+    ])(st);
+    assert.strictEqual(said.length, 4, `four lines were expected, got: ${said.join(' | ')}`);
+    assert.strictEqual(said[0], 'working them out — 95 of 300 settings · 56% of 8 cores busy');
+    assert.match(said[1], /^the service has not answered for \d+s \(1 ask\) — it is busy or gone; asking again$/, 'the first miss is said, with the count');
+    assert.match(said[2], /^the service has not answered for \d+s \(2 asks\) — it is busy or gone; asking again$/, 'the second miss counts on');
+    assert.strictEqual(said[3], 'working them out — 220 of 300 settings · 50% of 8 cores busy', 'the pass is watched on after the misses');
+    assert.strictEqual(st.rebuilt, true, 'the pass\'s own answer ends the watch');
+    assert.strictEqual(st.rebuiltSaid, 'done for 300 setting(s); all 300 match what the sweep stored');
+    // every watcher on the screen asks through the one helper, and none claims
+    // nothing was written because one ask went unanswered
+    assert.ok(!/stopped answering/.test(page), 'a watcher still takes one unanswered ask as the service being gone');
+    for (const fn of ['async function fCutFollow(st) {', 'async function fRichWatch(st) {', 'async function fHoldPoll(st) {']) {
+      const body = lift(fn, '\n}\n');
+      assert.ok(body.includes('await fAskThrough('), `${fn} does not ask through a missed answer`);
+      assert.ok(!body.includes('.catch(() => null)'), `${fn} still swallows a missed ask on its own`);
+    }
+    const setRebuild = page.slice(page.indexOf("const sr = $('#fSetRebuild');"), page.indexOf("const hb = $('#fHeldBack');"));
+    assert.ok(setRebuild.includes("await fAskThrough(`api/funnel/set/${encodeURIComponent(cd.set.id)}/rebuild`") && !setRebuild.includes('.catch(() => null)'),
+      'the press that puts a Stage 4 set\'s own numbers back still gives up on one missed ask');
+    // the helper never gives up: a miss is said with how long it has been, and
+    // the wait between asks grows but is capped, so a dead service is asked
+    // every fifteen seconds rather than hammered
+    const helper = lift('async function fAskThrough(path, say) {', '\n}\n');
+    assert.ok(helper.includes('if (p) return p;') && helper.includes('Math.min(15000, 2000 * missed)'), 'the helper gives up, or asks a busy service too often');
   },
 
   // ---- THE SCREEN HAS TWO STATES AND ONLY TWO (3.108.0, owner order
