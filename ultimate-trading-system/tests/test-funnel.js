@@ -2350,7 +2350,7 @@ module.exports = {
     // coin, or 'all' for all units together. 3.134.0 had split it by copy and
     // the copy beside Worth walking? priced every coin and shape whatever the
     // chooser showed.
-    assert.ok(press.includes('const blend = !(d && d.unit);'),
+    assert.ok(press.includes('const blend = !(d && d.unit) || fRichAimedDone(d);'),
       'the press does not read whether the board on screen is one coin and shape or all of them');
     assert.ok(/\/rebuild`, \{ unit: unitNow \}, WHERE_FUNNEL\)/.test(press),
       'the press names a rule or a bar again, or no longer names the board on screen');
@@ -4379,16 +4379,18 @@ module.exports.theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft = 
     return src.slice(at, src.indexOf(end, at) + end.length);
   };
   // eslint-disable-next-line no-eval
-  const { fRichOff, fRichLine } = eval(`(() => { ${[
+  const { fRichOff, fRichLine, fRichAimedDone } = eval(`(() => { ${[
     lift('const fRichOf = (d)', '\n'),
     lift('const fRichGoing = (d)', '\n'),
     lift('function fRichOff(d) {', '\n}\n'),
+    lift('const fRichAimedDone = (d)', '\n'),
+    lift('function fRichSetOff(d) {', '\n}\n'),
     lift('function fCpuWords(cpu) {', '\n}\n'),
     lift('const fAcrossWords = (units, onUnit)', '\n'),
     lift('const fRichWhere = (d)', '\n'),
     lift('const fStoppingWords = (run)', '\n'),
     lift('function fRichLine(d) {', '\n}\n'),
-  ].join('\n')}\nreturn { fRichOff, fRichLine }; })()`);
+  ].join('\n')}\nreturn { fRichOff, fRichLine, fRichAimedDone }; })()`);
 
   // GHOSTED while it works, and ghosted when there is nothing left to work out
   // -- which is the half that stopped a second press re-pricing everything.
@@ -4407,6 +4409,18 @@ module.exports.theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft = 
     'a reply with no count of its own ghosts the press silently instead of leaving it live');
   assert.strictEqual(fRichOff({ survivors: 640, of: 0 }), true,
     'the fallback still reads the survivor count, so a rule that keeps some of an empty board leaves the press live');
+  // THE PRESS STAYS LIVE WHILE THE SET LACKS THE NUMBERS (3.227.0, owner
+  // 2026-09-22: "that's kind of stupid ... a button to press in another
+  // section below that makes the ... button in a section above work"). On a
+  // coin and shape that is done, with 85 others still to do, the press is
+  // live and asks the whole-set question; only a set done everywhere kills it.
+  const aimedDone = { unit: 'AAA|||daily-4d', richOn: { have: 640, need: 640, run: null }, richSet: { units: 86, unitsDone: 1 } };
+  assert.strictEqual(fRichOff(aimedDone), false, 'the press is dead on a finished coin and shape while the rest of the set still lacks the numbers');
+  assert.strictEqual(fRichAimedDone(aimedDone), true, 'a finished coin and shape is not read as finished, so the press would price it again instead of the rest');
+  assert.strictEqual(fRichOff({ ...aimedDone, richSet: { units: 86, unitsDone: 86 } }), true, 'the press is live with nothing left anywhere in the set');
+  assert.strictEqual(fRichOff({ ...aimedDone, richOn: { have: 100, need: 640, run: null } }), false, 'a coin and shape still lacking numbers ghosts the press');
+  assert.strictEqual(fRichAimedDone({ ...aimedDone, richOn: { have: 100, need: 640, run: null } }), false);
+  assert.ok(src.includes('const blend = !(d && d.unit) || fRichAimedDone(d);'), 'a press on a finished coin and shape does not ask the whole-set question and price the rest');
 
   // THE PROGRESS AND THE CPU LOAD, on the line beside the button.
   const going = fRichLine({ richOn: { have: 0, need: 640, run: { running: true, done: 128, of: 640, cpu: { busy: 0.87, cores: 4 } } } });
@@ -4429,6 +4443,15 @@ module.exports.theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft = 
   // 3.134.0: on a walk the count is the walked board's, and the line says so
   assert.ok(/setting\(s\) on this coin and shape carry them/.test(fRichLine({ unit: 'AAA|||daily-4d', richOn: { have: 640, need: 640, run: null } })),
     'a done line on a walk reads as if it covered the record set');
+  // 3.227.0: and the set speaks beside it, so "done" is never read as done for everything
+  assert.strictEqual(fRichLine(aimedDone),
+    'done — all 640 setting(s) on this coin and shape carry them · across the set 1 of 86 coin(s) and shape(s) carry them for every setting — the press works out the rest, every coin and shape',
+    'a done coin and shape does not say where the set stands or what the press does next');
+  assert.strictEqual(fRichLine({ ...aimedDone, richSet: { units: 86, unitsDone: 86 } }),
+    'done — all 640 setting(s) on this coin and shape carry them, and so does every one of the 86 coin(s) and shape(s) in this record set');
+  assert.ok(/the press works out the other 540 · across the set 1 of 86 coin\(s\) and shape\(s\) carry them for every setting$/.test(fRichLine({ ...aimedDone, richOn: { have: 100, need: 640, run: null } })),
+    'a part-done coin and shape does not say where the set stands');
+  assert.ok(/finishes on its own · across the set 1 of 86/.test(fRichLine({ ...aimedDone, richOn: { have: 0, need: 640, run: null } })));
   assert.ok(/of them on this coin and shape and finishes/.test(fRichLine({ unit: 'AAA|||daily-4d', richOn: { have: 0, need: 640, run: null } })),
     'a not-done line on a walk does not say it is this coin and shape it works out');
   // a reading with nothing to difference against says nothing rather than 0%
@@ -4633,7 +4656,7 @@ module.exports.everyCopyOfThePressWorksOutWhatIsChosenUnderCoin = function () {
   assert.ok(!/fRebuildPress\(d, (true|false), /.test(page), 'a copy of the press carries a scope of its own again');
   assert.ok(page.includes('function fRebuildPress(d, named) {') && page.includes('data-frebuild="1"'), 'the press is drawn with a scope of its own');
   const wire = page.slice(page.indexOf("const rbs = [...document.querySelectorAll('[data-frebuild]')];"), page.indexOf("const rd = $('#fHoldRead');"));
-  assert.ok(wire.includes('const blend = !(d && d.unit);') && wire.includes("const unitNow = blend ? 'all' : d.unit;") && wire.includes('{ unit: unitNow }, WHERE_FUNNEL);'),
+  assert.ok(wire.includes('const blend = !(d && d.unit) || fRichAimedDone(d);') && wire.includes("const unitNow = blend ? 'all' : d.unit;") && wire.includes('{ unit: unitNow }, WHERE_FUNNEL);'),
     'the press does not send the board on screen -- the coin and shape chosen under coin, or all of them');
   assert.ok(wire.includes("'working them out — this prices every setting of this coin and shape again from its parent set'")
     && wire.includes("'working them out — this prices every setting in this record set again from its parent set'"), 'the press does not say which board it prices');
@@ -4666,8 +4689,13 @@ module.exports.everyCopyOfThePressWorksOutWhatIsChosenUnderCoin = function () {
   const pressOf = (html) => html.slice(0, html.indexOf('</button>'));
   assert.ok(!/ disabled/.test(pressOf(fRebuildPress(oneCoin, true))) && /on this coin and shape/.test(fRebuildPress(oneCoin, true)),
     'with a coin and shape chosen and nothing worked out, the press is dead or does not say it is this coin and shape');
-  assert.ok(/ disabled/.test(pressOf(fRebuildPress(oneDone, true))) && /done — all 640 setting\(s\) on this coin and shape carry them/.test(fRebuildPress(oneDone, true)),
-    'with the chosen coin and shape done, the press is live or is read off the other fourteen');
+  // 3.227.0 (owner: "that's kind of stupid"): with the chosen coin and shape
+  // done and fourteen others to do, the press stays live and the line says
+  // where the set stands; only a set done everywhere kills it
+  assert.ok(!/ disabled/.test(pressOf(fRebuildPress(oneDone, true)))
+    && /done — all 640 setting\(s\) on this coin and shape carry them · across the set 1 of 15 coin\(s\) and shape\(s\) carry them for every setting — the press works out the rest, every coin and shape/.test(fRebuildPress(oneDone, true)),
+    'with the chosen coin and shape done and fourteen others to do, the press is dead or the line does not say where the set stands');
+  assert.ok(/ disabled/.test(pressOf(fRebuildPress({ ...oneDone, richSet: { units: 15, unitsDone: 15 } }, true))), 'with every coin and shape done the press is still live');
   assert.ok(!/ disabled/.test(pressOf(fRebuildPress(allOf, true))) && /1 of 15 coin\(s\) and shape\(s\) carry them/.test(fRebuildPress(allOf, true)),
     'with all units together chosen and fourteen coins and shapes to go, the press is dead or does not count them');
   assert.ok(/ disabled/.test(pressOf(fRebuildPress(allDone, true))) && /done — every one of the 15 coin\(s\) and shape\(s\)/.test(fRebuildPress(allDone, true)),

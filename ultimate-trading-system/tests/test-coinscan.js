@@ -1875,6 +1875,19 @@ function theTableOfPairsKeepsItsPlaceAndAnOpenedGridComesIntoView() {
 // TWO BUTTONS IN ONE ROW NEVER TOUCH (owner, 2026-09-21: "don't squish buttons
 // against each other. fail due to ugliness"): the stylesheet stands a button
 // that follows a button off by the row's gap again, on every screen.
+// A DEAD BUTTON NEVER ANSWERS THE MOUSE (3.227.0, owner 2026-09-22 on Stop
+// after this coin and shape: "it was showing active on mouse over when it
+// should have been ghosted"). The button was disabled; the stylesheet lit
+// every button's border on hover, dead or not, so a faded plain button still
+// reacted to the pointer and read as live. Every page's stylesheet, because
+// every page has the rule.
+function aDeadButtonNeverAnswersTheMouse() {
+  for (const page of ['construct.html', 'setup.html', 'trade.html']) {
+    const css = fs.readFileSync(path.join(__dirname, '..', 'public', page), 'utf8');
+    assert.ok(css.includes('button:hover:not(:disabled) {'), `${page}: the mouse-over highlight is not held to live buttons`);
+    assert.ok(!/\bbutton:hover \{/.test(css), `${page}: a dead button still lights its border on mouse over`);
+  }
+}
 function twoButtonsInOneRowNeverTouch() {
   const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.html'), 'utf8');
   assert.ok(/\.row \{ display:flex; align-items:center; gap:\.8rem; flex-wrap:wrap; \}/.test(html), 'the row keeps its gap');
@@ -1935,4 +1948,5 @@ module.exports = {
   unselectAllIsOnEveryRowSetUnderCandidatesForSweep,
   theTableOfPairsKeepsItsPlaceAndAnOpenedGridComesIntoView,
   twoButtonsInOneRowNeverTouch,
+  aDeadButtonNeverAnswersTheMouse,
 };

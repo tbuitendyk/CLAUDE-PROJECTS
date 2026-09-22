@@ -60,7 +60,7 @@
   .b-fail { background:transparent; color:var(--neg); border:1px solid var(--neg); cursor:pointer; }
   button { font:inherit; border:1px solid var(--line); background:var(--tile); color:var(--fg);
            border-radius:6px; padding:.35rem .8rem; cursor:pointer; }
-  button:hover { border-color:var(--accent); }
+  button:hover:not(:disabled) { border-color:var(--accent); }   /* a dead button does not answer the mouse (3.227.0) */
   button.pri { background:var(--accent); color:var(--bg); border-color:var(--accent); font-weight:600; }
   button.danger { border-color:var(--neg); color:var(--neg); }
   button:disabled { opacity:.45; cursor:default; }

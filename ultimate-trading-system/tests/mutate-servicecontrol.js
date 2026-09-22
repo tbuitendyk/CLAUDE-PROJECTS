@@ -2088,6 +2088,15 @@ const GUARDS = [
     'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows', 'a unit\'s file is written empty and every board reads nothing'],
   [path.join(ROOT, 'lib', 'stages.js'), "      if (old[label]) richSumsTake(blend[label], old[label]);", "",
     'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows', 'a unit priced again is counted twice in the blend\'s average'],
+  // ---- THE PRESS STAYS LIVE WHILE THE SET LACKS THE NUMBERS, AND A DEAD BUTTON NEVER ANSWERS THE MOUSE (3.227.0) ----
+  [path.join(ROOT, 'public', 'construct.js'), "  if (x.have < x.need) return false;            // the coin and shape it is aimed at still lacks some\n", "  return x.have >= x.need;\n",
+    'theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft', 'the press goes dead on a finished coin and shape with the rest of the set still to do'],
+  [path.join(ROOT, 'public', 'construct.js'), "      const blend = !(d && d.unit) || fRichAimedDone(d);", "      const blend = !(d && d.unit);",
+    'theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft', 'a press on a finished coin and shape prices that one again instead of asking for the rest of the set'],
+  [path.join(ROOT, 'public', 'construct.js'), "  const set = d && d.unit && d.richSet && Number(d.richSet.units) > 0 ? d.richSet : null;", "  const set = null;",
+    'theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft', 'the line beside the press says nothing about where the set stands'],
+  [path.join(ROOT, 'public', 'construct.html'), "  button:hover:not(:disabled) { border-color:var(--accent); }", "  button:hover { border-color:var(--accent); }",
+    'aDeadButtonNeverAnswersTheMouse', 'a dead button lights its border on mouse over again'],
   // ---- THE PASS HOLDS NO PLAN, COUNTS OFF THE TABLES, AND LETS ITS WORKERS GO (3.226.0) ----
   [path.join(ROOT, 'lib', 'stages.js'), "    run.onUnit = { at: 1, of: left.length };", "    run.onUnit = null;",
     'thePassPricesOnlyTheTestWindowAndKeepsItPerCoinAndShape', 'the status at the press no longer says which coin and shape the pass is on'],

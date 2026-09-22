@@ -7334,8 +7334,18 @@ function fRichOff(d) {
   const x = fRichOf(d);
   if (fRichGoing(d)) return true;               // it is working; pressing again is the fault above
   if (!x.need) return true;                     // no settings, nothing to work out
-  return x.have >= x.need;                      // all of them already carry the numbers
+  if (x.have < x.need) return false;            // the coin and shape it is aimed at still lacks some
+  // THE COIN AND SHAPE AIMED AT IS DONE AND THE REST OF THE SET IS NOT (3.227.0,
+  // owner 2026-09-22: "that's kind of stupid ... having a button to press in
+  // another section below that makes the work out the test history numbers
+  // button in a section above work"). The press followed the coin chooser
+  // (3.136.0) and went dead the moment that one coin and shape was done, with
+  // 85 others still to do and the chooser in another section. It stays live
+  // now: the press asks the whole-set question and works out the rest.
+  return fRichSetOff(d);
 }
+// the coin and shape the press is aimed at already carries every number (3.227.0)
+const fRichAimedDone = (d) => { const x = fRichOf(d); return x.need > 0 && x.have >= x.need; };
 // The CPU reading, in the same words on the progress line and nowhere else.
 // null while the service has only taken one sample and has nothing to compare.
 function fCpuWords(cpu) {
@@ -7358,12 +7368,23 @@ function fRichLine(d) {
   }
   if (run.error) return `FAILED — ${String(run.error)}`;
   if (!x.need) return `there are no settings ${where}, so there is nothing to work out`;
-  if (x.have >= x.need) return `done — all ${Number(x.need).toLocaleString()} setting(s) ${where} carry them`;
+  // THE SET SPEAKS BESIDE THE COIN AND SHAPE (3.227.0): on one coin and shape
+  // the line says where the whole set stands as well, so "done" is never read
+  // as done for everything, and it says what the press will do next
+  const set = d && d.unit && d.richSet && Number(d.richSet.units) > 0 ? d.richSet : null;
+  const setWords = set ? `across the set ${Number(set.unitsDone || 0).toLocaleString()} of ${Number(set.units).toLocaleString()} coin(s) and shape(s) carry them for every setting` : '';
+  if (x.have >= x.need) {
+    const mine = `done — all ${Number(x.need).toLocaleString()} setting(s) ${where} carry them`;
+    if (!set) return mine;
+    if (Number(set.unitsDone || 0) >= Number(set.units)) return `${mine}, and so does every one of the ${Number(set.units).toLocaleString()} coin(s) and shape(s) in this record set`;
+    return `${mine} · ${setWords} — the press works out the rest, every coin and shape`;
+  }
+  const across = set ? ` · ${setWords}` : '';
   if (x.have) {
     return `${Number(x.have).toLocaleString()} of ${Number(x.need).toLocaleString()} setting(s) carry them — `
-      + `the press works out the other ${Number(x.need - x.have).toLocaleString()}`;
+      + `the press works out the other ${Number(x.need - x.have).toLocaleString()}${across}`;
   }
-  return `not done yet — one press works out all ${Number(x.need).toLocaleString()} of them ${where} and finishes on its own`;
+  return `not done yet — one press works out all ${Number(x.need).toLocaleString()} of them ${where} and finishes on its own${across}`;
 }
 // THE PRESS BESIDE Worth walking? SPEAKS FOR EVERY COIN AND SHAPE (3.134.0):
 // Read the ranking needs all of them, so this counts the coins and shapes
@@ -8721,7 +8742,10 @@ function fWireHold(st, d) {
   for (const rb of rbs) {
     if (rb.disabled) continue;
     rb.onclick = async () => {
-      const blend = !(d && d.unit);
+      // all units together, or the coin and shape aimed at is already done and
+      // the press is doing the rest of the set (3.227.0): either way the
+      // whole-set question is asked first
+      const blend = !(d && d.unit) || fRichAimedDone(d);
       // every coin and shape is asked about first (3.138.0); a Cancel leaves
       // every copy live and sends nothing
       if (blend && !confirm(fAllUnitsAsk(d))) return;
