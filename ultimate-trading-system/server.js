@@ -1656,28 +1656,6 @@ require('./lib/live/routes').installLiveRoutes(app, { csrfGuard });
 // A result is kept beside the set it read now, under the survivor and windows it
 // read (lib/stages.js saveTuneScan), and the GETs below answer for the target the
 // page names.
-//
-// ---- REPAIR, DELETED ONCE IT HAS RUN ON THE BOX (3.234.0, RULE TEN) ---------
-// The two files the scans wrote until 3.234.0 each held the last result on the
-// box. Each is moved, once, to the set it read -- when that set and the capture
-// it read are still there, so a result that spent a look on the held-back
-// entries is not lost -- and the old file goes either way. The box held one of
-// each when this was written; after the first start under 3.234.0 it holds
-// none, and this block goes in the next release.
-for (const [tool, name] of [['stop', 'stop-sweep.json'], ['conviction', 'conviction-sweep.json']]) {
-  const file = path.join(__dirname, 'data', 'pilot', name);
-  let old = null;
-  try { old = JSON.parse(dataFs.readFileSync(file, 'utf8')); } catch (_) { continue; }
-  try {
-    const t = old && old.status === 'done' && old.target ? old.target : null;
-    const doc = t && t.setId ? stages.getSet(t.setId) : null;
-    if (doc && doc.capture && doc.capture.at === t.captureAt) {
-      stages.saveTuneScan({ setId: doc.id, survivor: t.pick === 'all' ? 'all' : String(t.survivor), windows: (t.windows || []).slice().sort(), captureAt: t.captureAt }, tool, old);
-    }
-    dataFs.rmSync(file, { force: true });
-  } catch (e) { console.error(`the ${tool} scan result kept before 3.234.0 could not be moved: ${e.message}`); }
-}
-// ---- end of the repair ----------------------------------------------------
 // The APPLIED stop is separate from the scan (owner: running the scan must NOT set
 // a stop — it shows options; the owner then CHOOSES one or none). fixed-stop.json
 // holds the chosen value the VPS sync carries; stopPct null = no stop (the sync
