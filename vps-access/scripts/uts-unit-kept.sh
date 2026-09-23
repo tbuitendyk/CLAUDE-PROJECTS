@@ -6,7 +6,10 @@
 # tables and the rebuilt numbers, how the kept rows compare with the dropped
 # ones on the readings that separate garbage from something, and every kept
 # row. Reads only; nothing is written.
-# arg (optional): a set id
+# arg (optional): a set id, or a set id with a trial filter to lay on its unit
+# table instead of the stored one: <set id>+<box>@<value>+<box>@<value>...
+# (e.g. s3-x+minBoardBeats@8+minChunksAPart@40). The trial is read only here;
+# the stored filter is never touched.
 set -uo pipefail
 ARG="${1:-}"
 cd /opt/ultimate-trading-system || exit 1
@@ -14,7 +17,9 @@ node --max-old-space-size=600 -e '
 const fs = require("fs"), path = require("path"), zlib = require("zlib");
 const UT = require("./lib/unittable");
 const DIR = "data/stagesets";
-const want = process.argv[1] || "";
+const argParts = String(process.argv[1] || "").split("+");
+const want = argParts[0] || "";
+const trial = argParts.length > 1 ? Object.fromEntries(argParts.slice(1).map((p) => p.split("@"))) : null;
 const safe = (id) => String(id).replace(/[^A-Za-z0-9._-]+/g, "_");
 const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch (_) { return null; } };
 function tallyHead(id) {
@@ -48,7 +53,9 @@ const f = (v, d = 1) => (v == null || !Number.isFinite(Number(v)) ? "-" : Number
     const richAt = idx && idx.v === 5 ? idx.savedAt : null;
     console.log(`   unit table built ${table.builtAt} under ${table.release}; fresh against the tables: ${head && head.builtAt === table.tallyBuiltAt ? "yes" : `NO (${head && head.builtAt})`}; against the rebuilt numbers: ${(table.richSavedAt || null) === richAt ? "yes" : `NO (${richAt})`}`);
     const all = table.units;
-    const kept = UT.applyFilter(all, d.unitFilter || {});
+    const storedKept = new Set(UT.applyFilter(all, d.unitFilter || {}).map((r) => r.unit));
+    if (trial) console.log(`   TRIAL filter, read here only: ${JSON.stringify(trial)} (the stored filter keeps ${storedKept.size})`);
+    const kept = UT.applyFilter(all, trial || d.unitFilter || {});
     const keptSet = new Set(kept.map((r) => r.unit));
     const dropped = all.filter((r) => !keptSet.has(r.unit));
     console.log(`   keeps ${kept.length} of ${all.length} coins and shapes`);
@@ -71,9 +78,10 @@ const f = (v, d = 1) => (v == null || !Number.isFinite(Number(v)) ? "-" : Number
     const byThird = kept.slice().sort((a, b) => ((b.top30Third ?? -1e9) - (a.top30Third ?? -1e9)) || ((b.boardBeats ?? -1) - (a.boardBeats ?? -1)));
     const show = byThird.slice(0, 32);
     console.log(`   the kept rows, top 30 in the third $ first (${show.length} shown of ${kept.length}):`);
+    if (trial) console.log(`   of the rows the trial keeps, ${kept.filter((r) => storedKept.has(r.unit)).length} are also kept by the stored filter; a * marks them`);
     console.log("     name | settings | in money% | avg $ | avg no gate | $/trade | mid $ | best $ | parts in money % | all3% | lose3% | 1>2 2>3 1>3 12>3 | top30 3rd $ | best30 copies | board copies | beat long% | best vs long $ | mid trades | blocked% | chunks");
     for (const r of show) {
-      console.log(`     ${r.name} | ${r.settings} | ${f(r.inMoneyPct)} | ${f(r.avgTest, 2)} | ${f(r.avgTestNoGate, 2)} | ${f(r.perTrade, 2)} | ${f(r.midTest, 2)} | ${f(r.bestTest, 0)} | ${f(r.inMoney1, 0)}/${f(r.inMoney2, 0)}/${f(r.inMoney3, 0)} | ${f(r.allThreePct)} | ${f(r.loseAllPct, 0)} | ${f(r.h12, 2)} ${f(r.h23, 2)} ${f(r.h13, 2)} ${f(r.h123, 2)} | ${f(r.top30Third, 2)} | ${r.best30Beats ?? "-"}/${r.copies ?? "-"} | ${r.boardBeats ?? "-"}/${r.copies ?? "-"} | ${f(r.beatLongPct, 0)} | ${f(r.bestVsLong, 0)} | ${f(r.midTrades, 0)} | ${f(r.fieldBlocked, 0)} | ${r.chunksAPart ?? "-"}`);
+      console.log(`     ${trial && storedKept.has(r.unit) ? "*" : ""}${r.name} | ${r.settings} | ${f(r.inMoneyPct)} | ${f(r.avgTest, 2)} | ${f(r.avgTestNoGate, 2)} | ${f(r.perTrade, 2)} | ${f(r.midTest, 2)} | ${f(r.bestTest, 0)} | ${f(r.inMoney1, 0)}/${f(r.inMoney2, 0)}/${f(r.inMoney3, 0)} | ${f(r.allThreePct)} | ${f(r.loseAllPct, 0)} | ${f(r.h12, 2)} ${f(r.h23, 2)} ${f(r.h13, 2)} ${f(r.h123, 2)} | ${f(r.top30Third, 2)} | ${r.best30Beats ?? "-"}/${r.copies ?? "-"} | ${r.boardBeats ?? "-"}/${r.copies ?? "-"} | ${f(r.beatLongPct, 0)} | ${f(r.bestVsLong, 0)} | ${f(r.midTrades, 0)} | ${f(r.fieldBlocked, 0)} | ${r.chunksAPart ?? "-"}`);
     }
   }
 })().catch((e) => { console.log("probe failed:", e.message); process.exit(1); });
