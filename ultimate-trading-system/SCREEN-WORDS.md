@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **6ea6768ebc99 — what the box is serving**, not from the working tree.
+Generated from **131e06346303 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -823,7 +823,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 
 # Boards
 
-## What the controls are called (219)
+## What the controls are called (217)
 
 - `— nothing came out of`
 - `— pick a stage`
@@ -863,11 +863,10 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `band`
 - `band %`
 - `bands`
-- `beat always long, %`
 - `beat its own null set`
+- `beat the best of the four, %`
 - `beat the kept null money`
 - `before BOOST)`
-- `best 30 beat copies`
 - `best test $`
 - `best vs always long $`
 - `biggest before the ceiling`
@@ -935,7 +934,6 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `held-back verdict`
 - `held,`
 - `in all`
-- `in the money, %`
 - `independent voices`
 - `is`
 - `is going:`
@@ -947,7 +945,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `LOGREG +`
 - `look-back`
 - `look-backs`
-- `losing in all three parts, %`
+- `losing in all three parts`
 - `maximum`
 - `median`
 - `member`
@@ -1066,7 +1064,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `trained`
 - `voices`
 
-## Sentences the page prints (94)
+## Sentences the page prints (95)
 
 - Boards — the record sets, and what each stage wrote
 - One section per stage, the whole provenance on screen: picking a stage 3 record set fills the
@@ -1161,6 +1159,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - opened, because a sit out it was handed is not a forecast it made;
 - beside it is over every decision it was read on, because
 - how often it acts out of all of them is the rate.
+- settings in the money over the whole test window
 - The plateaus, read on the test window
 
 ## Every word, flat (569)
