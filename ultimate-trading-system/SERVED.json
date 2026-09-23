@@ -1,16 +1,16 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html — so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "57e4d7080a0f90bc213f6e9af61f6f443386737f",
-  "subject": "3.239.2: the guided narrowing flow line moves off the Construct header to the top of the Help tab",
-  "capturedAt": "2026-09-23T21:41:57Z",
+  "commit": "7121eab6d0d098dc4859a16b95554f31055a2e72",
+  "subject": "3.240.0: campaigns hold their stage sets; each Sweep section picks its own set or a new one; Put away cascades on Sweep and Boards",
+  "capturedAt": "2026-09-23T22:50:51Z",
   "files": {
     "public/construct.js": {
-      "sha256": "bfad9a84a3f150bc1f65e9cba32c4611bcbf7102718004cdc939e4ba52b3958e",
-      "bytes": 997025
+      "sha256": "3d8df73b798082c4176e75e5f044534c56849ea67e466c5cd03895fe7604034a",
+      "bytes": 1009340
     },
     "public/help-content.js": {
-      "sha256": "b4714c47a7d1728752e4e2bb3894cfe4dec6b0ac1509c926faa151696a9d18c3",
-      "bytes": 184679
+      "sha256": "9bd8e4a3bda756b9ddc16c3df13151b17c3a3395453d149057a817f947871697",
+      "bytes": 185939
     }
   },
   "htmlNotVerified": "public/construct.html, public/trade.html and public/setup.html are served with the release stamped into the head (3.137.0) and, for construct.html, the cache markers rewritten to the content hash of each script, so their served bytes never equal their stored bytes. Nothing is generated from them."
