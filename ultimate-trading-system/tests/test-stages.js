@@ -1732,6 +1732,7 @@ module.exports = {
     const fill = UI.slice(UI.indexOf('async function swFillPicked() {'), UI.indexOf('\n}\n', UI.indexOf('async function swFillPicked() {')));
     assert.ok(fill.includes('if (got && got.set && swPicked(n) === v) fillStageForm(got.set);'), 'a remembered pick does not fill its section from its set');
     assert.ok(UI.includes('  swApplyAway();\n  swFillPicked();'), 'the draw does not fill the picked sections');
+    assert.ok(UI.includes("    setV('#swName1', doc.name || '');"), 'a stage 1 set picked or copied does not fill its name, so its section shows another name than its box');
     // AND OPEN BRINGS BACK WHAT WENT AWAY WITH IT
     assert.ok(UI.includes('  for (const x of SW_LEVELS.slice(SW_LEVELS.indexOf(String(k)))) all[x] = !!away;'), 'Open on Sweep does not reopen the levels under it');
   },
