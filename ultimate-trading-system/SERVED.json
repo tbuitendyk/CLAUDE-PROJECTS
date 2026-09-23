@@ -1,12 +1,12 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html — so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "92c81663f637e48c89dd00c0000b96666536b7a6",
-  "subject": "3.241.2: Put away on a Boards stage lets go of its record set, and of every stage's under it",
-  "capturedAt": "2026-09-23T23:17:28Z",
+  "commit": "ebd93cddf45a41d3e5c1aa5c0571269c73910fe0",
+  "subject": "3.241.3: Boards follows Sweep's rules: a stage under an empty or put-away stage has its record set box and Put away/Open greyed",
+  "capturedAt": "2026-09-23T23:21:05Z",
   "files": {
     "public/construct.js": {
-      "sha256": "38f569810701e49d69f6e3cf4c45351823101531c0999d69d58be7e50d81878e",
-      "bytes": 996662
+      "sha256": "b15e2fe1731ba98c7bf03a936e32828877f389f12f045a05a0e5687654137110",
+      "bytes": 997329
     },
     "public/help-content.js": {
       "sha256": "9bd8e4a3bda756b9ddc16c3df13151b17c3a3395453d149057a817f947871697",
