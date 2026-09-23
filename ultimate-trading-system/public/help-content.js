@@ -1029,11 +1029,11 @@ window.HELP = {
       stopWhySave: { what: 'Saves the reason on its own, leaving the stop on record exactly as it is. No scan runs.' },
       stopRun: {
         what: 'Tries every protective stop across the whole history and reports which ones would have cost you nothing.',
-        more: 'Takes minutes and cannot be stopped part-way. When a stop is on record for the survivor picked, the table carries it as its first row, priced on the same entries by the same arithmetic.',
+        more: 'Takes minutes and cannot be stopped part-way. When a stop is on record for the survivor picked, the table carries it as its first row, priced on the same entries by the same arithmetic. Each answer is kept with the set, survivor and windows it read, and the table shows only the one read on what is chosen under Tuning targets - anything else says it has not been run on that choice yet.',
       },
       convRun: {
         what: 'Tries every level of agreement across the captured trades, to see how much conviction is worth requiring: as money, and as a return on the amount traded.',
-        more: 'The money line can rise simply because the ladder trades more; the return on the amount traded, flat against ladder and per level of agreement, cannot. Takes minutes and cannot be stopped part-way.',
+        more: 'The money line can rise simply because the ladder trades more; the return on the amount traded, flat against ladder and per level of agreement, cannot. Takes minutes and cannot be stopped part-way. Each answer is kept with the set, survivor and windows it read, and the panel shows only the one read on what is chosen under Tuning targets.',
       },
     },
   },

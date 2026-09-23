@@ -1118,7 +1118,7 @@ app.post('/api/funnel/set/:id/stop-choice', (req, res) => {
     const choice = stages.setStopChoice(req.params.id, { pick: b.pick, stopPct: b.stopPct, why: b.why });
     if (!scan) return res.json({ ok: true, choice });
     req.body = target;
-    return captureScan(req, res, 'stop', writeStopSweep);
+    return captureScan(req, res, 'stop');
   } catch (err) {
     return res.status(err.status || 500).json({ error: err.message });
   }
@@ -1646,26 +1646,38 @@ app.post('/api/pilot/disarm', csrfGuard, (req, res) => {
 // the module boundary holds — all live-trading code lives in lib/live/.
 require('./lib/live/routes').installLiveRoutes(app, { csrfGuard });
 
-// PROTECTIVE-STOP TUNER (owner 2026-08-11). For a prospective live setup that has
-// no existing stop, replay its frozen committee over the WHOLE history and tune
-// the tightest fixed stop that loses no winner. The result is persisted to
-// data/pilot/stop-sweep.json; the VPS sync (pilot-produce-and-push.sh) carries the
-// determined FIXED_STOP_PCT to the box, and the live screen shows it. Heavy
-// (loads full history + trains), so it runs in the background and the UI polls.
-// This writes a RISK PARAMETER, not an authorization to trade — it opens nothing.
-function stopSweepPath() {
-  const dir = path.join(__dirname, 'data', 'pilot');
-  dataFs.mkdirSync(dir, { recursive: true });
-  return path.join(dir, 'stop-sweep.json');
+// PROTECTIVE-STOP TUNER AND CONVICTION SIZING (owner 2026-08-11, 2026-08-13): two
+// scans on the captured trades of a Stage 4 record set, run in the background and
+// polled. A scan SHOWS an answer; it applies nothing anywhere.
+//
+// EACH RESULT IS KEPT WITH WHAT IT READ (3.234.0, owner 2026-09-23: "that's still
+// stuck on an old job"). Until 3.234.0 each scan wrote one file for the whole box
+// -- the last run, on whatever set -- and Tune drew it under whatever was chosen.
+// A result is kept beside the set it read now, under the survivor and windows it
+// read (lib/stages.js saveTuneScan), and the GETs below answer for the target the
+// page names.
+//
+// ---- REPAIR, DELETED ONCE IT HAS RUN ON THE BOX (3.234.0, RULE TEN) ---------
+// The two files the scans wrote until 3.234.0 each held the last result on the
+// box. Each is moved, once, to the set it read -- when that set and the capture
+// it read are still there, so a result that spent a look on the held-back
+// entries is not lost -- and the old file goes either way. The box held one of
+// each when this was written; after the first start under 3.234.0 it holds
+// none, and this block goes in the next release.
+for (const [tool, name] of [['stop', 'stop-sweep.json'], ['conviction', 'conviction-sweep.json']]) {
+  const file = path.join(__dirname, 'data', 'pilot', name);
+  let old = null;
+  try { old = JSON.parse(dataFs.readFileSync(file, 'utf8')); } catch (_) { continue; }
+  try {
+    const t = old && old.status === 'done' && old.target ? old.target : null;
+    const doc = t && t.setId ? stages.getSet(t.setId) : null;
+    if (doc && doc.capture && doc.capture.at === t.captureAt) {
+      stages.saveTuneScan({ setId: doc.id, survivor: t.pick === 'all' ? 'all' : String(t.survivor), windows: (t.windows || []).slice().sort(), captureAt: t.captureAt }, tool, old);
+    }
+    dataFs.rmSync(file, { force: true });
+  } catch (e) { console.error(`the ${tool} scan result kept before 3.234.0 could not be moved: ${e.message}`); }
 }
-function readStopSweep() {
-  try { return JSON.parse(dataFs.readFileSync(stopSweepPath(), 'utf8')); } catch (_) { return { status: 'idle' }; }
-}
-function writeStopSweep(obj) {
-  const f = stopSweepPath();
-  dataFs.writeFileSync(`${f}.tmp`, JSON.stringify(obj));
-  dataFs.renameSync(`${f}.tmp`, f);
-}
+// ---- end of the repair ----------------------------------------------------
 // The APPLIED stop is separate from the scan (owner: running the scan must NOT set
 // a stop — it shows options; the owner then CHOOSES one or none). fixed-stop.json
 // holds the chosen value the VPS sync carries; stopPct null = no stop (the sync
@@ -1763,21 +1775,26 @@ app.get('/api/pilot/stop-candidates', (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 // A SCAN AIMED AT A STAGE 4 RECORD SET (3.92.0) reads the captured entries of
-// one survivor instead of replaying a committee; the same mutex, the same
-// result file, the same polling. The target is resolved BEFORE the mutex is
-// taken so a refusal never leaves the scan marked running.
-function captureScan(req, res, tool, write) {
+// one survivor instead of replaying a committee; one mutex, polled. The target
+// is resolved BEFORE the mutex is taken so a refusal never leaves the scan marked
+// running, and the result is kept under that target, finished or failed (3.234.0).
+function captureScan(req, res, tool) {
   const target = stages.captureTargetOf(req.body || {});
+  const aim = stages.tuneScanAimOf(target);
+  const startedUtc = new Date().toISOString();
   heavyScanRunning = tool;
-  write({ status: 'running', bookId: target.bookId, startedUtc: new Date().toISOString() });
+  heavyScanOn = { tool, aim, bookId: target.bookId, startedUtc };
   (async () => {
     try {
       const r = await stages.tuneOnCapture(req.body || {}, tool);
-      write({ status: 'done', bookId: target.bookId, finishedUtc: new Date().toISOString(), ...r });
+      stages.saveTuneScan(aim, tool, { status: 'done', bookId: target.bookId, startedUtc, finishedUtc: new Date().toISOString(), ...r });
     } catch (e) {
-      write({ status: 'error', bookId: target.bookId, finishedUtc: new Date().toISOString(), error: String((e && e.message) || e).slice(0, 300) });
+      try {
+        stages.saveTuneScan(aim, tool, { status: 'error', bookId: target.bookId, startedUtc, finishedUtc: new Date().toISOString(), error: String((e && e.message) || e).slice(0, 300) });
+      } catch (e2) { console.error(`a failed ${tool} scan could not be kept: ${e2.message}`); }
     } finally {
       heavyScanRunning = false;
+      heavyScanOn = null;
     }
   })();
   res.json({ ok: true, status: 'running', bookId: target.bookId });
@@ -1790,35 +1807,27 @@ function captureScan(req, res, tool, write) {
 // shared mutex gates both, and both UIs disable both launch buttons while
 // either runs. Scans are minutes-scale and run to completion.
 let heavyScanRunning = false; // false | 'stop' | 'conviction'
-function convictionSweepPath() {
-  const dir = path.join(__dirname, 'data', 'pilot');
-  dataFs.mkdirSync(dir, { recursive: true });
-  return path.join(dir, 'conviction-sweep.json');
-}
-function readConvictionSweep() {
-  try { return JSON.parse(dataFs.readFileSync(convictionSweepPath(), 'utf8')); } catch (_) { return { status: 'idle' }; }
-}
-function writeConvictionSweep(obj) {
-  const f = convictionSweepPath();
-  dataFs.writeFileSync(`${f}.tmp`, JSON.stringify(obj));
-  dataFs.renameSync(`${f}.tmp`, f);
-}
-app.get('/api/pilot/convictionsweep', (req, res) => res.json(readConvictionSweep()));
+let heavyScanOn = null;        // what it is running on: { tool, aim, bookId, startedUtc } (3.234.0)
+// THE RESULT FOR THE TARGET THE PAGE NAMES (3.234.0): the set, the survivor (by
+// depth, all, or named) and the windows, in the query; a target that cannot be
+// scanned answers idle with the reason, never another target's result
+const scanQueryOf = (q) => ({ setId: q.setId, pick: q.pick, windows: String(q.windows || '').split(',').filter(Boolean) });
+app.get('/api/pilot/convictionsweep', (req, res) => res.json(stages.tuneScanFor(scanQueryOf(req.query || {}), 'conviction', heavyScanOn)));
 app.get('/api/pilot/heavyscan', (req, res) => res.json({ running: heavyScanRunning || false }));
 app.post('/api/pilot/convictionsweep', (req, res) => {
   try {
     if (heavyScanRunning) return res.status(409).json({ error: `a heavy scan is already running (${heavyScanRunning}) — one at a time` });
-    if (req.body && req.body.setId) return captureScan(req, res, 'conviction', writeConvictionSweep);
+    if (req.body && req.body.setId) return captureScan(req, res, 'conviction');
     return res.status(400).json({ error: 'name a Stage 4 record set to scan (setId) — the scans run on the captured trades of one of its survivors' });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
   }
 });
-app.get('/api/pilot/stopsweep', (req, res) => res.json(readStopSweep()));
+app.get('/api/pilot/stopsweep', (req, res) => res.json(stages.tuneScanFor(scanQueryOf(req.query || {}), 'stop', heavyScanOn)));
 app.post('/api/pilot/stopsweep', (req, res) => {
   try {
     if (heavyScanRunning) return res.status(409).json({ error: `a heavy scan is already running (${heavyScanRunning}) — one at a time` });
-    if (req.body && req.body.setId) return captureScan(req, res, 'stop', writeStopSweep);
+    if (req.body && req.body.setId) return captureScan(req, res, 'stop');
     return res.status(400).json({ error: 'name a Stage 4 record set to scan (setId) — the scans run on the captured trades of one of its survivors' });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });

@@ -5534,6 +5534,8 @@ function deleteSet(id, confirm) {
   try { fs.rmSync(tallyFile(doc.id), { force: true }); } catch (_) { /* may not exist */ }
   try { fs.rmSync(unitsFile(doc.id), { force: true }); } catch (_) { /* may not exist */ }
   try { fs.rmSync(fieldFile(doc.id), { force: true }); } catch (_) { /* may not exist */ }
+  // what the two scans on Tune found on it (3.234.0): kept beside the set, gone with it
+  try { fs.rmSync(tuneScansFile(doc.id), { force: true }); } catch (_) { /* may not exist */ }
   try { fs.rmSync(setFile(doc.id), { force: true }); } catch (_) { /* reported below */ }
   dropCheckpoint(doc.id);
   if (recordsInHand.id === doc.id) { recordsInHand.id = null; recordsInHand.rows = null; }
@@ -10025,6 +10027,64 @@ async function tuneOnCapture(body, tool) {
   };
 }
 
+// ---- WHAT THE TWO SCANS ON TUNE FOUND, KEPT PER TARGET (3.234.0) ------------
+// (owner 2026-09-23: "when the scan target is selected it doesn't properly
+// update the conviction sizing section -- that's still stuck on an old job")
+//
+// Each scan kept ONE result for the whole box -- the last one run, on whatever
+// set -- and Tune drew it under whatever was chosen, so choosing another set
+// left the other set's answer on the screen as if it were this one's. Now each
+// result is kept beside the set it read, under the survivor and the windows it
+// read, and a panel is handed only the one read on what is chosen. A result
+// read from a capture that has since been replaced is never handed out: it was
+// read off other trades.
+const TUNE_SCANS_V = 1;
+const TUNE_SCAN_TOOLS = ['stop', 'conviction'];
+const tuneScansFile = (id) => path.join(SETS_DIR, `${id}-tunescans.json`);
+// the survivor and the windows a scan reads, resolved the way the scan resolves
+// them (by depth is the survivor it resolves to), and the capture it reads
+const tuneScanAimOf = (t) => ({
+  setId: t.doc.id, survivor: t.pick === 'all' ? 'all' : String(t.label),
+  windows: t.windows.slice().sort(), captureAt: (t.doc.capture || {}).at || null,
+});
+const tuneScanKeyOf = (aim) => JSON.stringify([aim.survivor, aim.windows]);
+function readTuneScans(id) {
+  const x = readJsonOr(tuneScansFile(id), null);
+  const scans = {};
+  for (const tool of TUNE_SCAN_TOOLS) scans[tool] = x && x.v === TUNE_SCANS_V && x.scans && x.scans[tool] ? x.scans[tool] : {};
+  return { v: TUNE_SCANS_V, scans };
+}
+// kept under its target, the finished result or the failure alike: one per
+// survivor and windows per scan, the newest replacing the one before it
+function saveTuneScan(aim, tool, result) {
+  if (!TUNE_SCAN_TOOLS.includes(tool)) throw new Error(`no scan called '${tool}'`);
+  const file = readTuneScans(aim.setId);
+  file.scans[tool][tuneScanKeyOf(aim)] = { ...result, aim };
+  atomicWrite(tuneScansFile(aim.setId), JSON.stringify(file));
+}
+// WHAT A PANEL ON TUNE DRAWS for what is chosen under Tuning targets: the scan
+// running on it, the result read on it, or 'idle' with the newest result kept
+// on the same set so the panel can say what that one read. `running` is the one
+// heavy scan the service is running, which only the caller knows about.
+function tuneScanFor(query, tool, running = null) {
+  let t;
+  try { t = captureTargetOf(query); } catch (err) { return { status: 'idle', why: err.message, aim: null, last: null }; }
+  const aim = tuneScanAimOf(t);
+  if (running && running.tool === tool && running.aim && running.aim.setId === aim.setId && tuneScanKeyOf(running.aim) === tuneScanKeyOf(aim)) {
+    return { status: 'running', aim, bookId: running.bookId || null, startedUtc: running.startedUtc || null };
+  }
+  const all = readTuneScans(aim.setId).scans[tool] || {};
+  const current = (r) => !!(r && r.aim && r.aim.captureAt === aim.captureAt);
+  const mine = all[tuneScanKeyOf(aim)];
+  if (current(mine)) return mine;
+  const newest = Object.values(all).filter(current)
+    .sort((a, b) => String(b.finishedUtc || '').localeCompare(String(a.finishedUtc || '')))[0] || null;
+  return {
+    status: 'idle', aim,
+    last: newest ? { survivor: newest.aim.survivor, windows: newest.aim.windows, finishedUtc: newest.finishedUtc || null, status: newest.status || null } : null,
+  };
+}
+
 // ---- THE HISTORY HALF-LIFE RUN (3.94.0, AGEDIAL-DESIGN.md, owner design 2026-09-08) ----
 //
 // "4.h IS the same 199 records retrained." A Stage 4 record set's settings are
@@ -11250,6 +11310,7 @@ module.exports = {
   funnelOthersStart, funnelOthersStatus, othersSummaryOf, funnelRideStart, funnelRideStatus, RICH_FIELDS,
   stage4GreenlightSource, stage4GreenlightDry, pictureOf, setSizingChoice, tunedOfRule, tunedOnStretch, TUNED_NONE, verifyLooksOf, partSlices, richSetOf, richMissingFor, mergeProofs, richAllIn, unitsDoneWithoutTables,
   tuneCaptureDry, tuneCaptureStart, tuneCaptureStatus, tuneOnCapture, captureCandidates, captureTargetOf, readCapture, captureFile,
+  tuneScanAimOf, saveTuneScan, readTuneScans, tuneScanFor, tuneScansFile,
   halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet, buildHalfLifeSet, gateOfSet,
   stopChoiceOf, setStopChoice,
   CAPTURE_WINDOWS, CAPTURE_NONE, CAPTURE_NOT_YET,

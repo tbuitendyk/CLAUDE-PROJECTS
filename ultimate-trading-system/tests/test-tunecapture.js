@@ -705,4 +705,144 @@ module.exports = {
     // and the question the press asks says so
     assert.ok(ui.includes('When it lands the set is chosen in the scan target box.'), 'the press still says the set only appears in the scan target box');
   },
+  // EACH SCAN'S RESULT IS KEPT WITH WHAT IT READ, AND A PANEL IS HANDED ONLY ITS
+  // OWN (3.234.0, owner 2026-09-23: "when the scan target is selected it doesn't
+  // properly update the conviction sizing section -- that's still stuck on an
+  // old job"). On a Stage 4 set on disk with a capture record: kept under the
+  // survivor and windows it read; by depth and naming the same survivor are one
+  // target; another survivor, other windows or the other scan are told nothing
+  // was run and are named the newest kept; a scan running is said only on its
+  // own target; a new capture makes every kept result stale; the file goes
+  // with the set.
+  async theScansAreKeptPerTargetAndAPanelIsHandedOnlyItsOwn() {
+    const id = `s4-test-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}-tsc`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const cap = { at: '2026-09-23T00:00:00.000Z', captured: 2, rows: [{ label: 'A' }, { label: 'B' }], pick: { label: 'A' } };
+    const doc = { id, stage: 4, seq: 999961, name: 'S4 #tsc', kind: 'funnel', status: 'done', createdAt: new Date().toISOString(), exam: true, capture: cap };
+    fs.mkdirSync(SETS_DIR, { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(doc));
+    try {
+      const q = (pick, windows) => ({ setId: id, pick, windows });
+      let got = stages.tuneScanFor(q('depth', ['test']), 'stop');
+      assert.deepStrictEqual([got.status, got.last], ['idle', null], 'a set with nothing kept is handed something');
+      const aim = stages.tuneScanAimOf(stages.captureTargetOf(q('depth', ['test', 'train'])));
+      assert.deepStrictEqual(aim, { setId: id, survivor: 'A', windows: ['test', 'train'], captureAt: cap.at }, 'the target is not the survivor by depth resolves to, its windows and the capture it read');
+      stages.saveTuneScan(aim, 'stop', { status: 'done', finishedUtc: '2026-09-23T01:00:00.000Z', curve: [1] });
+      got = stages.tuneScanFor(q('depth', ['train', 'test']), 'stop');
+      assert.deepStrictEqual([got.status, got.curve], ['done', [1]], 'the result kept for what is chosen is not handed back');
+      assert.strictEqual(stages.tuneScanFor(q('A', ['train', 'test']), 'stop').status, 'done', 'naming the survivor by depth resolves to is read as another target');
+      // ANOTHER SURVIVOR, OTHER WINDOWS, THE OTHER SCAN: never handed this one
+      got = stages.tuneScanFor(q('B', ['train', 'test']), 'stop');
+      assert.deepStrictEqual([got.status, got.curve], ['idle', undefined], 'another survivor is handed this survivor\'s answer');
+      assert.deepStrictEqual([got.last.survivor, got.last.windows], ['A', ['test', 'train']], 'the newest result kept on the set is not named');
+      assert.strictEqual(stages.tuneScanFor(q('A', ['test']), 'stop').status, 'idle', 'other windows are handed this answer');
+      got = stages.tuneScanFor(q('A', ['train', 'test']), 'conviction');
+      assert.deepStrictEqual([got.status, got.last], ['idle', null], 'the conviction sizing panel is handed the stop tuner\'s answer');
+      // A SCAN RUNNING IS SAID ONLY ON ITS OWN TARGET
+      const running = { tool: 'stop', aim, bookId: 'S4 #tsc · A', startedUtc: '2026-09-23T03:00:00.000Z' };
+      assert.strictEqual(stages.tuneScanFor(q('A', ['train', 'test']), 'stop', running).status, 'running');
+      assert.strictEqual(stages.tuneScanFor(q('B', ['train', 'test']), 'stop', running).status, 'idle', 'a scan on one survivor reads as running on another');
+      assert.strictEqual(stages.tuneScanFor(q('A', ['train', 'test']), 'conviction', running).status, 'idle', 'the stop scan reads as the conviction scan running');
+      // A FAILURE IS KEPT UNDER ITS TARGET TOO
+      stages.saveTuneScan({ ...aim, survivor: 'B' }, 'conviction', { status: 'error', error: 'no prices', finishedUtc: '2026-09-23T02:00:00.000Z' });
+      got = stages.tuneScanFor(q('B', ['train', 'test']), 'conviction');
+      assert.deepStrictEqual([got.status, got.error], ['error', 'no prices'], 'a failed scan is not kept under what it was run on');
+      // A TARGET THAT CANNOT BE SCANNED ANSWERS IDLE WITH THE REASON, never another target's result
+      got = stages.tuneScanFor(q('A', []), 'stop');
+      assert.ok(got.status === 'idle' && /tick at least one window/.test(got.why || ''), `no window ticked is answered with something else: ${JSON.stringify(got)}`);
+      assert.strictEqual(stages.tuneScanFor({ pick: 'depth', windows: ['test'] }, 'stop').status, 'idle', 'no set named is answered with a result');
+      // A NEW CAPTURE: nothing read off the old one is handed out
+      fs.writeFileSync(file, JSON.stringify({ ...doc, capture: { ...cap, at: '2026-09-24T00:00:00.000Z' } }));
+      got = stages.tuneScanFor(q('depth', ['train', 'test']), 'stop');
+      assert.deepStrictEqual([got.status, got.last], ['idle', null], 'a result read off a capture since replaced is handed out');
+      // AND THE FILE GOES WITH THE SET
+      assert.ok(fs.existsSync(stages.tuneScansFile(id)), 'the results are not kept beside the set');
+      const look = stages.deleteSet(id);
+      stages.deleteSet(id, look.confirmWith);
+      assert.ok(!fs.existsSync(stages.tuneScansFile(id)), 'the scan results outlive their set');
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(stages.tuneScansFile(id), { force: true }); } catch (_) { /* fixture */ }
+    }
+  },
+
+  // THE SIZING'S CONTROLS ARE IN THE CONVICTION SIZING PANEL, not in the
+  // protective stop tuner (3.234.0, owner: "there's some bizarre mix of
+  // conviction sizing stuff on the stop tuner"), laid out as the stop's are;
+  // both panels are asked for the target chosen; and the message a scan press
+  // gives with nothing to aim at says what is missing.
+  theSizingControlsLiveInTheConvictionPanelAndBothPanelsAskForTheTargetChosen() {
+    const ui = src('public/construct.js');
+    const draw = ui.slice(ui.indexOf('async function drawTune('));
+    const stopPanel = draw.slice(draw.indexOf('Protective stop tuner — on the captured trades, loses no winner'), draw.indexOf('Conviction sizing — bet more when more members agree?'));
+    const convPanel = draw.slice(draw.indexOf('Conviction sizing — bet more when more members agree?'), draw.indexOf('function tnNotRunHtml('));
+    for (const id of ['sizingWhy', 'sizingApply', 'sizingOff']) {
+      assert.ok(!stopPanel.includes(`id="${id}"`), `${id} is still drawn in the protective stop tuner`);
+      assert.ok(convPanel.includes(`id="${id}"`), `${id} is not drawn in the conviction sizing panel`);
+    }
+    assert.ok(!stopPanel.includes('sizing on record for') && convPanel.includes('sizing on record for'), 'the sizing on record is not said in its own panel');
+    // laid out as the stop's: the reason box, its two buttons in a row of their own, what is on record, then the scan
+    const at = (x) => convPanel.indexOf(x);
+    assert.ok(at('id="sizingWhy"') < at('id="sizingApply"') && at('id="sizingApply"') < at('sizing on record for') && at('sizing on record for') < at('id="convRun"'),
+      'the sizing panel is not laid out the way the stop tuner is');
+    assert.ok(/<div class="row">\s*<button id="sizingApply"[^\n]*\n\s*<button id="sizingOff"/.test(convPanel), 'the two sizing buttons are not in a row of their own');
+    // both panels asked for the target chosen, and a result for another said as not run
+    assert.ok(draw.includes('apiOr(`api/pilot/stopsweep?${scanQ}`') && draw.includes('apiOr(`api/pilot/convictionsweep?${scanQ}`'), 'a panel is asked for something other than the target chosen');
+    assert.ok(stopPanel.includes("isSet ? tnNotRunHtml(stop, 'Tune protective stop') : ''") && convPanel.includes("isSet ? tnNotRunHtml(conv, 'Run conviction sweep') : ''"), 'a panel with nothing run on the target chosen says nothing');
+    const srv = src('server.js');
+    assert.ok(srv.includes("app.get('/api/pilot/stopsweep', (req, res) => res.json(stages.tuneScanFor(scanQueryOf(req.query || {}), 'stop', heavyScanOn)));")
+      && srv.includes("app.get('/api/pilot/convictionsweep', (req, res) => res.json(stages.tuneScanFor(scanQueryOf(req.query || {}), 'conviction', heavyScanOn)));"), 'the service answers with one result for the whole box');
+    assert.ok(!/stop-sweep\.json[^\n]*writeFileSync|writeStopSweep|writeConvictionSweep/.test(srv), 'a scan still writes one result for the whole box');
+    // the message with nothing to aim at says what is missing, in the screen's words
+    assert.ok(draw.includes("alert('No scan target: no Stage 4 record set on this box has its trades captured yet. '"), 'the message with nothing to aim at is not the one that says what is missing');
+    assert.ok(!/opposite rail|breakout cell/.test(draw), 'the message from the older engine is still on Tune');
+  },
+  // THE TWO RESULTS KEPT BEFORE 3.234.0 MOVE TO THEIR SETS WHEN THE SERVICE
+  // STARTS (RULE TEN: this test goes with the repair in the next release). One
+  // old file reads a set that is there with the same capture -- moved, and the
+  // page's question answers with it; the other reads a set that is gone --
+  // dropped. Both old files are gone after the start.
+  async theResultsKeptBeforeThisReleaseMoveToTheirSetsOnStart() {
+    const { spawn } = require('child_process');
+    const http = require('http');
+    const PILOT = path.join(ROOT, 'data', 'pilot');
+    const id = `s4-test-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}-mv`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const cap = { at: '2026-09-23T00:00:00.000Z', captured: 2, rows: [{ label: 'A' }, { label: 'B' }], pick: { label: 'A' } };
+    fs.mkdirSync(SETS_DIR, { recursive: true });
+    fs.mkdirSync(PILOT, { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ id, stage: 4, seq: 999962, name: 'S4 #mv', kind: 'funnel', status: 'done', createdAt: new Date().toISOString(), exam: true, capture: cap }));
+    const oldStop = path.join(PILOT, 'stop-sweep.json');
+    const oldConv = path.join(PILOT, 'conviction-sweep.json');
+    fs.writeFileSync(oldStop, JSON.stringify({ status: 'done', finishedUtc: '2026-09-23T01:00:00.000Z', curve: [7], target: { kind: 'stage4', setId: id, pick: 'depth', survivor: 'A', windows: ['train', 'test'], captureAt: cap.at } }));
+    fs.writeFileSync(oldConv, JSON.stringify({ status: 'done', finishedUtc: '2026-09-15T01:00:00.000Z', buckets: [], target: { kind: 'stage4', setId: `${id}-gone`, pick: 'depth', survivor: 'A', windows: ['train', 'test'], captureAt: cap.at } }));
+    const PORT = 19000 + (process.pid % 400) + Math.floor(Math.random() * 400);
+    const get = (p) => new Promise((resolve, reject) => {
+      http.get({ host: '127.0.0.1', port: PORT, path: p }, (res) => { let b = ''; res.on('data', (c) => { b += c; }); res.on('end', () => resolve({ status: res.statusCode, body: b })); }).on('error', reject);
+    });
+    const child = spawn(process.execPath, [path.join(ROOT, 'server.js')], { env: { ...process.env, PORT: String(PORT) }, cwd: ROOT, stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+    child.stderr.on('data', (d) => { stderr += d; });
+    try {
+      const deadline = Date.now() + 10000;
+      for (;;) {
+        try { if ((await get('/api/healthz')).status === 200) break; } catch (_) { /* not yet */ }
+        if (Date.now() > deadline) throw new Error(`the service did not start: ${stderr.trim().split('\n').slice(-3).join(' | ')}`);
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      assert.ok(!fs.existsSync(oldStop) && !fs.existsSync(oldConv), 'a result file kept for the whole box is still there after the start');
+      const kept = stages.readTuneScans(id).scans;
+      const mine = kept.stop[JSON.stringify(['A', ['test', 'train']])];
+      assert.ok(mine && mine.status === 'done' && mine.curve[0] === 7, `the stop result was not moved to the set it read: ${JSON.stringify(kept).slice(0, 200)}`);
+      assert.deepStrictEqual(Object.keys(kept.conviction), [], 'a result for a set that is gone was moved somewhere');
+      const r = await get(`/api/pilot/stopsweep?setId=${encodeURIComponent(id)}&pick=depth&windows=train,test`);
+      const j = JSON.parse(r.body);
+      assert.deepStrictEqual([r.status, j.status, j.curve], [200, 'done', [7]], `the page is not handed the moved result for what it read: ${r.body.slice(0, 200)}`);
+      const other = JSON.parse((await get(`/api/pilot/stopsweep?setId=${encodeURIComponent(id)}&pick=B&windows=train,test`)).body);
+      assert.strictEqual(other.status, 'idle', 'another survivor is handed the moved result');
+    } finally {
+      child.kill('SIGKILL');
+      for (const f of [file, stages.tuneScansFile(id), oldStop, oldConv]) { try { fs.rmSync(f, { force: true }); } catch (_) { /* fixture */ } }
+    }
+  },
 };

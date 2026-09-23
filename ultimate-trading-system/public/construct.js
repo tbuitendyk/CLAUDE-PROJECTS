@@ -3259,11 +3259,7 @@ async function tnCaptureFollow(id, token) {
 // ---- Tune (stop tuner · conviction sizing · compare) ----------------------------
 async function drawTune() {
   clearTimeout(tunePoll); tunePoll = null;
-  const [scan, stop, conv] = await Promise.all([
-    apiOr('api/pilot/heavyscan', ({ running: false })),
-    apiOr('api/pilot/stopsweep', ({ status: 'idle' })),
-    apiOr('api/pilot/convictionsweep', ({ status: 'idle' })),
-  ]);
+  const scan = await apiOr('api/pilot/heavyscan', ({ running: false }));
   const busy = scan.running;
   const pcOf = (v) => `${(100 * v).toFixed(3)}%`;
   const pct = (v) => (v == null ? '—' : (v * 100).toFixed(2) + '%');
@@ -3307,6 +3303,17 @@ async function drawTune() {
   const tnPickVal = isSet ? tnRememberedPick(chosen) : 'depth';
   const tnWins = isSet ? tnRememberedWindows() : [];
   const scanBody = isSet ? { setId: chosen.id, pick: tnPickVal, windows: tnWins } : null;
+  // THE TWO RESULTS ARE ASKED FOR WHAT IS CHOSEN (3.234.0, owner 2026-09-23:
+  // "when the scan target is selected it doesn't properly update the conviction
+  // sizing section -- that's still stuck on an old job"). Each scan kept one
+  // result for the whole box and both panels drew it whatever was chosen; the
+  // service keeps each result with the set, survivor and windows it read now,
+  // and answers for the ones named here -- or says none was run on them.
+  const scanQ = isSet ? `setId=${encodeURIComponent(chosen.id)}&pick=${encodeURIComponent(tnPickVal)}&windows=${encodeURIComponent(tnWins.join(','))}` : '';
+  const [stop, conv] = isSet ? await Promise.all([
+    apiOr(`api/pilot/stopsweep?${scanQ}`, ({ status: 'idle' })),
+    apiOr(`api/pilot/convictionsweep?${scanQ}`, ({ status: 'idle' })),
+  ]) : [{ status: 'idle' }, { status: 'idle' }];
   // The prose and the dropdown are computed from the SAME resolved value, so
   // the sentence above the control can no longer describe a different target
   // from the one the launcher will actually use.
@@ -3368,16 +3375,8 @@ async function drawTune() {
       <button id="stopWhySave" ${stopHeld || !onRecord ? `disabled title="${esc(stopHeldWhy || 'no choice about the stop is on record for this survivor yet — apply one, or clear it, first')}"` : 'title="saves the reason on its own, leaving the stop on record exactly as it is; no scan runs"'}>Save the reason</button>
 </div>
     ${stopLabel ? (onRecord ? `<div class="note" style="margin-bottom:.4rem">on record for <b>${esc(stopLabel)}</b>: ${onRecord.stopPct != null ? pct(onRecord.stopPct) : (Object.prototype.hasOwnProperty.call(onRecord, 'stopPct') ? 'no stop' : 'no stop chosen yet')}${onRecord.why ? ` — ${esc(onRecord.why)}` : ' — no reason recorded'}${onRecord.at ? ` (${esc(String(onRecord.at).slice(0, 10))}${onRecord.by ? ', ' + esc(onRecord.by) : ''})` : ''}</div>` : `<div class="note warn" style="margin-bottom:.4rem">no choice about the stop has been recorded for <b>${esc(stopLabel)}</b> yet</div>`) : ''}
-    <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
-      <label class="f" title="why you applied the conviction sizing to the survivor picked under Tuning targets, or took it off. Saved with the choice on that survivor.">your reason for the sizing<input id="sizingWhy" type="text" maxlength="300" placeholder="why size by conviction, or why not" value="${esc(onRecord && onRecord.sizing ? onRecord.sizing.why || '' : '')}" style="width:48rem"></label>
-    </div>
-    <div class="row">
-      <button id="sizingApply" ${stopHeld ? `disabled title="${esc(stopHeldWhy)}"` : 'title="records on the survivor picked under Tuning targets that its trades are sized by conviction: one clip for each member that agreed, the ladder the conviction scan below reads. A held set or a reserve set read after this freezes the choice, and a greenlight carries it. Nothing is applied to any trading machine."'}>Apply the conviction sizing</button>
-      <button id="sizingOff" ${stopHeld || !(onRecord && onRecord.sizing) ? `disabled title="${esc(stopHeldWhy || 'no sizing is on record for this survivor')}"` : 'title="records that the survivor picked under Tuning targets is NOT sized by conviction: every trade at one clip"'}>Take the sizing off</button>
-</div>
-    ${stopLabel ? `<div class="note" style="margin-bottom:.4rem">sizing on record for <b>${esc(stopLabel)}</b>: ${onRecord && onRecord.sizing ? `<b>by conviction</b>, one clip ($${Number(onRecord.sizing.clipUsd) || 0}, the record's own dollars) a member that agreed${onRecord.sizing.why ? ` — ${esc(onRecord.sizing.why)}` : ''} (${esc(String(onRecord.sizing.at || '').slice(0, 10))})` : 'none — every trade at one clip'}</div>` : ''}
     <div class="row"><button id="stopRun" class="pri" ${busy ? 'disabled' : ''}>Tune protective stop</button></div>
-    <div id="stopOut">${stop.status === 'done' ? renderStopResult(stop) : stop.status === 'running' ? '<p class="note">running…</p>' : stop.status === 'error' ? `<p class="warn">last scan failed: ${esc(stop.error || '')}</p>` : ''}</div>
+    <div id="stopOut">${stop.status === 'done' ? renderStopResult(stop) : stop.status === 'running' ? '<p class="note">running…</p>' : stop.status === 'error' ? `<p class="warn">last scan failed: ${esc(stop.error || '')}</p>` : isSet ? tnNotRunHtml(stop, 'Tune protective stop') : ''}</div>
   </div>
   <div class="panel">
     <h3 style="margin-top:0">Conviction sizing — bet more when more members agree?</h3>
@@ -3385,13 +3384,37 @@ async function drawTune() {
       same captured trades, against a shuffled-assignment chance check and exposure-honest metrics.
       Target: ${target}.</p>
     ${tnSizingChoiceHtml(onRecord)}
+    <!-- THE SIZING'S OWN CONTROLS LIVE IN ITS OWN PANEL (3.234.0, owner 2026-09-23:
+         "there's some bizarre mix of conviction sizing stuff on the stop tuner").
+         They sat inside the protective stop tuner since 3.151.0. Laid out the way
+         the stop's are: the reason box, its two buttons in a row of their own,
+         what is on record under them, then the scan. -->
+    <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
+      <label class="f" title="why you applied the conviction sizing to the survivor picked under Tuning targets, or took it off. Saved with the choice on that survivor.">your reason for the sizing<input id="sizingWhy" type="text" maxlength="300" placeholder="why size by conviction, or why not" value="${esc(onRecord && onRecord.sizing ? onRecord.sizing.why || '' : '')}" style="width:48rem"></label>
+    </div>
+    <div class="row">
+      <button id="sizingApply" ${stopHeld ? `disabled title="${esc(stopHeldWhy)}"` : 'title="records on the survivor picked under Tuning targets that its trades are sized by conviction: one clip for each member that agreed, the ladder the conviction scan below reads. A held set or a reserve set read after this freezes the choice, and a greenlight carries it. Nothing is applied to any trading machine."'}>Apply the conviction sizing</button>
+      <button id="sizingOff" ${stopHeld || !(onRecord && onRecord.sizing) ? `disabled title="${esc(stopHeldWhy || 'no sizing is on record for this survivor')}"` : 'title="records that the survivor picked under Tuning targets is NOT sized by conviction: every trade at one clip"'}>Take the sizing off</button>
+    </div>
+    ${stopLabel ? `<div class="note" style="margin-bottom:.4rem">sizing on record for <b>${esc(stopLabel)}</b>: ${onRecord && onRecord.sizing ? `<b>by conviction</b>, one clip ($${Number(onRecord.sizing.clipUsd) || 0}, the record's own dollars) a member that agreed${onRecord.sizing.why ? ` — ${esc(onRecord.sizing.why)}` : ''} (${esc(String(onRecord.sizing.at || '').slice(0, 10))})` : 'none — every trade at one clip'}</div>` : ''}
     <div class="row"><button id="convRun" class="pri" ${busy ? 'disabled' : ''}>Run conviction sweep</button></div>
-    <div id="convOut">${conv.status === 'done' ? renderConvResult(conv) : conv.status === 'running' ? '<p class="note">running…</p>' : conv.status === 'error' ? `<p class="warn">last sweep failed: ${esc(conv.error || '')}</p>` : ''}</div>
+    <div id="convOut">${conv.status === 'done' ? renderConvResult(conv) : conv.status === 'running' ? '<p class="note">running…</p>' : conv.status === 'error' ? `<p class="warn">last sweep failed: ${esc(conv.error || '')}</p>` : isSet ? tnNotRunHtml(conv, 'Run conviction sweep') : ''}</div>
   </div>
 `;
   // THE SIZING ON RECORD, AS A GREEN LINE at the top of the conviction panel (3.154.0,
 // owner order): the same green as the stop tuner's "your choice" row, drawn only
 // when the sizing is applied to the survivor picked under Tuning targets
+// A SCAN NOT RUN ON WHAT IS CHOSEN (3.234.0): said, and never filled with the
+// answer another set, survivor or window gave. What the newest result kept on
+// the same set read is named, so the owner can go back to it.
+function tnNotRunHtml(x, press) {
+  if (x && x.why) return `<p class="note">${esc(x.why)}</p>`;
+  const last = x && x.last;
+  const lastWords = last
+    ? ` The last one kept on this set read ${last.survivor === 'all' ? 'all survivors' : `<b>${esc(last.survivor)}</b>`} on the ${esc(tnWindowWords(TN_WINDOWS.map(([k]) => k).filter((k) => (last.windows || []).includes(k))))} window(s)${last.finishedUtc ? ` (${esc(String(last.finishedUtc).slice(0, 10))})` : ''} - choose those under Tuning targets to see it.`
+    : '';
+  return `<p class="note">Not run yet on what is chosen under Tuning targets - press <b>${esc(press)}</b> to run it.${lastWords}</p>`;
+}
 function tnSizingChoiceHtml(onRecord) {
   const sz = onRecord && onRecord.sizing ? onRecord.sizing : null;
   if (!sz) return '';
@@ -3533,10 +3556,12 @@ function renderStopResult(s) {
   // book already carries a protective stop, or the list failed to load). Say so
   // instead of posting an empty request and surfacing the server's 400 — the
   // operator did not type anything wrong, there is simply nothing to aim at.
-  const noTarget = () => { alert('No scan target: nothing in the list is without a protective stop, '
-    + 'so there is nothing to tune. A breakout cell already stops at its opposite rail.'); };
+  // (3.234.0: this said something about the older engine's targets, which went
+  // with that engine in 3.97.0; with nothing chosen, the one reason is that no
+  // set has its trades captured)
+  const noTarget = () => { alert('No scan target: no Stage 4 record set on this box has its trades captured yet. '
+    + 'Choose a set in the panel above, press Capture the trades of this set, and it is chosen under scan target when the capture lands.'); };
   const tnConfirm = (what) => {
-    if (!isSet) return confirm(`Run the full-history ${what}? (minutes; one heavy scan at a time)`);
     if (!tnWins.length) { alert('tick at least one window for the scan to read: training, test or held-back'); return false; }
     const look = tnWins.includes('hold') ? `\n\nThis reads the captured held-back entries: a counted look at the held-back window (look ${(chosen.looks || 0) + 1}).` : '\n\nThe held-back entries are not read: not a look.';
     return confirm(`Run the ${what} on the captured entries of ${chosen.name}? (${tnWindowWords(tnWins)} window(s); one heavy scan at a time)${look}`);
