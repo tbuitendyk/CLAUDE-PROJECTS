@@ -237,6 +237,11 @@ the rebuild may keep more or fewer survivors, and that is read, not guessed.
   (3.103.1), which never names a coin -- so 3.136.0's "make the press follow the
   coin chooser" has never taken effect. The fix is one word (rename the inner
   one). tests/test-funnel.js pins the line's text and could not see it.
+  FIXED in 3.236.1 on the owner's GO NOW! ("fix the one word in the press ...
+  without deploy"), after this loop ended, and NOT deployed: until it is, the
+  box still prices every coin and shape, and D9 and D19 above describe what
+  the box does. test-tunecapture.js now presses the pass aimed at one coin and
+  shape and checks that one alone is priced and written.
 
 - A setting whose quorum is the field alone captures no training entries: the
   committee's training stream is built without the field's signs. Its test and

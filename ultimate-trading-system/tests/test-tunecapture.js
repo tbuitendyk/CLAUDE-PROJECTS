@@ -647,6 +647,16 @@ module.exports = {
       // the store is cleared so the stop can be pressed on a pass with everything left
       fs.rmSync(stages.funnelRichDir(c.s3), { recursive: true, force: true });
       assert.strictEqual(stages.readFunnelRich(c.s3), null, 'the cleared store still reads');
+      // THE PRESS AIMED AT ONE COIN AND SHAPE PRICES THAT ONE ALONE (3.136.0,
+      // true since 3.236.1: until then the pass read the coin off the tables'
+      // answer, which never names one, and priced every coin and shape)
+      const aimed = stages.funnelRichStart(c.s3, { unit: c.plant });
+      assert.strictEqual(aimed.unit, c.plant, `the press does not carry the coin and shape it was aimed at: ${JSON.stringify(aimed.unit)}`);
+      const one = await settle(() => stages.funnelRichStatus(c.s3), 'the aimed pass');
+      assert.strictEqual(one.units, 1, `the press aimed at one coin and shape of ${units.length} priced ${one.units}`);
+      assert.strictEqual(fs.readdirSync(path.join(stages.funnelRichDir(c.s3), 'units')).length, 1, 'more than the coin and shape aimed at was written');
+      assert.ok(Object.keys(stages.readFunnelRich(c.s3).unit(c.plant)).length > 0, 'the coin and shape aimed at was not written');
+      fs.rmSync(stages.funnelRichDir(c.s3), { recursive: true, force: true });
       // THE STOP (3.224.0): asked for the moment the pass starts, it lands after
       // the first coin and shape -- that one is written, nothing further is
       // started, and the answer says where it stopped

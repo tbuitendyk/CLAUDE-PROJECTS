@@ -508,6 +508,13 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stagework.js'), '      return Array.from(fieldGate.sizesFor(fieldDays, idxs.map((i) => tsAll[i]), sub, st.field).sizes);', '      return sub.map((c) => (c === 1 || c === -1 ? 1 : 0));',
     'aSizedSettingsCaptureAddsUpToItsSetToTheCent',
     'the capture writes down the calls the field blocks, at the standard size, and no longer adds up to its set'],
+  // ---- the press prices the coin and shape it is aimed at (3.236.1, owner GO NOW! 2026-09-23) ----
+  [path.join(ROOT, 'lib', 'stages.js'), '    const tally = ensureTally(String(id));\n    if (tally.totalling || tally.waiting || tally.failed) {\n      return { totalling: tally.totalling || null, waiting: tally.waiting || null, failed: tally.failed || null };', '    const state = ensureTally(String(id));\n    if (state.totalling || state.waiting || state.failed) {\n      return { totalling: state.totalling || null, waiting: state.waiting || null, failed: state.failed || null };',
+    'thePassPricesOnlyTheTestWindowAndKeepsItPerCoinAndShape',
+    'the press aimed at one coin and shape prices every coin and shape the filter keeps'],
+  [path.join(ROOT, 'lib', 'stages.js'), '    const tally = ensureTally(String(id));\n    if (tally.totalling || tally.waiting || tally.failed) {\n      return { totalling: tally.totalling || null, waiting: tally.waiting || null, failed: tally.failed || null };', '    const state = ensureTally(String(id));\n    if (state.totalling || state.waiting || state.failed) {\n      return { totalling: state.totalling || null, waiting: state.waiting || null, failed: state.failed || null };',
+    'everyCopyOfThePressWorksOutWhatIsChosenUnderCoin',
+    'a name inside the pass hides the coin and shape the press was aimed at, and the source check does not see it'],
   // ---- a flagged Stage 4 family rebuilt in place when one of it is opened (3.236.0) ----
   [path.join(ROOT, 'lib', 'stages.js'), '  const id = into ? into.id : `s4-${Date.now().toString(36)}-${seq}`;', '  const id = `s4-${Date.now().toString(36)}-${seq}`;',
     'aFlaggedFamilyIsRebuiltInPlaceWhenOneOfItIsOpened',

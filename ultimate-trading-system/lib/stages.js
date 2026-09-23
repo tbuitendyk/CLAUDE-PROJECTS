@@ -7961,9 +7961,9 @@ function funnelRichStart(id, state = {}) {
     // whose tables are fine ensureTally answers `{ ready: true }`, which has no
     // `ranked` on it, so every press on every set came back with an empty board
     // and the refusal below. Two calls, because they answer two questions.
-    const state = ensureTally(String(id));
-    if (state.totalling || state.waiting || state.failed) {
-      return { totalling: state.totalling || null, waiting: state.waiting || null, failed: state.failed || null };
+    const tally = ensureTally(String(id));
+    if (tally.totalling || tally.waiting || tally.failed) {
+      return { totalling: tally.totalling || null, waiting: tally.waiting || null, failed: tally.failed || null };
     }
     const t = readTally(String(id));
     if (!t) throw new Error('the tables of this record set cannot be read, so there is nothing to work out');
@@ -7975,6 +7975,9 @@ function funnelRichStart(id, state = {}) {
     // a rule's survivors, whose slice moved with every walk; a whole board of
     // one coin and shape is the board the walk reads, and the file merges per
     // unit, so each board prepared stays prepared.
+    // (the press's own `state`, 3.236.1: the tables' answer above was also
+    // called `state` from 3.103.1, never names a coin, and hid it -- so every
+    // press priced every coin and shape the filter keeps, whatever was chosen)
     const unit = state && state.unit && state.unit !== 'all' ? String(state.unit) : null;
     run.unit = unit;
     // ONE COIN AND SHAPE AT A TIME, ONLY WHAT IT STILL LACKS, SAVED AS EACH LANDS

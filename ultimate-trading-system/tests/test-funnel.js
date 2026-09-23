@@ -4641,6 +4641,8 @@ module.exports.everyCopyOfThePressWorksOutWhatIsChosenUnderCoin = function () {
   const s = src('lib/stages.js');
   const start = s.slice(s.indexOf('function funnelRichStart(id, state = {}) {'), s.indexOf('function funnelRichStatus(id) {'));
   assert.ok(start.includes("const unit = state && state.unit && state.unit !== 'all' ? String(state.unit) : null;"), 'the press does not read which coin and shape it was aimed at');
+  // and nothing inside the pass is called `state` too, which hid the press's own for 3.136.0-3.236.0
+  assert.ok(!/\bconst state = /.test(start), 'something inside the pass is called state, so the coin and shape the press was aimed at is never read');
   assert.ok(start.includes('const todo = unit ? units.filter((u) => u.key === unit) : units.filter(inPass);'), 'the board priced is not the one the press named');
   assert.ok(start.includes('const got = await rebuildRichFor(doc, missing.labels, { unit: x.unit.key, testOnly: true, shape, pool, note:'), 'the pricing is not held to the one coin and shape');
   assert.ok(start.includes('run.unit = unit;'), 'the status does not carry which coin and shape is being worked out');
