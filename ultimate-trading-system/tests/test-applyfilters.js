@@ -140,6 +140,29 @@ module.exports = {
       'the words do not go quiet, so nothing on the button shows it is asleep');
   },
 
+  // ONE STAGE AT A TIME, ON ITS OWN SUB TAB (3.238.0, owner order 2026-09-23:
+  // "Boards gets 3 sub tabs: Stage 1, Stage 2, Stage 3"). Only the stage picked
+  // is drawn, the pick is remembered, and with none yet the deepest stage
+  // picked opens; Show in 3.B, pressed on Table 3.A, lands on Table 3.B's own
+  // sub tab or its answer would be drawn nowhere.
+  async boardsDrawsOneStageAtATimeOnItsOwnSubTab() {
+    const src = JS();
+    const draw = src.slice(src.indexOf('async function drawBoards()'), src.indexOf('async function bDrawTable('));
+    assert.ok(draw.includes('const stab = [1, 2, 3].includes(Number(view.stab)) ? Number(view.stab) : deepest;'),
+      'the stage sub tab is not remembered, or a first visit does not open on the deepest stage picked');
+    for (const n of [1, 2, 3]) {
+      assert.ok(draw.includes(`<div class="tab\${stabOn(${n})}" data-bstab="${n}">Stage ${n}</div>`), `there is no sub tab for Stage ${n}`);
+      const gate = draw.indexOf(`\${stab !== ${n} ? '' : \`<div class="panel">`);
+      const pick = draw.indexOf(`id="bPick${n}"`);
+      assert.ok(gate > 0 && pick > gate && pick - gate < 400, `Stage ${n}'s section is drawn whichever sub tab is picked`);
+    }
+    assert.ok(draw.includes("bSaveView({ stab: n });\n      bRedrawPeggedTo(`[data-bstab=\"${n}\"]`);"), 'a sub tab press is not remembered, or it moves the page');
+    const pin = src.slice(src.indexOf("querySelectorAll('[data-bpin3b]')"), src.indexOf("querySelectorAll('[data-bpin3b]')") + 2200);
+    assert.ok(pin.includes("s3tab: '3B',"), 'Show in 3.B does not land on the Table 3.B sub tab, so its answer is drawn nowhere');
+    const b3 = src.slice(src.indexOf('async function bDrawStage3('));
+    assert.ok(b3.includes("bSaveView({ s3tab: k });\n      bRepaintTable(3, { peg: '#bT3Tabs' });"), 'a table sub tab press is not remembered, or it moves the page');
+  },
+
   // EACH STAGE 3 TABLE ON ITS OWN SUB TAB (3.238.0). They used to share one
   // panel with a break drawn between them; now only the table whose sub tab
   // is picked is drawn at all, so no heading can read as a note under another.
