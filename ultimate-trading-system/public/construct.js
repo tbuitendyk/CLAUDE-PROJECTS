@@ -329,6 +329,7 @@ const COL = {
   status: 'done, running, or error. An error row keeps whatever it managed to record.',
   started: 'when the job was fired, UTC.',
   derives: 'the run this one was launched from, when it was — so a null run or a re-run can be traced back to its parent.',
+  add: 'words added after the number of a record set that has only its number for a name, such as S2 #4 — the number stays, and the set is then shown everywhere as S2 #4 — and your words. A set whose name was typed by hand keeps its own name; rename that one on Boards.',
   // asset predictability
   rank: 'position in this list only. It is an ordering, not a score.',
   asset: 'the TRADED pair of the setup. On a multi-asset committee the others are context and are never bought or sold.',
@@ -835,7 +836,9 @@ function swAfterStart(got) {
 // and everything else on the section reads that value: the count line says
 // what is already priced, the boxes below are ghosted because the run keeps
 // its own, and start stage 3 starts it again instead of launching.
-const swContinueOf = () => { const v = ($('#swFrom3') && $('#swFrom3').value) || ''; return v.startsWith('continue:') ? v.slice('continue:'.length) : null; };
+// Since 3.240.0 the paused runs are offered in the stage 3 section's own box,
+// stage 3 record set, among the stage 3 sets of the stage 2 picked above.
+const swContinueOf = () => { const v = ($('#swSet3') && $('#swSet3').value) || ''; return v.startsWith('continue:') ? v.slice('continue:'.length) : null; };
 function swPausedOptions(sets, selected) {
   const list = sets.filter((x) => x.stage === 3 && x.checkpoint && ['paused', 'interrupted', 'error'].includes(x.status));
   return list.map((x) => {
@@ -845,31 +848,82 @@ function swPausedOptions(sets, selected) {
     return `<option value="${esc(v)}"${v === selected ? ' selected' : ''}>${how} — ${esc(x.name)} — ${esc((x.createdAt || '').slice(0, 10))} — ${Number(pf.unitsDone || 0).toLocaleString()} of ${Number(pf.unitsTotal || 0).toLocaleString()} units priced</option>`;
   }).join('');
 }
-function swSetOptions(sets, stage, selected) {
-  const list = sets.filter((x) => x.stage === stage && (x.status === 'done'));
+// EACH SECTION PICKS ITS OWN SET, OR A NEW ONE (3.240.0, owner order
+// 2026-09-23: "a stage sweep / table selector in each of the three sweep
+// sections at the top that allows an existing sweep to be selected OR a new
+// one to be created ... the stage 1 section should only display the stage 1
+// record sets ... for the currently selected campaign ... stage 2 ... for the
+// currently selected campaign and stage 1 selection ... stage 3 ... and stage 1
+// and stage 2 selections").
+//
+// The stage 1 box lists the stage 1 sets of the campaign in force; the stage 2
+// box the stage 2 sets that came out of the stage 1 set picked above; the stage
+// 3 box the stage 3 sets that came out of the stage 2 set picked above, paused
+// runs among them. Every status is listed and says so. The empty entry is
+// "new" -- it names no set, so the section builds a new one, and the sections
+// below it have nothing to come out of until a set is picked here (the empty
+// entry every picker carries, 3.77.0, is this one).
+let swCampNow = null;              // the campaign in force, as drawSweep last read it
+const swCampOf = (x) => ((x && x.params) || {}).campaign || null;
+const swPausedRow = (x) => !!(x && x.stage === 3 && x.checkpoint && ['paused', 'interrupted', 'error'].includes(x.status));
+function swSetOptions(sets, stage, selected, parentId) {
+  const mine = sets.filter((x) => x.stage === stage && swCampOf(x) === (swCampNow || null)
+    && (stage === 1 || (!!parentId && !!x.parent && x.parent.id === parentId)));
   const on = selected ? '' : ' selected';
-  // the stage 3 section's box (stage 2 parents) also offers the paused stage 3 runs
-  const paused = stage === 2 ? swPausedOptions(sets, selected) : '';
-  if (!list.length) return `<option value=""${on}>— none — no finished stage ${stage} record set on this box</option>${paused}`;
-  return `<option value=""${on}>— none —</option>${paused}`
-    + list.map((x) => `<option value="${esc(x.id)}"${x.id === selected ? ' selected' : ''}>${esc(x.name)} — ${esc((x.createdAt || '').slice(0, 10))} — ${x.plan.units.toLocaleString()} units${x.stage === 1 ? ', votes kept' : ''}</option>`).join('');
+  const head = `<option value=""${on}>— new stage ${stage} sweep —</option>`;
+  const paused = stage === 3 ? swPausedOptions(mine, selected) : '';
+  return head + paused + mine.filter((x) => !swPausedRow(x)).map((x) => `<option value="${esc(x.id)}"${x.id === selected ? ' selected' : ''}>${rebuildPrefix(x)}${esc(x.name)} — ${esc(x.status)} — ${esc((x.createdAt || '').slice(0, 10))} — ${Number((x.plan || {}).units || 0).toLocaleString()} units</option>`).join('');
+}
+// WHAT A PICK DOES TO ITS SECTION: a picked set is SHOWN -- its boxes filled
+// from it and ghosted, Start asleep -- and new frees them. A paused stage 3 run
+// is the one pick Start still acts on: it starts it again. The ghosting is a
+// disabled fieldset around the section's boxes, so nothing else that wakes or
+// sleeps a single box can wake one inside it.
+const SW_PICK = { 1: '#swFrom2', 2: '#swFrom3', 3: '#swSet3' };
+const swPicked = (n) => { const b = $(SW_PICK[n]); return (b && b.value) || ''; };
+let swHeldNow = null;              // what holds the box, as the poll last read it
+function swLockSections() {
+  for (const n of [1, 2, 3]) {
+    const on = !!swPicked(n);
+    const body = $(`#swBody${n}`);
+    if (body) { body.disabled = on; body.classList.toggle('ctl-off', on); }
+    const go = $(`#swGo${n}`);
+    if (go) go.disabled = !!swPressed || !!swHeldNow || (on && !(n === 3 && swContinueOf()));
+  }
+}
+// PUT AWAY ON SWEEP (3.240.0, owner order: "Put away buttons near the selectors
+// in each section including in the Campaign box ... putting away at a higher
+// level also closes all lower levels"). Remembered in this browser; it only
+// hides -- the campaign in force and every pick stay as they are -- and Open
+// opens its own level alone.
+const SW_AWAY_KEY = 'cx-sweep-away';
+const SW_LEVELS = ['c', '1', '2', '3'];
+function swAwayAll() { try { return JSON.parse(localStorage.getItem(SW_AWAY_KEY) || '{}') || {}; } catch (_) { return {}; } }
+const swAway = (k) => swAwayAll()[String(k)] === true;
+function swSetAway(k, away) {
+  const all = swAwayAll();
+  if (away) for (const x of SW_LEVELS.slice(SW_LEVELS.indexOf(String(k)))) all[x] = true;
+  else all[String(k)] = false;
+  try { localStorage.setItem(SW_AWAY_KEY, JSON.stringify(all)); } catch (_) { /* private window */ }
+}
+function swApplyAway() {
+  for (const k of SW_LEVELS) {
+    const sec = $(`#swSec${k === 'c' ? 'C' : k}`);
+    if (sec) sec.hidden = swAway(k);
+    const b = document.querySelector(`[data-swfold="${k}"]`);
+    if (b) b.textContent = swAway(k) ? 'Open' : 'Put away';
+  }
 }
 // EVERYTHING BELOW THE BOX IS GHOSTED WHILE A PAUSED RUN IS CHOSEN: the run
 // keeps the settings it was launched with, and a live box that is not read is
 // worse than a dead one (RULE FOUR's sibling). Turned off again the moment a
 // parent is chosen instead; the count line then re-applies its own ghosting.
 function swContinueMode(on) {
-  const panel = $('#swH3') && $('#swH3').closest('.panel');
-  if (!panel) return;
-  for (const c of panel.querySelectorAll('select, input, button')) {
-    if (c.id === 'swFrom3' || c.id === 'swGo3') continue;
-    // the delete runs the other way: it acts on the paused run, so it is live
-    // exactly while one is chosen (3.133.0)
-    if (c.id === 'swDelete3') { c.disabled = !on; c.classList.toggle('ctl-off', !on); continue; }
-    c.disabled = !!on;
-    const holder = c.closest('label') || c;
-    holder.classList.toggle('ctl-off', !!on);
-  }
+  // the delete runs the other way: it acts on the paused run, so it is live
+  // exactly while one is chosen (3.133.0)
+  const del = $('#swDelete3');
+  if (del) { del.disabled = !on; del.classList.toggle('ctl-off', !on); }
+  swLockSections();
 }
 
 // THE PARENT PICKERS FOLLOW WHAT IS ON THE BOX (3.76.1, owner order 2026-09-06:
@@ -896,16 +950,16 @@ function swContinueMode(on) {
 const swParentShown = new Map();   // box -> the options last written, unselected
 function swRefillParents(sets) {
   let moved = false;
-  for (const [sel, stage] of [['#swFrom2', 1], ['#swFrom3', 2]]) {
+  for (const [sel, stage] of [['#swFrom2', 1], ['#swFrom3', 2], ['#swSet3', 3]]) {
     const box = $(sel);
     if (!box) continue;
-    const shape = swSetOptions(sets, stage, null);
+    const parentId = stage === 1 ? null : swPicked(stage - 1);
+    const shape = swSetOptions(sets, stage, null, parentId);
     if (swParentShown.get(sel) === shape) continue;
     swParentShown.set(sel, shape);
-    // a box naming a set that is still there keeps it; one naming nothing, or
-    // naming a set that has gone, takes the first on the list -- which is
-    // exactly what a fresh draw of this screen shows
-    box.innerHTML = swSetOptions(sets, stage, box.value || null);
+    // a box naming a set that is still there keeps it; one naming a set that
+    // has gone falls back to new -- which is exactly what a fresh draw shows
+    box.innerHTML = swSetOptions(sets, stage, box.value || null, parentId);
     moved = true;
   }
   return moved;
@@ -967,10 +1021,12 @@ async function swProgress() {
   // st.busy is the one predicate every refusal is already built on, so the
   // button now says what the press would have said, before it is pressed.
   const held = st.busy ? String(st.busy) : (going ? 'a stage run' : null);
+  swHeldNow = held;
   for (const bid of ['swGo1', 'swGo2', 'swGo3']) {
     const b = $(`#${bid}`);
     if (b) { b.disabled = !!held; b.title = held ? `${held} — one heavy job at a time. The button wakes when it lands.` : ''; }
   }
+  swLockSections();   // a section showing a picked set keeps Start asleep (3.240.0)
   if (!st.running) {
     // SOMETHING ELSE MAY STILL HOLD THE BOX (3.163.0). This line was read off
     // the stage runs alone, so a walk or a coin reading showed as "nothing is
@@ -1171,7 +1227,7 @@ function swProvenance() {
   const s1row = rowOf(v('#swFrom2'));
   sayWhy('#swWhy2', null);
   sayWhy('#swWhy3', null);
-  if (!v('#swFrom2')) paint('#swH2', null, 'this section names no stage 1 record set yet, so nothing is linked to the stage 1 section above');
+  if (!v('#swFrom2')) paint('#swH2', null, 'no stage 1 record set is picked in the stage 1 section above, so there is nothing for this section to come out of');
   else if (!s1row) paint('#swH2', false, 'the stage 1 record set named here is not on this box any more');
   else if (s1Shown && s1Shown.id !== s1row.id) {
     // OVERTAKEN, AND THE ONLY WAY BACK IS FORWARD. No box above can undo a
@@ -1181,7 +1237,7 @@ function swProvenance() {
     paint('#swH2', false, `the stage 1 section above ${made} ${s1Shown.name}, and this box still names ${s1row.name}`,
       `Choose ${s1Shown.name} here and this goes green again — or put ${s1row.name} in the stage 1 name box, which is what Copy settings into the form on Boards does.`);
     sayWhy('#swWhy2', {
-      what: 'from stage 1 record set',
+      what: 'stage 1 record set',
       say: `this box names ${s1row.name}, and the stage 1 section above ${made} ${s1Shown.name}. `
         + `A record set built here would come out of ${s1row.name}, which is not what stage 1 is showing any more. `
         + `Choose ${s1Shown.name} to go green again, or put ${s1row.name} in the stage 1 name box.`,
@@ -1321,10 +1377,11 @@ function swProvenance() {
   // ...or the set the stage 2 name box names (3.209.0), see swShownSet
   const s2Shown = swShownSet(sets, 2, v('#swName2'));
   const s3v = v('#swFrom3');
-  const cont = s3v.startsWith('continue:') ? s3v.slice('continue:'.length) : null;
+  const s3pick = v('#swSet3');   // the paused runs are in the stage 3 section's own box (3.240.0)
+  const cont = s3pick.startsWith('continue:') ? s3pick.slice('continue:'.length) : null;
   const pausedRow = cont ? rowOf(cont) : null;
   const s2row = cont ? (pausedRow ? rowOf((pausedRow.parent || {}).id) : null) : rowOf(v('#swFrom3'));
-  if (!v('#swFrom3')) paint('#swH3', null, 'this section names no stage 2 record set yet, so there is nothing set here to link');
+  if (!v('#swFrom3') && !cont) paint('#swH3', null, 'no stage 2 record set is picked in the stage 2 section above, so there is nothing for this section to come out of');
   else if (cont && !pausedRow) paint('#swH3', false, 'the paused record set named here is not on this box any more');
   else if (!s2row) paint('#swH3', false, 'the stage 2 record set named here is not on this box any more');
   else if (!cont && s2Shown && s2Shown.id !== s2row.id) {
@@ -1337,7 +1394,7 @@ function swProvenance() {
     paint('#swH3', false, `the stage 2 section above ${made} ${s2Shown.name}, and this box still names ${s2row.name}`,
       `Choose ${s2Shown.name} here and this goes green again — or put ${s2row.name} in the stage 2 name box, which is what Copy settings into the form on Boards does.`);
     sayWhy('#swWhy3', {
-      what: 'from stage 2 record set',
+      what: 'stage 2 record set',
       say: `this box names ${s2row.name}, and the stage 2 section above ${made} ${s2Shown.name}. `
         + `A record set built here would come out of ${s2row.name}, which is not what stage 2 is showing any more. `
         + `Choose ${s2Shown.name} to go green again, or put ${s2row.name} in the stage 2 name box.`,
@@ -1351,7 +1408,7 @@ function swProvenance() {
       : carryBox === par.carry;
     const named = rowOf(v('#swFrom2'));
     const mismatch = v('#swFrom2') !== (par.id || '')
-      ? { what: 'from stage 1 record set', box: (named && named.name) || 'nothing', set: par.name || par.id || 'unrecorded', setName: s2row.name }
+      ? { what: 'stage 1 record set', box: (named && named.name) || 'nothing', set: par.name || par.id || 'unrecorded', setName: s2row.name }
       : (!carryMatch
         ? { what: 'carry forward', box: String(carryBox), set: `${par.carry} of ${par.of}`, setName: s2row.name }
         : null);
@@ -1960,9 +2017,14 @@ let fHeldBack = false;
 // BOTH screens (lib/screencontrols.js reads one level of helpers).
 function campaignPanelHtml(camp, names) {
   return `<div class="panel">
-    <h3 style="margin-top:0">Campaign — the parent chain name</h3>
-    <p class="note">Every run launched while a campaign is set attaches to it: sweeps, null rounds, tuning passes,
-      scans, stage record sets. The campaign's whole chain travels with any greenlight minted from it.</p>
+    <div class="row" style="align-items:flex-end">
+      ${putAwayBtn('swfold', 'c', !swAway('c'), 'the Campaign box, and the three stages under it')}
+      <h3 style="margin:0">Campaign — the parent chain name</h3>
+    </div>
+    <p class="note">Currently set: <b>${esc(camp.name || 'none')}</b>${(names.names || []).length ? ` · ${(names.names || []).length} campaign(s) on this box` : ''}</p>
+    <div id="swSecC"${swAway('c') ? ' hidden' : ''}>
+    <p class="note">Every stage 1 record set launched while a campaign is set belongs to it, and every stage 2 and
+      stage 3 set built from one belongs to the same campaign. The campaign's whole chain travels with any greenlight minted from it.</p>
     <!-- A <datalist> FILTERS ITS SUGGESTIONS BY WHAT IS ALREADY IN THE BOX, and
          the box is pre-filled with the current campaign — so opening it showed
          exactly the one entry that matched, and every other campaign on the box
@@ -1978,13 +2040,12 @@ function campaignPanelHtml(camp, names) {
     </div>
     <div class="row">
       <button id="campSet">Set</button>
-      <button id="campTree" title="shows the record sets and greenlights belonging to the campaign named in the box. Press it again to put them away.">View tree</button>
+      <button id="campTree" title="shows the record sets and greenlights belonging to the campaign that is set, and lets a name be added to a set that has only its number. Press it again to put them away.">View tree</button>
       <!-- Same row, same shape as its neighbours: the row is bottom-aligned
            because the controls to the left are a label above a box. -->
       <button id="campDelete" class="danger">Delete campaign…</button>
 </div>
-    <p class="note">Currently set: <b>${esc(camp.name || 'none')}</b>${(names.names || []).length ? ` · ${(names.names || []).length} campaign(s) on this box` : ''}</p>
-    <div id="campOut"></div></div>`;
+    <div id="campOut" data-current="${esc(camp.name || '')}"></div></div></div>`;
 }
 
 // The panel's buttons, wired the same on every screen that draws it. redraw
@@ -2023,18 +2084,48 @@ function wireCampaignPanel(redraw) {
   // warning is that it is read before anything is answered. Recording which
   // campaign's tree is open, and clearing that record wherever the panel is
   // written by anything else, keeps the two uses of one panel apart.
-  $('#campTree').onclick = async () => {
-    const name = $('#cxCamp').value.trim(); if (!name) { alert('name a campaign'); return; }
+  // THE TREE OF THE CAMPAIGN THAT IS SET, AND THE BUTTON SAYS WHAT A PRESS
+  // WILL DO (3.240.0, owner order: "the View tree button should say 'Hide tree'
+  // when the campaign tree is open"). It read the name typed in the box, so a
+  // label saying Hide tree could have opened another campaign's.
+  const campTreeBtn = $('#campTree');
+  const campTreeShut = () => { const b = $('#campOut'); if (b) delete b.dataset.tree; if (campTreeBtn) campTreeBtn.textContent = 'View tree'; };
+  const campTreeDraw = async () => {
     const box = $('#campOut');
-    if (box.dataset.tree === name) { box.innerHTML = ''; delete box.dataset.tree; return; }
+    const name = box.dataset.current || '';
+    if (!name) { box.innerHTML = '<p class="note">no campaign is set — pick one or type a new name and press Set</p>'; campTreeShut(); return; }
     const t = await apiOr(`api/campaign-tree?name=${encodeURIComponent(name)}`, null);
     box.dataset.tree = name;
+    campTreeBtn.textContent = 'Hide tree';
+    // A NAME ADDED TO A MACHINE-NAMED SET (3.240.0, owner order: "every
+    // machine-named record set in the tree view should be allowed to have a
+    // friendly name ADDED to the record set name"). A set named by its number
+    // alone -- S2 #4 -- keeps the number and takes the words after it; a set
+    // whose name was typed is left alone. It is the one rename Boards uses, so
+    // its refusals are the same.
+    const machine = (r) => `S${r.stage} #${r.seq}`;
+    const added = (r) => (r.name === machine(r) ? '' : r.name.startsWith(`${machine(r)} — `) ? r.name.slice(machine(r).length + 3) : null);
     box.innerHTML = t ? `<h3>Campaign “${esc(t.name)}” — record sets &amp; greenlights</h3>
-      <table><thead><tr>${cth('record set','run')}${cth('kind','kind')}${cth('status','status')}${cth('started','started')}${cth('derives from','derives','text-align:left')}</tr></thead><tbody>
-      ${(t.runs || []).map((r) => `<tr><td>${esc(r.id)}</td><td>${esc(r.kind)}</td><td>${esc(r.status)}</td>
-        <td>${esc((r.startedAt || '').slice(0, 16))}</td><td style="text-align:left" class="muted">${esc(r.parentRunId || '—')}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">no runs yet</td></tr>'}
+      <table><thead><tr>${cth('record set','run')}${cth('kind','kind')}${cth('status','status')}${cth('started','started')}${cth('derives from','derives','text-align:left')}${cth('name to add','add','text-align:left')}</tr></thead><tbody>
+      ${(t.runs || []).map((r) => `<tr><td>${esc(r.name || r.id)}</td><td>${esc(r.kind)}</td><td>${esc(r.status)}</td>
+        <td>${esc((r.startedAt || '').slice(0, 16))}</td><td style="text-align:left" class="muted">${esc(((t.runs || []).find((x) => x.id === r.parentRunId) || {}).name || r.parentRunId || '—')}</td>
+        <td style="text-align:left">${added(r) == null ? '<span class="muted">named by hand</span>'
+    : `<input data-campadd="${esc(r.id)}" value="${esc(added(r))}" maxlength="60" style="width:14rem"> <button data-campaddgo="${esc(r.id)}" data-campmachine="${esc(machine(r))}">Add name</button>`}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">no record sets yet</td></tr>'}
       </tbody></table>
       ${(t.greenlights || []).length ? `<p class="note">greenlights: ${t.greenlights.map((g) => `${esc(g.id)}${g.revoked ? ' (nuked)' : ''}`).join(' · ')}</p>` : ''}` : '<p class="note">tree unavailable</p>';
+    box.querySelectorAll('[data-campaddgo]').forEach((b) => {
+      b.onclick = async () => {
+        const id = b.dataset.campaddgo;
+        const words = (box.querySelector(`[data-campadd="${CSS.escape(id)}"]`).value || '').trim();
+        const out = await tryPost(`api/stageset/${encodeURIComponent(id)}/name`, { name: words ? `${b.dataset.campmachine} — ${words}` : b.dataset.campmachine });
+        if (out) campTreeDraw();
+      };
+    });
+  };
+  $('#campTree').onclick = async () => {
+    const box = $('#campOut');
+    if (box.dataset.tree) { box.innerHTML = ''; campTreeShut(); return; }
+    await campTreeDraw();
   };
   // DELETING A CAMPAIGN TAKES EVERYTHING UNDER IT, so the owner is told exactly
   // what that is BEFORE answering — a count after the fact is no use to anyone.
@@ -2045,7 +2136,7 @@ function wireCampaignPanel(redraw) {
     const box = $('#campOut');
     // this panel is no longer showing a tree, so "View tree" must not treat a
     // press as "put the tree away" and wipe what is written below
-    delete box.dataset.tree;
+    campTreeShut();
     const found = await apiOr(`api/campaign-contents?name=${encodeURIComponent(name)}`, null);
     if (!found) { box.innerHTML = '<p class="note">could not read what that campaign holds — nothing deleted</p>'; return; }
 
@@ -2109,7 +2200,7 @@ function wireCampaignPanel(redraw) {
     if (!out) return;                       // tryPost already reported why
     const r = out.removed || {};
     box.innerHTML = `<div class="panel"><b>“${esc(out.name)}” deleted.</b>
-      Removed ${r.runs || 0} run(s), ${r.greenlights || 0} greenlight(s), ${r.setups || 0} setup(s),${r.stageSets ? ` ${r.stageSets} record set(s),` : ''}
+      Removed ${r.greenlights || 0} greenlight(s), ${r.setups || 0} setup(s),${r.stageSets ? ` ${r.stageSets} record set(s),` : ''}
       and the saved models and tuning files belonging to them.
       ${(out.leftBehind || []).length ? `<div style="margin-top:.3rem"><b class="warn">${out.leftBehind.length} record set(s) stayed</b> — each says why: ${out.leftBehind.map((x) => esc(x)).join(' · ')}</div>` : ''}
       ${out.wasCurrent ? 'It was the campaign in use, so nothing is set now.' : ''}</div>`;
@@ -4088,10 +4179,17 @@ async function drawSweep() {
   const nextNames = st.nextNames || {};
   // built once and remembered unselected, so the poll's comparison starts level
   // with what is on screen and the first tick does not rewrite either box
+  swCampNow = camp.name || null;
+  // built unselected; the picks remembered in this browser are written back
+  // below, and the two lower boxes are rebuilt off the picks above them then
+  let swMem = {};
+  try { swMem = JSON.parse(localStorage.getItem(SWEEP_FORM_KEY) || 'null') || {}; } catch (_) { swMem = {}; }
   const swOpt1 = swSetOptions(sets, 1, null);
-  const swOpt2 = swSetOptions(sets, 2, null);
+  const swOpt2 = swSetOptions(sets, 2, null, swMem.swFrom2 || null);
+  const swOpt3 = swSetOptions(sets, 3, null, swMem.swFrom3 || null);
   swParentShown.set('#swFrom2', swOpt1);
   swParentShown.set('#swFrom3', swOpt2);
+  swParentShown.set('#swSet3', swOpt3);
   // EVERY OTHER BOX OF THE RUN IN ONE ROW, UNDER THE THREE CHOICES (owner
   // order, 2026-09-19). Two faults, one cause. The third choice shared its row
   // with start and end, which are a caption stacked over a box and so twice the
@@ -4121,6 +4219,16 @@ async function drawSweep() {
 
   <div class="panel">
     <h3 id="swH1" style="margin-top:0">Stage 1 — train the LOGREG members once, keep every vote, rank against the null set</h3>
+    <div class="row" style="align-items:flex-end">
+      ${putAwayBtn('swfold', '1', !swAway('1'), 'this stage, and the stages under it')}
+      <label class="f" title="a stage 1 record set of the campaign that is set, to see it — its boxes below are filled from it and greyed — or new, to set one up and start it. Stage 2 comes out of the set picked here.">stage 1 record set<select id="swFrom2" style="min-width:24rem">${swOpt1}</select></label>
+    </div>
+    <div id="swSec1"${swAway('1') ? ' hidden' : ''}>
+    <fieldset id="swBody1" class="swbody">
+    <div class="row" style="margin-top:.5rem;align-items:flex-end">
+      <label class="f">name<input id="swName1" placeholder="${esc(nextNames[1] || '')}" maxlength="80" style="width:17rem"></label>
+      <label class="f" style="flex:1">description<input id="swDesc1" style="width:100%"></label>
+    </div>
     <p class="note" style="margin:.2rem 0 .4rem">every member is a LOGREG forecast — 4 per coin on its own, 5 alongside others — trained with the plain
       argmax fit. No trade shape and no decision exist here; those are priced later, at stage 3, from the votes this stage keeps.
       The fee prices only the tuning-slice $ on Boards: each unit's own votes on the last quarter of its training window,
@@ -4167,29 +4275,33 @@ async function drawSweep() {
         so one freak trade cannot be the whole training; 0 turns that limit off. This carries to stage 2 by itself, so
         a committee is trained one way.</span>
     </div>
-    <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <label class="f">name<input id="swName1" placeholder="${esc(nextNames[1] || '')}" maxlength="80" style="width:17rem"></label>
-      <label class="f" style="flex:1">description<input id="swDesc1" style="width:100%"></label>
-    </div>
+    </fieldset>
     <div class="row">
       <button id="swGo1" class="pri">Start stage 1</button>
 </div>
     <p class="note" style="margin:.4rem 0 0" id="swCost1">…</p>
     <div id="swOut1"></div>
+    </div>
   </div>
 
   <div class="panel">
     <h3 id="swH2" style="margin-top:0">Stage 2 — carry the best forward, add the BOOST members</h3>
     <p class="note warn" id="swWhy2" style="margin:.2rem 0 .5rem;display:none"></p>
     <div class="row" style="align-items:flex-end">
-      <label class="f">from stage 1 record set<select id="swFrom2" style="min-width:24rem">${swOpt1}</select></label>
-      <label class="f" title="the carry takes the top of the parent's table as Boards shows it: in the sort saved on it, and only the rows the filters saved on it keep — pick both on Boards. The fixed rule (beat its own null set, ties by lead over null set) when no sort is saved; the whole table when no filter is. The line under this row says what the filters leave.">carry forward (0 = all)<input id="swCarry" type="number" value="0" min="0" style="width:5.5rem"></label>
+      ${putAwayBtn('swfold', '2', !swAway('2'), 'this stage, and the stage under it')}
+      <label class="f" title="a stage 2 record set that came out of the stage 1 set picked above, to see it — its boxes below are filled from it and greyed — or new, to build one from that stage 1 set. Stage 3 comes out of the set picked here.">stage 2 record set<select id="swFrom3" style="min-width:24rem">${swOpt2}</select></label>
     </div>
-    <p class="note warn" id="swCut2" style="margin:.2rem 0 .4rem;display:none"></p>
+    <div id="swSec2"${swAway('2') ? ' hidden' : ''}>
+    <fieldset id="swBody2" class="swbody">
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <label class="f">name<input id="swName2" placeholder="${esc(nextNames[2] || '')}" maxlength="80" style="width:17rem"></label>
       <label class="f" style="flex:1">description<input id="swDesc2" style="width:100%"></label>
     </div>
+    <div class="row" style="align-items:flex-end">
+      <label class="f" title="the carry takes the top of the parent's table as Boards shows it: in the sort saved on it, and only the rows the filters saved on it keep — pick both on Boards. The fixed rule (beat its own null set, ties by lead over null set) when no sort is saved; the whole table when no filter is. The line under this row says what the filters leave.">carry forward (0 = all)<input id="swCarry" type="number" value="0" min="0" style="width:5.5rem"></label>
+    </div>
+    <p class="note warn" id="swCut2" style="margin:.2rem 0 .4rem;display:none"></p>
+    </fieldset>
     <div class="row">
       <button id="swGo2" class="pri">Start stage 2</button>
 </div>
@@ -4197,13 +4309,23 @@ async function drawSweep() {
       The LOGREG members are reused, never retrained; only the BOOST members train (4 per coin on its own, 5 alongside others),
       so a carried unit ends up with both kinds voting side by side.</p>
     <div id="swOut2"></div>
+    </div>
   </div>
 
   <div class="panel">
     <h3 id="swH3" style="margin-top:0">Stage 3 — price any settings from the kept votes, no training</h3>
     <p class="note warn" id="swWhy3" style="margin:.2rem 0 .5rem;display:none"></p>
     <div class="row" style="align-items:flex-end">
-      <label class="f">from stage 2 record set<select id="swFrom3" style="min-width:24rem">${swOpt2}</select></label>
+      ${putAwayBtn('swfold', '3', !swAway('3'), 'this stage')}
+      <label class="f" title="a stage 3 record set that came out of the stage 2 set picked above, to see it — its boxes below are filled from it and greyed — or new, to price one from that stage 2 set. A paused run is offered here too, and Start stage 3 then starts it again where it stopped.">stage 3 record set<select id="swSet3" style="min-width:24rem">${swOpt3}</select></label>
+    </div>
+    <div id="swSec3"${swAway('3') ? ' hidden' : ''}>
+    <fieldset id="swBody3" class="swbody">
+    <div class="row" style="margin-top:.5rem;align-items:flex-end">
+      <label class="f">name<input id="swName3" placeholder="${esc(nextNames[3] || '')}" maxlength="80" style="width:17rem"></label>
+      <label class="f" style="flex:1">description<input id="swDesc3" style="width:100%"></label>
+    </div>
+    <div class="row" style="align-items:flex-end">
       <label class="f" title="which of the parent's records get priced. N records: the carry forward box beside this decides — 0 prices every record, N prices the top N of the parent's table in the sort saved on it. Selected records: exactly the records ticked on the parent's stage 2 table on Boards, however many that is.">records to price<select id="swPick3">${vocabOptions('stage3Pick', 'count')}</select></label>
       <label class="f">carry forward (0 = all)<input id="swCarry3" type="number" value="0" min="0" style="width:5.5rem"></label>
       <span id="swPicked3" class="note"></span>
@@ -4318,18 +4440,20 @@ async function drawSweep() {
       </div>
     </div>
     <div class="row" style="margin-top:.4rem"><span class="note" id="swCount">…</span></div>
-    <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <label class="f">name<input id="swName3" placeholder="${esc(nextNames[3] || '')}" maxlength="80" style="width:17rem"></label>
-      <label class="f" style="flex:1">description<input id="swDesc3" style="width:100%"></label>
-    </div>
+    </fieldset>
     <div class="row">
       <button id="swGo3" class="pri">Start stage 3</button>
-      <button id="swDelete3" class="danger" disabled title="deletes the paused run chosen in from stage 2 record set, after asking you to type its record set id back. Everything it had priced goes with it. Live only while a paused run is chosen there; a finished record set is deleted on Boards.">Delete record set…</button>
+      <button id="swDelete3" class="danger" disabled title="deletes the paused run chosen in stage 3 record set, after asking you to type its record set id back. Everything it had priced goes with it. Live only while a paused run is chosen there; a finished record set is deleted on Boards.">Delete record set…</button>
 </div>
     <div id="swOut3"></div>
+    </div>
   </div>`;
 
   wireCampaignPanel(() => drawSweep());
+  // PUT AWAY: hides and remembers, never redraws, so nothing typed is lost
+  document.querySelectorAll('[data-swfold]').forEach((b) => {
+    b.onclick = () => { swSetAway(b.dataset.swfold, !swAway(b.dataset.swfold)); swApplyAway(); };
+  });
   const say = (sel, msg, bad) => { $(sel).innerHTML = `<p class="note${bad ? ' warn' : ''}" style="margin:.4rem 0 0">${msg}</p>`; };
   // THE NAME THE OWNER TYPED STAYS IN THE BOX (3.67.1, owner report 2026-09-04:
   // "when i create a new Stage 1 sweep and give it a name such as 'S1 #3' then
@@ -4341,6 +4465,8 @@ async function drawSweep() {
   // alone is the whole fix -- and a second start under the same name is refused
   // by the service, in words, which is better than an empty box that hides it.
   $('#swGo1').onclick = async () => {
+    // every stage 1 record set belongs to a campaign (3.240.0)
+    if (!swCampNow) { say('#swOut1', 'no campaign is set — set one in the Campaign box first: every stage 1 record set belongs to a campaign', true); return; }
     swStarting(1);
     const body = {
       universe: ($('#swUni').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
@@ -4363,16 +4489,18 @@ async function drawSweep() {
     if (!body.universe.length) delete body.universe;
     if (!body.compare.length) delete body.compare;
     const got = await startPost('api/stage1', body);
+    if (got && !got.pending) swLandOn(1, got.id);
     if (got && !got.pending) { rememberSweepForm(); say('#swOut1', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} units. Progress above; the set lands on Boards.`); }
     swAfterStart(got);
   };
   $('#swGo2').onclick = async () => {
     swStarting(2);
     const got = await startPost('api/stage2', {
-      from: $('#swFrom2').value,
+      from: swPicked(1),
       carry: Number($('#swCarry').value) || 0, desc: $('#swDesc2').value,
       name: $('#swName2').value,
     });
+    if (got && !got.pending) swLandOn(2, got.id);
     if (got && !got.pending) { rememberSweepForm(); say('#swOut2', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} carried units.`); }
     swAfterStart(got);
   };
@@ -4396,7 +4524,7 @@ async function drawSweep() {
     const cont = swContinueOf();
     swStarting(cont ? 'again' : 3);
     const got = cont ? null : await startPost('api/stage3', {
-      from: $('#swFrom3').value, fee: Number($('#swFee').value) / 100,
+      from: swPicked(2), fee: Number($('#swFee').value) / 100,
       carry: Number($('#swCarry3').value) || 0,
       pick: $('#swPick3').value,
       nullN: Number($('#swNull3').value) || 0, keepN: Number($('#swKeep3').value) || 0, desc: $('#swDesc3').value,
@@ -4524,6 +4652,14 @@ async function drawSweep() {
   // the one that fell behind would be the one nobody was looking at.
   restoreSweepForm();
   swModeSay();
+  // THE PICKS, CHAINED: the boxes below are rebuilt off the picks written back
+  // above them, then each section shows its set or stands free for a new one
+  swRefillPicks(true);
+  for (const n of [1, 2, 3]) {
+    const box = $(SW_PICK[n]);
+    if (box) box.addEventListener('change', () => swPick(n));
+  }
+  swApplyAway();
   for (const el of sweepControls()) {
     const onChange = () => {
       rememberSweepForm();
@@ -4540,6 +4676,67 @@ async function drawSweep() {
   swCounts();
   swProvenance();
   swSayCut2();   // what the stage 1 filters leave the carry (3.220.0)
+  swLockSections();
+}
+// THE LOWER BOXES FOLLOW THE PICKS ABOVE THEM (3.240.0). keep: a box keeps the
+// set it names while that set is still offered under the new pick; otherwise it
+// falls back to new.
+function swRefillPicks(keep) {
+  const sets = swSetsCache || [];
+  // a remembered pick that is no longer offered (another campaign is set, or
+  // the set is gone) falls back to new, and its section's name goes with it
+  const top = $('#swFrom2');
+  if (top && top.selectedIndex < 0) { top.value = ''; swForget(1); }
+  for (const [n, sel] of [[2, '#swFrom3'], [3, '#swSet3']]) {
+    const box = $(sel);
+    if (!box) continue;
+    const was = keep ? box.value : '';
+    const parentId = swPicked(n - 1);
+    box.innerHTML = swSetOptions(sets, n, was || null, parentId);
+    swParentShown.set(sel, swSetOptions(sets, n, null, parentId));
+    if (was && box.value !== was) { box.value = ''; swForget(n); }
+    if (box.selectedIndex < 0) box.value = '';
+  }
+}
+function swForget(n) { for (const f of [`#swName${n}`, `#swDesc${n}`]) { const e = $(f); if (e) e.value = ''; } }
+// A PICK: the boxes below it let go (they came out of the set that was
+// picked), then the section shows the set it names, filled from it, or stands
+// free for a new one with its name and description emptied.
+async function swPick(n) {
+  if (n < 3) swRefillPicks(false);
+  for (const m of [1, 2, 3]) {
+    if (m < n) continue;
+    const v = swPicked(m);
+    if (v) {
+      if (m !== n) continue;
+      const id = v.startsWith('continue:') ? v.slice('continue:'.length) : v;
+      const got = await apiOr(`api/stageset/${encodeURIComponent(id)}`, null);
+      if (got && got.set) fillStageForm(got.set);
+    } else {
+      swForget(m);
+    }
+  }
+  swLockSections();
+  rememberSweepForm();
+  swProvenance();
+  swSayCut2();
+  swCountsSoon();
+}
+// A START LANDS ON THE SET IT MADE: the section's box names it, so the section
+// shows the set that now exists rather than a form that already made it.
+function swLandOn(n, id) {
+  if (!id) return;
+  const box = $(SW_PICK[n]);
+  if (!box) return;
+  const sets = swSetsCache || [];
+  const parentId = n === 1 ? null : swPicked(n - 1);
+  const opts = swSetOptions(sets, n, id, parentId);
+  if (!opts.includes(`value="${id}"`)) box.insertAdjacentHTML('beforeend', `<option value="${esc(id)}" selected>${esc(($(`#swName${n}`) || {}).value || id)} — starting</option>`);
+  else box.innerHTML = opts;
+  box.value = id;
+  if (n < 3) swRefillPicks(false);
+  swLockSections();
+  rememberSweepForm();
 }
 
 // ---- Boards ----------------------------------------------------------------
@@ -4695,14 +4892,17 @@ async function drawBoards() {
   // unchanged: picking a stage 3 record set still fills the other two with its
   // parents, and they are one press away. The sub tab picked is remembered;
   // with none yet, the deepest stage picked opens.
-  const stab = B_T3.includes(view.stab) ? view.stab : [1, 2, 3].includes(Number(view.stab)) ? Number(view.stab) : deepest;
+  // and while Stage 3 is put away its three tables are closed with it (3.240.0,
+  // owner order: "when the Stage 3 record set is Put away the 3.A, 3.B, and 3.C
+  // tables must be closed also"): their tabs leave the strip and Stage 3 shows
+  const stab = B_T3.includes(view.stab) ? (fold[3] ? view.stab : 3) : [1, 2, 3].includes(Number(view.stab)) ? Number(view.stab) : deepest;
   // ON STAGE 3 OR ONE OF ITS TABLES (3.239.1, owner order 2026-09-23: "when tab
   // Stage 3 is pressed ONLY have down to the button 'Check this set' -- THAT'S
   // THE ONLY THING ON THE STAGE 3 TAB ... Table 3.A/B/C tabs ALL START WITH
   // their title line ... not duplicate a bunch of info between tabs"). Stage 3
   // shows the record set down to Check this set; a table tab shows that table
   // and nothing above its title.
-  const onS3 = stab === 3 || B_T3.includes(stab);
+  const onS3 = (stab === 3 || B_T3.includes(stab)) && fold[3];
   const stabOn = (n) => (n === stab ? ' on' : '');
   // THE THREE TABLE TABS SIT ON THIS STRIP, beside Stage 3 and a little apart
   // from it, and only while Stage 3 is picked (3.239.0, owner order 2026-09-23:
@@ -4814,7 +5014,11 @@ async function drawBoards() {
   document.querySelectorAll('[data-bfold]').forEach((btn) => {
     btn.onclick = () => {
       const sN = Number(btn.dataset.bfold);
-      bSaveView({ [`fold${sN}`]: !fold[sN] });
+      // PUTTING A STAGE AWAY PUTS EVERY STAGE UNDER IT AWAY (3.240.0, owner
+      // order: "when a Stage 1 board is Put away, all lower boards should be as
+      // well"); Open opens its own stage alone
+      if (fold[sN]) bSaveView(Object.fromEntries([1, 2, 3].filter((k) => k >= sN).map((k) => [`fold${k}`, false])));
+      else bSaveView({ [`fold${sN}`]: true });
       bRedrawPeggedTo(`[data-bfold="${sN}"]`);
     };
   });

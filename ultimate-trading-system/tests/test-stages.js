@@ -2681,8 +2681,11 @@ module.exports = {
   // stamped documents here.
   async theCampaignStampSitsOnEveryStageLaunch() {
     const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    // stage 1 takes the campaign in use; stage 2 and stage 3 take their parent's (3.240.0)
     const stamps = src.split("campaign: require('./campaign').getCampaign() || null").length - 1;
-    assert.strictEqual(stamps, 3, `all three stage launches must stamp the campaign in use — found ${stamps} of 3`);
+    assert.strictEqual(stamps, 1, `stage 1 must stamp the campaign in use — found ${stamps} stamps of it`);
+    const inherited = src.split("campaign: (parent.params || {}).campaign || null").length - 1;
+    assert.ok(inherited >= 3, `stage 2 and stage 3 (and a Stage 4 set) must take their parent's campaign — found ${inherited}`);
 
     const campaign = require('../lib/campaign');
     const stamp = Date.now().toString(36);

@@ -99,7 +99,9 @@ function campaignTree(name) {
     for (const s of require('./stages').listSets()) {
       if (((s.params || {}).campaign || null) !== name) continue;
       runs.push({
-        id: s.id, kind: `stage ${s.stage}`, status: s.status,
+        // the name and number too (3.240.0): the tree names a set the way every
+        // other screen does, and offers a name to add to a machine-named one
+        id: s.id, name: s.name || '', stage: s.stage, seq: s.seq, kind: `stage ${s.stage}`, status: s.status,
         startedAt: s.createdAt || null, label: s.desc || '',
         parentRunId: (s.parent && s.parent.id) || null,
       });

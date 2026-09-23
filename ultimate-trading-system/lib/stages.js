@@ -1672,9 +1672,13 @@ function startStage2(params) {
       id: parent.id, name: parent.name, carry: carried.length, of: cut.of, kept: cut.kept,
       sortedBy: cut.sortedBy, filters: cut.filters,
     },
-    // ...parent.params carries the parent's campaign in; the campaign in use
-    // AT THIS LAUNCH wins, the same rule every other launch follows.
-    params: { ...parent.params, carry: carried.length, from: parent.id, campaign: require('./campaign').getCampaign() || null },
+    // A STAGE 2 SET BELONGS TO ITS STAGE 1'S CAMPAIGN (3.240.0, owner order
+    // 2026-09-23: "each campaign can have 0 or more stage 1 sweeps ... the stage
+    // 2 section should only display the stage 2 record sets ... for the currently
+    // selected campaign and stage 1 selection"). It used to take whatever
+    // campaign was in force at its launch, so a stage 2 could sit in another
+    // campaign from the stage 1 it came out of.
+    params: { ...parent.params, carry: carried.length, from: parent.id, campaign: (parent.params || {}).campaign || null },
     seed: seedOf(id),
     plan: { units: carried.length },
     perf: {
@@ -3194,8 +3198,8 @@ function startStage3(params) {
       fieldSignOnly: !!params.fieldSignOnly, fieldPermuteSignOnly: !!params.fieldPermuteSignOnly,
       fieldRungs: fieldAxes.fieldId ? params.fieldRungs : null, fieldPermuteRungs: !!params.fieldPermuteRungs,
       fieldSilent: fieldAxes.silent, fieldPairs,
-      // the campaign in use at THIS launch, not the parent's (same rule as stage 2)
-      campaign: require('./campaign').getCampaign() || null,
+      // its stage 2's campaign, which is its stage 1's (3.240.0, same rule as stage 2)
+      campaign: (parent.params || {}).campaign || null,
     },
     seed: seedOf(id),
     recordsVersion: RECORDS_V,

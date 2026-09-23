@@ -292,8 +292,8 @@ window.HELP = {
 
       swGo1: { what: 'Starts stage 1. Progress shows at the top of this screen, and the finished set lands on Boards.' },
       swFrom2: {
-        what: 'Which finished stage 1 record set stage 2 carries forward from. A stage 2 set names this parent forever.',
-        more: 'The launch refuses when the price files no longer fingerprint identically to the ones the parent read — a mismatch refuses, it never mixes.',
+        what: 'At the top of the stage 1 section: a stage 1 record set of the campaign that is set, or new. A set picked here is shown — its boxes filled from it and greyed, Start stage 1 asleep — and it is the set stage 2 comes out of. New frees the boxes to set up a stage 1 and start it.',
+        more: 'Only the stage 1 sets of the campaign that is set are offered, every status, each saying which. Picking another set here lets go of whatever was picked in the stage 2 and stage 3 sections, because those came out of this one. A stage 2 set names its parent forever, and the launch refuses when the price files no longer fingerprint identically to the ones the parent read. Start stage 1 refuses while no campaign is set: every stage 1 record set belongs to one.',
       },
       swCarry: {
         what: 'How many rows carry forward into the BOOST training, from the top of the parent\'s table as Boards shows it: in the sort saved on it, and only the rows the filters saved on it keep. 0 carries all of them.',
@@ -304,9 +304,13 @@ window.HELP = {
         more: 'Left empty, it takes the next free number, which is what the box shows greyed. A name another record set already has is refused, so no two sets can share one; rename the other on Boards first.',
       },
       swDesc2: { what: 'Why this stage 2 exists. Kept on the record set.' },
-      swGo2: { what: 'Starts stage 2 on the chosen parent. Only the BOOST members train.' },
+      swGo2: { what: 'Starts stage 2 on the stage 1 record set picked in the stage 1 section. Only the BOOST members train.' },
       swFrom3: {
-        what: 'Which finished stage 2 record set the pricing reads its kept votes from. A stage 3 set names this parent forever. A paused stage 3 run is offered here too, and Start stage 3 then starts it again where it stopped.',
+        what: 'At the top of the stage 2 section: a stage 2 record set that came out of the stage 1 set picked above, or new. A set picked here is shown, its boxes filled from it and greyed, and it is the set stage 3 prices from. New frees the boxes to build a stage 2 from the stage 1 set above.',
+        more: 'Only the stage 2 sets of the stage 1 set picked above are offered, every status, each saying which; with new picked above there is nothing to offer and nothing to build from. Picking another set here lets go of whatever was picked in the stage 3 section. A stage 2 set belongs to the same campaign as the stage 1 set it came out of.',
+      },
+      swSet3: {
+        what: 'At the top of the stage 3 section: a stage 3 record set that came out of the stage 2 set picked above, or new. A set picked here is shown, its boxes filled from it and greyed. A paused stage 3 run is offered here too, and Start stage 3 then starts it again where it stopped.',
         more: 'A paused run keeps every record it had already priced and the state it held in memory when it was paused, so starting it again prices only what is left. While a paused run is chosen the boxes below are ghosted: it keeps the settings it was launched with, and none of them can be changed here. A run that was interrupted by a service restart, or that failed, is offered the same way when it kept that state.',
       },
       swPick3: {
@@ -517,7 +521,7 @@ window.HELP = {
       swDesc3: { what: 'Why this stage 3 exists. Kept on the record set.' },
       swGo3: { what: 'Starts stage 3 — pricing only, no training. The tables land on Boards. With a paused run chosen in the box above, starts that run again where it stopped.' },
       swDelete3: {
-        what: 'Deletes the paused stage 3 run chosen in from stage 2 record set, after asking you to type its record set id back. Everything it had priced goes with it.',
+        what: 'Deletes the paused stage 3 run chosen in stage 3 record set, after asking you to type its record set id back. Everything it had priced goes with it.',
         more: 'Live only while a paused run is chosen in that box, because that is all it acts on. A finished record set is deleted on Boards, with the same two steps. A run another record set names as its parent is refused, and nothing is deleted while a stage run is going.',
       },
       swStop: { what: 'Pauses a stage 3 run, or stops a stage 1 or 2 run. Everything already written stays. A paused stage 3 run keeps the state it held in memory as well, and is offered in the stage 3 section\'s box to be started again; a stopped stage 1 or 2 run reports itself cancelled and cannot be.' },
