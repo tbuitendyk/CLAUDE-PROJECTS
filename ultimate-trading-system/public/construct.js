@@ -5094,10 +5094,12 @@ function bWireCoinSort(root) {
 // The arithmetic behind each column and the order of the columns are the
 // service's, and a test holds this list to the service's list. The headings
 // are markup in bUnitHeads below, so the closed word list can see them.
-//   [key, which way is good, filter box id, filter box name, kind]
+//   [key, which way is good, filter box id, filter box name, kind, count field]
+// A kind of countpct prints how many settings with their share beside it; the
+// column sorts and filters on the share, which compares across coins and shapes.
 const B_UNIT_COLS = [
   ['settings', 'high', 'minSettings', 'settings at least', 'count'],
-  ['inMoneyPct', 'high', 'minInMoney', 'in the money at least, %', 'pct'],
+  ['inMoneyPct', 'high', 'minInMoney', 'settings in the money over the whole test window at least, %', 'countpct', 'inMoneyN'],
   ['avgTest', 'high', 'minAvgTest', 'avg test $ at least', 'money'],
   ['avgTestNoGate', 'high', 'minAvgTestNoGate', 'avg test $ with no gate at least', 'money'],
   ['perTrade', 'high', 'minPerTrade', '$ per trade at least', 'money'],
@@ -5108,15 +5110,14 @@ const B_UNIT_COLS = [
   ['inMoney2', 'high', 'minInMoney2', '2nd part in the money at least, %', 'pct'],
   ['inMoney3', 'high', 'minInMoney3', '3rd part in the money at least, %', 'pct'],
   ['allThreePct', 'high', 'minAllThree', 'all three parts in the money at least, %', 'pct'],
-  ['loseAllPct', 'low', 'maxLoseAll', 'losing in all three parts at most, %', 'pct'],
+  ['loseAllPct', 'low', 'maxLoseAll', 'losing in all three parts at most, %', 'countpct', 'loseAllN'],
   ['h12', 'high', 'minH12', 'first → second at least', 'hold'],
   ['h23', 'high', 'minH23', 'second → third at least', 'hold'],
   ['h13', 'high', 'minH13', 'first → third at least', 'hold'],
   ['h123', 'high', 'minH123', 'first two → third at least', 'hold'],
   ['top30Third', 'high', 'minTop30Third', 'top 30 in the third $ at least', 'money'],
-  ['best30Beats', 'high', 'minBest30Beats', 'best 30 beat copies at least', 'beats'],
   ['boardBeats', 'high', 'minBoardBeats', 'board beats copies at least', 'beats'],
-  ['beatLongPct', 'high', 'minBeatLong', 'beat always long at least, %', 'pct'],
+  ['beatBestPct', 'high', 'minBeatBest', 'beat the best of the four at least, %', 'pct'],
   ['bestVsLong', 'high', 'minBestVsLong', 'best vs always long $ at least', 'money'],
   ['midTrades', 'high', 'minMidTrades', 'middle test trades at least', 'trades'],
   ['fieldBlocked', 'low', 'maxFieldBlocked', 'field blocked at most, %', 'pct'],
@@ -5131,7 +5132,7 @@ function bUnitHeads(view) {
   const s = (key, arrow) => bUnitSortBtn(view, key, arrow);
   return `<th ${bth.replace('.3rem .3rem', '.3rem .3rem .3rem 0')} title="the traded coin and the chunk shape it was priced at, and beside them the one or two coins it is read alongside, on rows that have any. Anything after the + is context only — read against, never bought or sold.">coin and shape${s('name', '↑')}</th>
     <th ${bth} title="how many settings this coin and shape holds. One setting is one combination of entry, gate, d, t, trail and arm together with its decision, band and 24/5 variant.">settings${s('settings', '↓')}</th>
-    <th ${bth} title="the share of the settings whose test-window money is above zero.">in the money, %${s('inMoneyPct', '↓')}</th>
+    <th ${bth} title="how many of this coin and shape's settings made money over the whole test window, and beside it the share of all its settings that is. The column sorts, and its box filters, on the share.">settings in the money over the whole test window${s('inMoneyPct', '↓')}</th>
     <th ${bth} title="average test-window money per setting, as priced: under the field\'s gate on a set that has one.">avg test $${s('avgTest', '↓')}</th>
     <th ${bth} title="average test-window money per setting with every call taken at size 1 and no gate: the same trades before the field\'s gate sized or blocked them. On a set priced with no gate this is the same figure as avg test $.">avg test $, no gate${s('avgTestNoGate', '↓')}</th>
     <th ${bth} title="all the test-window money of every setting divided by all their test-window trades, as priced.">$ per trade${s('perTrade', '↓')}</th>
@@ -5142,15 +5143,14 @@ function bUnitHeads(view) {
     <th ${bth} title="the share of the settings above zero in the second part of the test window.">2nd part in the money, %${s('inMoney2', '↓')}</th>
     <th ${bth} title="the share of the settings above zero in the third part of the test window.">3rd part in the money, %${s('inMoney3', '↓')}</th>
     <th ${bth} title="the share of the settings above zero in every one of the three parts.">all three parts in the money, %${s('allThreePct', '↓')}</th>
-    <th ${bth} title="the share of the settings below zero in every one of the three parts.">losing in all three parts, %${s('loseAllPct', '↑')}</th>
+    <th ${bth} title="how many settings lost money in every one of the three parts of the test window, and beside it the share of the settings that carry all three. The column sorts, and its box filters, on the share. Empty until Work out the test history numbers has run on the Funnel.">losing in all three parts${s('loseAllPct', '↑')}</th>
     <th ${bth} title="the settings are put in order by what they made in the first part of the test window, and that order is scored on the second part. 1.00 is the same order on both, 0.00 no relation at all, below zero the order comes out backwards.">first → second${s('h12', '↓')}</th>
     <th ${bth} title="ordered by the second part of the test window, scored on the third.">second → third${s('h23', '↓')}</th>
     <th ${bth} title="ordered by the first part of the test window, scored on the third — the widest gap of the four, because a whole part sits between them.">first → third${s('h13', '↓')}</th>
     <th ${bth} title="ordered by the first two parts of the test window added together, scored on the third.">first two → third${s('h123', '↓')}</th>
     <th ${bth} title="the 30 best settings by the first two parts of the test window: what they made, on average, in the third part, which they were not chosen on.">top 30 in the third $${s('top30Third', '↓')}</th>
-    <th ${bth} title="of the kept scrambled copies, how many the 30 best settings by test money beat as a group: their average real money against the same settings\' average money on each copy.">best 30 beat copies${s('best30Beats', '↓')}</th>
     <th ${bth} title="the whole board\'s average test money against the kept scrambled copies: how many of the copies it beats.">board beats copies${s('boardBeats', '↓')}</th>
-    <th ${bth} title="the share of the settings whose test money beats always long over the same window at their own hold length. Empty until Work out the test history numbers has run.">beat always long, %${s('beatLongPct', '↓')}</th>
+    <th ${bth} title="the share of the settings whose test money beats the best of the four over the same window at their own hold length: being long every period, being short every period, buying the coin and going away, and shorting it and going away. The best of the four is the hardest of them, the same one the Funnel reads a rule against, so a coin that rose and a coin that fell are held to the same bar. Empty until Work out the test history numbers has run.">beat the best of the four, %${s('beatBestPct', '↓')}</th>
     <th ${bth} title="the best single setting\'s test money minus always long over the same window at its hold length.">best vs always long $${s('bestVsLong', '↓')}</th>
     <th ${bth} title="the test-window trades of the middle setting: half the settings traded more often, half less.">middle test trades${s('midTrades', '↓')}</th>
     <th ${bth} title="of the calls the members made on the test window, the share the field\'s gate blocked. Empty with no gate.">field blocked, %${s('fieldBlocked', '↑')}</th>
@@ -5163,6 +5163,10 @@ function bUnitCell(r, c) {
   const v = r[c[0]] == null ? NaN : Number(r[c[0]]);
   if (!Number.isFinite(v)) return '<span class="muted">—</span>';
   switch (c[4]) {
+    case 'countpct': {
+      const n = r[c[5]] == null ? NaN : Number(r[c[5]]);
+      return `${Number.isFinite(n) ? n.toLocaleString() : '—'} <span class="muted">${v.toFixed(1)}%</span>`;
+    }
     case 'money': return bMoney(Number(v));
     case 'pct': return `${Number(v).toFixed(1)}%`;
     case 'hold': return `<span${v < 0 ? ' class="neg"' : ''}>${Number(v).toFixed(2)}</span>`;

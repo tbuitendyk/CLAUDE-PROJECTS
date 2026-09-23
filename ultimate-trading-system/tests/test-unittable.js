@@ -44,7 +44,10 @@ function typedBoard() {
   }
   return rows;
 }
-const CONTROLS = { 'all|41': { alwaysLong: 3, alwaysShort: -3, buyHold: 4, shortHold: -4 }, 'all|65': { alwaysLong: 20, alwaysShort: -20, buyHold: 25, shortHold: -25 } };
+// the four at each hold length: at t41 the coin rose (buying it and going away
+// made 8), at t65 it fell (shorting it and going away made 25) -- so always long
+// alone passes three of the four settings here and the best of the four one
+const CONTROLS = { 'all|41': { alwaysLong: 3, alwaysShort: -3, buyHold: 8, shortHold: -8 }, 'all|65': { alwaysLong: -20, alwaysShort: 20, buyHold: -25, shortHold: 25 } };
 
 // A STAGE 3 SET ON DISK: three coins and shapes, four settings each, the first
 // priced under a gate, the first two with the rebuilt numbers beside the set.
@@ -120,6 +123,7 @@ module.exports = {
     const r = UT.unitSummaryOf(rows, { chunksAPart: 40, testControls: CONTROLS });
     assert.strictEqual(r.settings, 4);
     assert.strictEqual(r.inMoneyPct, 75, 'three of the four are above zero');
+    assert.strictEqual(r.inMoneyN, 3, 'settings in the money over the whole test window does not count them');
     assert.strictEqual(r.avgTest, 5.25);
     assert.strictEqual(r.midTest, 5.25, 'the middle of 0, 0.5, 10 and 10.5');
     assert.strictEqual(r.bestTest, 10.5);
@@ -132,18 +136,27 @@ module.exports = {
     // the copies: the real average 5.25 beats every one of the ten
     assert.strictEqual(r.copies, 10);
     assert.strictEqual(r.boardBeats, 10);
-    assert.strictEqual(r.best30Beats, 10);
     // the three parts
     assert.strictEqual(r.thirds, 4);
     assert.deepStrictEqual([r.inMoney1, r.inMoney2, r.inMoney3], [75, 50, 75]);
     assert.strictEqual(r.allThreePct, 50);
     assert.strictEqual(r.loseAllPct, 0);
+    assert.strictEqual(r.loseAllN, 0, 'losing in all three parts does not count them');
+    assert.ok(!('best30Beats' in r), 'best 30 beat copies is still worked out');
     const h = RH.holdOfUnit(rows, 40).readings;
     assert.deepStrictEqual([r.h12, r.h23, r.h13, r.h123], h.map((x) => Math.round(x.hold * 1000) / 1000), 'the four comparisons are the ranking reading\'s own');
     assert.strictEqual(r.top30Third, 1.63, 'the four ordered by the first two parts, their third averaged: (3 + 2.5 + 1 + 0) / 4');
     // the four things a rule has to beat, at each setting's own hold length
-    assert.strictEqual(r.beatLongPct, 25, 'only active t41 (10) beats always long at t41 (3); at t65 always long is 20');
-    assert.strictEqual(r.bestVsLong, 7);
+    // THE BEST OF THE FOUR: at t41 the best is 8, which only active t41 (10)
+    // beats; at t65 it is 25, which nothing beats. Always long alone (3 at t41,
+    // -20 at t65) would pass three of the four and read 75.
+    assert.strictEqual(r.beatBestPct, 25, 'beat the best of the four does not read against the hardest of the four');
+    assert.ok(!('beatLongPct' in r), 'beat always long is still worked out');
+    assert.strictEqual(r.bestVsLong, 30.5, 'the best setting against being long every period is active t65: 10.5 against -20');
+    // a setting whose four are not all known is left out, never passed
+    const partial = UT.unitSummaryOf(rows, { testControls: { 'all|41': { alwaysLong: 3, alwaysShort: -3, buyHold: 8 }, 'all|65': CONTROLS['all|65'] } });
+    assert.strictEqual(partial.controlled, 2, 'a setting whose four are not all known is counted');
+    assert.strictEqual(partial.beatBestPct, 0);
     assert.strictEqual(r.midTrades, 6);
     assert.strictEqual(r.streakBest30, 87.5, 'the middle worst losing streak of the best four: 75 and 100');
     assert.strictEqual(r.winsBest30, 41.67, '10 wins over 24 trades');
@@ -161,7 +174,7 @@ module.exports = {
     assert.strictEqual(r.fieldBlocked, null, 'no gate, no blocked share');
     // and nothing rebuilt reads as nothing, never as zero
     assert.strictEqual(r.thirds, 0);
-    for (const k of ['inMoney1', 'inMoney2', 'inMoney3', 'allThreePct', 'loseAllPct', 'h12', 'h23', 'h13', 'h123', 'top30Third', 'beatLongPct', 'bestVsLong', 'streakBest30', 'winsBest30', 'chunksAPart']) {
+    for (const k of ['inMoney1', 'inMoney2', 'inMoney3', 'allThreePct', 'loseAllPct', 'h12', 'h23', 'h13', 'h123', 'top30Third', 'beatBestPct', 'bestVsLong', 'streakBest30', 'winsBest30', 'chunksAPart', 'loseAllN']) {
       assert.strictEqual(r[k], null, `${k} reads ${r[k]} with nothing to read it from`);
     }
     assert.strictEqual(UT.unitSummaryOf([], {}).settings, 0);
@@ -222,6 +235,8 @@ module.exports = {
       assert.strictEqual(c[1], own.good, `${c[0]}: the page and the service disagree about which way is good`);
       assert.strictEqual(c[2], own.filter, `${c[0]}: the page's box is not the service's`);
       assert.ok(c[3] && c[4], `${c[0]} has no box name or no kind`);
+      assert.strictEqual(c[4], own.kind, `${c[0]}: the page prints it as ${c[4]} and the service works it out as ${own.kind}`);
+      if (own.kind === 'countpct') assert.strictEqual(c[5], own.count, `${c[0]}: the page prints a different count beside the share`);
       assert.ok(/at least|at most/.test(c[3]), `${c[0]}'s box name does not say which way it cuts: ${c[3]}`);
       assert.ok((own.good === 'low') === /at most/.test(c[3]), `${c[0]}'s box says the wrong way: ${c[3]}`);
     }
@@ -238,6 +253,13 @@ module.exports = {
       assert.strictEqual(d.arrow, want, `the ${d.key} heading's sort mark points the wrong way`);
     }
     assert.ok(drawn.some((d) => d.heading === 'avg test $, no gate') && drawn.some((d) => d.heading === '$ per trade, no gate'), 'the with-and-without-the-gate columns are not named as such');
+    // 3.232.0 (owner order 2026-09-23): the two readings in the owner's own words,
+    // best 30 beat copies gone, and the best of the four in place of always long
+    const named = Object.fromEntries(drawn.map((d) => [d.key, d.heading]));
+    assert.strictEqual(named.inMoneyPct, 'settings in the money over the whole test window');
+    assert.strictEqual(named.loseAllPct, 'losing in all three parts');
+    assert.strictEqual(named.beatBestPct, 'beat the best of the four, %');
+    assert.ok(!page.includes('best 30 beat copies') && !page.includes('beat always long, %'), 'a removed or replaced heading is still on the page');
     // the two words the service keys on are the service's own
     for (const u of [{ trade: 'AAA', ctx1: null, ctx2: null, geometry: 'daily-1d' }, { trade: 'BBB', ctx1: 'AAA', ctx2: 'CCC', geometry: 'weekly-8d' }]) {
       assert.strictEqual(UT.unitKeyOf(u), stages.unitKeyOf(u));
@@ -311,11 +333,18 @@ module.exports = {
       const ready = stages.ensureUnitTable(id);
       assert.ok(ready.ready && ready.table, `the table is not ready after the build: ${JSON.stringify(ready)}`);
       assert.ok(fs.existsSync(stages.unitsFile(id)), 'the table is not kept beside the set');
+      // A TABLE OF AN OLDER SHAPE READS AS ABSENT and is built again, never read
+      // around (RULE NINE): its rows would lack the columns the screen now draws
+      const kept0 = fs.readFileSync(stages.unitsFile(id), 'utf8');
+      fs.writeFileSync(stages.unitsFile(id), JSON.stringify({ ...JSON.parse(kept0), v: stages.UNITS_V - 1 }));
+      assert.strictEqual(stages.readUnitTable(id), null, 'a unit table of an older shape is read as if it were current');
+      fs.writeFileSync(stages.unitsFile(id), kept0);
       const rows = ready.table.units;
       assert.deepStrictEqual(rows.map((r) => r.unit), keys, 'one row per coin and shape, in the set\'s order');
       const u0 = rows[0];
       const typed = UT.unitSummaryOf(typedBoard(), { chunksAPart: 40, testControls: CONTROLS });
       for (const k of UT.COLUMN_KEYS) assert.strictEqual(u0[k], typed[k], `${k}: the built row reads ${u0[k]} where the typed board reads ${typed[k]}`);
+      for (const c of UT.COLUMNS.filter((x) => x.count)) assert.strictEqual(u0[c.count], typed[c.count], `${c.count}: the built row's count is not the typed board's`);
       assert.strictEqual(u0.name, 'AAA daily-1d');
       assert.strictEqual(rows[2].name, 'BBB alongside AAA daily-1d');
       // the third coin and shape was never passed over: nothing rebuilt, no gate

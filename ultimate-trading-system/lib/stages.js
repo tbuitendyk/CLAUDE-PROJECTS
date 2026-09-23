@@ -6958,7 +6958,11 @@ function funnelRankHoldStatus(id, bar = {}) {
 // numbers the pass beside the set rebuilt -- and never migrated (RULE NINE).
 // Built in the background and polled, the totalling's shape: eighty-six
 // boards is minutes of reading, and no request waits on it.
-const UNITS_V = 1;
+// 2 (3.232.0): settings in the money over the whole test window and losing in
+// all three parts carry their counts, best 30 beat copies is gone, and beat
+// the best of the four replaces beat always long. A table of the older shape
+// reads as absent and is built again (RULE NINE: a derived file, never migrated).
+const UNITS_V = 2;
 const unitsFile = (id) => path.join(SETS_DIR, `${String(id).replace(/[^A-Za-z0-9._-]+/g, '_')}.units.json`);
 let unitTableRun = null;   // { id, done, of, error, promise }
 let unitTableInHand = { id: null, mtimeMs: 0, size: 0, table: null };

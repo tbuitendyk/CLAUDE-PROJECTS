@@ -45,6 +45,10 @@ const unitKeyOf = (u) => `${u.trade}|${u.ctx1 || ''}|${u.ctx2 || ''}|${u.geometr
 // and the key the four things a rule has to beat are filed under: 24/7 or
 // 24/5, and the hold length, the same one lib/stages.js reads them by
 const controlKeyOf = (r) => `${r && r.weekdaysOnly ? 'wk' : 'all'}|${Number(r && r.tHours)}`;
+// the four a setting is held up to, the same four lib/stages.js keeps: being
+// long every period, being short every period, buying the coin and going away,
+// shorting it and going away
+const CONTROL_KEYS = ['alwaysLong', 'alwaysShort', 'buyHold', 'shortHold'];
 
 // HOW MANY OF THE BEST ARE READ AS A GROUP. Thirty, where the Funnel's own
 // floor on settings ranked starts.
@@ -55,11 +59,17 @@ const BEST_N = 30;
 // know), and the filter box that reads it. The words -- the heading, its
 // hover, the box's name -- are on the page that draws them, where the closed
 // word list can see them; a test holds the page's list to this one.
-//   kind: money | pct | count | hold | trades
+//   kind: money | pct | count | hold | trades | beats | countpct (a count of
+//   settings with its share beside it; `count` names the count's field, and the
+//   share is what the column sorts and filters on)
 //   good: 'high' sorts high first and filters 'at least'; 'low' the other way
 const COLUMNS = [
   { key: 'settings', kind: 'count', good: 'high', filter: 'minSettings' },
-  { key: 'inMoneyPct', kind: 'pct', good: 'high', filter: 'minInMoney' },
+  // SETTINGS IN THE MONEY OVER THE WHOLE TEST WINDOW, a count with its share
+  // (3.232.0, owner order 2026-09-23: "these ones that I specifically asked
+  // for ... you didn't give me"). It was the share alone under a heading that
+  // did not say what it counted.
+  { key: 'inMoneyPct', kind: 'countpct', count: 'inMoneyN', good: 'high', filter: 'minInMoney' },
   { key: 'avgTest', kind: 'money', good: 'high', filter: 'minAvgTest' },
   { key: 'avgTestNoGate', kind: 'money', good: 'high', filter: 'minAvgTestNoGate' },
   { key: 'perTrade', kind: 'money', good: 'high', filter: 'minPerTrade' },
@@ -70,15 +80,21 @@ const COLUMNS = [
   { key: 'inMoney2', kind: 'pct', good: 'high', filter: 'minInMoney2' },
   { key: 'inMoney3', kind: 'pct', good: 'high', filter: 'minInMoney3' },
   { key: 'allThreePct', kind: 'pct', good: 'high', filter: 'minAllThree' },
-  { key: 'loseAllPct', kind: 'pct', good: 'low', filter: 'maxLoseAll' },
+  // LOSING IN ALL THREE PARTS, a count with its share (3.232.0, the same order)
+  { key: 'loseAllPct', kind: 'countpct', count: 'loseAllN', good: 'low', filter: 'maxLoseAll' },
   { key: 'h12', kind: 'hold', good: 'high', filter: 'minH12' },
   { key: 'h23', kind: 'hold', good: 'high', filter: 'minH23' },
   { key: 'h13', kind: 'hold', good: 'high', filter: 'minH13' },
   { key: 'h123', kind: 'hold', good: 'high', filter: 'minH123' },
   { key: 'top30Third', kind: 'money', good: 'high', filter: 'minTop30Third' },
-  { key: 'best30Beats', kind: 'count', good: 'high', filter: 'minBest30Beats' },
-  { key: 'boardBeats', kind: 'count', good: 'high', filter: 'minBoardBeats' },
-  { key: 'beatLongPct', kind: 'pct', good: 'high', filter: 'minBeatLong' },
+  // BEST 30 BEAT COPIES IS GONE (3.232.0, owner order 2026-09-23: "get rid of
+  // 3"). The 30 were picked on the same money they were compared with, so it
+  // passed 74 of the 86 coins and shapes on the owner's set and told nothing.
+  { key: 'boardBeats', kind: 'beats', good: 'high', filter: 'minBoardBeats' },
+  // THE BEST OF THE FOUR, NOT ALWAYS LONG (3.232.0, owner order: "fix 4").
+  // Always long alone passed every setting on a coin that fell and almost none
+  // on a coin that rose.
+  { key: 'beatBestPct', kind: 'pct', good: 'high', filter: 'minBeatBest' },
   { key: 'bestVsLong', kind: 'money', good: 'high', filter: 'minBestVsLong' },
   { key: 'midTrades', kind: 'trades', good: 'high', filter: 'minMidTrades' },
   { key: 'fieldBlocked', kind: 'pct', good: 'low', filter: 'maxFieldBlocked' },
@@ -105,7 +121,8 @@ function unitSummaryOf(rows, opts = {}) {
   const all = rows || [];
   const money = all.map((r) => num(r.avgTest)).filter((v) => v != null);
   const out = { settings: all.length };
-  out.inMoneyPct = round2(pct(money.filter((v) => v > 0).length, money.length));
+  out.inMoneyN = money.filter((v) => v > 0).length;
+  out.inMoneyPct = round2(pct(out.inMoneyN, money.length));
   out.avgTest = round2(mean(money));
   out.midTest = round2(median(money));
   out.bestTest = money.length ? round2(Math.max(...money)) : null;
@@ -156,7 +173,6 @@ function unitSummaryOf(rows, opts = {}) {
   const best = byMoney.slice(0, BEST_N);
   out.copies = K;
   out.boardBeats = beatsOf(withMoney);
-  out.best30Beats = beatsOf(best);
   // THE THREE PARTS, from the rebuilt numbers; every one of these is empty
   // until the pass has run, never a nought
   const hold = RH.holdOfUnit(all, opts.chunksAPart);
@@ -167,27 +183,35 @@ function unitSummaryOf(rows, opts = {}) {
   out.inMoney2 = round2(pct(part(1).filter((v) => v > 0).length, usable.length));
   out.inMoney3 = round2(pct(part(2).filter((v) => v > 0).length, usable.length));
   out.allThreePct = round2(pct(usable.filter((r) => r.pnlThirds.slice(0, 3).every((v) => num(v) > 0)).length, usable.length));
-  out.loseAllPct = round2(pct(usable.filter((r) => r.pnlThirds.slice(0, 3).every((v) => num(v) < 0)).length, usable.length));
+  const loseAll = usable.filter((r) => r.pnlThirds.slice(0, 3).every((v) => num(v) < 0)).length;
+  out.loseAllN = usable.length ? loseAll : null;
+  out.loseAllPct = round2(pct(loseAll, usable.length));
   const holdOf = (key) => { const x = (hold.readings || []).find((b) => b.key === key); return x && x.hold != null ? Math.round(x.hold * 1000) / 1000 : null; };
   out.h12 = holdOf('1>2'); out.h23 = holdOf('2>3'); out.h13 = holdOf('1>3'); out.h123 = holdOf('12>3');
   const by12 = usable.slice().sort((a, b) => ((num(b.pnlThirds[0]) + num(b.pnlThirds[1])) - (num(a.pnlThirds[0]) + num(a.pnlThirds[1]))) || String(a.label).localeCompare(String(b.label)));
   out.top30Third = round2(mean(by12.slice(0, BEST_N).map((r) => num(r.pnlThirds[2]))));
-  // THE FOUR THINGS A RULE HAS TO BEAT, at each setting's own hold length
+  // THE FOUR, at each setting's own hold length. A setting is counted as
+  // beating them when its test money beats the BEST of the four -- the hardest
+  // of them, the way the Funnel reads a rule against them -- so neither a coin
+  // that rose nor one that fell passes by its direction alone. A setting whose
+  // four are not all known is left out of the count, never passed.
   const tc = opts.testControls || null;
   let beatN = 0; let ctlN = 0; let bestVs = null;
   if (tc) {
     for (const r of withMoney) {
       const c = tc[controlKeyOf(r)];
-      const long = c ? num(c.alwaysLong) : null;
-      if (long == null) continue;
-      ctlN++;
+      if (!c) continue;
       const v = num(r.avgTest);
-      if (F.beats(v, long)) beatN++;
-      const vs = v - long;
-      if (bestVs == null || vs > bestVs) bestVs = vs;
+      const four = CONTROL_KEYS.map((k) => num(c[k]));
+      if (four.every((x) => x != null)) {
+        ctlN++;
+        if (F.beats(v, Math.max(...four))) beatN++;
+      }
+      const long = num(c.alwaysLong);
+      if (long != null) { const vs = v - long; if (bestVs == null || vs > bestVs) bestVs = vs; }
     }
   }
-  out.beatLongPct = ctlN ? round2(pct(beatN, ctlN)) : null;
+  out.beatBestPct = ctlN ? round2(pct(beatN, ctlN)) : null;
   out.bestVsLong = round2(bestVs);
   out.controlled = ctlN;
   // the rest of the seven: how often it trades, the risk and the hit rate of
@@ -249,4 +273,4 @@ function orderBy(key, flip) {
   return flip ? (a, b) => cmp(b, a) : cmp;
 }
 
-module.exports = { COLUMNS, COLUMN_KEYS, FILTER_DEFS, SORTS, BEST_N, unitSummaryOf, applyFilter, cleanFilter, orderBy, unitKeyOf, controlKeyOf };
+module.exports = { COLUMNS, COLUMN_KEYS, FILTER_DEFS, SORTS, BEST_N, CONTROL_KEYS, unitSummaryOf, applyFilter, cleanFilter, orderBy, unitKeyOf, controlKeyOf };

@@ -150,13 +150,16 @@ function cleanup() {
       });
       console.log(`  ${width}px: ${shape.cols} columns, ${shape.rows} rows, table ${shape.tableW}px in a ${shape.panelW}px panel, row heights ${[...new Set(shape.rowHeights)].join('/')}px, line ${shape.lineH}px`);
       console.log(`  first row: ${shape.cells.join(' | ')}`);
-      expect(shape.cols === 28, `the table has the name column and 27 readings (${shape.cols})`);
-      expect(shape.sortMarks === 28, `every heading carries a sort mark (${shape.sortMarks} of ${shape.cols})`);
+      expect(shape.cols === 27, `the table has the name column and 26 readings (${shape.cols})`);
+      expect(shape.sortMarks === 27, `every heading carries a sort mark (${shape.sortMarks} of ${shape.cols})`);
+      expect(shape.headings.includes('settings in the money over the whole test window') && shape.headings.includes('losing in all three parts') && shape.headings.includes('beat the best of the four, %') && !shape.headings.includes('best 30 beat copies'),
+        `the headings are the owner's: ${shape.headings.join(' | ')}`);
+      expect(/^\d[\d,]* \d+\.\d%$/.test(shape.cells[2]), `settings in the money over the whole test window prints the count and the share: ${shape.cells[2]}`);
       expect(shape.rows === UNITS.length, `one row per coin and shape (${shape.rows})`);
       const tallest = Math.max(...shape.rowHeights);
       // a one-line row on these tables is 24px; two lines would be 40 or more
       expect(tallest <= 32, `every row is one line (tallest ${tallest}px)`);
-      expect(shape.boxes === 27 && shape.stats === 27 * 4, `a filter box per reading with its four numbers (${shape.boxes} boxes, ${shape.stats} numbers)`);
+      expect(shape.boxes === 26 && shape.stats === 26 * 4, `a filter box per reading with its four numbers (${shape.boxes} boxes, ${shape.stats} numbers)`);
       expect(shape.firstCell === 'AAA Daily 1-day' || /^AAA /.test(shape.firstCell), `the name cell names the coin and the shape on one line: ${shape.firstCell}`);
       expect(shape.cells[3] && shape.cells[4] && shape.cells[3] !== shape.cells[4], `the gated coin reads different money with and without the gate: ${shape.cells[3]} / ${shape.cells[4]}`);
       if (width === 1920) expect(shape.tableW <= shape.panelW, `at ${width} the table fits its panel (${shape.tableW} of ${shape.panelW}px)`);
