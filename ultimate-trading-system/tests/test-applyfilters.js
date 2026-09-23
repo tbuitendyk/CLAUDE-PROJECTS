@@ -164,6 +164,11 @@ module.exports = {
     // picked (3.239.0), and a table tab draws its table alone (3.239.1)
     assert.ok(draw.includes('const onS3 = (stab === 3 || B_T3.includes(stab)) && fold[3];'), 'the table tabs do not know when Stage 3 or a table is picked, or stay while Stage 3 is put away');
     // PUTTING A STAGE AWAY PUTS EVERY STAGE UNDER IT AWAY (3.240.0); Open opens its own
+    // PUT AWAY LETS GO OF THE RECORD SET AND OF EVERY ONE UNDER IT (3.241.2); the stages above are written down as shown
+    assert.ok(draw.includes("if (fold[sN] && selOf[sN]) {") && draw.includes("if (k < sN) patch[`s${k}`] = selOf[k];\n          else { patch[`s${k}`] = null; patch[`fold${k}`] = false; }"),
+      'Put away on a Boards stage does not empty its record set box and the boxes under it');
+    assert.ok(draw.includes("if (!s1sel && !s2sel && !s3sel && view.s1 === undefined && view.s2 === undefined && view.s3 === undefined) {"),
+      'boxes emptied by Put away are filled again with the newest set on the next draw');
     assert.ok(draw.includes("bSaveView(Object.fromEntries([1, 2, 3].filter((k) => k >= sN).map((k) => [`fold${k}`, !fold[sN]])));"),
       'putting a stage away leaves the stages under it open, or Open does not bring them back');
     assert.ok(draw.includes("${!onS3 ? '' : `<div class=\"tab tab-gap${t3On('3A')}\" data-bt3tab=\"3A\">Table 3.A</div>"),

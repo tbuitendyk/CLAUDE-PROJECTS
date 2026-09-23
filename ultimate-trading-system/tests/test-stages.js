@@ -2831,25 +2831,10 @@ module.exports = {
       for (const id of ['swH1', 'swH2', 'swH3']) assert.ok(src.includes(`id="${id}"`), `the ${id} title must exist to be painted`);
       const fn = src.slice(src.indexOf('function swProvenance('), src.indexOf('async function swCounts('));
       assert.ok(/var\(--pos\)/.test(fn) && /var\(--neg\)/.test(fn), 'green normally, red at the point of break');
-      assert.ok(fn.includes("rowOf(v('#swFrom2'))") && fn.includes("rowOf(v('#swFrom3'))"),
-        'stage 2 is judged by the stage 1 set its box names, stage 3 by the stage 2 set its box names');
-      // EACH TITLE IS JUDGED BY ITS OWN BOX (owner order, 2026-09-02: "why is
-      // Stage 2 red ... should be GREEN and Stage 3 should be red"): the red
-      // lands on the section whose box breaks the chain, never the one above it
-      // Stage 1 is the root: it reads from no record set, so it is never
-      // painted red -- and since 3.76.3 it is not painted green either, because
-      // green claims a check it has never made.
-      assert.ok(/paint\('#swH1', \(c\('#swSingles'\)/.test(fn),
-        'stage 1 does not go green off its own section being set up');
-      assert.ok(!/paint\('#swH1', (?:false|!)/.test(fn), 'stage 1 names no record set, so it can never be the section painted red');
-      const s2 = fn.slice(fn.indexOf("const s1row = rowOf(v('#swFrom2'));"), fn.indexOf("const s3v = v('#swFrom3');"));
-      // the RED lands on stage 2, whose box names the set
-      assert.ok(s2.includes("paint('#swH2', !mismatch,"), 'a stage 1 set that no longer matches the stage 1 boxes paints STAGE 2, whose box names it');
-      assert.ok(!/paint\('#swH1'/.test(s2), 'the stage 2 block paints the section above it');
-      const s3 = fn.slice(fn.indexOf("const s3v = v('#swFrom3');"));
-      assert.ok(s3.includes("paint('#swH3', !mismatch,"),
-        'a stage 2 set that was not carried out of the stage 1 set the stage 2 box names paints STAGE 3, whose box names it');
-      assert.ok(!/paint\('#swH2'/.test(s3), 'the stage 3 block paints the section above it');
+      // EACH TITLE IS JUDGED BY ITS OWN LEVEL SINCE 3.241.0: the pick in its own
+      // box (the owner's truth table, run in theStageHeadingsFollowTheOwnersTruthTableRowForRow)
+      assert.ok(fn.includes("[[1, '#swFrom2', '#swWhy1'], [2, '#swFrom3', '#swWhy2'], [3, '#swSet3', '#swWhy3']]"),
+        'each stage is not judged by the set its own box names');
       const swBody = screens.drawBody('drawSweep');
       assert.ok(swBody.includes('swProvenance()'), 'the colors are wired on the page');
       assert.ok(swBody.includes("b.disabled = !!held"), 'the start buttons sleep while ANY heavy job is going, not a stage run alone (3.163.0)');
