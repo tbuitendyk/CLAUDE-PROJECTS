@@ -2156,6 +2156,15 @@ const GUARDS = [
     'theFieldsOwnSignIsTheCallUnderQuorumByField', 'a live setup under quorum by field is decided by the members after all, and never places what the field said'],
   [path.join(ROOT, 'lib', 'live', 'configschema.js'), "if (a.rule === 'field' && !(cfg.field && typeof cfg.field === 'object' && cfg.field.gate)) {", 'if (false) {',
     'theFieldsOwnSignIsTheCallUnderQuorumByField', 'a configuration under quorum by field with no field passes the schema and fails at its first decision'],
+  // TABLE 3.C (3.230.0): a row with no figure never clears a floor; the Funnel's
+  // coin and shape box offers only what the filter keeps; the blend of the kept
+  // coins and shapes leaves the hidden ones out of the fold
+  [path.join(ROOT, 'lib', 'unittable.js'), '  max: (v, want) => v != null && Number.isFinite(Number(v)) && Number(v) <= Number(want),', '  max: (v, want) => v == null || (Number.isFinite(Number(v)) && Number(v) <= Number(want)),',
+    'theFilterHidesARowWithNoFigureAndRefusesABoxTheTableDoesNotOffer', 'a coin and shape the pass never reached clears every floor and is walked as if it had cleared them'],
+  [path.join(ROOT, 'lib', 'stages.js'), '  const units = unitsOfSet(t, id).filter((u) => !cut.kept || cut.kept.has(u.key)).map((u) => ({', '  const units = unitsOfSet(t, id).map((u) => ({',
+    'theUnitTableIsBuiltBesideTheSetAndTheFunnelReadsItsFilter', 'the coin and shape box on the Funnel offers coins and shapes the filter on Table 3.C hides'],
+  [path.join(ROOT, 'lib', 'stages.js'), '        if (keep && !keep.has(unitKeyOf(x.row))) continue;', '        if (false) continue;',
+    'theUnitTableIsBuiltBesideTheSetAndTheFunnelReadsItsFilter', 'all units together under a filter blends the hidden coins and shapes in as if nothing were filtered'],
 ];
 
 const only = process.argv[2] || '';
