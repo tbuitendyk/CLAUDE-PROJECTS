@@ -5091,71 +5091,78 @@ function bWireCoinSort(root) {
 // sorting on one click and every one with a filter box. The filter is saved on
 // the record set, because the Funnel reads it.
 //
-// THE WORDS OF EVERY COLUMN ARE WRITTEN OUT HERE, where the closed word list
-// can see them. The arithmetic behind each and the order of the columns are
-// the service's, and a test holds this list to the service's list.
-//   [key, heading, which way is good, filter box id, filter box name, kind, hover]
+// The arithmetic behind each column and the order of the columns are the
+// service's, and a test holds this list to the service's list. The headings
+// are markup in bUnitHeads below, so the closed word list can see them.
+//   [key, which way is good, filter box id, filter box name, kind]
 const B_UNIT_COLS = [
-  ['settings', 'settings', 'high', 'minSettings', 'settings at least', 'count',
-    'how many settings this coin and shape holds. One setting is one combination of entry, gate, d, t, trail and arm together with its decision, band and 24/5 variant.'],
-  ['inMoneyPct', 'in the money, %', 'high', 'minInMoney', 'in the money at least, %', 'pct',
-    'the share of the settings whose test-window money is above zero.'],
-  ['avgTest', 'avg test $', 'high', 'minAvgTest', 'avg test $ at least', 'money',
-    'average test-window money per setting, as priced: under the field\'s gate on a set that has one.'],
-  ['avgTestNoGate', 'avg test $, no gate', 'high', 'minAvgTestNoGate', 'avg test $ with no gate at least', 'money',
-    'average test-window money per setting with every call taken at size 1 and no gate: the same trades before the field\'s gate sized or blocked them. On a set priced with no gate this is the same figure as avg test $.'],
-  ['perTrade', '$ per trade', 'high', 'minPerTrade', '$ per trade at least', 'money',
-    'all the test-window money of every setting divided by all their test-window trades, as priced.'],
-  ['perTradeNoGate', '$ per trade, no gate', 'high', 'minPerTradeNoGate', '$ per trade with no gate at least', 'money',
-    'the same with every call taken at size 1 and no gate; the blocked calls count as trades too.'],
-  ['midTest', 'middle test $', 'high', 'minMidTest', 'middle test $ at least', 'money',
-    'the test-window money of the middle setting: half the settings made more, half made less.'],
-  ['bestTest', 'best test $', 'high', 'minBestTest', 'best test $ at least', 'money',
-    'the test-window money of the best single setting.'],
-  ['inMoney1', '1st part in the money, %', 'high', 'minInMoney1', '1st part in the money at least, %', 'pct',
-    'the share of the settings above zero in the first part of the test window. Empty until Work out the test history numbers has run on the Funnel.'],
-  ['inMoney2', '2nd part in the money, %', 'high', 'minInMoney2', '2nd part in the money at least, %', 'pct',
-    'the share of the settings above zero in the second part of the test window.'],
-  ['inMoney3', '3rd part in the money, %', 'high', 'minInMoney3', '3rd part in the money at least, %', 'pct',
-    'the share of the settings above zero in the third part of the test window.'],
-  ['allThreePct', 'all three parts in the money, %', 'high', 'minAllThree', 'all three parts in the money at least, %', 'pct',
-    'the share of the settings above zero in every one of the three parts.'],
-  ['loseAllPct', 'losing in all three parts, %', 'low', 'maxLoseAll', 'losing in all three parts at most, %', 'pct',
-    'the share of the settings below zero in every one of the three parts.'],
-  ['h12', 'first → second', 'high', 'minH12', 'first → second at least', 'hold',
-    'the settings are put in order by what they made in the first part of the test window, and that order is scored on the second part. 1.00 is the same order on both, 0.00 no relation at all, below zero the order comes out backwards.'],
-  ['h23', 'second → third', 'high', 'minH23', 'second → third at least', 'hold',
-    'ordered by the second part of the test window, scored on the third.'],
-  ['h13', 'first → third', 'high', 'minH13', 'first → third at least', 'hold',
-    'ordered by the first part of the test window, scored on the third — the widest gap of the four, because a whole part sits between them.'],
-  ['h123', 'first two → third', 'high', 'minH123', 'first two → third at least', 'hold',
-    'ordered by the first two parts of the test window added together, scored on the third.'],
-  ['top30Third', 'top 30 in the third $', 'high', 'minTop30Third', 'top 30 in the third $ at least', 'money',
-    'the 30 best settings by the first two parts of the test window: what they made, on average, in the third part, which they were not chosen on.'],
-  ['best30Beats', 'best 30 beat copies', 'high', 'minBest30Beats', 'best 30 beat copies at least', 'beats',
-    'of the kept scrambled copies, how many the 30 best settings by test money beat as a group: their average real money against the same settings\' average money on each copy.'],
-  ['boardBeats', 'board beats copies', 'high', 'minBoardBeats', 'board beats copies at least', 'beats',
-    'the whole board\'s average test money against the kept scrambled copies: how many of the copies it beats.'],
-  ['beatLongPct', 'beat always long, %', 'high', 'minBeatLong', 'beat always long at least, %', 'pct',
-    'the share of the settings whose test money beats always long over the same window at their own hold length. Empty until Work out the test history numbers has run.'],
-  ['bestVsLong', 'best vs always long $', 'high', 'minBestVsLong', 'best vs always long $ at least', 'money',
-    'the best single setting\'s test money minus always long over the same window at its hold length.'],
-  ['midTrades', 'middle test trades', 'high', 'minMidTrades', 'middle test trades at least', 'trades',
-    'the test-window trades of the middle setting: half the settings traded more often, half less.'],
-  ['fieldBlocked', 'field blocked, %', 'low', 'maxFieldBlocked', 'field blocked at most, %', 'pct',
-    'of the calls the members made on the test window, the share the field\'s gate blocked. Empty with no gate.'],
-  ['streakBest30', 'worst losing streak $, best 30', 'low', 'maxStreakBest30', 'worst losing streak $ of the best 30 at most', 'money',
-    'the worst losing streak of the middle one of the 30 best settings by test money. Empty until Work out the test history numbers has run.'],
-  ['winsBest30', 'trades won, %, best 30', 'high', 'minWinsBest30', 'trades won of the best 30 at least, %', 'pct',
-    'of every test-window trade the 30 best settings by test money made, the share that won.'],
-  ['chunksAPart', 'chunks a part', 'high', 'minChunksAPart', 'chunks a part at least', 'count',
-    'how many chunks the shortest of the three parts of this coin and shape\'s test window holds, read off what the run recorded.'],
+  ['settings', 'high', 'minSettings', 'settings at least', 'count'],
+  ['inMoneyPct', 'high', 'minInMoney', 'in the money at least, %', 'pct'],
+  ['avgTest', 'high', 'minAvgTest', 'avg test $ at least', 'money'],
+  ['avgTestNoGate', 'high', 'minAvgTestNoGate', 'avg test $ with no gate at least', 'money'],
+  ['perTrade', 'high', 'minPerTrade', '$ per trade at least', 'money'],
+  ['perTradeNoGate', 'high', 'minPerTradeNoGate', '$ per trade with no gate at least', 'money'],
+  ['midTest', 'high', 'minMidTest', 'middle test $ at least', 'money'],
+  ['bestTest', 'high', 'minBestTest', 'best test $ at least', 'money'],
+  ['inMoney1', 'high', 'minInMoney1', '1st part in the money at least, %', 'pct'],
+  ['inMoney2', 'high', 'minInMoney2', '2nd part in the money at least, %', 'pct'],
+  ['inMoney3', 'high', 'minInMoney3', '3rd part in the money at least, %', 'pct'],
+  ['allThreePct', 'high', 'minAllThree', 'all three parts in the money at least, %', 'pct'],
+  ['loseAllPct', 'low', 'maxLoseAll', 'losing in all three parts at most, %', 'pct'],
+  ['h12', 'high', 'minH12', 'first → second at least', 'hold'],
+  ['h23', 'high', 'minH23', 'second → third at least', 'hold'],
+  ['h13', 'high', 'minH13', 'first → third at least', 'hold'],
+  ['h123', 'high', 'minH123', 'first two → third at least', 'hold'],
+  ['top30Third', 'high', 'minTop30Third', 'top 30 in the third $ at least', 'money'],
+  ['best30Beats', 'high', 'minBest30Beats', 'best 30 beat copies at least', 'beats'],
+  ['boardBeats', 'high', 'minBoardBeats', 'board beats copies at least', 'beats'],
+  ['beatLongPct', 'high', 'minBeatLong', 'beat always long at least, %', 'pct'],
+  ['bestVsLong', 'high', 'minBestVsLong', 'best vs always long $ at least', 'money'],
+  ['midTrades', 'high', 'minMidTrades', 'middle test trades at least', 'trades'],
+  ['fieldBlocked', 'low', 'maxFieldBlocked', 'field blocked at most, %', 'pct'],
+  ['streakBest30', 'low', 'maxStreakBest30', 'worst losing streak $ of the best 30 at most', 'money'],
+  ['winsBest30', 'high', 'minWinsBest30', 'trades won of the best 30 at least, %', 'pct'],
+  ['chunksAPart', 'high', 'minChunksAPart', 'chunks a part at least', 'count'],
 ];
+// THE HEADINGS, WRITTEN OUT AS MARKUP where the closed word list can see them
+// (RULE ONE-A: a label the screen shows and the list lacks is a hole). One per
+// column, in the columns' order; a test holds them to the list above.
+function bUnitHeads(view) {
+  const s = (key, arrow) => bUnitSortBtn(view, key, arrow);
+  return `<th ${bth.replace('.3rem .3rem', '.3rem .3rem .3rem 0')} title="the traded coin and the chunk shape it was priced at, and beside them the one or two coins it is read alongside, on rows that have any. Anything after the + is context only — read against, never bought or sold.">coin and shape${s('name', '↑')}</th>
+    <th ${bth} title="how many settings this coin and shape holds. One setting is one combination of entry, gate, d, t, trail and arm together with its decision, band and 24/5 variant.">settings${s('settings', '↓')}</th>
+    <th ${bth} title="the share of the settings whose test-window money is above zero.">in the money, %${s('inMoneyPct', '↓')}</th>
+    <th ${bth} title="average test-window money per setting, as priced: under the field\'s gate on a set that has one.">avg test $${s('avgTest', '↓')}</th>
+    <th ${bth} title="average test-window money per setting with every call taken at size 1 and no gate: the same trades before the field\'s gate sized or blocked them. On a set priced with no gate this is the same figure as avg test $.">avg test $, no gate${s('avgTestNoGate', '↓')}</th>
+    <th ${bth} title="all the test-window money of every setting divided by all their test-window trades, as priced.">$ per trade${s('perTrade', '↓')}</th>
+    <th ${bth} title="the same with every call taken at size 1 and no gate; the blocked calls count as trades too.">$ per trade, no gate${s('perTradeNoGate', '↓')}</th>
+    <th ${bth} title="the test-window money of the middle setting: half the settings made more, half made less.">middle test $${s('midTest', '↓')}</th>
+    <th ${bth} title="the test-window money of the best single setting.">best test $${s('bestTest', '↓')}</th>
+    <th ${bth} title="the share of the settings above zero in the first part of the test window. Empty until Work out the test history numbers has run on the Funnel.">1st part in the money, %${s('inMoney1', '↓')}</th>
+    <th ${bth} title="the share of the settings above zero in the second part of the test window.">2nd part in the money, %${s('inMoney2', '↓')}</th>
+    <th ${bth} title="the share of the settings above zero in the third part of the test window.">3rd part in the money, %${s('inMoney3', '↓')}</th>
+    <th ${bth} title="the share of the settings above zero in every one of the three parts.">all three parts in the money, %${s('allThreePct', '↓')}</th>
+    <th ${bth} title="the share of the settings below zero in every one of the three parts.">losing in all three parts, %${s('loseAllPct', '↑')}</th>
+    <th ${bth} title="the settings are put in order by what they made in the first part of the test window, and that order is scored on the second part. 1.00 is the same order on both, 0.00 no relation at all, below zero the order comes out backwards.">first → second${s('h12', '↓')}</th>
+    <th ${bth} title="ordered by the second part of the test window, scored on the third.">second → third${s('h23', '↓')}</th>
+    <th ${bth} title="ordered by the first part of the test window, scored on the third — the widest gap of the four, because a whole part sits between them.">first → third${s('h13', '↓')}</th>
+    <th ${bth} title="ordered by the first two parts of the test window added together, scored on the third.">first two → third${s('h123', '↓')}</th>
+    <th ${bth} title="the 30 best settings by the first two parts of the test window: what they made, on average, in the third part, which they were not chosen on.">top 30 in the third $${s('top30Third', '↓')}</th>
+    <th ${bth} title="of the kept scrambled copies, how many the 30 best settings by test money beat as a group: their average real money against the same settings\' average money on each copy.">best 30 beat copies${s('best30Beats', '↓')}</th>
+    <th ${bth} title="the whole board\'s average test money against the kept scrambled copies: how many of the copies it beats.">board beats copies${s('boardBeats', '↓')}</th>
+    <th ${bth} title="the share of the settings whose test money beats always long over the same window at their own hold length. Empty until Work out the test history numbers has run.">beat always long, %${s('beatLongPct', '↓')}</th>
+    <th ${bth} title="the best single setting\'s test money minus always long over the same window at its hold length.">best vs always long $${s('bestVsLong', '↓')}</th>
+    <th ${bth} title="the test-window trades of the middle setting: half the settings traded more often, half less.">middle test trades${s('midTrades', '↓')}</th>
+    <th ${bth} title="of the calls the members made on the test window, the share the field\'s gate blocked. Empty with no gate.">field blocked, %${s('fieldBlocked', '↑')}</th>
+    <th ${bth} title="the worst losing streak of the middle one of the 30 best settings by test money. Empty until Work out the test history numbers has run.">worst losing streak $, best 30${s('streakBest30', '↑')}</th>
+    <th ${bth} title="of every test-window trade the 30 best settings by test money made, the share that won.">trades won, %, best 30${s('winsBest30', '↓')}</th>
+    <th ${bth} title="how many chunks the shortest of the three parts of this coin and shape\'s test window holds, read off what the run recorded.">chunks a part${s('chunksAPart', '↓')}</th>`;
+}
 // one figure, printed by its kind; nothing is ever printed as a nought
 function bUnitCell(r, c) {
-  const v = r[c[0]];
-  if (v == null || !Number.isFinite(Number(v))) return '<span class="muted">—</span>';
-  switch (c[5]) {
+  const v = r[c[0]] == null ? NaN : Number(r[c[0]]);
+  if (!Number.isFinite(v)) return '<span class="muted">—</span>';
+  switch (c[4]) {
     case 'money': return bMoney(Number(v));
     case 'pct': return `${Number(v).toFixed(1)}%`;
     case 'hold': return `<span${v < 0 ? ' class="neg"' : ''}>${Number(v).toFixed(2)}</span>`;
@@ -5201,16 +5208,14 @@ function bUnitsSection(doc, units, view) {
   // THE BOXES SHOW WHAT THE RECORD SET HOLDS, never what this browser last
   // typed: the filter lives on the set, and the set is the one truth of it
   bSetFilters('S3U', units.unitFilter || {});
-  const specs = B_UNIT_COLS.map((c) => [c[3], c[4], 'num', c[6]]);
-  const arrow = (c) => (c[2] === 'low' ? '↑' : '↓');
+  const specs = B_UNIT_COLS.map((c) => [c[2], c[3], 'num', `hides rows whose ${c[3].replace(/ at (least|most)/, '')} is ${c[1] === 'low' ? 'above' : 'below'} this, and rows that carry no figure for it. Empty hides nothing.`]);
   const rows = (units.rows || []).map((r) => `<tr>
         <td ${btdU0}>${bCoin(r)} <span class="muted">${esc(bGeo(r.geometry))}</span>${r.ctx1 ? ` <span class="muted">${esc(`+ ${[r.ctx1, r.ctx2].filter(Boolean).join(' + ')}`)}</span>` : ''}</td>
         ${B_UNIT_COLS.map((c) => `<td ${btdU}>${bUnitCell(r, c)}</td>`).join('')}</tr>`).join('');
   return `${head}
     ${bFilterGrid('S3U', specs, units.spread)}
     <div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-bunithead style="text-align:left;border-bottom:1px solid var(--line)">
-        <th ${bth.replace('.3rem .3rem', '.3rem .3rem .3rem 0')} title="the traded coin and the chunk shape it was priced at, and beside them the one or two coins it is read alongside, on rows that have any. Anything after the + is context only — read against, never bought or sold.">coin and shape${bUnitSortBtn(view, 'name', '↑')}</th>
-        ${B_UNIT_COLS.map((c) => `<th ${bth} title="${esc(c[6])}">${esc(c[1])}${bUnitSortBtn(view, c[0], arrow(c))}</th>`).join('')}</tr></thead>
+        ${bUnitHeads(view)}</tr></thead>
       <tbody>${rows || `<tr><td colspan="${1 + B_UNIT_COLS.length}" class="empty">nothing cleared the floors</td></tr>`}</tbody></table></div>
     ${bShown({ total: units.total || 0, of: units.of || 0 })}
     ${bPager(units.total || 0, units.from || 0, 100, 'S3U')}`;

@@ -219,12 +219,25 @@ module.exports = {
     assert.deepStrictEqual(cols.map((c) => c[0]), UT.COLUMN_KEYS, 'the page draws different columns from the ones the service works out');
     for (const c of cols) {
       const own = UT.COLUMNS.find((x) => x.key === c[0]);
-      assert.strictEqual(c[2], own.good, `${c[0]}: the page and the service disagree about which way is good`);
-      assert.strictEqual(c[3], own.filter, `${c[0]}: the page's box is not the service's`);
-      assert.ok(c[1] && c[4] && c[6], `${c[0]} has no heading, no box name or no hover`);
-      assert.ok(/at least|at most/.test(c[4]), `${c[0]}'s box name does not say which way it cuts: ${c[4]}`);
-      assert.ok((own.good === 'low') === /at most/.test(c[4]), `${c[0]}'s box says the wrong way: ${c[4]}`);
+      assert.strictEqual(c[1], own.good, `${c[0]}: the page and the service disagree about which way is good`);
+      assert.strictEqual(c[2], own.filter, `${c[0]}: the page's box is not the service's`);
+      assert.ok(c[3] && c[4], `${c[0]} has no box name or no kind`);
+      assert.ok(/at least|at most/.test(c[3]), `${c[0]}'s box name does not say which way it cuts: ${c[3]}`);
+      assert.ok((own.good === 'low') === /at most/.test(c[3]), `${c[0]}'s box says the wrong way: ${c[3]}`);
     }
+    // THE HEADINGS ARE MARKUP, one per column in the columns' order, each with
+    // its hover and its sort mark pointing the good way -- written out where
+    // the closed word list can see them, and held here to the list above
+    const heads = page.slice(page.indexOf('function bUnitHeads(view) {'), page.indexOf('\n}\n', page.indexOf('function bUnitHeads(view) {')));
+    const drawn = [...heads.matchAll(/<th \$\{bth[^>]*\} title="([^"]+)">((?:(?!\$\{)[^<])+)\$\{s\('([A-Za-z0-9]+)', '([↑↓])'\)\}<\/th>/g)].map((m) => ({ hover: m[1], heading: m[2], key: m[3], arrow: m[4] }));
+    assert.deepStrictEqual(drawn.map((d) => d.key), ['name', ...UT.COLUMN_KEYS], 'the headings are not one per column in the columns\' order');
+    for (const d of drawn) {
+      assert.ok(d.heading.trim().length > 1 && d.hover.length > 20, `the ${d.key} heading has no words or no hover`);
+      const own = UT.COLUMNS.find((x) => x.key === d.key);
+      const want = !own || own.good === 'low' ? '↑' : '↓';
+      assert.strictEqual(d.arrow, want, `the ${d.key} heading's sort mark points the wrong way`);
+    }
+    assert.ok(drawn.some((d) => d.heading === 'avg test $, no gate') && drawn.some((d) => d.heading === '$ per trade, no gate'), 'the with-and-without-the-gate columns are not named as such');
     // the two words the service keys on are the service's own
     for (const u of [{ trade: 'AAA', ctx1: null, ctx2: null, geometry: 'daily-1d' }, { trade: 'BBB', ctx1: 'AAA', ctx2: 'CCC', geometry: 'weekly-8d' }]) {
       assert.strictEqual(UT.unitKeyOf(u), stages.unitKeyOf(u));
