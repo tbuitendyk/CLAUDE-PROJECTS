@@ -46,6 +46,9 @@ const f = (v, d = 1) => (v == null || !Number.isFinite(Number(v)) ? "-" : Number
   for (const d of pick) {
     console.log(`== ${d.name} (${d.id})`);
     console.log(`   filter on Table 3.C: ${JSON.stringify(d.unitFilter || {})}`);
+    // does the deployed code accept it? A filter naming a box the table no
+    // longer has is refused, and a refused filter stops Table 3.C and the Funnel
+    try { UT.cleanFilter(d.unitFilter || {}); console.log("   the deployed code accepts this filter"); } catch (e) { console.log(`   THE DEPLOYED CODE REFUSES THIS FILTER: ${e.message}`); }
     const table = readJson(path.join(DIR, `${safe(d.id)}.units.json`));
     if (!table || !Array.isArray(table.units)) { console.log("   no unit table on disk yet"); continue; }
     // a table of an older shape is built again by the service the next time it is asked for
