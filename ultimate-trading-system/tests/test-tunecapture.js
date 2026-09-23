@@ -90,7 +90,8 @@ function fabricatedField({ from = Date.UTC(2020, 11, 1), windowDays = 30 } = {})
     range: { days: cols.ts.length, silentDays: 0, agreement: { lowest: 20, quarter: 40, median: 60, threeQuarters: 60, highest: 90 }, certainty: null },
     grid: [], readingToday: [], days: cols,
   };
-  const dials = { windowDays, halfLifeDays: 10, floor: 0.1, bands: [50, 100], lookbackHours: [24], lookbackDays: [1], evidenceCap: 30, leastEvidence: 1, copies: 0, windowEachOwn: false };
+  // built on each coin's own window, as the owner's field is: the dial's own number is then no pair's window
+  const dials = { windowDays: 999, halfLifeDays: 10, floor: 0.1, bands: [50, 100], lookbackHours: [24], lookbackDays: [1], evidenceCap: 30, leastEvidence: 1, copies: 0, windowEachOwn: true };
   return fset.saveField({ asked: { name: 'zzz sized capture field' }, dials, cap: { days: windowDays, coin: G.PLANT }, collapse: [], pairs: [pair], startedAt: 1, finishedAt: 2, name: 'zzz sized capture field' });
 }
 
