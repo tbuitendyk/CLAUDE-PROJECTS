@@ -6,7 +6,7 @@ cd /opt/ultimate-trading-system || exit 1
 sudo -u uts timeout 60 node -e '
 const s = require("./lib/stages");
 const all = s.listSets().filter((x) => !x.exam);
-const byId = new Map(all.map((x) => [x.id, s.getSet(x.id)]));
+const byId = new Map(all.map((x) => [x.id, s.getSet(x.id)]).filter(([, d]) => !!d));
 const nm = (id) => { const d = byId.get(id); return d ? d.name : `(gone: ${id})`; };
 for (const d of [...byId.values()].filter((x) => x.stage === 3).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))) {
   const s2 = byId.get((d.parent || {}).id);
