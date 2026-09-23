@@ -11359,22 +11359,3 @@ module.exports = {
   createPoolForFillIn: () => createPool(),
   RECORDS_V,
 };
-
-// ---- REPAIR, DELETED ONCE IT HAS RUN ON THE BOX (3.234.2, RULE TEN) ---------
-// Every Stage 4 set recorded its parent's release from a field no stage set is
-// stamped in, so every one of them says it has none (RULE NINE: the records
-// are put right, not read around). Filled, once, from the parent's own stamp
-// where the parent carries one; nothing is guessed, and a set whose parent is
-// gone or carries no stamp is left as it is. After the first start under
-// 3.234.2 no set on the box is left to fill, and this block goes.
-try {
-  for (const x of listSets().filter((d) => d.stage === 4)) {
-    const doc = getSet(x.id);
-    if (!doc || !doc.parent || doc.parent.release) continue;
-    const parent = getSet(doc.parent.id);
-    if (!parent || !parent.engineVersion) continue;
-    doc.parent = { ...doc.parent, release: parent.engineVersion };
-    saveSet(doc);
-  }
-} catch (err) { console.error(`the parent releases of the Stage 4 sets could not be filled: ${err.message}`); }
-// ---- end of the repair ----------------------------------------------------
