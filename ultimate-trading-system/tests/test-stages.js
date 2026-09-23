@@ -750,8 +750,7 @@ module.exports = {
       'a set does not say how its units were trained, so two sets that cannot be compared look alike');
     assert.ok(ui.includes("setC('#swByMoney', (p.trainOn || 'direction') === 'money');"),
       'choosing a set does not show how it was trained');
-    assert.ok(ui.includes("['weigh each trade by the money it was worth', c('#swByMoney') ? 'on' : 'off',"),
-      'a form that disagrees with the set stage 2 reads from says nothing');
+    // (the box-by-box comparison of the stage headings went in 3.241.0: every section now shows the set its own box names, filled from it)
   },
 
   // THE STAGE 2 CARRY TAKES THE STAGE 1 TABLE AS BOARDS SHOWS IT (3.220.0,
@@ -815,7 +814,7 @@ module.exports = {
     // a filter of 86 rows on stage 1 and stage 2 sweep is doing all 1530
     // units"): without it Apply saved nothing and the carry took everything
     assert.ok(ui.includes("  bWireFilters(mount, doc);\n  bWireTableFold(mount);\n  await bWireMembers(doc, mount, 'S1');"), 'the stage 1 table\'s filter wiring is not handed its set, so Apply cannot save onto it');
-    assert.ok(ui.includes("par.carry === (par.kept != null ? par.kept : par.of)"), 'carry 0 against a filtered parent reads as a mismatch on the stage 3 heading');
+    // (the box-by-box comparison of the stage headings went in 3.241.0: every section now shows the set its own box names, filled from it)
   },
 
   async theNameBoxIsOnEveryStageOfSweepAndTheLaunchSendsIt() {

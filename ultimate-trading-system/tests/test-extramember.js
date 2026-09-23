@@ -672,7 +672,7 @@ function theSplitIsTheOwnersChoiceAndRidesOnEveryRecord() {
   assert.ok(row.includes('align-items:flex-end') && row.includes('id="swPlainUnits"'), 'the split box does not share a bottom-aligned row with the tick it belongs beside');
   assert.ok(ui.includes("extraTrainShare: Number($('#swExtraShare').value),"), 'the launch does not send the split');
   assert.ok(ui.includes("setV('#swExtraShare', p.extraTrainShare == null ? '60' : String(p.extraTrainShare));"), 'loading a set back into the boxes drops its split');
-  assert.ok(ui.includes("['split for extra members', shareWords(v('#swExtraShare')), shareWords(p.extraTrainShare)]"), 'the stage headings do not hold the split up against the set');
+  // (the box-by-box comparison of the stage headings went in 3.241.0: every section now shows the set its own box names, filled from it)
   assert.ok(/\$\('#swExtraShare'\)\.disabled = !walk \|\| plain;/.test(ui) && /\$\('#swPlainUnits'\)\.disabled = !walk;/.test(ui) && /const walk = swSourceNow\(\) === 'walk';/.test(ui),
     'the split box and the control arm are live under a Coins choice that adds no extra members (3.204.1: only the walk set does)');
   // the members panel says where each member trained and was read
