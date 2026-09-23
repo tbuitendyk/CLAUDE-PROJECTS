@@ -48,6 +48,8 @@ const f = (v, d = 1) => (v == null || !Number.isFinite(Number(v)) ? "-" : Number
     console.log(`   filter on Table 3.C: ${JSON.stringify(d.unitFilter || {})}`);
     const table = readJson(path.join(DIR, `${safe(d.id)}.units.json`));
     if (!table || !Array.isArray(table.units)) { console.log("   no unit table on disk yet"); continue; }
+    // a table of an older shape is built again by the service the next time it is asked for
+    if (table.v !== 2) { console.log(`   the unit table on disk is of an older shape (v${table.v}); the service builds it again the next time Boards or the Funnel asks for it`); continue; }
     const head = await tallyHead(d.id);
     const idx = readJson(path.join(DIR, `${safe(d.id)}.funnelrich`, "index.json"));
     const richAt = idx && idx.v === 5 ? idx.savedAt : null;
@@ -61,13 +63,12 @@ const f = (v, d = 1) => (v == null || !Number.isFinite(Number(v)) ? "-" : Number
     console.log(`   keeps ${kept.length} of ${all.length} coins and shapes`);
     const K = (rows, test) => rows.filter(test).length;
     const tests = [
-      ["best 30 beat copies at least 8", (r) => r.best30Beats != null && r.best30Beats >= 8],
       ["board beats copies at least 8", (r) => r.boardBeats != null && r.boardBeats >= 8],
       ["board beats copies at most 2", (r) => r.boardBeats != null && r.boardBeats <= 2],
       ["top 30 in the third $ above 0", (r) => r.top30Third != null && r.top30Third > 0],
       ["top 30 in the third $ blank", (r) => r.top30Third == null],
       ["first two -> third at least 0.3", (r) => r.h123 != null && r.h123 >= 0.3],
-      ["beat always long at least 50%", (r) => r.beatLongPct != null && r.beatLongPct >= 50],
+      ["beat the best of the four at least 50%", (r) => r.beatBestPct != null && r.beatBestPct >= 50],
       ["avg test $ above 0", (r) => r.avgTest != null && r.avgTest > 0],
       ["middle test $ above 0", (r) => r.midTest != null && r.midTest > 0],
       ["chunks a part at least 40", (r) => r.chunksAPart != null && r.chunksAPart >= 40],
@@ -79,9 +80,9 @@ const f = (v, d = 1) => (v == null || !Number.isFinite(Number(v)) ? "-" : Number
     const show = byThird.slice(0, 32);
     console.log(`   the kept rows, top 30 in the third $ first (${show.length} shown of ${kept.length}):`);
     if (trial) console.log(`   of the rows the trial keeps, ${kept.filter((r) => storedKept.has(r.unit)).length} are also kept by the stored filter; a * marks them`);
-    console.log("     name | settings | in money% | avg $ | avg no gate | $/trade | mid $ | best $ | parts in money % | all3% | lose3% | 1>2 2>3 1>3 12>3 | top30 3rd $ | best30 copies | board copies | beat long% | best vs long $ | mid trades | blocked% | chunks");
+    console.log("     name | settings | in the money (share) | avg $ | avg no gate | $/trade | mid $ | best $ | parts in money % | all3% | losing in all three (share) | 1>2 2>3 1>3 12>3 | top30 3rd $ | board copies | beat best of four% | best vs long $ | mid trades | blocked% | chunks");
     for (const r of show) {
-      console.log(`     ${trial && storedKept.has(r.unit) ? "*" : ""}${r.name} | ${r.settings} | ${f(r.inMoneyPct)} | ${f(r.avgTest, 2)} | ${f(r.avgTestNoGate, 2)} | ${f(r.perTrade, 2)} | ${f(r.midTest, 2)} | ${f(r.bestTest, 0)} | ${f(r.inMoney1, 0)}/${f(r.inMoney2, 0)}/${f(r.inMoney3, 0)} | ${f(r.allThreePct)} | ${f(r.loseAllPct, 0)} | ${f(r.h12, 2)} ${f(r.h23, 2)} ${f(r.h13, 2)} ${f(r.h123, 2)} | ${f(r.top30Third, 2)} | ${r.best30Beats ?? "-"}/${r.copies ?? "-"} | ${r.boardBeats ?? "-"}/${r.copies ?? "-"} | ${f(r.beatLongPct, 0)} | ${f(r.bestVsLong, 0)} | ${f(r.midTrades, 0)} | ${f(r.fieldBlocked, 0)} | ${r.chunksAPart ?? "-"}`);
+      console.log(`     ${trial && storedKept.has(r.unit) ? "*" : ""}${r.name} | ${r.settings} | ${r.inMoneyN ?? "-"} (${f(r.inMoneyPct)}) | ${f(r.avgTest, 2)} | ${f(r.avgTestNoGate, 2)} | ${f(r.perTrade, 2)} | ${f(r.midTest, 2)} | ${f(r.bestTest, 0)} | ${f(r.inMoney1, 0)}/${f(r.inMoney2, 0)}/${f(r.inMoney3, 0)} | ${f(r.allThreePct)} | ${r.loseAllN ?? "-"} (${f(r.loseAllPct, 0)}) | ${f(r.h12, 2)} ${f(r.h23, 2)} ${f(r.h13, 2)} ${f(r.h123, 2)} | ${f(r.top30Third, 2)} | ${r.boardBeats ?? "-"}/${r.copies ?? "-"} | ${f(r.beatBestPct, 1)} | ${f(r.bestVsLong, 0)} | ${f(r.midTrades, 0)} | ${f(r.fieldBlocked, 0)} | ${r.chunksAPart ?? "-"}`);
     }
   }
 })().catch((e) => { console.log("probe failed:", e.message); process.exit(1); });
