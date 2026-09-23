@@ -5117,7 +5117,7 @@ const B_UNIT_COLS = [
   ['h123', 'high', 'minH123', 'first two → third at least', 'hold'],
   ['top30Third', 'high', 'minTop30Third', 'top 30 in the third $ at least', 'money'],
   ['boardBeats', 'high', 'minBoardBeats', 'board beats copies at least', 'beats'],
-  ['beatBestPct', 'high', 'minBeatBest', 'beat the best of the four at least, %', 'pct'],
+  ['beatBestPct', 'high', 'minBeatLong', 'beat the best of the four at least, %', 'pct'],
   ['bestVsLong', 'high', 'minBestVsLong', 'best vs always long $ at least', 'money'],
   ['midTrades', 'high', 'minMidTrades', 'middle test trades at least', 'trades'],
   ['fieldBlocked', 'low', 'maxFieldBlocked', 'field blocked at most, %', 'pct'],

@@ -260,6 +260,15 @@ module.exports = {
     assert.strictEqual(named.loseAllPct, 'losing in all three parts');
     assert.strictEqual(named.beatBestPct, 'beat the best of the four, %');
     assert.ok(!page.includes('best 30 beat copies') && !page.includes('beat always long, %'), 'a removed or replaced heading is still on the page');
+    // A FIXED COLUMN KEEPS ITS BOX'S ID (3.232.1): a floor stored on the set under
+    // that id must keep reading, or the service refuses the whole filter and the
+    // Funnel cannot read the set. The three columns whose arithmetic or words
+    // moved in 3.232.0 keep the ids a stored filter may carry.
+    const idOf = Object.fromEntries(UT.COLUMNS.map((c) => [c.key, c.filter]));
+    assert.deepStrictEqual([idOf.inMoneyPct, idOf.loseAllPct, idOf.beatBestPct], ['minInMoney', 'maxLoseAll', 'minBeatLong'],
+      'a box whose column was fixed or renamed changed its id, so a floor stored on a set under the old id is refused');
+    assert.deepStrictEqual(UT.applyFilter([{ unit: 'a', beatBestPct: 60 }, { unit: 'b', beatBestPct: 40 }], { minBeatLong: '50' }).map((r) => r.unit), ['a'],
+      'a floor stored under the box\'s id does not read the fixed column');
     // the two words the service keys on are the service's own
     for (const u of [{ trade: 'AAA', ctx1: null, ctx2: null, geometry: 'daily-1d' }, { trade: 'BBB', ctx1: 'AAA', ctx2: 'CCC', geometry: 'weekly-8d' }]) {
       assert.strictEqual(UT.unitKeyOf(u), stages.unitKeyOf(u));

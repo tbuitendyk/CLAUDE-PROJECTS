@@ -93,8 +93,12 @@ const COLUMNS = [
   { key: 'boardBeats', kind: 'beats', good: 'high', filter: 'minBoardBeats' },
   // THE BEST OF THE FOUR, NOT ALWAYS LONG (3.232.0, owner order: "fix 4").
   // Always long alone passed every setting on a coin that fell and almost none
-  // on a coin that rose.
-  { key: 'beatBestPct', kind: 'pct', good: 'high', filter: 'minBeatBest' },
+  // on a coin that rose. ITS BOX KEEPS THE ID IT HAD (3.232.1): column 4 was
+  // fixed, not replaced, so a floor the owner stored on it follows the fixed
+  // column. 3.232.0 renamed the id, and the floor of 50 stored on the owner's
+  // set made the service refuse the whole filter, which took Table 3.C and
+  // the Funnel down for that set -- the same reason columns 1 and 2 kept theirs.
+  { key: 'beatBestPct', kind: 'pct', good: 'high', filter: 'minBeatLong' },
   { key: 'bestVsLong', kind: 'money', good: 'high', filter: 'minBestVsLong' },
   { key: 'midTrades', kind: 'trades', good: 'high', filter: 'minMidTrades' },
   { key: 'fieldBlocked', kind: 'pct', good: 'low', filter: 'maxFieldBlocked' },
