@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **545a4440cedc — what the box is serving**, not from the working tree.
+Generated from **57e4d7080a0f — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -1070,12 +1070,13 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `trained`
 - `voices`
 
-## Sentences the page prints (93)
+## Sentences the page prints (94)
 
 - Table 3.A
 - Table 3.B
 - Table 3.C
 - Its tables appear when it lands.
+- . Its tables appear when it lands.
 - notes — why this run exists, what it showed, what it cost
 - STAMP FAILED — this run cannot be proved comparable to any other
 - THIS SET DOES NOT MATCH ITS OWN PLAN.
@@ -1101,12 +1102,10 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - — the records are all kept; the totalling can be tried again after a service restart.
 - . This page asks again every few seconds.
 - — building in the background; the tables appear here when it lands. This page asks again every few seconds and leaves your place on it alone.
-- the sort saved on this set reads the held-back window (
-- ); it is set aside while the window is hidden, and the table reads in its own order
-- Table 3.B was sorting by
-- , a held-back column; while the window is hidden it reads by beat the kept null money
 - Table 3.A: Settings, ranked
 - — one row per permuted Sweep Stage 3 setting, averaged over its coin/chunk-shape combinations promoted from Stage 2
+- the sort saved on this set reads the held-back window (
+- ); it is set aside while the window is hidden, and the table reads in its own order
 - show in 3.B
 - Show in 3.B
 - share that agreed is empty on this set —
@@ -1115,6 +1114,8 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - near-copies, so the setting rests on fewer real opinions than its member count suggests.
 - Table 3.B: Every coin of every setting
 - — one row for each "short" setting x (each coin + chunk shape); every row averages the "factored out" settings: decision, band and 24/5 variants of the short setting, which are provided as sub-rows
+- Table 3.B was sorting by
+- , a held-back column; while the window is hidden it reads by beat the kept null money
 - SHORT SETTING: DECISION, BAND, 24/5 FACTORED OUT
 - The four numbers beside each box are what that column holds in the rows the table is showing now, after every filter above. They move as you filter.
 - rows — the rest are held back by the filters above.
@@ -2615,20 +2616,23 @@ Activation activation. against agree agreement. all alone alone. always and appe
 
 # Help
 
-## What the controls are called (4)
+## What the controls are called (5)
 
 - `<input`
 - `Every control on this screen`
 - `more`
 - `None of it can be pressed or`
+- `The guided narrowing flow:`
 
 ## What the dropdowns offer (0)
 
 _none_
 
-## Sentences the page prints (8)
+## Sentences the page prints (10)
 
 - Not described yet. That is a fault in this page, not in the control.
+- Data → Coins → Sweep → Boards → Funnel → History → Tune → Held → Reserve → Greenlight
+- . Wide to find, one variable at a time to confirm; money claims only from the end of the chain. Everything here is deterministic code — no AI in any result.
 - Help — what every control on every screen does
 - One entry for every box, tick, dropdown and button on the seven screens.
 - The list of controls is read from the screens themselves, so nothing can be left out of it
@@ -2637,9 +2641,9 @@ _none_
 - changed — it is a picture of the control, put beside its description so you can see which
 - one is being talked about. The real ones are on their own tabs.
 
-## Every word, flat (82)
+## Every word, flat (113)
 
 ```
-about. and are be being below beside box button can changed control control. controls copy. dead described description does dropdown entry Every every Everything fault for from Help in input is it its left list missing. more no None Not not nothing of on One one ones or out own page picture place pressed put quietly rather read real says screen screens screens. see seven shown so tabs. talked than That the The their themselves this tick what which with yet. you
+about. AI and any are at be being below beside Boards box button can chain. changed claims code Coins confirm control control. controls copy. Data dead described description deterministic does dropdown end entry Every every Everything fault find flow for from Funnel Greenlight guided Held Help here History in input is it its left list missing. money more narrowing no None Not not nothing of on one One ones only or out own page picture place pressed put quietly rather read real Reserve result. says screen screens screens. see seven shown so Sweep tabs. talked than That the The their themselves this tick time to Tune variable what which Wide with yet. you
 ```
 
