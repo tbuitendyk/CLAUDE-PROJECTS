@@ -906,12 +906,24 @@ function swSetAway(k, away) {
   for (const x of SW_LEVELS.slice(SW_LEVELS.indexOf(String(k)))) all[x] = !!away;
   try { localStorage.setItem(SW_AWAY_KEY, JSON.stringify(all)); } catch (_) { /* private window */ }
 }
+// SOMETHING IS SET AT THIS LEVEL: a campaign in force, or a record set picked
+const swLevelSet = (k) => (k === 'c' ? !!($('#campOut') && $('#campOut').dataset.current) : !!swPicked(Number(k)));
+// A LEVEL UNDER ONE WITH NOTHING SET IS CLOSED AND GREYED (3.241.0, owner order
+// 2026-09-23: "With nothing currently set on one level all open buttons on
+// levels below should be ghosted ... In fact the selectors should all be
+// ghosted below as well when upper level is put away"). Its section is shut,
+// its Open and its box are greyed, whatever was last remembered for it.
 function swApplyAway() {
+  let above = false;                   // a level above has nothing set, or is put away
   for (const k of SW_LEVELS) {
+    const shut = above || swAway(k);
     const sec = $(`#swSec${k === 'c' ? 'C' : k}`);
-    if (sec) sec.hidden = swAway(k);
+    if (sec) sec.hidden = shut;
     const b = document.querySelector(`[data-swfold="${k}"]`);
-    if (b) b.textContent = swAway(k) ? 'Open' : 'Put away';
+    if (b) { b.textContent = shut ? 'Open' : 'Put away'; b.disabled = above; b.classList.toggle('ctl-off', above); }
+    const box = k === 'c' ? null : $(SW_PICK[Number(k)]);
+    if (box) { box.disabled = above; const lab = box.closest('label'); if (lab) lab.classList.toggle('ctl-off', above); }
+    if (!swLevelSet(k) || swAway(k)) above = true;
   }
 }
 // EVERYTHING BELOW THE BOX IS GHOSTED WHILE A PAUSED RUN IS CHOSEN: the run
@@ -1156,205 +1168,28 @@ function swProvenance() {
   };
   const v = (sel) => { const e = $(sel); return e ? e.value : ''; };
   const c = (sel) => { const e = $(sel); return !!(e && e.checked); };
-
-  // THE OWNER'S TRUTH TABLE, WRITTEN OUT (3.77.0, 2026-09-06), and this
-  // function does nothing that is not one of these six rows:
-  //
-  //   black black black   all empty
-  //   green black black   s1 set, others empty
-  //   green red   black   s1 set, s2 doesn't match, s3 empty
-  //   green green black   s1 set, s2 matches, s3 empty
-  //   green green red     s1 set, s2 matches, s3 doesn't match
-  //   green green green   s1 set, s2 matches, s3 matches
-  //
-  // Read down the column and each section answers for ITS OWN box:
-  //
-  //   * black is "nothing set here". It claims nothing and links in neither
-  //     direction -- the owner's words for the empty entry in a picker.
-  //   * red is "what is set here does not match the section above". The red
-  //     lands on the section whose own box holds the break, never the one
-  //     above it.
-  //   * green is "set, and matching". The greens together are what show the
-  //     chain is linked.
-  //
-  // EACH SECTION ANSWERS FOR ITS OWN BOX AND NOTHING ELSE. The owner's later
-  // rows settle it: `green black red` -- stage 2 empty and stage 3 still red
-  // for a set that does not match -- and `green red green`, stage 3 green over
-  // a stage 2 that is not. So no section's colour is ever gated on the one
-  // above it being green; each is only ever describing what is in its own box.
-  //
-  // STAGE 1 HAS NO PICKER, so "s1 set" is its own section being set up at all:
-  // a run needs at least one of singles / doubles / triples, and with none of
-  // them ticked there is no stage 1 to link anything to. It is never red --
-  // it names no record set, so it can never be the section that disagrees.
-  paint('#swH1', (c('#swSingles') || c('#swDoubles') || c('#swTriples')) ? true : null,
-    'stage 1 is set up once singles, doubles or triples is ticked — until then there is nothing here for the sections below to link to');
-
-  // THE SET PICKED ABOVE IS THE PARENT (3.240.1). Each section shows the set its
-  // box names, filled from it, so the section above can no longer have moved on
-  // from the set this one builds from -- the old "overtaken" red is gone. What
-  // is left to say: nothing picked above (black), a set above that nothing can
-  // be built from yet (red), or a linked chain (green).
-  const s1row = rowOf(v('#swFrom2'));
-  sayWhy('#swWhy2', null);
-  sayWhy('#swWhy3', null);
-  if (!v('#swFrom2')) paint('#swH2', null, 'no stage 1 record set is picked in the stage 1 section above, so there is nothing for this section to come out of');
-  else if (!s1row) paint('#swH2', false, 'the stage 1 record set named here is not on this box any more');
-  else if (!v('#swFrom3') && s1row.status !== 'done') {
-    paint('#swH2', false, `${s1row.name} is ${s1row.status} — a stage 2 can be built only from a finished stage 1 record set`,
-      'Pick a finished stage 1 record set above, or wait for this one to land.');
-    sayWhy('#swWhy2', { what: 'stage 1 record set', say: `${s1row.name} is ${s1row.status}, and a stage 2 can be built only from a finished stage 1 record set.` });
-  } else {
-    const p = s1row.params || {};
-    // A BOX IS COMPARED AS THE LAUNCH RESOLVED IT, NEVER AS IT IS TYPED
-    // (3.76.3, owner: "you've got state 2 red that matches exactly with stage
-    // 1. that's dumb. it should be green").
-    //
-    // A stage 1 run writes down what it ACTUALLY read, not what was in the box
-    // -- that is RULE NINE, and it is right. Blank `compare coins` is recorded
-    // as every coin downloaded; blank month boxes are recorded as the
-    // months the launch fell back to. Held up to the raw box, every one of
-    // those reads as a disagreement, so a set launched from a blank compare
-    // coins box -- which is every set on the box -- painted Stage 2 red the
-    // moment its own record set appeared in the box below, and nothing the
-    // owner could type would ever make it green.
-    //
-    // So each box is put through the SAME resolution the launch uses before it
-    // is compared. The trade coins box has always been read this way; the other
-    // two were not. Where these two files must agree, they are named together:
-    // theStageHeadingsCompareABoxTheWayTheLaunchResolvesIt reads both.
-    const defaults = swDefaultCoins.slice();
-    const coinsIn = (sel) => (v(sel) || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
-    const boxUni = coinsIn('#swUni');
-    const wantUni = (boxUni.length ? boxUni : defaults).slice().sort().join(',');
-    const setUni = (p.universe || []).slice().sort().join(',');
-    // ...and the compare coins are recorded EMPTY when nothing reads them:
-    // singles on their own put no coin alongside another
-    const boxCmp = coinsIn('#swCompare');
-    const wantCmp = ((c('#swDoubles') || c('#swTriples')) ? (boxCmp.length ? boxCmp : defaults) : [])
-      .slice().sort().join(',');
-    const setCmp = (p.compare || []).slice().sort().join(',');
-    const sz = p.sizes || {};
-    const geos = p.geometries || [];
-    // ONE ROW PER THING COMPARED, each carrying what the box holds and what
-    // the run recorded, so the screen can say both. A bare "no longer match"
-    // is a colour with no way to act on it.
-    const ticks = (a, b, cc) => `${a ? 'singles' : ''}${b ? ' doubles' : ''}${cc ? ' triples' : ''}`.trim() || 'none ticked';
-    const shape = (perm, one) => (perm ? 'every chunk shape' : one);
-    const months = (all, from, to) => (all ? 'all loaded data' : `${from} to ${to}`);
-    // ONLY THE COINS AND SHAPES TICKED ON COINS (3.130.3, owner order: "fix
-    // it so the tick is compared instead"). A set launched with the tick read
-    // the Coins list, not the trade coins and chunk shape boxes -- those are
-    // greyed and unread under it -- so holding the greyed boxes up to such a
-    // set painted Stage 2 red for ever, whatever was typed. The tick is
-    // compared as a box of its own, and when both sides have it on, the pairs
-    // ticked on Coins now are held up to the pairs the set recorded; the two
-    // greyed boxes are left out of the reading for such a set.
-    // 3.185.0: the tick became a choice of three, so the comparison is between
-    // NAMES and not between on and off. A set recorded before this has no
-    // coinsSource of its own; it read both lists, which is what 'both' says,
-    // and it is only ever compared against a set that HAS pairs -- so reading
-    // it that way says what happened rather than guessing.
-    const wantSource = swSourceNow();
-    const setPairs = Array.isArray(p.passers) && p.passers.length ? p.passers : null;
-    const setSource = p.coinsSource || (setPairs ? 'both' : 'none');
-    const sourceWords = {
-      none: 'ignore what is on Coins',
-      passers: 'what is ticked under coins and shapes that pass',
-      walk: 'what is ticked from a walk set',
-      both: 'both lists, under the tick this screen used to carry',
-    };
-    const tickBox = wantSource !== 'none';
-    const geoWord = (g) => { const hit = ((VOCAB && VOCAB.geometry) || []).find((o) => o.value === g); return hit ? hit.label : String(g); };
-    // THE SPLIT FOR EXTRA MEMBERS, BY THE WORDS THE BOX OFFERS IT UNDER
-    // (3.202.0): a set made before the split existed says so rather than
-    // reading as one that matches whatever the box happens to show.
-    const shareWords = (x) => {
-      if (x === undefined || x === null || x === '' || !Number.isFinite(Number(x))) return 'unrecorded';
-      const hit = ((VOCAB && VOCAB.extraTrainShare) || []).find((o) => String(o.value) === String(x));
-      return hit ? hit.label : `${Number(x)}/${100 - Number(x)}`;
-    };
-    // extra members are in play on a side when its units come from a walk set
-    // and it is not the control arm (3.204.1: a passer adds no member)
-    const boxHasExtras = wantSource === 'walk' && !c('#swPlainUnits');
-    const setHasExtras = !!(p.coinsSource && p.coinsSource !== 'none' && p.coinsSource !== 'passers' && !p.plainUnits);
-    const pairWords = (list) => (Array.isArray(list) ? list : []).map((x) => `${x.coin} ${geoWord(x.geometry)}`).sort().join(', ') || 'none';
-    const CHECKS = [
-      // NAMED AS THE TWO SCREENS NAME THEM. The tick reads "only what is ticked
-      // on Coins" and the list it reads is "Candidates for Sweep" -- which now
-      // holds promoted rows as well, so calling it "coins and shapes that pass"
-      // named one of its two boxes and left the other out of the sentence.
-      ['where this run takes its units from', sourceWords[wantSource] || wantSource, sourceWords[setSource] || setSource],
-      // THE CONTROL ARM IS A BOX OF ITS OWN (3.194.0). Two sets over the same
-      // coins and shapes, one with the extra members and one without, are
-      // DIFFERENT runs and the screen has to say so -- that difference is the
-      // whole reason the second one was run.
-      ...(wantSource === 'walk' || p.plainUnits
-        ? [['leave the extra members out', (c('#swPlainUnits') && wantSource === 'walk') ? 'yes' : 'no', p.plainUnits ? 'yes' : 'no']]
-        : []),
-      // AND HOW THE HISTORY IS CUT FOR THEM (3.202.0), held up whenever either
-      // side has extra members to cut it for. A set with none never read it,
-      // so the box is free to show anything against such a set.
-      ...(boxHasExtras || setHasExtras
-        ? [['split for extra members', shareWords(v('#swExtraShare')), shareWords(p.extraTrainShare)]]
-        : []),
-      ...(tickBox || setPairs
-        ? (tickBox && setPairs ? [['Candidates for Sweep', pairWords(swPassersNow[wantSource]), pairWords(setPairs)]] : [])
-        : [['trade coins', wantUni.split(',').join(', '), setUni.split(',').join(', ')],
-          ['chunk shape', shape(c('#swPermGeom'), v('#swGeom')), shape(geos.length > 1, geos[0] || 'unrecorded')]]),
-      ['compare coins', wantCmp ? wantCmp.split(',').join(', ') : 'none', setCmp ? setCmp.split(',').join(', ') : 'none'],
-      ['singles / doubles / triples', ticks(c('#swSingles'), c('#swDoubles'), c('#swTriples')), ticks(!!sz.singles, !!sz.doubles, !!sz.triples)],
-      ['window layout', v('#swLayout'), p.windowLayout || 'unrecorded'],
-      ['weigh each trade by the money it was worth', c('#swByMoney') ? 'on' : 'off', (p.trainOn || 'direction') === 'money' ? 'on' : 'off'],
-      ['null set size', String(Number(v('#swNull1'))), String(Number(p.nullN))],
-      ['all loaded data', c('#swAllData') ? 'on' : 'off', p.allLoaded !== false ? 'on' : 'off'],
-      ['start / end months', months(c('#swAllData'), v('#swStart') || '2018-01', v('#swEnd') || '2026-06'),
-        months(p.allLoaded !== false, p.startMonth || '', p.endMonth || '')],
-    ];
-    const off = CHECKS.find(([, box, set]) => box !== set);
-    const mismatch = off ? { what: off[0], box: off[1], set: off[2], setName: s1row.name } : null;
-    paint('#swH2', !mismatch, mismatch
-      && `${mismatch.what} no longer matches — the stage 1 section above no longer shows the provenance of ${s1row.name}, the record set this box reads from`);
-    sayWhy('#swWhy2', mismatch);
-  }
-
-  // stage 3: the stage 2 record set its box names, held up to the stage 2 section
-  //
-  // An empty stage 2 box above does NOT excuse this one: `green black red` is
-  // the owner's own row -- a stage 3 set naming a chain the stage 2 box no
-  // longer shows is a break in THIS box, and it is red whatever is above it.
-  // a paused run chosen here is linked through ITS parent, the stage 2 set it
-  // was priced from, so the truth table reads exactly as it does for a launch
-  // (read off the box's own value here rather than through swContinueOf, so
-  // this function stays whole when a test lifts it out and runs it alone)
-  const s3v = v('#swFrom3');
-  const s3pick = v('#swSet3');   // the paused runs are in the stage 3 section's own box (3.240.0)
-  const cont = s3pick.startsWith('continue:') ? s3pick.slice('continue:'.length) : null;
-  const pausedRow = cont ? rowOf(cont) : null;
-  const s2row = cont ? (pausedRow ? rowOf((pausedRow.parent || {}).id) : null) : rowOf(v('#swFrom3'));
-  if (!v('#swFrom3') && !cont) paint('#swH3', null, 'no stage 2 record set is picked in the stage 2 section above, so there is nothing for this section to come out of');
-  else if (cont && !pausedRow) paint('#swH3', false, 'the paused record set named here is not on this box any more');
-  else if (!s2row) paint('#swH3', false, 'the stage 2 record set named here is not on this box any more');
-  else if (!cont && !s3pick && s2row.status !== 'done') {
-    paint('#swH3', false, `${s2row.name} is ${s2row.status} — a stage 3 can be priced only from a finished stage 2 record set`,
-      'Pick a finished stage 2 record set above, or wait for this one to land.');
-    sayWhy('#swWhy3', { what: 'stage 2 record set', say: `${s2row.name} is ${s2row.status}, and a stage 3 can be priced only from a finished stage 2 record set.` });
-  } else {
-    const par = s2row.parent || {};
-    const carryBox = Number(v('#swCarry')) || 0;
-    // carry 0 is "all the filters keep", not "all there are" (3.220.1)
-    const carryMatch = carryBox === 0
-      ? (par.carry != null && par.of != null ? par.carry === (par.kept != null ? par.kept : par.of) : true)
-      : carryBox === par.carry;
-    const named = rowOf(v('#swFrom2'));
-    const mismatch = v('#swFrom2') !== (par.id || '')
-      ? { what: 'stage 1 record set', box: (named && named.name) || 'nothing', set: par.name || par.id || 'unrecorded', setName: s2row.name }
-      : (!carryMatch
-        ? { what: 'carry forward', box: String(carryBox), set: `${par.carry} of ${par.of}`, setName: s2row.name }
-        : null);
-    paint('#swH3', !mismatch, mismatch
-      && `${mismatch.what} no longer matches — ${s2row.name}, the record set this box reads from, does not come out of the stage 2 section above`);
-    sayWhy('#swWhy3', mismatch);
+  // EACH HEADING SAYS WHAT IS SET AT ITS OWN LEVEL (3.241.0, owner order
+  // 2026-09-23: "Nothing is selected on stage 1, it should be black ... Put
+  // away was used on the campaign ... so there should be nothing currently set
+  // and it should be black too"). Black: nothing set or picked here. Green: a
+  // campaign is set, or a finished record set is picked. Red: the set picked
+  // here has not finished, and the line under the heading says so. Every
+  // section shows the set its own box names, filled from it, so there is no
+  // longer a section above that can disagree with the one below.
+  void c;
+  const campOn = !!($('#campOut') && $('#campOut').dataset.current);
+  paint('#swHC', campOn ? true : null, campOn ? '' : 'no campaign is set');
+  for (const [n, sel, why] of [[1, '#swFrom2', '#swWhy1'], [2, '#swFrom3', '#swWhy2'], [3, '#swSet3', '#swWhy3']]) {
+    sayWhy(why, null);
+    const raw = v(sel);
+    const id = raw.startsWith('continue:') ? raw.slice('continue:'.length) : raw;
+    const row = id ? rowOf(id) : null;
+    if (!raw) paint(`#swH${n}`, null, `no stage ${n} record set is picked here`);
+    else if (!row) paint(`#swH${n}`, false, `the stage ${n} record set picked here is not on this box any more`, 'Pick another, or new.');
+    else if (row.status !== 'done') {
+      paint(`#swH${n}`, false, `${row.name} is ${row.status}`, 'It turns green when it has finished.');
+      sayWhy(why, { what: `stage ${n} record set`, say: `${row.name} is ${row.status}${n < 3 ? ' — nothing can be built from it until it has finished' : ''}.` });
+    } else paint(`#swH${n}`, true, '');
   }
 }
 
@@ -1957,7 +1792,7 @@ function campaignPanelHtml(camp, names) {
   return `<div class="panel">
     <div class="row" style="align-items:flex-end">
       ${putAwayBtn('swfold', 'c', !swAway('c'), 'the Campaign box, and the three stages under it')}
-      <h3 style="margin:0">Campaign — the parent chain name</h3>
+      <h3 id="swHC" style="margin:0">Campaign — the parent chain name</h3>
     </div>
     <p class="note">Currently set: <b>${esc(camp.name || 'none')}</b>${(names.names || []).length ? ` · ${(names.names || []).length} campaign(s) on this box` : ''}</p>
     <div id="swSecC"${swAway('c') ? ' hidden' : ''}>
@@ -4157,6 +3992,7 @@ async function drawSweep() {
 
   <div class="panel">
     <h3 id="swH1" style="margin-top:0">Stage 1 — train the LOGREG members once, keep every vote, rank against the null set</h3>
+    <p class="note warn" id="swWhy1" style="margin:.2rem 0 .5rem;display:none"></p>
     <div class="row" style="align-items:flex-end">
       ${putAwayBtn('swfold', '1', !swAway('1'), 'this stage, and the stages under it')}
       <label class="f" title="a stage 1 record set of the campaign that is set, to see it — its boxes below are filled from it and greyed — or new, to set one up and start it. Stage 2 comes out of the set picked here.">stage 1 record set<select id="swFrom2" style="min-width:24rem">${swOpt1}</select></label>
@@ -4388,9 +4224,36 @@ async function drawSweep() {
   </div>`;
 
   wireCampaignPanel(() => drawSweep());
-  // PUT AWAY: hides and remembers, never redraws, so nothing typed is lost
+  // PUT AWAY LETS GO OF WHAT IS SET (3.241.0, owner: "Put away was used on the
+  // campaign ... so there should be nothing currently set"). On the Campaign box
+  // it clears the campaign in force -- the one for the whole box, the same as
+  // Set with an empty name -- and on a stage it puts that stage's box back to
+  // new; every level under it is put away and let go as well. Open opens its
+  // level and the ones under it, each as soon as the level above it has
+  // something set.
   document.querySelectorAll('[data-swfold]').forEach((b) => {
-    b.onclick = () => { swSetAway(b.dataset.swfold, !swAway(b.dataset.swfold)); swApplyAway(); };
+    b.onclick = async () => {
+      if (b.disabled) return;
+      const k = b.dataset.swfold;
+      if (swAway(k)) { swSetAway(k, false); swApplyAway(); return; }
+      if (k === 'c' && swLevelSet('c') && !(await tryPost('api/campaign', { name: '' }))) return;
+      swSetAway(k, true);
+      const from = k === 'c' ? 1 : Number(k);
+      for (const n of [1, 2, 3]) {
+        if (n < from) continue;
+        const box = $(SW_PICK[n]);
+        if (box) box.value = '';
+        swForget(n);
+      }
+      rememberSweepForm();
+      if (k === 'c') { drawSweep(); return; }
+      swRefillPicks(false);
+      swLockSections();
+      swProvenance();
+      swApplyAway();
+      swSayCut2();
+      swCountsSoon();
+    };
   });
   const say = (sel, msg, bad) => { $(sel).innerHTML = `<p class="note${bad ? ' warn' : ''}" style="margin:.4rem 0 0">${msg}</p>`; };
   // THE NAME THE OWNER TYPED STAYS IN THE BOX (3.67.1, owner report 2026-09-04:
@@ -4658,6 +4521,7 @@ async function swPick(n) {
   swLockSections();
   rememberSweepForm();
   swProvenance();
+  swApplyAway();
   swSayCut2();
   swCountsSoon();
 }
@@ -4677,6 +4541,7 @@ async function swFillPicked() {
   swLockSections();
   rememberSweepForm();
   swProvenance();
+  swApplyAway();
   swSayCut2();
   swCountsSoon();
 }
@@ -4695,6 +4560,8 @@ function swLandOn(n, id) {
   if (n < 3) swRefillPicks(false);
   swLockSections();
   rememberSweepForm();
+  swApplyAway();
+  swProvenance();
 }
 
 // ---- Boards ----------------------------------------------------------------
