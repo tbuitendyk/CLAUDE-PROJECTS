@@ -2165,6 +2165,24 @@ const GUARDS = [
     'theUnitTableIsBuiltBesideTheSetAndTheFunnelReadsItsFilter', 'the coin and shape box on the Funnel offers coins and shapes the filter on Table 3.C hides'],
   [path.join(ROOT, 'lib', 'stages.js'), '        if (keep && !keep.has(unitKeyOf(x.row))) continue;', '        if (false) continue;',
     'theUnitTableIsBuiltBesideTheSetAndTheFunnelReadsItsFilter', 'all units together under a filter blends the hidden coins and shapes in as if nothing were filtered'],
+  // NOTHING ON THE FUNNEL IGNORES THE FILTER (3.233.0): the ranking lists the
+  // kept coins and shapes alone; the pass reads the records' own boxes; the
+  // kept blend carries their own rebuilt numbers; the count under step 6's
+  // boxes, the cut and a Stage 4 set read back all read the board the walk read
+  [path.join(ROOT, 'lib', 'stages.js'), '  const rows = cut.kept ? all.filter((u) => cut.kept.has(u.unit)) : all;\n  const unitFilter = cut.kept ? { kept: rows.length, of: all.length } : null;', '  const rows = all;\n  const unitFilter = cut.kept ? { kept: rows.length, of: all.length } : null;',
+    'nothingOnTheFunnelIgnoresTheFilter', 'Read the ranking lists coins and shapes the filter on Table 3.C hides'],
+  [path.join(ROOT, 'lib', 'stages.js'), '  const filter = UT.filterBeforePass(all);', '  const filter = UT.cleanFilter(all);',
+    'nothingOnTheFunnelIgnoresTheFilter', 'a box on a column the pass rebuilds hides every coin and shape the pass has not reached, so it is never priced'],
+  [path.join(ROOT, 'lib', 'stages.js'), 'const blendRichRows = (rich, keptBlend) => (keptBlend ? (keptBlend.allIn ? keptBlend.rows : null) : (richAllIn(rich) ? rich.blend() : null));', 'const blendRichRows = (rich, keptBlend) => (richAllIn(rich) ? rich.blend() : null);',
+    'nothingOnTheFunnelIgnoresTheFilter', 'all units together under a filter reads the rebuilt numbers of every coin and shape, the hidden ones included'],
+  [path.join(ROOT, 'lib', 'stages.js'), '  const got = await funnelBoardKept(id, t, state.unit);\n  if (got.pending) return null;', '  const got = { board: await funnelBoard(id, t, state.unit) };\n  if (got.pending) return null;',
+    'nothingOnTheFunnelIgnoresTheFilter', 'the count under step 6\'s boxes reads the blend of every coin and shape while the walk reads the kept ones'],
+  [path.join(ROOT, 'lib', 'stages.js'), 'const got = await funnelBoardKept(parentId, t, state.unit, { strict: true });', 'const got = await funnelBoardKept(parentId, t, state.unit, { strict: false });',
+    'nothingOnTheFunnelIgnoresTheFilter', 'a Stage 4 set is cut from another coin and shape than the one walked, when the filter has hidden the walked one'],
+  [path.join(ROOT, 'lib', 'stages.js'), "  const board = await funnelBoard(parentId, t, doc.unit || 'all', keptOfSet(doc));\n  if (board.pending) {", "  const board = await funnelBoard(parentId, t, doc.unit || 'all', null);\n  if (board.pending) {",
+    'nothingOnTheFunnelIgnoresTheFilter', 'a Stage 4 set cut from the kept blend is read back on the blend of every coin and shape'],
+  [path.join(ROOT, 'lib', 'stages.js'), "  const board = await funnelBoard(parentId, t, doc.unit || 'all', keptOfSet(doc));\n  if (board.pending) throw new Error(pendingRefusal(board.pending));", "  const board = await funnelBoard(parentId, t, doc.unit || 'all', null);\n  if (board.pending) throw new Error(pendingRefusal(board.pending));",
+    'nothingOnTheFunnelIgnoresTheFilter', 'Held and Reserve read a Stage 4 set cut from the kept blend on the blend of every coin and shape'],
 ];
 
 const only = process.argv[2] || '';
