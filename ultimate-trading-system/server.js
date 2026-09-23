@@ -1096,7 +1096,8 @@ app.get('/api/funnel/set/:id/capture', async (req, res) => {
   try { return res.json(await stages.tuneCaptureDry(req.params.id)); } catch (err) { return res.status(400).json({ error: err.message }); }
 });
 app.post('/api/funnel/set/:id/capture', (req, res) => {
-  try { return res.json(stages.tuneCaptureStart(req.params.id)); } catch (err) { return res.status(409).json({ error: err.message }); }
+  // the body carries how complete the field must be before a train trade counts, on a set that reads the field (3.237.0)
+  try { return res.json(stages.tuneCaptureStart(req.params.id, req.body || {})); } catch (err) { return res.status(err.status || 409).json({ error: err.message }); }
 });
 app.get('/api/funnel/set/:id/capture/status', (req, res) => res.json(stages.tuneCaptureStatus(req.params.id)));
 // THE REBUILD OF A SET FLAGGED REBUILD REQUIRED (3.236.0, owner 2026-09-23:

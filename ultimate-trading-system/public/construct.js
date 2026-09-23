@@ -3237,12 +3237,61 @@ function tnCaptureBlockHtml(c) {
     <p class="note"><b>${c.captured} of ${c.survivors} survivors captured</b> · ${Number(e.train || 0).toLocaleString()} training entries, ${Number(e.test || 0).toLocaleString()} test entries, ${Number(e.hold || 0).toLocaleString()} held-back entries${c.reserve && c.reserve.captured ? `, ${Number(e.reserve || 0).toLocaleString()} reserve entries` : ` · <span class="muted">no reserve entries: ${esc(String((c.reserve || {}).why || 'captured before the reserve window was written down'))}</span>`}
       · by depth among the captured: <b>${esc((c.pick || {}).label || 'none')}</b></p>
     <p class="note">training ${span(w.train)} · test ${span(w.test)} · held-back ${span(w.hold)}</p>
+    ${c.fieldFill ? `<p class="note">train trades counted only on days the field was at least <b>${c.fieldFill.pct}% complete</b>: <b>${Number(c.fieldFill.trainLeftOut || 0).toLocaleString()} left out</b>${c.fieldFill.days ? ` · train ${c.fieldFill.days.total.toLocaleString()} days: ${c.fieldFill.days.building.toLocaleString()} building the field with no trading, ${c.fieldFill.days.partial.toLocaleString()} on partial field evidence, ${c.fieldFill.days.full.toLocaleString()} with full evidence` : ''}</p>` : ''}
     ${(c.missing || []).length ? `<p class="note"><b class="warn">${c.missing.length} survivor(s) are not in the stage 3 set's block on this unit</b></p>` : ''}
     <p class="note">${reads.length ? `scans run on this capture: ${reads.length} · <b>the held-back entries have been read ${reads.filter((r) => r && r.look != null).length} time(s)</b>${reads.some((r) => r && r.reserveLook != null) ? ` · <b>the reserve entries have been read ${reads.filter((r) => r && r.reserveLook != null).length} time(s)</b>` : ''}, each a counted look` : 'no scan has read this capture yet'}</p>
     ${reads.length ? `<details><summary>the scans, newest first</summary><div class="scrollx" style="max-height:12rem;overflow-y:auto"><table><thead><tr>
       <th title="when the scan ran">when</th><th title="which scan">scan</th><th title="the survivor it read">survivor</th><th title="the windows it read">windows</th><th title="the look number when the held-back entries were read">look</th>
     </tr></thead><tbody>${reads.map((r) => `<tr><td>${esc(String(r.at || '').slice(0, 16))}</td><td>${r.tool === 'stop' ? 'protective stop' : 'conviction'}</td><td>${esc(r.survivor)}</td><td>${esc(tnWindowWords(r.windows))}</td><td>${r.look == null ? '—' : r.look}</td></tr>`).join('')}</tbody></table></div></details>` : ''}
   </div>`;
+}
+// HOW COMPLETE THE FIELD MUST BE BEFORE A TRAIN TRADE COUNTS (3.237.0, owner
+// 2026-09-23: "THE TRAIN AREA OF THE HISTORY HAS NO *COMPLETELY INFORMED BY
+// HISTORY* FIELD UNTIL THE NUMBER OF DAYS HAVE BEEN SCANNED THAT CORRESPOND TO
+// ITS SIZE", and against leaving all of that out: "a compromise that is willing
+// to work with the field say at 25% or 33% completion"). The number is the
+// owner's; the line under it says, for this coin and shape, how much of a full
+// window's evidence the field holds at that completion and how its train days
+// split, and the table beside says the same at the reference completions.
+// Shown only on a set whose coin and shape reads a field.
+const TN_FILL_REF = [25, 33, 50, 75, 100];
+let tnFillTyped = null;   // { id, v }: what was typed, kept across a redraw of the panel
+function tnFillValue(d) {
+  if (tnFillTyped && tnFillTyped.id === d.id) return tnFillTyped.v;
+  const rec = d.capture && d.capture.fieldFill ? d.capture.fieldFill.pct : null;
+  return rec != null ? String(rec) : '33';
+}
+const tnFillPctOf = (v) => { const n = v === '' || v == null ? NaN : Number(v); return Number.isInteger(n) && n >= 0 && n <= 100 ? n : null; };
+function tnFillSayHtml(f, v) {
+  const pct = tnFillPctOf(v);
+  if (pct == null) return '<b class="warn">type a whole number from 0 to 100</b>';
+  const r = f.rows[pct];
+  const traded = r.total ? Math.round((100 * (r.partial + r.full)) / r.total) : 0;
+  return `At ${pct}% the field holds about <b>${Math.round(100 * (r.evidence || 0))}% of a full window's evidence</b> (an estimate: its window is
+    ${Number(f.windowDays).toLocaleString()} days, half-life ${esc(String(f.halfLifeDays))} days, weight floor ${esc(String(f.floor))}).
+    Train, ${tnDay((f.train || {}).fromTs)} to ${tnDay((f.train || {}).toTs)}: <b>${r.total.toLocaleString()} days</b> -
+    ${r.building.toLocaleString()} spent building the field with no trading · ${r.partial.toLocaleString()} trading on partial field evidence ·
+    ${r.full.toLocaleString()} with full evidence (full since ${f.fullAt ? tnDay(f.fullAt) : 'never - the window is longer than the history'}) · ${traded}% of train traded.`;
+}
+function tnFillTableHtml(f) {
+  const rows = TN_FILL_REF.map((pct) => f.rows[pct]);
+  return `<details style="margin-bottom:.6rem"><summary>the same at ${TN_FILL_REF.join('%, ')}% complete</summary><table style="width:auto"><thead><tr>
+      <th title="how complete the field must be before a train trade counts: the share of its window already behind the day, in percent">field completion</th>
+      <th title="the share of a full window's evidence the field holds at that completion, in percent: an estimate, one decision a day under the field's own half-life and weight floor">evidence held</th>
+      <th title="train days before the field reaches that completion: the field is being built and no train trade counts">days building, no trading</th>
+      <th title="train days from that completion until the field's window is full: trades count, on partial field evidence">days on partial evidence</th>
+      <th title="train days from full since on: trades count, on the field's full evidence">days on full evidence</th>
+      <th title="the train days on which trades count, as a share of all train days, in percent">train traded</th>
+    </tr></thead><tbody>${rows.map((r) => `<tr><td>${r.pct}%</td><td>${Math.round(100 * (r.evidence || 0))}%</td><td>${r.building.toLocaleString()}</td><td>${r.partial.toLocaleString()}</td><td>${r.full.toLocaleString()}</td><td>${r.total ? Math.round((100 * (r.partial + r.full)) / r.total) : 0}%</td></tr>`).join('')}</tbody></table></details>`;
+}
+function tnFillHtml(d) {
+  const f = d.fieldFill;
+  if (f.why) return `<p class="note"><b class="warn">how complete the field is on each train day cannot be measured:</b> ${esc(f.why)}</p>`;
+  const v = tnFillValue(d);
+  return `<div class="row" style="align-items:flex-end">
+        <label class="f" title="a train trade of a setting that reads the field counts only on a day the field is at least this complete: the share of its window already behind the day. 100 is full since; 0 counts every train trade. Test and held are never cut by it.">field completion before a train trade counts, %<input id="tnFill" type="number" min="0" max="100" step="1" value="${esc(v)}" style="width:7rem"></label></div>
+      <p class="note" id="tnFillSay">${tnFillSayHtml(f, v)}</p>
+      ${tnFillTableHtml(f)}`;
 }
 function tnCapturePanelHtml(list, chosen, d) {
   return `<div class="panel">
@@ -3256,6 +3305,7 @@ function tnCapturePanelHtml(list, chosen, d) {
     ${tnSetBoxHtml(list, chosen)}
     ${d ? `${rebuildLineHtml(d)}<p class="note"><b>${rebuildPrefix(d)}${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${esc(d.ruleSentence || '')} · ${Number(d.survivors || 0).toLocaleString()} survivors
       · ${d.capture ? `captured ${esc(String(d.capture.at || '').slice(0, 10))}` : 'no capture yet'}${d.looks ? ` · <b>the held-back entries have been read ${d.looks} time(s)</b>` : ''}</p>
+      ${d.fieldFill ? tnFillHtml(d) : ''}
       <div class="row" style="align-items:flex-end">
         <button id="tnCapture" class="pri" ${d.refused ? 'disabled' : ''} title="writes down every trade every survivor takes, each at its own size, on the training, test and held-back windows. A second press replaces the first; the looks already counted stay.">Capture the trades of this set${d.capture ? ' again' : ''}</button>
         <span id="tnCaptureMsg" class="note">${d.refused ? `<b class="warn">refused:</b> ${esc(d.refused)}` : ''}</span></div>
@@ -3697,11 +3747,19 @@ function renderStopResult(s) {
     drawTune();
   };
   const tnb = $('#tnCapture');
+  // the completion typed above the press: its line follows the box, and nothing else is drawn again (3.237.0)
+  const tnFillBox = $('#tnFill');
+  if (tnFillBox && tnd && tnd.fieldFill && tnd.fieldFill.rows) {
+    tnFillBox.oninput = () => { tnFillTyped = { id: tnd.id, v: tnFillBox.value }; $('#tnFillSay').innerHTML = tnFillSayHtml(tnd.fieldFill, tnFillBox.value); };
+  }
+  const tnCaptureBody = () => (tnFillBox ? { fieldFillPct: tnFillPctOf(tnFillBox.value) } : {});
   if (tnb && tnChosen && tnd && !tnd.refused) tnb.onclick = async () => {
-    if (!confirm(`Capture the trades of ${tnd.name}?\n\nEvery trade every survivor takes, each at its own size, on the training, test and held-back windows. When it lands the set is chosen in the scan target box.${tnd.capture ? '\n\nThis replaces the capture on record; the looks already counted stay.' : ''}`)) return;
+    const body = tnCaptureBody();
+    if (tnFillBox && body.fieldFillPct == null) { $('#tnCaptureMsg').textContent = 'type how complete the field must be before a train trade counts: a whole number from 0 to 100'; return; }
+    if (!confirm(`Capture the trades of ${tnd.name}?\n\nEvery trade every survivor takes, each at its own size, on the training, test and held-back windows.${tnFillBox ? ` A train trade counts only on a day the field is at least ${body.fieldFillPct}% complete.` : ''} When it lands the set is chosen in the scan target box.${tnd.capture ? '\n\nThis replaces the capture on record; the looks already counted stay.' : ''}`)) return;
     tnb.disabled = true;
     $('#tnCaptureMsg').textContent = 'starting…';
-    const started = await tryPost(`api/funnel/set/${encodeURIComponent(tnChosen)}/capture`, {}, 'The Stage 4 record set box on Tune lists what was captured - pick the set there.');
+    const started = await tryPost(`api/funnel/set/${encodeURIComponent(tnChosen)}/capture`, body, 'The Stage 4 record set box on Tune lists what was captured - pick the set there.');
     if (!started) { tnb.disabled = false; $('#tnCaptureMsg').textContent = ''; return; }
     tnCapturedSet(tnChosen);   // chosen under scan target when it lands (3.233.1)
     tnCaptureFollow(tnChosen, started.token);
@@ -3719,7 +3777,7 @@ function renderStopResult(s) {
     else {
       tnb.disabled = true;
       $('#tnCaptureMsg').textContent = 'REBUILD REQUIRED - capturing the trades again…';
-      tryPost(`api/funnel/set/${encodeURIComponent(tnChosen)}/capture`, {}, 'The Stage 4 record set box on Tune lists what was captured - pick the set there.').then((started) => {
+      tryPost(`api/funnel/set/${encodeURIComponent(tnChosen)}/capture`, tnCaptureBody(), 'The Stage 4 record set box on Tune lists what was captured - pick the set there.').then((started) => {
         if (!started) { tnb.disabled = false; return; }
         tnCapturedSet(tnChosen);
         tnCaptureFollow(tnChosen, started.token);

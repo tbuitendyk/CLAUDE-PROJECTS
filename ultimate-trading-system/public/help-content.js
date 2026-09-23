@@ -987,6 +987,10 @@ window.HELP = {
         what: 'Writes down every trade every survivor takes, each at the size its setting took it at, on the training, test and held-back windows, and on the reserve window when the set\'s layout keeps one and its seal is intact.',
         more: 'A call the field blocks is not a trade the survivor takes, so it is not written down; a trade the field or the lean sizes is written down at that size, with the money the simulator made on it at that size. Tune comes before Held and asks nothing of it. A second press replaces the capture on record; the looks already counted stay. When the capture lands, the set is chosen under scan target by itself - also if you left the tab while it ran and come back later.',
       },
+      tnFill: {
+        what: 'How complete the field must be before a train trade counts, in percent: the share of the field\'s window already behind the day of the trade. Shown only on a set whose coin and shape reads a field.',
+        more: 'The field fills its window over train, so on its early train days it reads from part of the history a full window holds. A train trade of a setting that reads the field - the field gating it, or quorum by field - is written down only on a day at least this complete; the rest are left out and counted on the capture. 100 is full since; 0 counts every train trade. Test and held are never cut by it. The line under the box says, for this coin and shape, how much of a full window\'s evidence the field holds at that completion - an estimate under the field\'s own half-life and weight floor - and how many train days are spent building the field with no trading, trading on partial field evidence, and with full evidence.',
+      },
       tuneTarget: { what: 'Which Stage 4 record set the two scans below work on, from those whose trades were captured. A set whose trades were just captured on this tab is chosen here by itself when the capture lands.' },
       tnPick: {
         what: 'Which captured survivor of the Stage 4 record set the scans read, or all of them.',

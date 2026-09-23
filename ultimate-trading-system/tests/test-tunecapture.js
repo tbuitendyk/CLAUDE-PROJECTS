@@ -63,10 +63,11 @@ async function settle(statusOf, label) {
 // day across the fabricated span, its sign, agreement and silence cycling so
 // the gate blocks some calls, lets some through at x1 and x2 and some at the
 // silent multiple -- every size the capture has to carry.
-function fabricatedField() {
+// `from` and `windowDays` move where the field starts and how long its window
+// takes to fill (3.237.0): a field that fills partway through train.
+function fabricatedField({ from = Date.UTC(2020, 11, 1), windowDays = 30 } = {}) {
   const fset = require('../lib/fieldset');
   const DAY = 24 * 3600 * 1000;
-  const from = Date.UTC(2020, 11, 1);
   const to = Date.UTC(2025, 1, 1);
   const cols = { ts: [], sign: [], agreement: [], size: [], certainty: [], speaking: [], evidence: [], full: [] };
   for (let t = from, i = 0; t <= to; t += DAY, i++) {
@@ -77,19 +78,20 @@ function fabricatedField() {
     cols.certainty.push(null);
     cols.speaking.push(i % 9 === 4 ? 0 : 3);
     cols.evidence.push(4);
-    cols.full.push(1);
+    cols.full.push(t - from >= windowDays * DAY ? 1 : 0);
   }
   const key = `${G.PLANT}|daily-1d`;
+  const fullIdx = cols.full.indexOf(1);
   const pair = {
     key, coin: G.PLANT, geometry: 'daily-1d', standsFor: [], decisions: cols.ts.length, firstTs: from, lastTs: to,
-    windowDays: 30, capDays: 30, fullAt: from, copies: 0,
+    windowDays, capDays: windowDays, fullAt: fullIdx < 0 ? null : cols.ts[fullIdx], copies: 0,
     now: { ts: to, copies: 0, full: true, slidesAsGood: 0, scramblesAsGood: 0 },
     state: { ts: to, sign: 1, agreement: 60, size: 1, certainty: null, speaking: 3, evidence: 4, full: true, daysInWindow: 30, decisionsInWindow: 30, yardsticks: [1], pointsWithEvidence: { rising: 1, falling: 1, of: 2 } },
     range: { days: cols.ts.length, silentDays: 0, agreement: { lowest: 20, quarter: 40, median: 60, threeQuarters: 60, highest: 90 }, certainty: null },
     grid: [], readingToday: [], days: cols,
   };
-  const dials = { windowDays: 30, halfLifeDays: 10, floor: 0.1, bands: [50, 100], lookbackHours: [24], lookbackDays: [1], evidenceCap: 30, leastEvidence: 1, copies: 0, windowEachOwn: false };
-  return fset.saveField({ asked: { name: 'zzz sized capture field' }, dials, cap: { days: 30, coin: G.PLANT }, collapse: [], pairs: [pair], startedAt: 1, finishedAt: 2, name: 'zzz sized capture field' });
+  const dials = { windowDays, halfLifeDays: 10, floor: 0.1, bands: [50, 100], lookbackHours: [24], lookbackDays: [1], evidenceCap: 30, leastEvidence: 1, copies: 0, windowEachOwn: false };
+  return fset.saveField({ asked: { name: 'zzz sized capture field' }, dials, cap: { days: windowDays, coin: G.PLANT }, collapse: [], pairs: [pair], startedAt: 1, finishedAt: 2, name: 'zzz sized capture field' });
 }
 
 async function chain(tag, s3extra = {}) {
@@ -161,8 +163,8 @@ async function gated(c) {
   }
   return stages.getSet(c.cut.id);
 }
-async function captured(c) {
-  stages.tuneCaptureStart(c.cut.id);
+async function captured(c, asked = {}) {
+  stages.tuneCaptureStart(c.cut.id, asked);
   const r = await settle(() => stages.tuneCaptureStatus(c.cut.id), 'the capture');
   return { result: r, file: stages.readCapture(c.cut.id), set: stages.getSet(c.cut.id) };
 }
@@ -860,7 +862,8 @@ module.exports = {
     let c = null;
     try {
       c = await chain('tune sized capture test', { fieldId: field.id, fieldRead: 'agreement', fieldAgreeMin: '30', fieldRungs: '50:1,100:2', fieldSilent: '0.5' });
-      const { file, set } = await captured(c);
+      // every train trade counted, as before the field completion box (3.237.0)
+      const { file, set } = await captured(c, { fieldFillPct: 0 });
       assert.ok(file && file.v === stages.CAPTURE_V, 'the capture of the shape that carries each trade\'s size');
       const s3rows = rowstore.readAll(c.s3, 'records').filter((r) => r.trade === G.PLANT);
       const sizes = new Set();
@@ -883,6 +886,124 @@ module.exports = {
     } finally {
       if (c) c.cleanup();
       try { fset.deleteField(field.id, field.id); } catch (_) { /* never written */ }
+    }
+  },
+  // THE FIELD COMPLETION BOX (3.237.0, owner 2026-09-23: "THE TRAIN AREA OF THE
+  // HISTORY HAS NO *COMPLETELY INFORMED BY HISTORY* FIELD UNTIL THE NUMBER OF
+  // DAYS HAVE BEEN SCANNED THAT CORRESPOND TO ITS SIZE", and "a compromise that
+  // is willing to work with the field say at 25% or 33% completion"). A field
+  // whose window fills partway through train: the panel's day counts and its
+  // evidence estimate are worked out again here from the field's own days; a
+  // capture asks for the completion and never assumes one; at 0% every train
+  // trade counts, and higher completions leave out more -- each one written
+  // down or counted as left out, test and held never cut, and at 100% none
+  // before full since. Quorum by field gets its train calls from the field.
+  async theFieldCompletionBoxCountsTrainTradesOnlyOnceTheFieldIsThatComplete() {
+    const fset = require('../lib/fieldset');
+    const F = require('../lib/field');
+    const DAY = 24 * 3600 * 1000;
+    const from = Date.UTC(2024, 0, 1);
+    const W = 120;
+    const field = fabricatedField({ from, windowDays: W });
+    const sum = (x, w) => x.file.survivors.reduce((a, sv) => a + sv.entries[w].length, 0);
+    const left = (x) => x.file.survivors.reduce((a, sv) => a + sv.trainLeftOut, 0);
+    const fullAt = from + W * DAY;
+    let c = null;
+    try {
+      c = await chain('tune field completion test', { fieldId: field.id, fieldRead: 'agreement', fieldAgreeMin: '30', fieldRungs: '50:1,100:2', fieldSilent: '0.5' });
+      const dry = await stages.tuneCaptureDry(c.cut.id);
+      const f = dry.fieldFill;
+      assert.ok(f && f.rows && f.rows.length === 101, `the panel carries the field's completion for every whole percent: ${JSON.stringify(f && f.why)}`);
+      assert.strictEqual(f.windowDays, W, 'the pair\'s own window');
+      assert.strictEqual(f.fullAt, fullAt, 'and its full since');
+      const train = stages.getSet(c.s3).windows.units[c.plant].train;
+      const inTrain = [];
+      for (let t = from; t <= Date.UTC(2025, 1, 1); t += DAY) if (t >= train.fromTs && t <= train.toTs) inTrain.push(t);
+      const doneOf = (t) => Math.min(1, (t - from) / (W * DAY));
+      for (const pct of [0, 25, 33, 50, 100]) {
+        const r = f.rows[pct];
+        assert.strictEqual(r.total, inTrain.length, `${pct}%: every field day in the train stretch is counted`);
+        assert.strictEqual(r.building, inTrain.filter((t) => doneOf(t) < pct / 100).length, `${pct}%: the days building the field with no trading`);
+        assert.strictEqual(r.full, inTrain.filter((t) => doneOf(t) >= 1).length, `${pct}%: the days with full evidence`);
+        assert.strictEqual(r.building + r.partial + r.full, r.total, `${pct}%: the three kinds of day add up`);
+        assert.ok(Math.abs(r.evidence - F.evidenceShareAt(pct / 100, W, 10, 0.1)) < 1e-12, `${pct}%: the evidence estimate is the field's own`);
+      }
+      assert.ok(f.rows[50].building > 0 && f.rows[50].partial > 0 && f.rows[50].full > 0, 'the fabricated train holds all three kinds of day at 50%');
+      // the number is never assumed
+      assert.throws(() => stages.tuneCaptureStart(c.cut.id, {}), /how complete the field must be before a train trade counts/);
+      assert.throws(() => stages.tuneCaptureStart(c.cut.id, { fieldFillPct: 33.5 }), /whole number from 0 to 100/);
+      const at = {};
+      for (const pct of [0, 50, 100]) {
+        // eslint-disable-next-line no-await-in-loop
+        at[pct] = await captured(c, { fieldFillPct: pct });
+        assert.strictEqual(at[pct].set.capture.fieldFill.pct, pct, `the capture records the completion it was taken at (${pct}%)`);
+        assert.deepStrictEqual(at[pct].set.capture.fieldFill.days, f.rows[pct], `${pct}%: and the days it cost`);
+        assert.strictEqual(at[pct].set.capture.fieldFill.trainLeftOut, left(at[pct]), `${pct}%: and how many train trades it left out`);
+      }
+      assert.strictEqual(left(at[0]), 0, 'at 0% no train trade is left out');
+      assert.ok(sum(at[0], 'train') > 0, 'the fabricated survivors trade on train');
+      for (const pct of [50, 100]) {
+        assert.strictEqual(sum(at[pct], 'train') + left(at[pct]), sum(at[0], 'train'), `${pct}%: every train trade is written down or counted as left out`);
+        for (const w of ['test', 'hold']) assert.strictEqual(sum(at[pct], w), sum(at[0], w), `${pct}%: ${w} is never cut by it`);
+      }
+      assert.ok(left(at[50]) > 0 && left(at[100]) > left(at[50]), `a higher completion leaves out more: ${left(at[50])}, then ${left(at[100])}`);
+      for (const sv of at[100].file.survivors) for (const e of sv.entries.train) assert.ok(e.ts >= fullAt, 'at 100% every train trade is on a day the field was full');
+      // a capture of a set that reads the field, with no completion on record, is taken again
+      const doc = stages.getSet(c.cut.id);
+      delete doc.capture.fieldFill;
+      fs.writeFileSync(path.join(SETS_DIR, `${doc.id}.json`), JSON.stringify(doc));
+      assert.ok(((stages.rebuildOf(stages.getSet(c.cut.id)) || {}).reasons || []).some((r) => r.key === 'capture'), 'a capture with no completion on record is flagged to be taken again');
+      c.cleanup(); c = null;
+      // QUORUM BY FIELD: its train calls are the field's own signs, so it trades on train at all
+      c = await chain('tune field quorum test', { fieldId: field.id, agreeRule: 'field', fieldRead: 'agreement', fieldAgreeMin: '0', fieldRungs: '100:1', fieldSilent: '0' });
+      const q0 = await captured(c, { fieldFillPct: 0 });
+      assert.ok(q0.file.survivors.length > 0 && q0.file.survivors.every((sv) => /^field(\s|$)/.test(sv.label)), 'the survivors take the field as their quorum');
+      assert.ok(sum(q0, 'train') > 0, 'quorum by field trades on train: its calls are the field\'s signs on the train days');
+      const q100 = await captured(c, { fieldFillPct: 100 });
+      assert.strictEqual(sum(q100, 'train') + left(q100), sum(q0, 'train'), 'and the completion cuts its train trades the same way');
+      for (const sv of q100.file.survivors) for (const e of sv.entries.train) assert.ok(e.ts >= fullAt, 'none before full since at 100%');
+      // the screen: the box above the press, its line following it without drawing the panel again, the number sent
+      const ui = src('public/construct.js');
+      const panel = ui.slice(ui.indexOf('function tnCapturePanelHtml('), ui.indexOf('\n}\n', ui.indexOf('function tnCapturePanelHtml(')));
+      assert.ok(panel.indexOf('${d.fieldFill ? tnFillHtml(d) : \'\'}') > 0 && panel.indexOf('${d.fieldFill ? tnFillHtml(d) : \'\'}') < panel.indexOf('id="tnCapture"'), 'the box sits above Capture the trades of this set');
+      assert.ok(ui.includes('field completion before a train trade counts, %<input id="tnFill" type="number" min="0" max="100" step="1"'), 'the box is labelled with what it is');
+      assert.ok(ui.includes("spent building the field with no trading") && ui.includes('trading on partial field evidence') && ui.includes('with full evidence (full since'), 'the line says the three kinds of day in the owner\'s words');
+      assert.ok(ui.includes("tnFillBox.oninput = () => { tnFillTyped = { id: tnd.id, v: tnFillBox.value }; $('#tnFillSay').innerHTML = tnFillSayHtml(tnd.fieldFill, tnFillBox.value); };"), 'typing moves the line and draws nothing else');
+      assert.ok(ui.includes('const tnCaptureBody = () => (tnFillBox ? { fieldFillPct: tnFillPctOf(tnFillBox.value) } : {});'), 'the press sends the number typed');
+      assert.ok((ui.match(/\/capture`, tnCaptureBody\(\)|\/capture`, body,/g) || []).length === 2, 'the press and the automatic retake both send it');
+    } finally {
+      if (c) c.cleanup();
+      try { fset.deleteField(field.id, field.id); } catch (_) { /* never written */ }
+    }
+  },
+  // DELETING A SET DELETES EVERYTHING IT OWNS (3.237.0, owner 2026-09-23: "fix
+  // the code to delete what it should on every instance"): its capture, its
+  // agreed file, a stage 3 set's test history numbers and reserve boards, the
+  // retrained members of its half-life runs, and every copy a rebuild kept --
+  // and never a file of a set whose id merely starts the same way.
+  deletingASetDeletesEveryFileItOwns() {
+    const a = 's4-zzdeletetest-1';
+    const b = 's4-zzdeletetest-10';
+    const owned = (id) => [`${id}-capture.json.gz`, `${id}-agreed.json.gz`, `${id}-reserve-AAA_daily-1d.json.gz`, `${id}-halflife-${id}-h1.json.gz`,
+      `${id}.json.before-rebuild`, `${id}-capture.json.gz.before-rebuild`, `${id}-halflife-${id}-h1.json.gz.before-rebuild`, `${id}-tunescans.json`];
+    try {
+      for (const id of [a, b]) {
+        fs.writeFileSync(path.join(SETS_DIR, `${id}.json`), JSON.stringify({ id, stage: 4, name: `zz delete test ${id}`, status: 'done', parent: { id: 's3-none' } }));
+        for (const f of owned(id)) fs.writeFileSync(path.join(SETS_DIR, f), 'x');
+        fs.mkdirSync(path.join(stages.funnelRichDir(id), 'units'), { recursive: true });
+        fs.writeFileSync(path.join(stages.funnelRichDir(id), 'index.json'), '{}');
+      }
+      const out = stages.deleteSet(a, a);
+      assert.ok(out.deleted, `the set is deleted: ${JSON.stringify(out)}`);
+      for (const f of [`${a}.json`, ...owned(a)]) assert.ok(!fs.existsSync(path.join(SETS_DIR, f)), `${f} goes with the set`);
+      assert.ok(!fs.existsSync(stages.funnelRichDir(a)), 'and its test history numbers');
+      for (const f of [`${b}.json`, ...owned(b)]) assert.ok(fs.existsSync(path.join(SETS_DIR, f)), `${f}, another set's, stays`);
+      assert.ok(fs.existsSync(stages.funnelRichDir(b)), 'and so do its test history numbers');
+    } finally {
+      for (const id of [a, b]) {
+        for (const f of [`${id}.json`, ...owned(id)]) { try { fs.rmSync(path.join(SETS_DIR, f), { force: true }); } catch (_) { /* gone */ } }
+        try { fs.rmSync(stages.funnelRichDir(id), { recursive: true, force: true }); } catch (_) { /* gone */ }
+      }
     }
   },
   // A FLAGGED FAMILY IS REBUILT IN PLACE WHEN ONE OF IT IS OPENED (3.236.0,

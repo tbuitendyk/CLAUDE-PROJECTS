@@ -4751,7 +4751,85 @@ function fieldPayloadFor(doc, rec) {
   const side = readFieldSidecar(doc.id);
   const pair = side && side.pairs && side.pairs[key];
   if (!pair) throw new Error(`the field ${p.fieldId} this set was priced with is no longer beside it (${path.basename(fieldFile(doc.id))}) — ${rec.trade} ${rec.geometry} cannot be priced the way its records were`);
-  return { key, days: pair.days, copies: pair.copies, fullAt: pair.fullAt };
+  return { key, days: pair.days, copies: pair.copies, fullAt: pair.fullAt, windowDays: fieldWindowDaysOf(side, pair) };
+}
+
+// ---- HOW COMPLETE THE FIELD IS ON EACH TRAIN DAY (3.237.0) ------------------
+//
+// Owner, 2026-09-23: "THE TRAIN AREA OF THE HISTORY HAS NO *COMPLETELY INFORMED
+// BY HISTORY* FIELD UNTIL THE NUMBER OF DAYS HAVE BEEN SCANNED THAT CORRESPOND
+// TO ITS SIZE" -- and then, against leaving out everything before "full since":
+// "a compromise that is willing to work with the field say at 25% or 33%
+// completion". A field day's completion is the share of its window already
+// behind it (the field marks a day full when a whole window is: lib/field.js),
+// and Tune's capture counts a train trade of a setting that reads the field
+// only on a day at least as complete as the owner typed above Capture the
+// trades of this set. Test and held are never cut by it.
+//
+// THE WINDOW IS THE PAIR'S OWN: a field built on each coin's own train stretch
+// gives every coin and shape its own length, and the dial's single number is
+// then no pair's window at all.
+function fieldWindowDaysOf(side, pair) {
+  if (Number(pair && pair.windowDays) > 0) return Number(pair.windowDays);
+  const d = (side && side.dials) || {};
+  if (!d.windowEachOwn && Number(d.windowDays) > 0) return Number(d.windowDays);
+  return null;
+}
+// the field pair a Stage 4 set's coin and shape reads, off its stage 3 set, or null when it reads none
+function fieldPairOfSet(doc) {
+  const parent = getSet(((doc || {}).parent || {}).id);
+  const p = (parent && parent.params) || {};
+  if (!p.fieldId || !p.fieldPairs || !doc.unit) return null;
+  const parts = String(doc.unit).split('|');
+  const key = p.fieldPairs[`${parts[0]}|${parts[3]}`];
+  if (!key) return null;
+  const side = readFieldSidecar(parent.id);
+  const pair = side && side.pairs && side.pairs[key];
+  return pair ? { parent, side, pair, key } : null;
+}
+// WHAT THE BOX ABOVE Capture the trades of this set SHOWS, for every whole
+// percent from 0 to 100: of the field's days in this coin and shape's train
+// stretch, how many are spent building the field with no trading (below the
+// completion typed), trading on part of the field's evidence, and on its full
+// evidence -- with the share of a full window's evidence the field holds at
+// that completion (lib/field.js evidenceShareAt, an estimate). null when the
+// set reads no field; `why` when it reads one that cannot be measured.
+function fieldFillOf(doc) {
+  const got = fieldPairOfSet(doc);
+  if (!got) return null;
+  const { parent, side, pair, key } = got;
+  const F = require('./field');
+  const ts = ((pair.days || {}).ts) || [];
+  const windowDays = fieldWindowDaysOf(side, pair);
+  const train = ((((parent.windows || {}).units) || {})[doc.unit] || {}).train || null;
+  const dials = side.dials || {};
+  const out = {
+    key, field: side.name || side.field || null, windowDays, halfLifeDays: dials.halfLifeDays ?? null, floor: dials.floor ?? null,
+    firstTs: ts.length ? ts[0] : null, fullAt: pair.fullAt ?? null,
+    train: train ? { fromTs: train.fromTs, toTs: train.toTs } : null, rows: null, why: null,
+  };
+  if (!windowDays) { out.why = 'the field this set was priced with does not record how long its window is, so how complete it was on each train day cannot be worked out'; return out; }
+  if (!train || !ts.length) { out.why = 'the stage 3 set does not record this coin and shape\'s train stretch, so its days cannot be counted'; return out; }
+  const W = windowDays * F.DAY_MS;
+  const done = [];
+  for (const t of ts) if (t >= train.fromTs && t <= train.toTs) done.push(Math.min(1, (t - ts[0]) / W));
+  out.rows = [];
+  for (let pct = 0; pct <= 100; pct++) {
+    const cut = pct / 100;
+    let building = 0; let full = 0;
+    for (const c of done) { if (c < cut) building++; else if (c >= 1) full++; }
+    out.rows.push({ pct, total: done.length, building, partial: done.length - building - full, full, evidence: F.evidenceShareAt(cut, windowDays, dials.halfLifeDays, dials.floor) });
+  }
+  return out;
+}
+// the completion a capture of a set that reads the field is asked for: a whole number 0 to 100, never assumed
+function fieldFillAsked(asked) {
+  const v = asked ? asked.fieldFillPct : null;
+  const n = v == null || v === '' ? NaN : Number(v);
+  if (!Number.isInteger(n) || n < 0 || n > 100) {
+    const e = new Error('type how complete the field must be before a train trade counts: a whole number from 0 to 100'); e.status = 400; throw e;
+  }
+  return n;
 }
 function readAgreed(id) {
   try {
@@ -5512,6 +5590,17 @@ function readTally(id) {
 function childrenOf(id) {
   return listSets().filter((x) => x.parent && x.parent.id === id).map((x) => ({ id: x.id, name: x.name }));
 }
+// the files beside a set that come in families named after it: the reserve
+// boards read off a stage 3 set, the half-life runs on a Stage 4 rule, and any
+// copy a rebuild kept beside it. Matched on the set's id and the separator after
+// it, so s4-x-1 never takes s4-x-10's files.
+function ownedFilesOf(id) {
+  const key = String(id).replace(/[^A-Za-z0-9._-]+/g, '_');
+  let names = [];
+  try { names = fs.readdirSync(SETS_DIR); } catch (_) { names = []; }
+  return names.filter((f) => f.startsWith(`${key}-reserve-`) || f.startsWith(`${key}-halflife-`)
+    || (f.endsWith('.before-rebuild') && (f.startsWith(`${key}.`) || f.startsWith(`${key}-`))));
+}
 function deleteSet(id, confirm) {
   const doc = getSet(String(id || ''));
   if (!doc) throw new Error(`no record set called "${id}"`);
@@ -5540,6 +5629,16 @@ function deleteSet(id, confirm) {
   try { fs.rmSync(fieldFile(doc.id), { force: true }); } catch (_) { /* may not exist */ }
   // what the two scans on Tune found on it (3.234.0): kept beside the set, gone with it
   try { fs.rmSync(tuneScansFile(doc.id), { force: true }); } catch (_) { /* may not exist */ }
+  // EVERYTHING ELSE IT OWNS GOES WITH IT (3.237.0, owner 2026-09-23: "fix the
+  // code to delete what it should on every instance"). These were left behind:
+  // its agreed file, its capture, a stage 3 set's test history numbers and the
+  // reserve boards read off it, the retrained members of every half-life run
+  // on it, and the copies a rebuild kept beside it. Nothing reads any of them
+  // once the set is gone.
+  try { fs.rmSync(agreedFile(doc.id), { force: true }); } catch (_) { /* may not exist */ }
+  try { fs.rmSync(captureFile(doc.id), { force: true }); } catch (_) { /* may not exist */ }
+  try { fs.rmSync(funnelRichDir(doc.id), { recursive: true, force: true }); } catch (_) { /* may not exist */ }
+  for (const f of ownedFilesOf(doc.id)) { try { fs.rmSync(path.join(SETS_DIR, f), { force: true }); } catch (_) { /* gone already */ } }
   try { fs.rmSync(setFile(doc.id), { force: true }); } catch (_) { /* reported below */ }
   dropCheckpoint(doc.id);
   if (recordsInHand.id === doc.id) { recordsInHand.id = null; recordsInHand.rows = null; }
@@ -9622,7 +9721,7 @@ function captureRefusalOf(doc) {
   if (judgeRun && !judgeRun.result && !judgeRun.error) return 'a Stage 4 record set is being read right now — one at a time';
   return null;
 }
-async function tuneCaptureRun(doc, note = null) {
+async function tuneCaptureRun(doc, note = null, fill = null) {
   const S4 = require('./funnelset');
   const join = await funnelVerifyJoin(doc);
   // a half-life set is not a rule's output, so the rule is not asked to give it back
@@ -9653,6 +9752,8 @@ async function tuneCaptureRun(doc, note = null) {
   const models = unitRows(shape.parent.id, 'models', rec.blocks.models, rec.u);
   base.unit.members = base.unit.members.map((m, mi) => ({ ...m, saved: (models.find((x) => x.mi === mi) || {}).saved || null }));
   base.capture = true;
+  // a train trade counts only on a day the field is at least this complete, on a coin and shape that reads it (3.237.0)
+  base.captureFill = base.field && fill != null ? fill : null;
   let payloads = [base];
   if (doc.derived) {
     // one payload per half-life the records carry, each on the retrain layout with that half-life's members
@@ -9703,9 +9804,18 @@ async function tuneCaptureRun(doc, note = null) {
     members: r.members, rung: r.rung ?? null, halfLife: doc.derived ? (hlOf.get(r.label) ?? null) : null,
     money: { test: r.pnl, hold: r.holdout ? r.holdout.pnl : null }, trades: { test: r.trades, hold: r.holdout ? r.holdout.trades : null },
     entries: { ...((r.rich && r.rich.capture) || { train: [], test: [], hold: [] }), reserve: reserveEntriesOf(r.label) },
+    // train trades left out because the field was less complete than asked on their day (3.237.0)
+    trainLeftOut: (r.rich && r.rich.captureTrainLeftOut) || 0,
   }));
   const totals = { train: 0, test: 0, hold: 0, reserve: 0 };
   for (const sv of survivors) for (const w of CAPTURE_WINDOWS) totals[w] += (sv.entries[w] || []).length;
+  // THE COMPLETION IT WAS TAKEN AT, written down with what it cost (3.237.0)
+  const fillInfo = base.captureFill == null ? null : fieldFillOf(doc);
+  const fieldFill = base.captureFill == null ? null : {
+    pct: base.captureFill, trainLeftOut: survivors.reduce((acc, sv) => acc + sv.trainLeftOut, 0),
+    days: fillInfo && fillInfo.rows ? fillInfo.rows[base.captureFill] : null,
+    windowDays: fillInfo ? fillInfo.windowDays : null, fullAt: fillInfo ? fillInfo.fullAt : null,
+  };
   const at = new Date().toISOString();
   const fresh = getSet(doc.id);
   if (!fresh) throw new Error('the set went away while its trades were being captured');
@@ -9717,15 +9827,17 @@ async function tuneCaptureRun(doc, note = null) {
     members: (rec.specs || []).length, fee: { feePerLeg: fee, feeUnits: 'fraction' }, windows: res.windows || null,
     reserve: reserveWhy ? { captured: false, why: reserveWhy } : { captured: true, window: reserveWindow },
     pick: pick ? { by: 'depth', among: 'the captured survivors', label: pick.label, worst: pick.worst, mean: pick.mean } : null,
-    survivors, missing,
+    fieldFill, survivors, missing,
   };
   writeCapture(doc.id, file);
   fresh.capture = {
     v: CAPTURE_V, id: `${doc.id}-c${times}`, at, release: ENGINE_VERSION, times, unit: doc.unit, members: file.members, fee: file.fee, windows: file.windows,
     survivors: join.rows.length, captured: survivors.length, missing, entries: totals, pick: file.pick, reserve: file.reserve,
     // each captured survivor's entry, so a scan knows a breakout trade from a market one (3.235.0)
-    rows: survivors.map((sv) => ({ label: sv.label, entry: sv.entry || 'breakout', tHours: sv.tHours, halfLife: sv.halfLife ?? null, entries: { train: sv.entries.train.length, test: sv.entries.test.length, hold: sv.entries.hold.length, reserve: (sv.entries.reserve || []).length }, test: sv.money.test, held: sv.money.hold })),
+    rows: survivors.map((sv) => ({ label: sv.label, entry: sv.entry || 'breakout', tHours: sv.tHours, halfLife: sv.halfLife ?? null, entries: { train: sv.entries.train.length, test: sv.entries.test.length, hold: sv.entries.hold.length, reserve: (sv.entries.reserve || []).length }, trainLeftOut: sv.trainLeftOut, test: sv.money.test, held: sv.money.hold })),
     derived: doc.derived || null,
+    // how complete the field had to be before a train trade counted, and what that left out (3.237.0); null on a set that reads no field
+    fieldFill,
     // every scan on Tune that read this capture, newest first; a read of the held-back entries carries its look number
     reads: readsKeptOnRecapture(had),
   };
@@ -9785,6 +9897,9 @@ function rebuildOf(doc) {
     }
     if (doc.capture && doc.capture.v !== CAPTURE_V) {
       reasons.push({ key: 'capture', why: 'its capture is out of date, and its trades are captured again when it is chosen on Tune' });
+    } else if (doc.capture && doc.capture.fieldFill == null && fieldPairOfSet(doc)) {
+      // (3.237.0) taken before a train trade had to wait for the field to be complete enough
+      reasons.push({ key: 'capture', why: 'its capture counted train trades however little of the field was built, and its trades are captured again when it is chosen on Tune, at the field completion in the box above the press' });
     }
   }
   if (!reasons.length) return null;
@@ -10110,18 +10225,24 @@ async function tuneCaptureDry(id) {
     rebuild: rebuildOf(doc),
     refused: captureRefusalOf(doc),
     running: captureRun && captureRun.id === doc.id && !captureRun.result && !captureRun.error ? { token: captureRun.token } : null,
+    // how complete the field is on each train day, for the box above the press (3.237.0)
+    fieldFill: fieldFillOf(doc),
   };
 }
 const captureStatus = (run) => ({ running: !run.result && !run.error, token: run.token, done: run.done, of: run.of, cpu: cpuLoad(), error: run.error, result: run.result });
-function tuneCaptureStart(id) {
+function tuneCaptureStart(id, asked = {}) {
   const doc = getSet(id);
   if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
   if (captureRun && captureRun.id === id && !captureRun.result && !captureRun.error) return captureStatus(captureRun);
   const why = captureRefusalOf(doc);
   if (why) throw new Error(why);
+  // a set that reads the field is captured at the completion typed above the press (3.237.0)
+  const fillInfo = fieldFillOf(doc);
+  if (fillInfo && fillInfo.why) throw new Error(fillInfo.why);
+  const fill = fillInfo ? fieldFillAsked(asked) : null;
   const run = { id, token: `${id}:${Date.now()}`, done: 0, of: 1, result: null, error: null, promise: null };
   captureRun = run;
-  run.promise = tuneCaptureRun(doc, (done, of) => { run.done = done; run.of = of; })
+  run.promise = tuneCaptureRun(doc, (done, of) => { run.done = done; run.of = of; }, fill)
     .then((result) => { run.result = result; run.done = run.of; })
     .catch((err) => { run.error = String((err && err.message) || err); });
   return captureStatus(run);
@@ -11798,7 +11919,7 @@ module.exports = {
   tuneCaptureDry, tuneCaptureStart, tuneCaptureStatus, tuneOnCapture, captureCandidates, captureTargetOf, readCapture, captureFile,
   tuneScanAimOf, saveTuneScan, readTuneScans, tuneScanFor, tuneScansFile,
   halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet, buildHalfLifeSet, gateOfSet,
-  stopChoiceOf, setStopChoice,
+  stopChoiceOf, setStopChoice, fieldFillOf, fieldPairOfSet, fieldWindowDaysOf, ownedFilesOf,
   CAPTURE_V, CAPTURE_WINDOWS, CAPTURE_NOT_YET, STOP_NOT_ON_BREAKOUT, scanRefusalOf, ladderAsked, rebuildOf, rebuildStart, rebuildStatus, rebuildWait, recutInPlace, rebuildChainOf,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,

@@ -1660,10 +1660,42 @@ async function s3UnitTask(task) {
   };
   const trainStreamCache = new Map();
   const trainCallsCache = new Map();
+  // the training slice's decision instants, read once for the field's days
+  let trainTsMemo = null;
+  const trainTsOf = () => trainTsMemo || (trainTsMemo = decisionTsOf(trainChunks, maps.trade));
+  // QUORUM BY FIELD ON THE TRAINING SLICE (3.237.0): the call is the field's own
+  // sign on each training decision's day, exactly as the test and held-back
+  // slices read it (fieldSignsFor). The members' training forecasts were handed
+  // in here before, and the field rule reads no member, so it called nothing.
+  let trainFieldMemo = null;
+  const trainFieldSigns = () => {
+    if (trainFieldMemo) return trainFieldMemo;
+    trainFieldMemo = trainTsOf().map((t) => {
+      const day = fieldDays ? readFieldAt(fieldDays, t) : null;
+      return day && day.speaking && (day.sign === 1 || day.sign === -1) ? day.sign : 0;
+    });
+    return trainFieldMemo;
+  };
   const trainStreamFor = (decision, agr) => {
     const key = agreedKey(decision, agr);
-    if (!trainStreamCache.has(key)) trainStreamCache.set(key, C.streamOf(decision, agr, trainProbs()));
+    if (!trainStreamCache.has(key)) {
+      trainStreamCache.set(key, agr.rule === 'field'
+        ? agreement.agreementStream({ calls: [], fieldSigns: trainFieldSigns() }, 'field', 0, { persist: agr.persist })
+        : C.streamOf(decision, agr, trainProbs()));
+    }
     return trainStreamCache.get(key);
+  };
+  // HOW COMPLETE THE FIELD WAS ON A TRAINING DECISION'S DAY (3.237.0, owner
+  // 2026-09-23): the share of its window already behind that day, as the field
+  // marks a day full (lib/field.js). A training trade of a setting that reads
+  // the field counts only on a day at least as complete as the owner typed
+  // above Capture the trades of this set; the rest are left out and counted.
+  const fieldWindowMs = task.field && Number(task.field.windowDays) > 0 ? Number(task.field.windowDays) * 86400000 : null;
+  const fillCut = task.captureFill == null ? null : Number(task.captureFill) / 100;
+  if (fillCut != null && fieldDays && !fieldWindowMs) throw new Error('the field this set was priced with does not record how long its window is, so how complete it was on each train day cannot be worked out');
+  const trainCompleteAt = (j) => {
+    const day = readFieldAt(fieldDays, trainTsOf()[j]);
+    return day ? Math.min(1, (day.ts - fieldDays[0].ts) / fieldWindowMs) : 0;
   };
   // the voters' calls on the training slice, folded at the setting's plateau
   // share like every other slice's (3.205.0)
@@ -1677,7 +1709,6 @@ async function s3UnitTask(task) {
   // off, the standard size otherwise -- the rule priceOn prices by. Aligned
   // with `idxs`; the training slice's field days and lean are read the same
   // way as the other slices', from its own chunks.
-  let trainTsMemo = null;
   let trainLeanRowsMemo;
   const leanSignsOf = (slice, share) => {
     if (slice !== 'train') return leanFor(slice, share);
@@ -1690,7 +1721,7 @@ async function s3UnitTask(task) {
     const sub = idxs.map((i) => calls[i]);
     if (st.field && fieldDays) {
       let tsAll = slice === 'test' ? fieldTsTest : fieldTsHold;
-      if (slice === 'train') tsAll = trainTsMemo || (trainTsMemo = decisionTsOf(trainChunks, maps.trade));
+      if (slice === 'train') tsAll = trainTsOf();
       return Array.from(fieldGate.sizesFor(fieldDays, idxs.map((i) => tsAll[i]), sub, st.field).sizes);
     }
     const confirm = st.confirm || 'off';
@@ -1707,6 +1738,9 @@ async function s3UnitTask(task) {
       ['hold', holdChunks, idxOf(holdChunks, wkHold), holdTrade, () => streamFor(st.decision, agr, -1, 'hold'), () => callsFor(st.decision, -1, 'hold', agr.plateau)],
     ];
     const out = {};
+    // a setting reads the field when the field gates it or is its quorum, on a coin and shape the field has a pair for
+    const readsField = !!fieldDays && (!!st.field || agr.rule === 'field');
+    let trainLeftOut = 0;
     for (const [name, chunksArr, idxs, tradeMap, streamOfSlice, memberCallsOfSlice] of slices) {
       const list = [];
       if (chunksArr.length) {
@@ -1722,6 +1756,8 @@ async function s3UnitTask(task) {
           // the one simulator, on this chunk alone, at this call's size: its money, and whether it took the trade at all
           const one = bracketLib.simCell(cell, [chunksArr[i]], [call], tradeMap, geo, bandPct, fee, undefined, [size]);
           if (one.trades !== 1) continue;
+          // a training trade on a day the field was less complete than asked: left out, and counted
+          if (name === 'train' && readsField && fillCut != null && trainCompleteAt(i) < fillCut) { trainLeftOut++; continue; }
           let agree = 0;
           for (const m of per) if (m[i] === call) agree++;
           list.push({ ts: chunksArr[i].startTs + (geo.entryOffsetH || 0) * 3600000, side: call === 1 ? 'LONG' : 'SHORT', agree, size, usd: one.pnl });
@@ -1729,7 +1765,7 @@ async function s3UnitTask(task) {
       }
       out[name] = list;
     }
-    return out;
+    return { lists: out, trainLeftOut };
   };
   const holdCtlCache = new Map();
   const holdControlsFor = (chunksArr, idxs, tHours, cacheKey) => {
@@ -1886,7 +1922,8 @@ async function s3UnitTask(task) {
       lead = leadOver(hRes.pnl, dealPnls);
       dealShape = shapeOf(dealPnls);
     }
-    const captured = task.capture ? captureOf(st, agr, cell, bandPct, !!stream.weekdaysOnly) : null;
+    const got = task.capture ? captureOf(st, agr, cell, bandPct, !!stream.weekdaysOnly) : null;
+    const captured = got ? got.lists : null;
     // and the four on the TEST window, once per unit and hold length, only when
     // the caller asked for them (3.107.0)
     if (task.wantTestControls && testChunks.length) testControlsFor(testChunks, tIdx, tHours, stream.weekdaysOnly ? 'wk' : 'all');
@@ -1966,6 +2003,8 @@ async function s3UnitTask(task) {
         },
         // the per-trade capture (3.92.0), only when asked; every shape since 3.235.0
         capture: captured,
+        // the training trades it left out because the field was less complete than asked (3.237.0)
+        captureTrainLeftOut: got ? got.trainLeftOut : null,
       },
     });
   }

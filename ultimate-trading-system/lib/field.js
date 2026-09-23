@@ -85,6 +85,25 @@ function weightAt(ageDays, halfLifeDays, floor) {
   return w < floor ? floor : w;
 }
 
+// HOW MUCH OF A FULL WINDOW'S EVIDENCE THE FIELD HOLDS while its window is
+// only part full (3.237.0, owner 2026-09-23: shown beside Tune's field
+// completion box). An estimate, one decision a day under weightAt's own rule:
+// the weight the part of the window already behind a day holds, as a share of
+// the weight a full window holds. Recent days weigh most, so a window a third
+// full holds well over a third of the evidence. `fill` is 0 to 1.
+function evidenceShareAt(fill, windowDays, halfLifeDays, floor) {
+  const W = Number(windowDays); const H = Number(halfLifeDays); const f = Math.max(0, Number(floor) || 0);
+  if (!(W > 0) || !(H > 0)) return null;
+  // the age at which a decision's weight reaches the floor and stays there
+  const floorAge = f > 0 && f < 1 ? H * Math.log2(1 / f) : (f >= 1 ? 0 : Infinity);
+  const heldBy = (T) => {
+    const decayed = Math.min(T, floorAge);
+    return (H / Math.LN2) * (1 - Math.pow(0.5, decayed / H)) + (f > 0 ? f * Math.max(0, T - floorAge) : 0);
+  };
+  const x = Math.min(1, Math.max(0, Number(fill) || 0));
+  return heldBy(x * W) / heldBy(W);
+}
+
 // A DETERMINISTIC ORDER of 0..n-1 from a seed, for the copies.
 function seededOrder(n, seed) {
   const next = mulberry32(seed);
@@ -550,6 +569,6 @@ function fieldTask({ input, dials }) {
 }
 
 module.exports = {
-  DAY_MS, checkDials, weightAt, seededOrder, hashOf, slidOffsets, weightedMedianSorted, Points,
+  DAY_MS, checkDials, weightAt, evidenceShareAt, seededOrder, hashOf, slidOffsets, weightedMedianSorted, Points,
   readingsFor, rollPoints, buildField, nullSetsOn, nullSetsAt, readAt, agreementRange, fieldTask,
 };
