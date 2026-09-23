@@ -2294,19 +2294,24 @@ const GUARDS = [
     'theAcrossIsKeyedOnTheBarAsWellAsTheRule', 'the page shows a reading of the units made under another filter'],
   [path.join(ROOT, 'public', 'construct.js'), '${t3 !== \'3C\' ? \'\' : bUnitsSection(doc, units, view)}', '${bUnitsSection(doc, units, view)}',
     'theStageThreeTablesAreEachOnTheirOwnSubTab', 'Table 3.C is drawn whichever table sub tab is picked'],
-  [path.join(ROOT, 'public', 'construct.js'), '        s3tab: \'3B\',                   // the answer is on Table 3.B\'s own sub tab\n', '',
+  [path.join(ROOT, 'public', 'construct.js'), '        stab: \'3B\',                    // the answer is on the Table 3.B tab\n', '',
     'boardsDrawsOneStageAtATimeOnItsOwnSubTab', 'Show in 3.B, pressed on Table 3.A, draws its answer nowhere'],
-  [path.join(ROOT, 'public', 'construct.js'), '  const stab = [1, 2, 3].includes(Number(view.stab)) ? Number(view.stab) : deepest;', '  const stab = deepest;',
+  [path.join(ROOT, 'public', 'construct.js'), '  const stab = B_T3.includes(view.stab) ? view.stab : [1, 2, 3].includes(Number(view.stab)) ? Number(view.stab) : deepest;', '  const stab = deepest;',
     'boardsDrawsOneStageAtATimeOnItsOwnSubTab', 'the stage sub tab picked is forgotten on every draw'],
   [path.join(ROOT, 'public', 'construct.js'), '  ${stab !== 2 ? \'\' : `<div class="panel">', '  ${`<div class="panel">',
     'boardsDrawsOneStageAtATimeOnItsOwnSubTab', 'Stage 2\'s section is drawn whichever stage sub tab is picked'],
   [path.join(ROOT, 'public', 'construct.js'), '    ${bUnitSavedHtml(units.filters)}\n', '',
     'theTableIsDrawnOnItsOwnSubTabOnOneLineARow', 'Table 3.C draws no saved filters'],
   // 3.239.0: the table tabs on the Stage strip, only under Stage 3, marked by the draw
-  [path.join(ROOT, 'public', 'construct.js'), "    ${stab !== 3 ? '' : `<div class=\"tab tab-gap${t3On('3A')}\" data-bt3tab=\"3A\">Table 3.A</div>", "    ${`<div class=\"tab tab-gap${t3On('3A')}\" data-bt3tab=\"3A\">Table 3.A</div>",
+  [path.join(ROOT, 'public', 'construct.js'), "    ${!onS3 ? '' : `<div class=\"tab tab-gap${t3On('3A')}\" data-bt3tab=\"3A\">Table 3.A</div>", "    ${`<div class=\"tab tab-gap${t3On('3A')}\" data-bt3tab=\"3A\">Table 3.A</div>",
     'boardsDrawsOneStageAtATimeOnItsOwnSubTab', 'the table tabs show beside Stage 1 and Stage 2 as well'],
   [path.join(ROOT, 'public', 'construct.js'), "  document.querySelectorAll('[data-bt3tab]').forEach((el) => el.classList.toggle('on', el.dataset.bt3tab === t3));\n", "",
     'boardsDrawsOneStageAtATimeOnItsOwnSubTab', 'Show in 3.B moves to Table 3.B and the strip still marks Table 3.A'],
+  // 3.239.1: Stage 3 stops at Check this set; a table tab draws its table alone
+  [path.join(ROOT, 'public', 'construct.js'), "    t3 ? apiOr(`api/stageset/${doc.id}/ranked?${rankQs}`, null) : null,", "    apiOr(`api/stageset/${doc.id}/ranked?${rankQs}`, null),",
+    'boardsDrawsOneStageAtATimeOnItsOwnSubTab', 'the Stage 3 tab asks for a table it does not draw'],
+  [path.join(ROOT, 'public', 'construct.js'), "  ${B_T3.includes(stab) ? '<div id=\"bT3\"></div>' : ''}`;", "  `;",
+    'boardsDrawsOneStageAtATimeOnItsOwnSubTab', 'a table tab draws nothing at all'],
 ];
 
 const only = process.argv[2] || '';

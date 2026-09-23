@@ -3121,7 +3121,8 @@ module.exports = {
     for (const key of ['S1', 'S2', 'S3R', 'S3C']) {
       assert.ok(new RegExp(`bFilterGrid\\('${key}'`).test(src), `the ${key} table must offer filters`);
     }
-    for (const key of ['S1', 'S2', 'S3R']) {
+    // the stage 3 tables fold no longer: each is alone on its own tab (3.239.1)
+    for (const key of ['S1', 'S2']) {
       assert.ok(new RegExp(`bFoldBtn\\('${key}'`).test(src), `the ${key} table must fold`);
     }
     // the filters the screen offers are the filters the service implements —

@@ -4559,9 +4559,11 @@ function bPollRedraw() {
 function bView() {
   try { return JSON.parse(localStorage.getItem(BOARDS_VIEW_KEY) || '{}') || {}; } catch (_) { return {}; }
 }
-// which of Table 3.A, 3.B and 3.C is picked: read by the strip that draws the
-// three tabs and by the stage 3 draw that draws the table, so they cannot differ
-const bT3Tab = (view) => (['3A', '3B', '3C'].includes(view.s3tab) ? view.s3tab : '3A');
+// WHICH TABLE TAB IS PICKED, or null for the Stage 3 tab itself (3.239.1):
+// read by the strip that draws the tabs and by the stage 3 draw, so they
+// cannot differ. A table tab is a tab of its own on the strip, beside Stage 3.
+const B_T3 = ['3A', '3B', '3C'];
+const bT3Tab = (view) => (B_T3.includes(view.stab) ? view.stab : null);
 function bSaveView(patch) {
   try { localStorage.setItem(BOARDS_VIEW_KEY, JSON.stringify({ ...bView(), ...patch })); } catch (_) { /* private window */ }
 }
@@ -4689,7 +4691,14 @@ async function drawBoards() {
   // unchanged: picking a stage 3 record set still fills the other two with its
   // parents, and they are one press away. The sub tab picked is remembered;
   // with none yet, the deepest stage picked opens.
-  const stab = [1, 2, 3].includes(Number(view.stab)) ? Number(view.stab) : deepest;
+  const stab = B_T3.includes(view.stab) ? view.stab : [1, 2, 3].includes(Number(view.stab)) ? Number(view.stab) : deepest;
+  // ON STAGE 3 OR ONE OF ITS TABLES (3.239.1, owner order 2026-09-23: "when tab
+  // Stage 3 is pressed ONLY have down to the button 'Check this set' -- THAT'S
+  // THE ONLY THING ON THE STAGE 3 TAB ... Table 3.A/B/C tabs ALL START WITH
+  // their title line ... not duplicate a bunch of info between tabs"). Stage 3
+  // shows the record set down to Check this set; a table tab shows that table
+  // and nothing above its title.
+  const onS3 = stab === 3 || B_T3.includes(stab);
   const stabOn = (n) => (n === stab ? ' on' : '');
   // THE THREE TABLE TABS SIT ON THIS STRIP, beside Stage 3 and a little apart
   // from it, and only while Stage 3 is picked (3.239.0, owner order 2026-09-23:
@@ -4707,7 +4716,7 @@ async function drawBoards() {
     <div class="tab${stabOn(1)}" data-bstab="1">Stage 1</div>
     <div class="tab${stabOn(2)}" data-bstab="2">Stage 2</div>
     <div class="tab${stabOn(3)}" data-bstab="3">Stage 3</div>
-    ${stab !== 3 ? '' : `<div class="tab tab-gap${t3On('3A')}" data-bt3tab="3A">Table 3.A</div>
+    ${!onS3 ? '' : `<div class="tab tab-gap${t3On('3A')}" data-bt3tab="3A">Table 3.A</div>
     <div class="tab${t3On('3B')}" data-bt3tab="3B">Table 3.B</div>
     <div class="tab${t3On('3C')}" data-bt3tab="3C">Table 3.C</div>`}
   </div>
@@ -4749,7 +4758,8 @@ async function drawBoards() {
       ${campaignNoteHtml(rowOf(s3sel))}
 </div>
     <div id="bS3"></div>
-  </div>`}`;
+  </div>`}
+  ${B_T3.includes(stab) ? '<div id="bT3"></div>' : ''}`;
   document.querySelectorAll('[data-bstab]').forEach((t) => {
     t.onclick = () => {
       const n = Number(t.dataset.bstab);
@@ -4758,13 +4768,16 @@ async function drawBoards() {
       bRedrawPeggedTo(`[data-bstab="${n}"]`);
     };
   });
-  // a table tab repaints the stage 3 table alone; the page holds still on the strip
+  // from one table to another repaints the table alone; from Stage 3 the page
+  // is what changes. Either way the page holds still on the strip.
   document.querySelectorAll('[data-bt3tab]').forEach((t) => {
     t.onclick = () => {
       const k = t.dataset.bt3tab;
-      if (k === bT3Tab(bView())) return;
-      bSaveView({ s3tab: k });
-      bRepaintTable(3, { peg: '#bStageTabs' });
+      const was = bT3Tab(bView());
+      if (k === was) return;
+      bSaveView({ stab: k });
+      if (was && $('#bT3') && bDrawn[3]) bRepaintTable(3, { peg: '#bStageTabs' });
+      else bRedrawPeggedTo(`[data-bt3tab="${k}"]`);
     };
   });
 
@@ -4853,6 +4866,23 @@ async function drawBoards() {
     }
     bDrawn[stage] = doc.id;
     await bDrawTable(doc, view, `#bT${stage}`);
+  }
+  // A TABLE TAB: the picked stage 3 set's table alone, on its own mount
+  if (B_T3.includes(stab) && $('#bT3')) {
+    const t3m = $('#bT3');
+    if (!s3sel) {
+      t3m.innerHTML = `<div class="panel"><p class="note">${sets.some((x) => x.stage === 3) ? 'no stage 3 record set is picked — pick one on Stage 3' : 'no record sets of this stage on this box yet — start one on Sweep'}</p></div>`;
+    } else {
+      const got3 = await apiOr(`api/stageset/${s3sel}`, null);
+      const doc3 = got3 && got3.set;
+      if (!doc3) t3m.innerHTML = '<div class="panel empty">this record set could not be read</div>';
+      else if (doc3.status !== 'done' && doc3.status !== 'incomplete') {
+        t3m.innerHTML = `<div class="panel"><p class="note">${esc(doc3.name)} is ${esc(doc3.status)}${doc3.progress ? ` — ${esc(doc3.progress)}` : ''}. Its tables appear when it lands.</p></div>`;
+      } else {
+        bDrawn[3] = doc3.id;
+        await bDrawTable(doc3, view, '#bT3');
+      }
+    }
   }
 }
 
@@ -5466,7 +5496,7 @@ function bWireUnitSort(root) {
   });
 }
 function bUnitsSection(doc, units, view) {
-  const head = `<p class="t3head"><b>Table 3.C: Every unit</b> — one row for each coin and shape: the traded coin, the coins it is read alongside and the chunk shape, on one line, worked out from its own records and from the numbers Work out the test history numbers rebuilt for them. The filter on this table is saved on this record set and the Funnel reads it: its coin box, Worth walking?, all units together and the rule steps see only the coins and shapes this filter keeps. Save it under a name and the Funnel offers it as a source.</p>`;
+  const head = `<p class="t3head" style="margin-top:0"><b>Table 3.C: Every unit</b> — one row for each coin and shape: the traded coin, the coins it is read alongside and the chunk shape, on one line, worked out from its own records and from the numbers Work out the test history numbers rebuilt for them. The filter on this table is saved on this record set and the Funnel reads it: its coin box, Worth walking?, all units together and the rule steps see only the coins and shapes this filter keeps. Save it under a name and the Funnel offers it as a source.</p>`;
   if (!units) return `${head}<p class="note"><b class="warn">the unit table could not be read</b> — the service did not answer for it.</p>`;
   if (units.pending) {
     const pd = units.pending;
@@ -6340,22 +6370,22 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   }).toString();
   const rankQs = new URLSearchParams({ from, n: 100, heldBack: bHeldBack ? '1' : '', ...bFilters('S3R') }).toString();
   const unitsQ = view.units || {};
-  // ONE TABLE AT A TIME, ON ITS OWN SUB TAB (3.238.0, owner order 2026-09-23:
-  // "we need more subtabs for Table 3.A, Table 3.B, and Table 3.C"). The table
-  // not on screen is not asked for: the lines about the whole set, and the
-  // held-back tick that reaches every table, stay above it. The three tabs sit
-  // on the Stage strip at the top (3.239.0), outside this table's own repaint,
-  // so every draw of the table marks the one it drew there.
+  // ONE TABLE AT A TIME, ON ITS OWN TAB (3.238.0, owner order 2026-09-23: "we
+  // need more subtabs for Table 3.A, Table 3.B, and Table 3.C"). t3 is null on
+  // the Stage 3 tab, which draws the heading and Check this set and asks for no
+  // table; on a table tab only that table is asked for and drawn, from its title
+  // line down (3.239.1). The tabs sit on the Stage strip at the top, outside
+  // this table's own repaint, so every draw marks the one it drew there.
   const t3 = bT3Tab(view);
   document.querySelectorAll('[data-bt3tab]').forEach((el) => el.classList.toggle('on', el.dataset.bt3tab === t3));
   const unitsQs = new URLSearchParams({ sort: unitsQ.sort || 'set', flip: unitsQ.flip ? '1' : '', offset: unitsQ.offset || 0, limit: 100 }).toString();
   const [ranked, coins, gap, filling, dropping, undoing, units] = await Promise.all([
-    apiOr(`api/stageset/${doc.id}/ranked?${rankQs}`, null),
+    t3 ? apiOr(`api/stageset/${doc.id}/ranked?${rankQs}`, null) : null,
     t3 === '3B' ? apiOr(`api/stageset/${doc.id}/coins?${qs}`, null) : null,
-    apiOr(`api/stageset/${doc.id}/missing`, null),
-    apiOr(`api/stageset/${doc.id}/fill-in/status`, null),
-    apiOr(`api/stageset/${doc.id}/drop-undeclared/status`, null),
-    apiOr(`api/stageset/${doc.id}/undo-append/status`, null),
+    t3 ? null : apiOr(`api/stageset/${doc.id}/missing`, null),
+    t3 ? null : apiOr(`api/stageset/${doc.id}/fill-in/status`, null),
+    t3 ? null : apiOr(`api/stageset/${doc.id}/drop-undeclared/status`, null),
+    t3 ? null : apiOr(`api/stageset/${doc.id}/undo-append/status`, null),
     t3 === '3C' ? apiOr(`api/stageset/${doc.id}/units?${unitsQs}`, null) : null,
   ]);
   // A finished set whose tables are missing totals itself when opened (the
@@ -6383,21 +6413,21 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   // after keyOf on purpose — a const read before its own line throws.
   const openKeys = view.openS3 === 'all' ? new Set(cr.map((r) => keyOf(r))) : new Set(view.openS3 || []);
   const swHead = `Stage 3 — settings priced from the kept votes (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})`;
+  // THE HELD-BACK TICK SITS UNDER THE TITLE OF EACH TABLE IT REACHES (3.239.1):
+  // Table 3.A and Table 3.B, each with its own note when a saved sort reads it.
+  const heldRow = (note) => `<div class="row" style="margin:.2rem 0 .4rem">
+      <label class="c" title="the held-back window is priced at stage 3 and kept for Held. Off, which is how this tab always opens, the held-back columns of Table 3.A, Table 3.B and the records under a row are not drawn, a saved sort on one of them is set aside, and a floor on one is not applied. On, they are drawn — and that is written on this record set as one dated look, which Held counts the way it counts a scan on Tune."><input type="checkbox" id="bHeldBack" ${bHeldBack ? 'checked' : ''}> show the held-back window</label>
+      ${note}
+    </div>`;
   if (!bPut(mount, `${incomplete}<div class="panel">
-    ${bFoldBtn('S3R', swHead)}
-    ${!bTableOpen('S3R') ? '' : `
+    ${t3 ? '' : `<h3 style="margin-top:0">${swHead}</h3>
     ${bCheckLine(doc, bView().checked && bView().checked.id === doc.id ? bView().checked.res : null)}
     ${bUndoLine(doc, undoing)}
     ${(undoing && undoing.half) ? '' : bDropLine(doc, gap, dropping)}
-    ${(undoing && undoing.half && !(filling && (filling.running || filling.stopped))) ? '' : bFillInLine(doc, gap, filling)}
-    <div class="row" style="margin:.2rem 0 .4rem">
-      <label class="c" title="the held-back window is priced at stage 3 and kept for Held. Off, which is how this tab always opens, the held-back columns of Table 3.A, Table 3.B and the records under a row are not drawn, a saved sort on one of them is set aside, and a floor on one is not applied. On, they are drawn — and that is written on this record set as one dated look, which Held counts the way it counts a scan on Tune."><input type="checkbox" id="bHeldBack" ${bHeldBack ? 'checked' : ''}> show the held-back window</label>
-      ${(ranked && ranked.sortSetAside) ? `<span class="note warn">the sort saved on this set reads the held-back window (${esc(bHeldBackSortWords(ranked.sortSetAside))}); it is set aside while the window is hidden, and the table reads in its own order</span>` : ''}
-      ${(coins && coins.sortSetAside) ? `<span class="note warn">Table 3.B was sorting by ${esc(B_HELD_BACK_WORDS_3B[coins.sortSetAside] || coins.sortSetAside)}, a held-back column; while the window is hidden it reads by beat the kept null money</span>` : ''}
-    </div>
-    `}
-    ${t3 !== '3A' ? '' : !bTableOpen('S3R') ? '<p class="note">put away — press the arrow to bring it back.</p>' : `
-    <p class="t3head"><b>Table 3.A: Settings, ranked</b> — one row per permuted Sweep Stage 3 setting, averaged over its coin/chunk-shape combinations promoted from Stage 2</p>
+    ${(undoing && undoing.half && !(filling && (filling.running || filling.stopped))) ? '' : bFillInLine(doc, gap, filling)}`}
+    ${t3 !== '3A' ? '' : `
+    <p class="t3head" style="margin-top:0"><b>Table 3.A: Settings, ranked</b> — one row per permuted Sweep Stage 3 setting, averaged over its coin/chunk-shape combinations promoted from Stage 2</p>
+    ${heldRow((ranked && ranked.sortSetAside) ? `<span class="note warn">the sort saved on this set reads the held-back window (${esc(bHeldBackSortWords(ranked.sortSetAside))}); it is set aside while the window is hidden, and the table reads in its own order</span>` : '')}
     ${bFilterGrid('S3R', [
     ['rule', 'quorum by', 'pick', 'shows only settings weighing the members this way. any shows every one.',
       ((VOCAB && VOCAB.agreeRule) || []).map((o) => String(o.value))],
@@ -6508,7 +6538,8 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       near-copies, so the setting rests on fewer real opinions than its member count suggests.</p>
     `}
     ${t3 !== '3B' ? '' : `
-    <p class="t3head"><b>Table 3.B: Every coin of every setting</b> — one row for each "short" setting x (each coin + chunk shape); every row averages the "factored out" settings: decision, band and 24/5 variants of the short setting, which are provided as sub-rows</p>
+    <p class="t3head" style="margin-top:0"><b>Table 3.B: Every coin of every setting</b> — one row for each "short" setting x (each coin + chunk shape); every row averages the "factored out" settings: decision, band and 24/5 variants of the short setting, which are provided as sub-rows</p>
+    ${heldRow((coins && coins.sortSetAside) ? `<span class="note warn">Table 3.B was sorting by ${esc(B_HELD_BACK_WORDS_3B[coins.sortSetAside] || coins.sortSetAside)}, a held-back column; while the window is hidden it reads by beat the kept null money</span>` : '')}
     ${bFilterGrid('S3C', [
     ...(bHeldBack ? [
     ['minShare', 'beat its own null set at least, %', 'num', 'hides rows that won less than this share of their head-to-heads. Empty hides nothing.'],
@@ -6621,7 +6652,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
           weekdaysOnly: btn.dataset.bpinwk === '1',
         },
         openS3: 'all',                 // every coin's records, opened
-        s3tab: '3B',                   // the answer is on Table 3.B's own sub tab
+        stab: '3B',                    // the answer is on the Table 3.B tab
         coins: { ...(bView().coins || {}), offset: 0 },
       });
       bRepaintTable(3, { scrollTo: '[data-bcoinhead]' });

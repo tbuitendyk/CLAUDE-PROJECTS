@@ -114,8 +114,8 @@ function cleanup() {
         if (localStorage.getItem('ui-units-started')) return;
         localStorage.setItem('ui-units-started', '1');
         localStorage.setItem('cx-tab', 'boards');
-        // Stage 3's sub tab and Table 3.C's own (3.238.0)
-        localStorage.setItem('cx-boards-view', JSON.stringify({ s3: setId, fold1: true, fold2: true, fold3: true, stab: 3, s3tab: '3C' }));
+        // the Table 3.C tab (3.239.1)
+        localStorage.setItem('cx-boards-view', JSON.stringify({ s3: setId, fold1: true, fold2: true, fold3: true, stab: '3C' }));
         localStorage.removeItem('cx-scroll');
       }, id);
       await page.goto(`http://127.0.0.1:${PORT}/construct.html`, { waitUntil: 'domcontentloaded' });

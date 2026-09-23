@@ -148,7 +148,7 @@ module.exports = {
   async boardsDrawsOneStageAtATimeOnItsOwnSubTab() {
     const src = JS();
     const draw = src.slice(src.indexOf('async function drawBoards()'), src.indexOf('async function bDrawTable('));
-    assert.ok(draw.includes('const stab = [1, 2, 3].includes(Number(view.stab)) ? Number(view.stab) : deepest;'),
+    assert.ok(draw.includes("const stab = B_T3.includes(view.stab) ? view.stab : [1, 2, 3].includes(Number(view.stab)) ? Number(view.stab) : deepest;"),
       'the stage sub tab is not remembered, or a first visit does not open on the deepest stage picked');
     for (const n of [1, 2, 3]) {
       assert.ok(draw.includes(`<div class="tab\${stabOn(${n})}" data-bstab="${n}">Stage ${n}</div>`), `there is no sub tab for Stage ${n}`);
@@ -158,13 +158,25 @@ module.exports = {
     }
     assert.ok(draw.includes("bSaveView({ stab: n });\n      bRedrawPeggedTo(`[data-bstab=\"${n}\"]`);"), 'a sub tab press is not remembered, or it moves the page');
     const pin = src.slice(src.indexOf("querySelectorAll('[data-bpin3b]')"), src.indexOf("querySelectorAll('[data-bpin3b]')") + 2200);
-    assert.ok(pin.includes("s3tab: '3B',"), 'Show in 3.B does not land on the Table 3.B sub tab, so its answer is drawn nowhere');
-    // THE TABLE TABS JOIN THE STAGE STRIP, and only while Stage 3 is picked (3.239.0)
-    assert.ok(draw.includes("${stab !== 3 ? '' : `<div class=\"tab tab-gap${t3On('3A')}\" data-bt3tab=\"3A\">Table 3.A</div>"),
-      'the table tabs are not on the Stage strip, or they show under Stage 1 and Stage 2, or Table 3.A is not set apart from Stage 3');
-    assert.ok(/\.tab\.tab-gap \{ margin-left:/.test(HTML()), 'the space before Table 3.A styles against a class the stylesheet does not have');
-    assert.ok(draw.includes("bSaveView({ s3tab: k });\n      bRepaintTable(3, { peg: '#bStageTabs' });"), 'a table sub tab press is not remembered, or it moves the page');
+    assert.ok(pin.includes("stab: '3B',"), 'Show in 3.B does not land on the Table 3.B tab, so its answer is drawn nowhere');
     const b3 = src.slice(src.indexOf('async function bDrawStage3('));
+    // THE TABLE TABS JOIN THE STAGE STRIP, only while Stage 3 or one of them is
+    // picked (3.239.0), and a table tab draws its table alone (3.239.1)
+    assert.ok(draw.includes('const onS3 = stab === 3 || B_T3.includes(stab);'), 'the table tabs do not know when Stage 3 or a table is picked');
+    assert.ok(draw.includes("${!onS3 ? '' : `<div class=\"tab tab-gap${t3On('3A')}\" data-bt3tab=\"3A\">Table 3.A</div>"),
+      'the table tabs are not on the Stage strip, or they show under Stage 1 and Stage 2, or Table 3.A is not set apart from Stage 3');
+    assert.ok(draw.includes("${B_T3.includes(stab) ? '<div id=\"bT3\"></div>' : ''}"), 'a table tab draws the Stage 3 section above its table');
+    assert.ok(draw.includes("await bDrawTable(doc3, view, '#bT3');"), 'a table tab does not draw the picked stage 3 set\'s table');
+    assert.ok(/\.tab\.tab-gap \{ margin-left:/.test(HTML()), 'the space before Table 3.A styles against a class the stylesheet does not have');
+    assert.ok(draw.includes("bSaveView({ stab: k });\n      if (was && $('#bT3') && bDrawn[3]) bRepaintTable(3, { peg: '#bStageTabs' });\n      else bRedrawPeggedTo(`[data-bt3tab=\"${k}\"]`);"),
+      'a table tab press is not remembered, or it moves the page');
+    // THE STAGE 3 TAB STOPS AT Check this set and asks for no table (3.239.1)
+    assert.ok(b3.includes("${t3 ? '' : `<h3 style=\"margin-top:0\">${swHead}</h3>\n    ${bCheckLine("), 'the Stage 3 tab does not end at Check this set');
+    assert.ok(b3.includes("t3 ? apiOr(`api/stageset/${doc.id}/ranked?${rankQs}`, null) : null,"), 'the Stage 3 tab asks for a table it does not draw');
+    // each table tab starts with its title line
+    for (const t of ['Table 3.A: Settings, ranked', 'Table 3.B: Every coin of every setting', 'Table 3.C: Every unit']) {
+      assert.ok(src.includes(`<p class="t3head" style="margin-top:0"><b>${t}</b>`), `${t} does not start its tab`);
+    }
     assert.ok(b3.includes("document.querySelectorAll('[data-bt3tab]').forEach((el) => el.classList.toggle('on', el.dataset.bt3tab === t3));"),
       'the strip is not marked with the table the stage 3 draw drew, so Show in 3.B leaves Table 3.A marked');
     assert.ok(!b3.slice(0, b3.indexOf('\nasync function ') > 0 ? b3.indexOf('\nasync function ') : undefined).includes('id="bT3Tabs"'), 'a second strip of table tabs is still drawn inside Stage 3');

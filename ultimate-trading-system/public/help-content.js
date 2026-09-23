@@ -531,9 +531,11 @@ window.HELP = {
       + 'one press away. Picking a stage 3 record set fills Stage 2 and Stage 1 with its parents; picking a stage 2 set '
       + 'fills its stage 1 parent; picking a parent puts the child selections away. Each box offers only the record sets '
       + 'that came out of what is picked above it. Each section can be put away and comes back as you left it. While '
-      + 'Stage 3 is picked, three more tabs stand beside it, a little apart: Table 3.A, Table 3.B and Table 3.C, one per '
-      + 'table. The lines about the whole set and the show the held-back window tick sit above the table, because they '
-      + 'reach every table. The tabs picked are remembered. No table mixes two stages.',
+      + 'Stage 3 or one of its tables is picked, three more tabs stand beside Stage 3, a little apart: Table 3.A, Table '
+      + '3.B and Table 3.C. Stage 3 shows the record set, down to Check this set; each table tab shows its table alone, '
+      + 'starting with the table\'s own title, for the stage 3 record set picked on Stage 3. The show the held-back '
+      + 'window tick sits under the title of Table 3.A and of Table 3.B, the tables it reaches. The tabs picked are '
+      + 'remembered. No table mixes two stages.',
     how: [
       ['One table per stage, and the chain always visible',
         'A stage 1 set shows the ranking: every unit under the fixed rule — forecast score, beat its own null '
