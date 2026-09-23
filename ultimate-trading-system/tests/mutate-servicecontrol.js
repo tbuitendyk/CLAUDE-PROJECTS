@@ -1380,7 +1380,7 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'funnel.js'), '  const want = Math.ceil((K * barPctOf(check)) / 100);', '  const want = Math.floor((K * barPctOf(check)) / 100);',
     'aValueCountsWhenItBeatsAtLeastTheBarOfTheCopies',
     '"at least 80%" of 19 copies is 15, below the share the owner set'],
-  [path.join(ROOT, 'lib', 'stages.js'), "S4.normaliseRule(state.rule), require('./funnel').barPctOf(state)]);", "S4.normaliseRule(state.rule)]);",
+  [path.join(ROOT, 'lib', 'stages.js'), "S4.normaliseRule(state.rule), require('./funnel').barPctOf(state),\n    filterSig(unitFilterOf(getSet(String(id))))]);", "S4.normaliseRule(state.rule),\n    filterSig(unitFilterOf(getSet(String(id))))]);",
     'theAcrossIsKeyedOnTheBarAsWellAsTheRule',
     'the same rule asked again under another bar is answered from the old reading'],
   [path.join(ROOT, 'public', 'construct.js'), "  if (saved && 'bar' in saved) delete saved.bar;\n", '',
