@@ -13,7 +13,7 @@ ID="$ID" node -e '
 const s=require("./lib/stages");
 const doc=s.getSet(process.env.ID); if(!doc){console.log("no such set");return;}
 const p=s.getSet(doc.parent.id); const t=s.readTally(p.id);
-console.log(`set ${doc.name} | unit ${doc.unit} | parent ${p.name} (${p.engineVersion}) layout ${(p.params||{}).windowLayout}`);
+console.log(`set ${doc.name} | unit ${doc.unit} | parent ${p.name} (${p.engineVersion}) layout ${(p.params||{}).windowLayout} | fee each way ${JSON.stringify((p.params||{}).fee)}`);
 const w=((p.windows||{}).units||{})[doc.unit]||{};
 const day=(x)=>x==null?"-":new Date(Number(x)).toISOString().slice(0,10);
 for (const k of ["train","test","hold","unread"]) { const x=w[k]; if(x) console.log(`  ${k}: ${day(x.fromTs)} .. ${day(x.toTs)} chunks ${x.chunks??"-"}`); }
