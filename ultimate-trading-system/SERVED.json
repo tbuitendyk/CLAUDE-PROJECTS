@@ -1,16 +1,16 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html — so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "4f22bd6d27013f65c06699cea0caca75d9eb8fd7",
-  "subject": "3.233.1: Tune -- a set whose trades were just captured is chosen under scan target",
-  "capturedAt": "2026-09-23T03:06:30Z",
+  "commit": "c47a3767cdd9cea308a73e709bff91507aa767de",
+  "subject": "3.234.1: the one-time move of the old scan results is deleted -- it has served the box",
+  "capturedAt": "2026-09-23T03:27:20Z",
   "files": {
     "public/construct.js": {
-      "sha256": "30ed7a57c90c74cbc0ddfd263bec47fe29830872ac3b0c6e53bf372b5a429a29",
-      "bytes": 958649
+      "sha256": "afbe61936261dc5ec3780d439415252b3f26e449549c02f3d57d10ebc757fb06",
+      "bytes": 960887
     },
     "public/help-content.js": {
-      "sha256": "20b8ec371dba0b786f3a974b85d22029289c1274aee3b8628563cc26571e7ac7",
-      "bytes": 178403
+      "sha256": "abec4e57f2fdef73000d997ee15b58e7f40d557aeab696b2f75ef5f21538e3fc",
+      "bytes": 178747
     }
   },
   "htmlNotVerified": "public/construct.html, public/trade.html and public/setup.html are served with the release stamped into the head (3.137.0) and, for construct.html, the cache markers rewritten to the content hash of each script, so their served bytes never equal their stored bytes. Nothing is generated from them."

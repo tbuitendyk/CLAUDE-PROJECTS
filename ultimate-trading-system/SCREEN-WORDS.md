@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **4f22bd6d2701 — what the box is serving**, not from the working tree.
+Generated from **c47a3767cdd9 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -1786,7 +1786,7 @@ again and appends are as at average behind beside best block both box Build buil
 
 # Tune
 
-## What the controls are called (96)
+## What the controls are called (99)
 
 - `- by conviction -`
 - `, each a counted look`
@@ -1836,6 +1836,7 @@ again and appends are as at average behind beside best block both box Build buil
 - `of`
 - `of the Stage 4 record set`
 - `on record for`
+- `on the`
 - `or apply a custom stop %`
 - `over`
 - `per-$`
@@ -1863,6 +1864,7 @@ again and appends are as at average behind beside best block both box Build buil
 - `test`
 - `test entries,`
 - `the capture on record`
+- `The last one kept on this set read`
 - `the reserve entries have been read`
 - `the scans, newest first`
 - `the survivor`
@@ -1875,6 +1877,7 @@ again and appends are as at average behind beside best block both box Build buil
 - `uplift`
 - `Verdict:`
 - `when`
+- `window(s)`
 - `window(s), captured`
 - `windows`
 - `windows the scans read`
@@ -1889,7 +1892,7 @@ again and appends are as at average behind beside best block both box Build buil
 
 _none_
 
-## Sentences the page prints (34)
+## Sentences the page prints (37)
 
 - ) — one at a time; both launchers are disabled until it lands (scans run minutes and cannot be aborted mid-flight).
 - What the two scans below read: a Stage 4 record set whose trades are captured above, one survivor of it
@@ -1901,10 +1904,13 @@ _none_
 - tighter stop → NET $). A stop you force onto the survivor yourself, or clear from it, is recorded on that survivor
 - and scanned the same way, as one row of the same table. Nothing here is applied to any trading machine. Target:
 - no choice about the stop has been recorded for
-- , the record's own dollars) a member that agreed
 - Conviction sizing — bet more when more members agree?
 - Prices the DECLARED clip ladder (multiplier = winning-side vote count) as a pure $ overlay on the
 - same captured trades, against a shuffled-assignment chance check and exposure-honest metrics.
+- , the record's own dollars) a member that agreed
+- - choose those under Tuning targets to see it.
+- Not run yet on what is chosen under Tuning targets - press
+- to run it.
 - clip.
 - NET = winner $ given up + loss-side $ vs no stop; positive means the stop helps. The green row, when there
 - is one, is the stop on record for this survivor; a no-stop choice is the baseline and changes nothing. Nothing on this
@@ -1926,10 +1932,10 @@ _none_
 - no Stage 4 record set on this box yet
 - survivor(s) are not in the stage 3 set's block on this unit
 
-## Every word, flat (262)
+## Every word, flat (269)
 
 ```
-aborted about above against agree agreed aimed all among amount and any anywhere. appears applied apply Apply are as asks at baseline be because been before below bet block both box by called cannot capture Capture captured chance Chance changes check choice Choosing clear clip clip. clipped comes concurrent conviction Conviction count counted curve custom deals DECLARED depth disabled distance dollars down drawdown each enters entries entries. every Exposure exposure-honest failed finds first fixed flat for force from give given green has have heavy Held held-back helps. here holds hour how in is it it. its keeps ladder lands last launchers list look losers loses loss-side machine. made many market mean means member members metrics. mid-flight minutes money more multiplier NET never newest no No no-stop no-winner-lost not nothing Nothing nothing. of off on Once one one. onto or over overlay own peak per per- Per-trade plus positive price priced Prices Protective protective pure read Read reading reads Reads reason record recorded refused release reserve return row rule run Run running runs. sacrifice same Save says scan scanned scans set shuffle shuffled shuffled-assignment side simulator single sizing spoke Stage stage stop survivor survivors sweep table table. Take take taken target Target targets test that the The their them themselves there this This ticked ticked. tighter tightest time to top trade trade. traded traded. trades trades. trading trailing training Tune tuner Tuning two under unit until up uplift Verdict vote vs was way What what when whose will window window. windows winner winners winning-side with worst would writes yet yet. you your yourself
+aborted about above against agree agreed aimed all among amount and any anywhere. appears applied apply Apply are as asks at baseline be because been before below bet block both box by called cannot capture Capture captured chance Chance changes check choice choose Choosing chosen clear clip clip. clipped comes concurrent Conviction conviction count counted curve custom deals DECLARED depth disabled distance dollars down drawdown each enters entries entries. every Exposure exposure-honest failed finds first fixed flat for force from give given green has have heavy Held held-back helps. here holds hour how in is it it. its keeps kept ladder lands last launchers list look losers loses loss-side machine. made many market mean means member members metrics. mid-flight minutes money more multiplier NET never newest no No no-stop no-winner-lost not Not nothing Nothing nothing. of off on Once one one. onto or over overlay own peak per per- Per-trade plus positive press price priced Prices Protective protective pure read Read reading reads Reads reason record recorded refused release reserve return row rule run Run running runs. sacrifice same Save says scan scanned scans see set shuffle shuffled shuffled-assignment side simulator single sizing spoke Stage stage stop survivor survivors sweep table table. Take take taken target Target targets test that the The their them themselves there this This those ticked ticked. tighter tightest time to top trade trade. traded traded. trades trades. trading trailing training Tune tuner Tuning two under unit until up uplift Verdict vote vs was way What what when whose will window window. windows winner winners winning-side with worst would writes yet yet. you your yourself
 ```
 
 ---
