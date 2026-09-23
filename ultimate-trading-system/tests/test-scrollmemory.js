@@ -161,9 +161,10 @@ module.exports = {
       ['if (out) bRepaintTable(doc.stage);\n    };\n  });\n}\n\n// THE RANKED TABLE SORTS BY ONE PICKED COLUMN', 'the stage 1 and 2 column sorts'],
       ['if (out) bRepaintTable(3);\n    };\n  });\n}\n\n// A REDRAW THAT LEAVES THE PAGE WHERE IT IS', "Table 3.A's column sorts"],
       ["bSaveView({ coins: { ...cq, sort: key, flip: active ? !cq.flip : false, offset: 0 } });\n      bRepaintTable(3, { peg: '[data-bcoinhead]' });", "Table 3.B's column sorts"],
-      ["  bRepaintTable(bStageOfKey(key), key === 'S3C' ? { peg: '[data-bcoinhead]' } : {});\n}\n// spec: [id, name shown, kind, tooltip, options?]", 'Apply settings and auto-apply settings'],
+      // 3.230.0: Table 3.C's own peg beside Table 3.B's
+      ["  bRepaintTable(bStageOfKey(key), key === 'S3C' ? { peg: '[data-bcoinhead]' } : key === 'S3U' ? { peg: '[data-bunithead]' } : {});\n}\n// spec: [id, name shown, kind, tooltip, options?]", 'Apply settings and auto-apply settings'],
       ["bSaveView({ filters: all, s3cBeforePin: null, s3cPin: null, openS3: [], coins: { ...(bView().coins || {}), offset: 0 } });\n      bRepaintTable(3, { peg: '[data-bcoinhead]' });", 'Revert filters'],
-      ["await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/filters`, { filters: {} });\n      bRepaintTable(bStageOfKey(key), key === 'S3C' ? { peg: '[data-bcoinhead]' } : {});", 'Clear filters'],
+      ["await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/unitfilter`, { filters: {} });\n      bRepaintTable(bStageOfKey(key), key === 'S3C' ? { peg: '[data-bcoinhead]' } : key === 'S3U' ? { peg: '[data-bunithead]' } : {});", 'Clear filters'],
       ['bSaveView({ tables: all });\n      bRepaintTable(bStageOfKey(key));', "a table's own arrow"],
       ["bRepaintTable(3, { scrollTo: '[data-bcoinhead]' });\n    };\n  });\n  const hb = $(mount).querySelector('#bHeldBack');", 'Show in 3.B'],
       ["if (!r) { bHeldBack = false; hb.checked = false; return; }\n      }\n      bRepaintTable(3, { peg: '[data-bcoinhead]' });", 'show the held-back window'],
