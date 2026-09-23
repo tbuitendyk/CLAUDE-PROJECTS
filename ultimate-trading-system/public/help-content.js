@@ -601,7 +601,8 @@ window.HELP = {
           + 'records under a coin are the decision, band and 24/5 variants of the setting, and the highlighted one is '
           + 'the row of Table 3.A you actually pressed. So the averages above and the one setting you asked about are '
           + 'both in front of you.\n\n'
-          + 'Every coin opens its own records separately, so a setting priced on many coins takes a moment.',
+          + 'Every coin opens its own records separately, so a setting priced on many coins takes a moment. Close all '
+          + 'records, in the row above the table, closes every open row again at once.',
       },
       bFillUnits: {
         what: 'Re-runs exactly the units a stage 1 run lost, and marks the record set finished when it matches its plan again. Only the absent ones are trained \u2014 eighteen units out of ten thousand costs minutes, not another whole run.',

@@ -162,6 +162,21 @@ function cleanup() {
     expect(!(await page.locator('#bT3 [data-bapply="S3C"]').isDisabled()), 'Apply settings wakes when a box changes');
     await press('Table 3.B Apply settings', '#bT3 [data-bapply="S3C"]', { changes: true });
     await press('Table 3.B Clear filters', '#bT3 [data-bfilterclear="S3C"]', { changes: true });
+    // SHOW IN 3.B opens every coin's records, and CLOSE ALL RECORDS closes them again (3.231.0)
+    expect(await page.locator('#bT3 [data-brecclose="S3C"]').isDisabled(), 'Close all records is dead while nothing is open');
+    // Show in 3.B brings Table 3.B onto the screen on purpose, so it is pressed
+    // plainly rather than held to the stays-under-the-pointer rule
+    await scrollSo('#bT3 [data-bpin3b]', 300);
+    await page.locator('#bT3 [data-bpin3b]').first().click();
+    await settled();
+    const openRows = () => page.evaluate(() => document.querySelectorAll('#bT3 tr[data-bkey] + tr:not([data-bkey])').length);
+    expect((await openRows()) > 0, `Show in 3.B opened the coins' records (${await openRows()} open)`);
+    expect(!(await page.locator('#bT3 [data-brecclose="S3C"]').isDisabled()), 'Close all records wakes once rows are open');
+    await scrollSo('#bT3 [data-brecclose="S3C"]', 300);
+    await press('Close all records', '#bT3 [data-brecclose="S3C"]', { changes: true });
+    expect((await openRows()) === 0, `Close all records closed every open row (${await openRows()} still open)`);
+    expect(await page.locator('#bT3 [data-brecclose="S3C"]').isDisabled(), 'and it is dead again');
+    expect((await page.locator('#bT3 [data-bunpin3b]').count()) === 1, 'the pinned setting and Revert filters are left as they were: closing the rows is not reverting the filters');
     // and Table 3.A's floor the same way
     await scrollSo('#bT3 [data-bapply="S3R"]', 500);
     const rbox = page.locator('#bT3 input[data-bfilter^="S3R:"][type="number"]').first();

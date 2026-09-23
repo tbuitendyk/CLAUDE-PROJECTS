@@ -169,6 +169,7 @@ module.exports = {
       ["bRepaintTable(3, { scrollTo: '[data-bcoinhead]' });\n    };\n  });\n  const hb = $(mount).querySelector('#bHeldBack');", 'Show in 3.B'],
       ["if (!r) { bHeldBack = false; hb.checked = false; return; }\n      }\n      bRepaintTable(3, { peg: '[data-bcoinhead]' });", 'show the held-back window'],
       ["bSaveView({ openS3: [...keys] });\n      bRepaintTable(3, { peg: '[data-bcoinhead]' });", 'the records buttons'],
+      ["bSaveView({ openS3: [] });\n      bRepaintTable(3, { peg: '[data-bcoinhead]' });", 'Close all records'],
       ['bSaveView({ checked: { id, res } });\n      bRepaintTable(3);', 'Check this set'],
       ["said.textContent = 'every unit is back — reopening'; bRepaintTable(1); return;", 'the stage 1 put-back'],
     ];

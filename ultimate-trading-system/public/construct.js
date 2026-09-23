@@ -6181,6 +6181,17 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ['minFieldRead', 'field read at least', 'num', 'hides rows whose average read on the trades placed is below this. Empty hides nothing.'],
     ['setting', 'Table 3.A selection setting', 'text', 'shows only the coins of the setting named here, matched whole. Show in 3.B on a row of Table 3.A fills this in for you and takes every other filter off. Empty shows every setting.', 'wide'],
   ], coins && coins.spread)}
+    <!-- CLOSE EVERY OPEN ROW AT ONCE (3.231.0, owner 2026-09-23: "when a show in
+         3.b button is used every single row on 3.b is opened to show the internal
+         records. there needs to be a collapse button on the top of the 3.b view to
+         collapse all of the open rows ... the way you've got it coded now it's like
+         punishment for using the button"). Show in 3.B opens every coin's records
+         on purpose; this is the way back. In a row of its own with its count
+         beside it (RULE FOUR-A), dead while nothing is open. -->
+    <div class="row">
+      <button data-brecclose="S3C"${openKeys.size ? '' : ' disabled'} title="closes the records open under every row of this table at once. The rows stay; Records on a row opens its own again. Greyed out while nothing is open.">Close all records</button>
+      <span class="note">${openKeys.size ? `${Number(openKeys.size).toLocaleString()} row(s) have their records open` : 'no records are open'}</span>
+    </div>
     <div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-bcoinhead style="text-align:left;border-bottom:1px solid var(--line)">
         <th ${bth.replace('.3rem .3rem', '.3rem .3rem .3rem 0')} title="the setting with decision, band and 24/5 taken out of its name, so one of these stands for all its decision, band and 24/5 variants at once — they are the records underneath, and the rows column counts them. Table 3.A holds the full settings, which is why it has more rows than this column has values.">SHORT SETTING: DECISION, BAND, 24/5 FACTORED OUT${bCoinSortBtn(view, 'setting', '↑')}</th>
         <th ${bth} title="the traded coin and the chunk shape it was priced at, and under them the one or two coins it is read alongside, on rows that have any. All of it is in this one cell, and the row is one setting on one coin at one chunk shape. What is listed after alongside is context only — read against, never bought or sold. Same word, same meaning, as the alongside column on the two tables above.">coin + chunk shape + alongside${bCoinSortBtn(view, 'coin', '↑')}</th>
@@ -6289,6 +6300,14 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       const keys = new Set(bView().openS3 === 'all' ? [...openKeys] : (bView().openS3 || []));
       if (keys.has(k)) { keys.delete(k); } else { keys.add(k); }
       bSaveView({ openS3: [...keys] });
+      bRepaintTable(3, { peg: '[data-bcoinhead]' });
+    };
+  });
+  // every open row closed at once (3.231.0); the page holds still on the same peg the rows use
+  $(mount).querySelectorAll('[data-brecclose]').forEach((btn) => {
+    btn.onclick = () => {
+      if (btn.disabled) return;
+      bSaveView({ openS3: [] });
       bRepaintTable(3, { peg: '[data-bcoinhead]' });
     };
   });

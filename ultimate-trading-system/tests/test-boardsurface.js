@@ -332,3 +332,30 @@ module.exports.theBoardsFieldAndVerdictCellsWrapInsteadOfWideningTheTable = func
   // the button row under the filters starts where the boxes start
   a.ok(/\.filters \.frow \{ grid-column:2 \/ -1;/.test(css), 'the filter buttons start under the names instead of under the boxes');
 };
+
+// SHOW IN 3.B OPENS EVERY ROW'S RECORDS ON PURPOSE, AND CLOSE ALL RECORDS IS
+// THE WAY BACK (3.231.0, owner 2026-09-23: "the way you've got it coded now
+// it's like punishment for using the button"). One button in a row of its own
+// above the table with its count beside it, dead while nothing is open, that
+// empties the open list and repaints the table where it stands.
+module.exports.showInThreeBOpensEveryRowAndCloseAllRecordsClosesThemAgain = function () {
+  const { assert: a } = require('./helpers');
+  const body = UI.slice(UI.indexOf('async function bDrawStage3('));
+  const row = body.slice(body.indexOf('<button data-brecclose="S3C"'), body.indexOf('<div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-bcoinhead'));
+  a.ok(row.length > 0 && row.length < 900, 'Close all records is not drawn just above Table 3.B');
+  a.ok(row.includes(`<button data-brecclose="S3C"\${openKeys.size ? '' : ' disabled'}`), 'the button is not dead while nothing is open');
+  a.ok(row.includes('>Close all records</button>'), 'the button is not named Close all records');
+  a.ok(row.includes("row(s) have their records open` : 'no records are open'"), 'the count beside the button does not say how many rows are open');
+  // its own row, with no field in it (RULE FOUR-A), and the button first
+  const start = body.lastIndexOf('<div class="row">', body.indexOf('<button data-brecclose="S3C"'));
+  a.ok(start > 0 && !body.slice(start, body.indexOf('<button data-brecclose="S3C"')).includes('<label'), 'the button shares a row with a field');
+  // the press empties the open list and holds the page on the rows' own peg
+  const wire = body.slice(body.indexOf("querySelectorAll('[data-brecclose]')"), body.indexOf("querySelectorAll('[data-brecclose]')") + 400);
+  a.ok(wire.includes('bSaveView({ openS3: [] });') && wire.includes("bRepaintTable(3, { peg: '[data-bcoinhead]' });"), 'the press does not close every row and repaint in place');
+  // and Show in 3.B still opens them all -- the press is the way back, not a change to the door
+  a.ok(body.includes("openS3: 'all',                 // every coin's records, opened"), 'Show in 3.B no longer opens every coin\'s records');
+  const help = fs.readFileSync(path.join(ROOT, 'public', 'help-content.js'), 'utf8');
+  a.ok(help.includes("'Every coin opens its own records separately, so a setting priced on many coins takes a moment. Close all '")
+    && help.includes("+ 'records, in the row above the table, closes every open row again at once.'"), 'the Help tab does not say how to close them again');
+};
+
