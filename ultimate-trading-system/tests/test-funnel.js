@@ -2788,7 +2788,7 @@ module.exports = {
     // Stage 4 record set view too, under the same predicate, so the two views
     // no longer disagree about what is at the top.
     for (const [what, frag] of [['a set showing',
-      '`${fHoldShown(st, away, true) ? `<div class="panel" id="fHoldWrap">${fHoldPanel(d, st)}</div>` : \'\'}\n    <div class="panel">${fTitle(d, st, cd.set.name, away, true)}</div>'],
+      '`${fHoldShown(st, away, true) ? `<div class="panel" id="fHoldWrap">${fHoldPanel(d, st)}</div>` : \'\'}\n    <div class="panel">${fTitle(d, st, `${rebuildPrefix(cd.set)}${cd.set.name}`, away, true)}${rebuildLineHtml(cd.set)}</div>'],
     ['the walk',
       '`${fHoldShown(st, away, open) ? `<div class="panel" id="fHoldWrap">${fHoldPanel(d, st)}</div>` : \'\'}\n  <div class="panel">${fTitle(d, st, open ? F_NEW_NAME : F_HOME_NAME, away, open)}</div>'],
     ['a set that will not open', '`<div class="panel">${fTitle(d, st, named)}</div>']]) {
@@ -3173,9 +3173,10 @@ module.exports = {
     const page = src('public/construct.js');
     const wire = page.slice(page.indexOf('function fWireCut('), page.indexOf('function fRuleBox('));
     const rn = wire.slice(wire.indexOf("$('#fCutRename')"), wire.indexOf("const sr = $('#fSetRebuild');"));
-    assert.ok(rn.includes("const title = $('#fTitleName');") && rn.includes('title.textContent = out.name'),
+    // (a set flagged REBUILD REQUIRED keeps the words in front of the new name, 3.236.0)
+    assert.ok(rn.includes("const title = $('#fTitleName');") && rn.includes("title.textContent = `${rebuildPrefix(cd.set)}${out.name || ''}`"),
       'the rename does not change the bold name at the top');
-    assert.ok(rn.includes("if (o.value === cd.set.id) o.textContent = out.name"),
+    assert.ok(rn.includes("if (o.value === cd.set.id) o.textContent = `${rebuildPrefix(cd.set)}${out.name || ''}`"),
       'the rename leaves the old name in the Stage 4 record set box');
     assert.ok(!/drawFunnel\(\)/.test(rn),
       'the rename waits for a whole redraw, so the old name stays on screen for as long as the board takes to read');

@@ -875,6 +875,114 @@ module.exports = {
       try { fset.deleteField(field.id, field.id); } catch (_) { /* never written */ }
     }
   },
+  // A FLAGGED FAMILY IS REBUILT IN PLACE WHEN ONE OF IT IS OPENED (3.236.0,
+  // owner 2026-09-23: "you need to go through those record sets that have
+  // corrupt data on them and they have to be rebuilt ... rebuilding on first
+  // open"). A rule cut from a sized stage 3 set, a held set read from it and a
+  // half-life set built from it, all written under the release before every
+  // trade was sized: opening the held set rebuilds the three -- the rule cut
+  // again with its own rule, the held set read again under its number, the
+  // half-life set built again from a run redone -- each under its own id and
+  // name, each kept as it was beside it, and none flagged afterwards.
+  async aFlaggedFamilyIsRebuiltInPlaceWhenOneOfItIsOpened() {
+    const fset = require('../lib/fieldset');
+    const field = fabricatedField();
+    let c = null;
+    const aside = [];
+    try {
+      c = await chain('tune rebuild family test', { fieldId: field.id, fieldRead: 'agreement', fieldAgreeMin: '30', fieldRungs: '50:1,100:2', fieldSilent: '0.5' });
+      const rule = c.cut;
+      // a held reading and a half-life set, the way the owner's screens make them
+      stages.judgeStart(rule.id, 'held', { barPct: 100 });
+      await settle(() => stages.judgeStatus(rule.id, 'held'), 'the held reading');
+      const held = stages.judgeSetsOf(rule.id, 'held')[0];
+      stages.halfLifeStart(rule.id, { months: [12] });
+      await settle(() => stages.halfLifeStatus(rule.id), 'the half-life run');
+      const run1 = stages.getSet(rule.id).halflife[0];
+      // a run on the planted coin may improve no record (test-halflife.js says
+      // so too); the set is then built off a table with its first row marked
+      // won, so the rebuild of a half-life set is still driven
+      let hl = null;
+      try { hl = stages.buildHalfLifeSet(rule.id, { runId: run1.id, name: 'tune rebuild family test half-life' }); } catch (e) {
+        const ruleFile = path.join(SETS_DIR, `${rule.id}.json`);
+        const rd = JSON.parse(fs.readFileSync(ruleFile, 'utf8'));
+        rd.halflife[0].rows[0].best = 'h12';
+        fs.writeFileSync(ruleFile, JSON.stringify(rd));
+        hl = stages.buildHalfLifeSet(rule.id, { runId: run1.id, name: 'tune rebuild family test half-life' });
+      }
+      c.made.push(hl.id);
+      const family = [rule.id, held.id, hl.id];
+      aside.push(...family);
+      // written under the release before every trade was sized
+      const before = {};
+      for (const id of family) {
+        const file = path.join(SETS_DIR, `${id}.json`);
+        const d = JSON.parse(fs.readFileSync(file, 'utf8'));
+        d.release = '3.234.6';
+        fs.writeFileSync(file, JSON.stringify(d));
+        before[id] = d;
+        assert.ok(((stages.rebuildOf(d) || {}).reasons || []).some((r) => r.key === 'stage4'), `${d.name} is flagged for its survivors`);
+      }
+      assert.deepStrictEqual(stages.rebuildChainOf(stages.getSet(held.id)).map((d) => d.id), family, 'opening the held set takes in the rule, its held set and the half-life set built from it, in that order');
+      // opened: the whole family is rebuilt
+      const started = stages.rebuildStart(held.id);
+      assert.ok(started.running, `the rebuild starts: ${JSON.stringify(started)}`);
+      assert.ok(stages.rebuildStatus(hl.id).running, 'every set of the family says the rebuild is going');
+      assert.ok(stages.rebuildStatus('s4-not-in-this-family').none, 'a set outside it says nothing');
+      assert.strictEqual(stages.rebuildStart(rule.id).running, true, 'opening another of the family while it goes starts nothing new');
+      await stages.rebuildWait();
+      const ended = stages.rebuildStatus(held.id);
+      assert.ok(!ended.running && (ended.done || /could not be rebuilt/.test(ended.error || '')), `and each says how it ended: ${JSON.stringify(ended)}`);
+      // a half-life set whose redone run improves no record is left as it was, and says why (D14)
+      const hlAfter = stages.getSet(hl.id);
+      const hlStopped = (stages.rebuildOf(hlAfter) || {}).failed || null;
+      if (hlStopped) {
+        assert.ok(/no record improved/.test(hlStopped), `the half-life set that could not be built again says why: ${hlStopped}`);
+        assert.strictEqual(hlAfter.release, '3.234.6', 'and is left exactly as it was');
+        family.pop();
+      }
+      for (const id of family) {
+        const now = stages.getSet(id);
+        const was = before[id];
+        assert.strictEqual(now.name, was.name, `${was.name} keeps its name`);
+        assert.strictEqual(now.release, require('../package.json').version, `${was.name} is written under this release`);
+        assert.ok(now.rebuilt && now.rebuilt.fromRelease === '3.234.6', `${was.name} says it was rebuilt, and from what`);
+        assert.strictEqual(stages.rebuildOf(now), null, `${was.name} is no longer flagged: ${JSON.stringify(stages.rebuildOf(now))}`);
+        assert.ok(fs.existsSync(path.join(SETS_DIR, `${id}.json.before-rebuild`)), `${was.name} as it was is kept beside it`);
+      }
+      const r = stages.getSet(rule.id);
+      assert.deepStrictEqual(r.survivors.map((x) => x.label).sort(), before[rule.id].survivors.map((x) => x.label).sort(), 'the rule, cut again on a board that has not moved, keeps the same survivors');
+      const h = stages.getSet(held.id);
+      assert.ok(h.number === before[held.id].number && h.block && h.block.at > before[held.id].block.at, 'the held set is read again under its own number');
+      // the run on the survivors as they were went aside with the old rule, and
+      // the run done again on the rule cut again is its first (D18)
+      const runs = stages.getSet(rule.id).halflife;
+      assert.ok(runs.length === 1 && runs[0].look === 1 && runs[0].at > run1.at, `the half-life run was done again on the rule, and is its only one: ${runs.length}`);
+      assert.ok(fs.existsSync(`${stages.halfLifeFile(rule.id, run1.id)}.before-rebuild`), 'the retrained members of the run as it was are kept beside it');
+      assert.ok(fs.existsSync(stages.halfLifeFile(rule.id, runs[0].id)), 'and the run done again has its own');
+      if (!hlStopped) {
+        const x = stages.getSet(hl.id);
+        assert.strictEqual(x.derived.run, runs[0].id, 'the half-life set is built from the run done again');
+        assert.ok(x.derived.at > before[hl.id].derived.at, 'which is newer than the one it was built from');
+        assert.deepStrictEqual(x.derived.months, [12], 'at the half-lives its own run was ticked at');
+      }
+      // pressed by the screen once a visit, followed in place, never redrawn
+      const ui = src('public/construct.js');
+      const open = ui.slice(ui.indexOf('function rebuildOnOpen(id) {'), ui.indexOf('// THE RULES A TAB LISTS'));
+      assert.ok(open.includes('if (rebuiltThisVisit.has(`stage4|${id}`)) return;'), 'the screen presses once a visit');
+      assert.ok(open.includes('post(url, {})') && open.includes('api(url)'), 'it presses, then follows the rebuild');
+      assert.ok(!/\bdraw[A-Z]\w*\(/.test(open), 'and never draws the screen again for it');
+      const srv = src('server.js');
+      assert.ok(srv.includes("app.post('/api/funnel/set/:id/rebuild-required'") && srv.includes("app.get('/api/funnel/set/:id/rebuild-required', (req, res) => res.json(stages.rebuildStatus(req.params.id)));"), 'the press and the follow each have their address');
+    } finally {
+      for (const id of aside) { try { fs.rmSync(path.join(SETS_DIR, `${id}.json.before-rebuild`), { force: true }); } catch (_) { /* none */ } }
+      for (const f of (() => { try { return fs.readdirSync(SETS_DIR); } catch (_) { return []; } })()) {
+        if (f.endsWith('.before-rebuild') && aside.some((id) => f.startsWith(id))) { try { fs.rmSync(path.join(SETS_DIR, f), { force: true }); } catch (_) { /* none */ } }
+      }
+      if (c) c.cleanup();
+      try { fset.deleteField(field.id, field.id); } catch (_) { /* never written */ }
+    }
+  },
   // BREAKOUT TRADES TAKE NO PROTECTIVE STOP YET, AND THE CONVICTION ROWS TAKE
   // YOUR NUMBERS (3.235.0, owner orders 2026-09-23: "when the tuning target is
   // selected, for a record set that has breakout trades ... disables the tune

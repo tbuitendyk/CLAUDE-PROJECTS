@@ -8798,7 +8798,10 @@ function makeJudgeSet(rule, stretch, { id, seq, number, block, standsOn, at }) {
     block,
   };
 }
-async function judgeRunOn(doc, stretch, asked, note = null) {
+// `opts.into` (3.236.0, the rebuild of a set flagged REBUILD REQUIRED): the
+// held or reserve set this reading is written into, in place -- its id, its
+// number and its name kept, the readings before it counted as they were.
+async function judgeRunOn(doc, stretch, asked, note = null, opts = {}) {
   const V = require('./funnelverify');
   const S4 = require('./funnelset');
   // THE RULES FIRST, before any number exists
@@ -8808,7 +8811,8 @@ async function judgeRunOn(doc, stretch, asked, note = null) {
   if (!footing.ok) throw new Error(footing.why);
   const standsOn = stretch === 'reserve' ? heldStandingOf(doc) : null;
   if (stretch === 'reserve' && !standsOn) throw new Error(NO_HELD_PASS);
-  const had = judgeSetsOf(doc.id, stretch);
+  const into = opts.into || null;
+  const had = into ? judgeSetsOf(doc.id, stretch).filter((x) => x.id !== into.id && (Number(x.number) || 0) < (Number(into.number) || 0)) : judgeSetsOf(doc.id, stretch);
   let read; let copies; let survivors; let sanity; let lineA = null; let lineB = null;
   let window = null; let priced = null; let missing = []; let forecasts = null; let boardStamp = null;
   let fee = (join.parent.params || {}).fee ?? null;
@@ -8881,11 +8885,11 @@ async function judgeRunOn(doc, stretch, asked, note = null) {
   // the stamp goes onto what is on disk NOW, and the set it makes is numbered by what is on disk now
   const fresh = getSet(doc.id);
   if (!fresh) throw new Error('the set went away while it was being read');
-  const number = had.length + 1;
+  const number = into ? Number(into.number) || had.length + 1 : had.length + 1;
   const { stageGate, ...rest } = footing;
   const at = new Date().toISOString();
-  const seq = seqFor(4);
-  const id = `s4-${Date.now().toString(36)}-${seq}`;
+  const seq = into ? into.seq : seqFor(4);
+  const id = into ? into.id : `s4-${Date.now().toString(36)}-${seq}`;
   const block = V.buildBlock({
     id: `${id}-v1`, at, release: ENGINE_VERSION, look: number, stretch,
     rules, stageGate, footing: rest,
@@ -8901,6 +8905,7 @@ async function judgeRunOn(doc, stretch, asked, note = null) {
     tuned,
   });
   const set = makeJudgeSet(fresh, stretch, { id, seq, number, block, standsOn, at });
+  if (into) Object.assign(set, rebuiltStampOf(into, set));
   saveSet(set);
   const stamp = stretch === 'held' ? 'heldBackReadAt' : 'reserveReadAt';
   if (!fresh[stamp]) { fresh[stamp] = block.at; saveSet(fresh); }
@@ -9776,11 +9781,318 @@ function rebuildOf(doc) {
       reasons.push({ key: 'stage4', why: `its survivors were chosen and read on figures worked out with every trade at the standard size, under release ${doc.release || 'unknown'}` });
     }
     if (doc.capture && doc.capture.v !== CAPTURE_V) {
-      reasons.push({ key: 'capture', why: 'its trades were captured with every trade at the standard size, and are captured again when it is chosen on Tune' });
+      reasons.push({ key: 'capture', why: 'its capture is out of date, and its trades are captured again when it is chosen on Tune' });
     }
   }
-  return reasons.length ? { words: 'REBUILD REQUIRED', reasons } : null;
+  if (!reasons.length) return null;
+  const out = { words: 'REBUILD REQUIRED', reasons };
+  // what the rebuild is doing about it right now, or why it stopped (3.236.0)
+  if (rebuildRun && rebuildRun.chain.includes(doc.id)) {
+    if (rebuildRun.failures[doc.id]) out.failed = rebuildRun.failures[doc.id];
+    else if (!rebuildRun.done && !rebuildRun.error) out.running = rebuildRun.words;
+  } else if (rebuildQueue.includes(doc.id)) out.running = `waiting: ${rebuildRun ? rebuildRun.name : 'another set'} is being rebuilt first — one at a time`;
+  return out;
 }
+
+// THE REBUILD OF A STAGE 4 SET WHOSE SURVIVORS WERE CHOSEN ON FIGURES WORKED OUT
+// AT THE STANDARD SIZE (3.236.0, owner 2026-09-23: "you need to go through those
+// record sets that have corrupt data on them and they have to be rebuilt ...
+// rebuilding on first open"). Opening such a set starts it: everything it
+// stands on first, one step at a time, each waiting for the box --
+//   the test history numbers of its coin and shape, worked out again;
+//   the rule, cut again in place with the rule it recorded;
+//   a half-life set, its run redone on the rule cut again and the set built
+//   again from it under the same name;
+//   a held or reserve set, read again in place under the same number.
+// Each set keeps its id and its name; its document and its capture as they
+// were are kept beside it (<id>.json.before-rebuild), so nothing is lost; its
+// capture is taken again the next time it is chosen on Tune. Looks on the old
+// readings do not count (owner: "the garbage data does not contribute to
+// looks"): a reading done again keeps its number and replaces the old one.
+let rebuildRun = null;
+const REBUILD_WAIT_MS = 20000;
+// a refusal that comes back this many times with the box free is not a wait
+// but a reason, and the step stops on it rather than asking for ever
+const REBUILD_TRIES = 30;
+const rebuildSleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+const needsStage4 = (doc) => !!doc && ((rebuildOf(doc) || {}).reasons || []).some((r) => r.key === 'stage4');
+function keepBeside(was) {
+  const id = was.id;
+  try { fs.copyFileSync(setFile(id), `${setFile(id)}.before-rebuild`); } catch (_) { /* nothing to keep */ }
+  try { if (fs.existsSync(captureFile(id))) fs.renameSync(captureFile(id), `${captureFile(id)}.before-rebuild`); } catch (_) { /* nothing to keep */ }
+  // the half-life runs done on the survivors as they were go aside with it, so
+  // a run done again starts at one and never writes over one of them
+  for (const r of (was.halflife || [])) {
+    const f = halfLifeFile(id, r.id);
+    try { if (fs.existsSync(f)) fs.renameSync(f, `${f}.before-rebuild`); } catch (_) { /* nothing to keep */ }
+  }
+}
+// the stamp a set carries once rebuilt, and the capture it asks for again
+function rebuiltStampOf(was, now) {
+  const before = (was.survivors || []).map((x) => x.label);
+  const after = new Set((now.survivors || []).map((x) => x.label));
+  return {
+    name: was.name, createdAt: was.createdAt || now.createdAt, nameEditedAt: was.nameEditedAt || null,
+    rebuilt: { at: new Date().toISOString(), fromRelease: was.release || null, release: ENGINE_VERSION, survivorsBefore: before.length, survivorsNow: after.size, keptOfBefore: before.filter((l) => after.has(l)).length },
+    // taken again on Tune: a capture of the survivors as they were is not theirs any more
+    capture: was.capture ? { ...was.capture, v: 0 } : null,
+  };
+}
+// THE FAMILY A SET BELONGS TO, in the order it is rebuilt: the rule everything
+// stands on, the held and then the reserve sets read from it, then each
+// half-life set built from it followed by the sets read from that. Opening any
+// one of them rebuilds all of them, so no reading is left standing on a rule
+// that has been cut again under it.
+function rebuildChainOf(doc) {
+  const judged = doc.kind === 'held' || doc.kind === 'reserve';
+  const rule = judged ? getSet((doc.from || {}).id) : doc;
+  const root = rule && rule.derived ? getSet(rule.derived.from) : rule;
+  if (!root) return [doc];
+  const all = listFunnelSets().filter((d) => !!d.exam === !!root.exam);   // a family shares the check's mark (3.87.0)
+  const judgesOf = (id) => all.filter((d) => (d.kind === 'held' || d.kind === 'reserve') && (d.from || {}).id === id)
+    .sort((a, b) => ((a.kind === 'held' ? 0 : 1) - (b.kind === 'held' ? 0 : 1)) || ((Number(a.number) || 0) - (Number(b.number) || 0)));
+  const halfLives = all.filter((d) => (d.kind || 'funnel') === 'funnel' && d.derived && d.derived.from === root.id);
+  return [root, ...judgesOf(root.id), ...halfLives.flatMap((h) => [h, ...judgesOf(h.id)])];
+}
+// the box busy with anything a rebuild step must not run under, in words
+function boxBusyNow() {
+  const busy = stageBusy() || acrossBusy() || othersBusy();
+  if (busy) return busy;
+  if (setRichRun && !setRichRun.result && !setRichRun.error) return 'a Stage 4 record set is having its numbers worked out';
+  if (judgeRun && !judgeRun.result && !judgeRun.error) return 'a Stage 4 record set is being read';
+  if (halfLifeRun && !halfLifeRun.result && !halfLifeRun.error) return 'a half-life run is going';
+  if (captureRun && !captureRun.result && !captureRun.error) return 'a capture is going';
+  return null;
+}
+async function waitForBox(run) {
+  for (;;) {
+    const busy = boxBusyNow();
+    if (!busy) return;
+    run.words = `waiting: ${busy}`;
+    // eslint-disable-next-line no-await-in-loop
+    await rebuildSleep(REBUILD_WAIT_MS);
+  }
+}
+// THE TEST HISTORY NUMBERS OF THE SET'S COIN AND SHAPE, IN TODAY'S SHAPE,
+// counted the way the screen counts a coin and shape as done. If they are not,
+// the pass is pressed and waited on; a pass that runs to its end is what the
+// board reads, whatever it could and could not price. A coin and shape the
+// filter on Table 3.C puts out of the pass today cannot have them worked out,
+// so the set says so rather than waiting on a pass that will never price it.
+async function richReadyFor(doc, run) {
+  const parentId = String((doc.parent || {}).id);
+  const unit = String(doc.unit);
+  for (let tries = 0; ; tries++) {
+    const t = readTally(parentId);
+    if (!t) throw new Error('the stage 3 set it was cut from has no totalled tables');
+    const had = richSetOf(parentId, t, readFunnelRich(parentId), new Set([unit]));
+    if (had.units === 1 && had.unitsDone === 1) return;
+    const pass = passKeptOf(parentId, t);
+    if (!pass.pending && pass.kept && !pass.kept.has(unit)) {
+      throw new Error(`the filter on Table 3.C puts ${doc.unitName || unit} out of the pass that works out the test history numbers, so they cannot be worked out again — the set is left as it was`);
+    }
+    if (tries >= REBUILD_TRIES) throw new Error('the test history numbers of its coin and shape could not be started after a long wait');
+    // eslint-disable-next-line no-await-in-loop
+    await waitForBox(run);
+    let mine = null;
+    try { funnelRichStart(parentId, { unit }); mine = richRun; } catch (err) {
+      run.words = `waiting: ${err.message}`;
+      // eslint-disable-next-line no-await-in-loop
+      await rebuildSleep(REBUILD_WAIT_MS);
+      continue;
+    }
+    while (!mine.result && !mine.error) {
+      run.words = `working out the test history numbers again, each trade at its own size (${mine.done} of ${mine.of})`;
+      // eslint-disable-next-line no-await-in-loop
+      await rebuildSleep(REBUILD_WAIT_MS / 4);
+    }
+    if (mine.error) throw new Error(`the test history numbers could not be worked out: ${mine.error}`);
+    const r = mine.result || {};
+    if (r.stopped) throw new Error('the test history numbers were stopped before they were done, so the set is left as it was — opening it again carries on from there');
+    if (r.failed) throw new Error(`the test history numbers could not be worked out: ${r.failed}`);
+    if (r.waiting || r.totalling) {
+      run.words = `waiting: ${r.waiting || r.totalling}`;
+      // eslint-disable-next-line no-await-in-loop
+      await rebuildSleep(REBUILD_WAIT_MS);
+      continue;
+    }
+    return;
+  }
+}
+// THE RULE, CUT AGAIN IN PLACE WITH THE RULE IT RECORDED -- the same
+// arithmetic, closing and replay check as the cut -- on the board it was cut
+// from, read the way its own screens read it: its coin and shape's records,
+// never through today's filter on Table 3.C, since a set is a record of a
+// decision and does not move when the filter does
+async function recutInPlace(doc, run) {
+  const S4 = require('./funnelset');
+  const parentId = String((doc.parent || {}).id);
+  const t = readTally(parentId);
+  if (!t) throw new Error('the stage 3 set it was cut from has no totalled tables');
+  const board = await funnelBoard(parentId, t, String(doc.unit), keptOfSet(doc));
+  const ranked = withFunnelRich(board.all, readFunnelRich(parentId), board.richBlend);
+  const was = getSet(doc.id);
+  run.words = 'cutting it again with its own rule';
+  const survivors = await S4.applyRuleSlowly(ranked, was.rule, null);
+  const fresh = JSON.parse(JSON.stringify(was));
+  S4.finishFunnelSet(fresh, survivors, { key: (was.closing || {}).key || 'rule', detail: (was.closing || {}).detail || null });
+  const check = S4.replay(fresh, ranked, survivors);
+  if (!check.same) throw new Error(`the rule does not reproduce its own survivors (${check.got} vs ${check.had}) — nothing was written`);
+  fresh.replayChecked = { at: new Date().toISOString(), ...check };
+  fresh.rich = richForSurvivors(survivors);
+  // a half-life table read on the survivors as they were is not theirs: it
+  // goes aside with the old document, and a run done again is the first
+  fresh.halflife = [];
+  fresh.release = ENGINE_VERSION;
+  Object.assign(fresh, rebuiltStampOf(was, fresh));
+  keepBeside(was);
+  saveSet(fresh);
+  return fresh;
+}
+// A HALF-LIFE SET, BUILT AGAIN IN PLACE FROM A RUN REDONE ON THE RULE CUT AGAIN,
+// at the half-lives its own run was ticked at
+async function halfLifeRebuild(hl, run) {
+  const HL = require('./halflife');
+  const S4 = require('./funnelset');
+  const srcId = hl.derived.from;
+  const months = (hl.derived && hl.derived.months) || [];
+  if (!months.length) throw new Error('its run does not say which half-lives were ticked, so it cannot be run again');
+  for (;;) {
+    // eslint-disable-next-line no-await-in-loop
+    await waitForBox(run);
+    try { halfLifeStart(srcId, { months }); break; } catch (err) {
+      // the box taken between the wait and the press is waited on again; a
+      // refusal with the box free is a reason, and the set says it
+      if (!boxBusyNow()) throw new Error(`the half-life run could not be started: ${err.message}`);
+      run.words = `waiting: ${err.message}`;
+    }
+  }
+  const mine = halfLifeRun;
+  while (!mine.result && !mine.error) {
+    run.words = `retraining the half-lives of ${hl.name} on the rule cut again (${mine.done} of ${mine.of})`;
+    // eslint-disable-next-line no-await-in-loop
+    await rebuildSleep(REBUILD_WAIT_MS / 4);
+  }
+  if (mine.error) throw new Error(`the half-life run could not be done again: ${mine.error}`);
+  const src = getSet(srcId);
+  const runRec = (src.halflife || [])[0];
+  const kept = (runRec.rows || []).filter((r) => r.best && r.best !== HL.NONE);
+  if (!kept.length) throw new Error('no record improved with any half-life on the table run again, so there is nothing to build — the set is left as it was');
+  const was = getSet(hl.id);
+  const fresh = JSON.parse(JSON.stringify(was));
+  fresh.derived = { ...(was.derived || {}), kind: 'halflife', from: src.id, fromName: src.name, run: runRec.id, at: new Date().toISOString(), judge: runRec.judge, judgeWord: runRec.judgeWord, layout: runRec.layout, months: runRec.months || months };
+  fresh.rule = src.rule;
+  fresh.userRule = src.userRule || null;
+  fresh.survivors = kept.map((r) => ({
+    si: r.si, label: r.label, halfLife: Number(String(r.best).slice(1)),
+    money: { judge: (r.money || {})[r.best] ?? null, unweighted: (r.money || {})[HL.NONE] ?? null },
+    trades: { judge: (r.trades || {})[r.best] ?? null, unweighted: (r.trades || {})[HL.NONE] ?? null },
+  }));
+  fresh.counts = { survivors: kept.length, of: (runRec.rows || []).length, target: src.target };
+  fresh.ruleSentence = `${src.ruleSentence || S4.ruleSentence(src.rule)} · retrained, a half-life per record`;
+  fresh.rich = src.rich || {};
+  fresh.keptUnits = src.keptUnits || null;
+  fresh.release = ENGINE_VERSION;
+  Object.assign(fresh, rebuiltStampOf(was, fresh));
+  keepBeside(was);
+  saveSet(fresh);
+  return fresh;
+}
+// A HELD OR RESERVE SET, READ AGAIN IN PLACE from its rule, with the share and
+// the sanity bar the reading it replaces was read at
+async function judgeRebuild(judge, run) {
+  const rule = getSet((judge.from || {}).id);
+  if (!rule) throw new Error('the rule it was read from is gone, so it cannot be read again');
+  await waitForBox(run);
+  const r = (judge.block || {}).rules || {};
+  const asked = { barPct: r.barChanged ? r.barPct : null, sanityPct: r.sanityPct ?? null };
+  const jr = { id: rule.id, stretch: judge.kind, prices: !!rule.derived, token: `${rule.id}:${judge.kind}:${Date.now()}`, done: 0, of: rule.derived ? 1 : 0, result: null, error: null, promise: null };
+  judgeRun = jr;
+  run.words = `reading it again on the ${judge.kind === 'reserve' ? 'reserve' : 'held-back'} window`;
+  const was = getSet(judge.id);
+  jr.promise = judgeRunOn(rule, judge.kind, asked, (d, o) => { jr.done = d; jr.of = o; }, { into: was })
+    .then((res) => { jr.result = res; jr.done = jr.of; })
+    .catch((err) => { jr.error = String((err && err.message) || err); });
+  await jr.promise;
+  if (jr.error) throw new Error(`it could not be read again: ${jr.error}`);
+  // the reading is written in place; what it replaced is kept beside it
+  const now = getSet(judge.id);
+  try { fs.writeFileSync(`${setFile(judge.id)}.before-rebuild`, JSON.stringify(was)); } catch (_) { /* best effort */ }
+  if (was.capture) try { if (fs.existsSync(captureFile(judge.id))) fs.renameSync(captureFile(judge.id), `${captureFile(judge.id)}.before-rebuild`); } catch (_) { /* none */ }
+  return now;
+}
+// one set at a time; a set that cannot be rebuilt says why on its own line and
+// the rest of the family carries on -- except that nothing is rebuilt on a set
+// that stopped, since it would stand on what that set was
+async function rebuildRunOn(chain, run) {
+  const stopped = new Set();
+  const standsOnStopped = (d) => stopped.has((d.from || {}).id) || (d.derived && stopped.has(d.derived.from)) || (d.standsOn && stopped.has(d.standsOn.id));
+  for (const node of chain) {
+    const d = getSet(node.id);
+    if (!needsStage4(d)) continue;
+    if (standsOnStopped(d)) { stopped.add(d.id); run.failures[d.id] = 'what it stands on could not be rebuilt'; continue; }
+    try {
+      if (d.kind === 'held' || d.kind === 'reserve') await judgeRebuild(d, run);
+      else if (d.derived) await halfLifeRebuild(d, run);
+      else {
+        // no set cut on all units together stood on sized trades when this was
+        // written, so there is no rebuild of one; it says so and is left as it was
+        if (d.unit == null) throw new Error('it was cut on all units together, which this rebuild does not do — it is left as it was');
+        await richReadyFor(d, run);
+        await waitForBox(run);
+        await recutInPlace(d, run);
+      }
+    } catch (err) {
+      stopped.add(d.id);
+      run.failures[d.id] = String((err && err.message) || err);
+    }
+  }
+  const n = Object.keys(run.failures).length;
+  if (n) throw new Error(`${n} set(s) could not be rebuilt — each says why`);
+}
+const rebuildStatusOf = (run) => ({ running: !run.done && !run.error, id: run.id, name: run.name, words: run.error ? `the rebuild stopped: ${run.error}` : (run.done ? 'rebuilt' : run.words), error: run.error || null, done: !!run.done });
+// ONE FAMILY AT A TIME: a set opened while another family is being rebuilt
+// takes its turn when that one ends, without being opened again
+const rebuildQueue = [];
+function rebuildNext() {
+  while (rebuildQueue.length) {
+    const next = rebuildQueue.shift();
+    try { if (rebuildStart(next).running) return; } catch (_) { /* a set deleted while it waited */ }
+  }
+}
+function rebuildStart(id) {
+  const doc = getSet(String(id || ''));
+  if (!doc || doc.stage !== 4) { const e = new Error(`unknown Stage 4 record set '${id}'`); e.status = 404; throw e; }
+  if (rebuildRun && !rebuildRun.done && !rebuildRun.error) {
+    if (rebuildRun.chain.includes(doc.id)) return rebuildStatusOf(rebuildRun);
+    if (!rebuildQueue.includes(doc.id)) rebuildQueue.push(doc.id);
+    return { running: false, waiting: true, words: `waiting: ${rebuildRun.name} is being rebuilt first — one at a time` };
+  }
+  const chain = rebuildChainOf(doc);
+  if (!chain.some((d) => needsStage4(d))) return { running: false, done: true, words: 'nothing to rebuild' };
+  const run = { id: doc.id, name: doc.name, chain: chain.map((d) => d.id), words: 'starting', done: false, error: null, failures: {}, promise: null };
+  rebuildRun = run;
+  run.promise = rebuildRunOn(chain, run)
+    .then(() => { run.done = true; })
+    .catch((err) => { run.error = String((err && err.message) || err); })
+    .then(() => rebuildNext());
+  return rebuildStatusOf(run);
+}
+// what the rebuild is doing about one set, for its line on the screen
+function rebuildStatus(id) {
+  const key = String(id || '');
+  if (rebuildRun && rebuildRun.chain.includes(key)) {
+    const base = rebuildStatusOf(rebuildRun);
+    const failed = rebuildRun.failures[key] || null;
+    // a set rebuilt while another of its family could not be says rebuilt
+    if (!base.running && !failed && !needsStage4(getSet(key))) return { ...base, done: true, error: null, words: 'rebuilt', failed: null };
+    return { ...base, failed };
+  }
+  if (rebuildQueue.includes(key)) return { running: false, waiting: true, words: `waiting: ${rebuildRun ? rebuildRun.name : 'another set'} is being rebuilt first — one at a time` };
+  return { none: true, running: false, words: null };
+}
+// Test hook: settle when the rebuild in flight (if any) has finished.
+function rebuildWait() { return rebuildRun && rebuildRun.promise ? rebuildRun.promise : Promise.resolve(); }
 // ---- END REPAIR (3.235.0) ----
 
 async function tuneCaptureDry(id) {
@@ -10930,6 +11242,8 @@ async function funnelSetRows(id, opts = {}) {
     set: {
       id: doc.id, seq: doc.seq, name: doc.name, createdAt: doc.createdAt,
       nameEditedAt: doc.nameEditedAt || null,
+      // REBUILD REQUIRED, and why (3.235.0); opening it here starts its rebuild (3.236.0)
+      rebuild: rebuildOf(doc),
       release: doc.release || null, parent: doc.parent || null,
       unit: doc.unit || null, unitName: doc.unitName || null,
       target: (doc.counts || {}).target ?? doc.target ?? null,
@@ -11482,7 +11796,7 @@ module.exports = {
   tuneScanAimOf, saveTuneScan, readTuneScans, tuneScanFor, tuneScansFile,
   halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet, buildHalfLifeSet, gateOfSet,
   stopChoiceOf, setStopChoice,
-  CAPTURE_V, CAPTURE_WINDOWS, CAPTURE_NOT_YET, STOP_NOT_ON_BREAKOUT, scanRefusalOf, ladderAsked, rebuildOf,
+  CAPTURE_V, CAPTURE_WINDOWS, CAPTURE_NOT_YET, STOP_NOT_ON_BREAKOUT, scanRefusalOf, ladderAsked, rebuildOf, rebuildStart, rebuildStatus, rebuildWait, recutInPlace, rebuildChainOf,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,
   listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichDir, richUnitFile, funnelRichStop,

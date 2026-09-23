@@ -67,6 +67,14 @@ trade so no you do not need to adjust it."
   (S3-Doubles-CFA-70/15/15 - cert70 - #1-field b), the 8 Stage 4 sets cut from
   it, and every Stage 4 set holding a capture of the old form.
 
+- S9. (3.236.0, written before its test ran) Opening one flagged set of a
+  family rebuilds every flagged set in it; each keeps its id and its name, is
+  written under the new release with a stamp saying what it was rebuilt from,
+  keeps its old document beside it, and is no longer flagged.
+- S10. A rule cut again on a board that has not moved keeps exactly the same
+  survivors; a held set is read again under its own number; a half-life set is
+  built from a run done again at the same half-lives.
+
 No prediction is made about which way any survivor's money moves when sized;
 the rebuild may keep more or fewer survivors, and that is read, not guessed.
 
@@ -114,6 +122,59 @@ the rebuild may keep more or fewer survivors, and that is read, not guessed.
 - D11. The conviction result names the survivor's own entry; it was hard-coded
   as a market entry whatever the survivor was.
 
+- D12. (3.236.0) Opening any flagged Stage 4 set rebuilds its whole family, in
+  the order it stands: the rule, the held and reserve sets read from it, then
+  each half-life set built from it and the sets read from that. No reading is
+  left standing on a rule cut again under it. A set that cannot be rebuilt says
+  why on its own line; what stands on it is skipped; the rest carry on.
+- D13. The rule is cut again with the rule it recorded -- the closed rule, its
+  floors included -- on the board it was cut from, read the way its own screens
+  read it: its coin and shape's records, under the record it keeps of what the
+  filter kept when it was cut, never under today's filter (a set is a record of
+  a decision and does not move when the filter does). The closing is not
+  re-derived. (Corrected before the deploy: the first draft read the board
+  through today's filter, and for a set cut on all units together that would
+  have read the first coin and shape's board instead of the blend.)
+- D14. A half-life set is built again from a run redone on the rule cut again,
+  at the half-lives its own run was ticked at. If no record improves on the new
+  table the set is left as it was and says why.
+- D15. A held or reserve set is read again under its own number, at the share
+  and the sanity bar the reading it replaces was read at; the count of looks is
+  unchanged (the old reading's look is replaced, not added to).
+- D16. Every rebuilt set keeps its id and its name; its document as it was is
+  kept beside it (<id>.json.before-rebuild) and its capture file is moved aside
+  with the same ending; its capture summary is marked to be taken again, so the
+  next time it is chosen on Tune it is captured again.
+- D17. The rebuild's press has its own address, rebuild-required: the address
+  rebuild was already the Funnel's press that works out a Stage 4 set's own
+  numbers again.
+- D18. A rule cut again keeps no half-life table read on its survivors as they
+  were: those tables go aside with the old document, their retrained members'
+  files are moved aside with the same ending, and the run done again is the
+  rule's first (look 1), so the garbage runs do not count and a run done again
+  never writes over a kept one.
+- D19. The test history numbers are counted done for the set's coin and shape
+  the way the screen counts them; if they are not, the pass is pressed and a
+  pass that runs to its end is what the board reads. A stop pressed on it stops
+  the rebuild, in words, and opening the set again carries on. A coin and shape
+  today's filter puts out of the pass cannot have its numbers worked out, so
+  that set says why and is left as it was.
+- D20. One family at a time: a flagged set opened while another family is being
+  rebuilt waits its turn and starts when that one ends, without being opened
+  again. Its line on the screen follows the rebuild where it stands (asked every
+  20 seconds) and the screen is never drawn again for it; when it ends the line
+  says to choose the set again to see it.
+- D21. A set cut on all units together is not rebuilt: none stood on sized
+  trades when this was written (probe uts-rebuild-family.sh: all 8 flagged
+  Stage 4 sets are on one coin and shape each), and new sets are never flagged.
+  One would say so and be left as it was.
+- D9, corrected. The Funnel's rebuild of the test history numbers asks for the
+  board on screen, but the pass prices every coin and shape the filter keeps
+  whatever it is asked for (found in this loop, below, not fixed in it). On the
+  box that is all 86 coins and shapes of S3-Doubles-CFA-70/15/15 - cert70 -
+  #1-field b -- which is the rebuild that stage 3 set's own flag asks for, but it
+  is long, and every Stage 4 rebuild waits on it the first time.
+
 ## Verified before the deploy
 
 - S1, S2: tests/test-bracket.js `everyTradeSettlesAtItsOwnSize`, test-confirm.js
@@ -133,6 +194,14 @@ the rebuild may keep more or fewer survivors, and that is read, not guessed.
   the flagged set's name in both boxes.
 
 ## Found, not in this loop (left for the owner)
+
+- The press beside Work out the test history numbers prices every coin and
+  shape the filter on Table 3.C keeps, whatever coin is chosen. In
+  lib/stages.js funnelRichStart, the coin it is aimed at is read from `state`,
+  but inside the pass `state` is a second name for the answer ensureTally gives
+  (3.103.1), which never names a coin -- so 3.136.0's "make the press follow the
+  coin chooser" has never taken effect. The fix is one word (rename the inner
+  one). tests/test-funnel.js pins the line's text and could not see it.
 
 - A setting whose quorum is the field alone captures no training entries: the
   committee's training stream is built without the field's signs. Its test and

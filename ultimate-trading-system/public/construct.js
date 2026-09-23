@@ -2456,7 +2456,34 @@ function setNameWords(x) {
 // itself is never changed, and the words go when the set is rebuilt.
 function rebuildPrefix(x) { return x && x.rebuild ? 'REBUILD REQUIRED - ' : ''; }
 function rebuildLineHtml(x) {
-  return x && x.rebuild ? `<p class="note"><b class="warn">REBUILD REQUIRED</b> - ${(x.rebuild.reasons || []).map((r) => esc(r.why)).join(' · ')}</p>` : '';
+  if (!x || !x.rebuild) return '';
+  const rb = x.rebuild;
+  const stage4 = (rb.reasons || []).some((r) => r.key === 'stage4');
+  // an opened set that stands on figures worked out at the standard size is
+  // rebuilt the first time it is opened (3.236.0), once a visit: the press is
+  // made after this line is on the screen, and its answer is said in it
+  if (stage4 && x.id) setTimeout(() => rebuildOnOpen(x.id), 0);
+  const now = rb.failed ? ` · <b class="neg">the rebuild stopped: ${esc(rb.failed)}</b>` : (rb.running ? ` · rebuilding now: ${esc(rb.running)}` : '');
+  return `<p class="note"><b class="warn">REBUILD REQUIRED</b> - ${(rb.reasons || []).map((r) => esc(r.why)).join(' · ')}<span data-rebuild-say="${esc(x.id || '')}">${now}</span></p>`;
+}
+function rebuildOnOpen(id) {
+  if (rebuiltThisVisit.has(`stage4|${id}`)) return;
+  rebuiltThisVisit.add(`stage4|${id}`);
+  const url = `api/funnel/set/${encodeURIComponent(id)}/rebuild-required`;
+  const say = (words) => document.querySelectorAll(`[data-rebuild-say="${CSS.escape(id)}"]`).forEach((el) => { el.textContent = words ? ` · ${words}` : ''; });
+  const sayOf = (r) => (r.failed ? `the rebuild stopped: ${r.failed}` : r.error ? `the rebuild stopped: ${r.error}`
+    : r.done ? 'rebuilt - choose it again to see it' : r.waiting ? r.words : (r.words ? `rebuilding now: ${r.words}` : ''));
+  // its line follows the rebuild where it stands, and the screen is never drawn again for it
+  const follow = () => api(url).then((r) => {
+    if (r.none) return;
+    say(sayOf(r));
+    if (r.running || r.waiting) setTimeout(follow, 20000);
+  }).catch(() => setTimeout(follow, 60000));
+  // pressed once a visit: a refusal is said in its own words and never pressed again
+  post(url, {}).then((r) => {
+    say(sayOf(r));
+    if (r.running || r.waiting) setTimeout(follow, 20000);
+  }).catch((e) => say(`the rebuild could not be started: ${e.message}`));
 }
 // THE RULES A TAB LISTS (VERIFY-DESIGN.md Part 9): Held lists every rule, plain
 // or half-life; Reserve lists only rules whose layout keeps a reserve and whose
@@ -3683,7 +3710,9 @@ function renderStopResult(s) {
   // A CAPTURE TAKEN AT THE STANDARD SIZE IS TAKEN AGAIN the first time its set
   // is chosen here (3.235.0): once a visit, and a refusal is left in its own
   // words beside the press
-  const recapture = tnd && !tnd.running && tnb && (((tnd.rebuild || {}).reasons) || []).some((r) => r.key === 'capture');
+  // (a set whose survivors are being chosen again is rebuilt first, and captured after it: 3.236.0)
+  const rbKeys = (((tnd || {}).rebuild || {}).reasons || []).map((r) => r.key);
+  const recapture = tnd && !tnd.running && tnb && rbKeys.includes('capture') && !rbKeys.includes('stage4');
   if (recapture && !rebuiltThisVisit.has(`capture|${tnChosen}`)) {
     rebuiltThisVisit.add(`capture|${tnChosen}`);
     if (tnd.refused) $('#tnCaptureMsg').textContent = `REBUILD REQUIRED - waiting: ${tnd.refused}`;
@@ -8296,7 +8325,7 @@ async function fDrawCut(d, st, cutId) {
   // unit selector — so there is no Home branch on this path.
   const away = fAway(st.set);
   $('#view').innerHTML = `${fHoldShown(st, away, true) ? `<div class="panel" id="fHoldWrap">${fHoldPanel(d, st)}</div>` : ''}
-    <div class="panel">${fTitle(d, st, cd.set.name, away, true)}</div>
+    <div class="panel">${fTitle(d, st, `${rebuildPrefix(cd.set)}${cd.set.name}`, away, true)}${rebuildLineHtml(cd.set)}</div>
     ${away ? `<div class="panel">${putAwayNote}</div>` : `<div class="panel">${fCutHead(cd, st, d)}</div>
     <div class="panel">${fCutTable(cd, st)}</div>`}`;
   fWireCut(d, st, cd);
@@ -8883,9 +8912,10 @@ function fWireCut(d, st, cd) {
     // board -- and until then the title and the drop-down both still showed
     // the old name, which reads as a rename that did not take.
     const title = $('#fTitleName');
-    if (title) title.textContent = out.name || '';
+    // (a set flagged REBUILD REQUIRED keeps the words in front of its new name, 3.236.0)
+    if (title) title.textContent = `${rebuildPrefix(cd.set)}${out.name || ''}`;
     const sel = $('#fCutPick');
-    if (sel) [...sel.options].forEach((o) => { if (o.value === cd.set.id) o.textContent = out.name || ''; });
+    if (sel) [...sel.options].forEach((o) => { if (o.value === cd.set.id) o.textContent = `${rebuildPrefix(cd.set)}${out.name || ''}`; });
   };
   // PUTTING THIS SET'S OWN NUMBERS BACK (3.68.0, owner order). Started and
   // polled, because it prices; it refuses while a sweep is going and says so.

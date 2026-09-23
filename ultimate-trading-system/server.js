@@ -1099,6 +1099,13 @@ app.post('/api/funnel/set/:id/capture', (req, res) => {
   try { return res.json(stages.tuneCaptureStart(req.params.id)); } catch (err) { return res.status(409).json({ error: err.message }); }
 });
 app.get('/api/funnel/set/:id/capture/status', (req, res) => res.json(stages.tuneCaptureStatus(req.params.id)));
+// THE REBUILD OF A SET FLAGGED REBUILD REQUIRED (3.236.0, owner 2026-09-23:
+// "rebuilding on first open"): pressed by the screen the first time the set is
+// opened; everything it stands on is rebuilt first, one step at a time
+app.post('/api/funnel/set/:id/rebuild-required', (req, res) => {
+  try { return res.json(stages.rebuildStart(req.params.id)); } catch (err) { return res.status(err.status || 409).json({ error: err.message }); }
+});
+app.get('/api/funnel/set/:id/rebuild-required', (req, res) => res.json(stages.rebuildStatus(req.params.id)));
 // THE STOP FORCED ONTO A SURVIVOR (3.145.0, owner order 2026-09-15): records the
 // owner's stop -- a fraction, or null for no stop chosen on purpose -- with
 // their reason, on one captured survivor of the set, and applies it nowhere.
