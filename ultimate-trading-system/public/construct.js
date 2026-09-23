@@ -4659,7 +4659,9 @@ async function drawBoards() {
   let s1sel = (rowOf(view.s1) || {}).stage === 1 ? view.s1 : null;
   if (s3sel) { s2sel = parentOf(s3sel); s1sel = s2sel ? parentOf(s2sel) : null; }
   else if (s2sel) { s1sel = parentOf(s2sel); }
-  if (!s1sel && !s2sel && !s3sel) {
+  // ...on a FIRST VISIT only: boxes the owner emptied with Put away stay empty
+  // (3.241.2), and a view that has never recorded a pick has no s1/s2/s3 at all
+  if (!s1sel && !s2sel && !s3sel && view.s1 === undefined && view.s2 === undefined && view.s3 === undefined) {
     // first visit: the newest set of the deepest stage present, chain and all
     const newest = sets.find((x) => x.stage === 3) || sets.find((x) => x.stage === 2) || sets.find((x) => x.stage === 1);
     if (newest && newest.stage === 3) { s3sel = newest.id; s2sel = parentOf(s3sel); s1sel = s2sel ? parentOf(s2sel) : null; }
@@ -4834,10 +4836,24 @@ async function drawBoards() {
   document.querySelectorAll('[data-bfold]').forEach((btn) => {
     btn.onclick = () => {
       const sN = Number(btn.dataset.bfold);
-      // PUTTING A STAGE AWAY PUTS EVERY STAGE UNDER IT AWAY (3.240.0, owner
-      // order: "when a Stage 1 board is Put away, all lower boards should be as
-      // well"), and Open brings back what went with it (3.240.1)
-      bSaveView(Object.fromEntries([1, 2, 3].filter((k) => k >= sN).map((k) => [`fold${k}`, !fold[sN]])));
+      // PUT AWAY LETS GO OF THE RECORD SET (3.241.2, owner order 2026-09-23:
+      // "put away buttons on opened record sets on the stage 1/2/3 tabs needs
+      // to ACTUALLY put away the record set -- i.e., i want to see '-- pick a
+      // stage n record...--' and lower levels all put away too"). This stage's
+      // box goes back to its empty entry and so does every box under it; the
+      // stages above keep exactly what they show, written down so it survives
+      // the set below it that they were read from going. Open opens the stage
+      // and the ones under it (3.240.1).
+      if (fold[sN] && selOf[sN]) {
+        const patch = { openS3: [] };
+        for (const k of [1, 2, 3]) {
+          if (k < sN) patch[`s${k}`] = selOf[k];
+          else { patch[`s${k}`] = null; patch[`fold${k}`] = false; }
+        }
+        bSaveView(patch);
+      } else {
+        bSaveView(Object.fromEntries([1, 2, 3].filter((k) => k >= sN).map((k) => [`fold${k}`, !fold[sN]])));
+      }
       bRedrawPeggedTo(`[data-bfold="${sN}"]`);
     };
   });
