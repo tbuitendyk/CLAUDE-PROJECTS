@@ -471,7 +471,9 @@ function newFunnelSet({ id, seq, name, parent, release, target, seed, boardNull,
     // board it read -- a rebuilt number and a stored one can come from
     // different engines and the set has to be able to say so
     release: release || null,
-    parent: parent ? { id: parent.id, name: parent.name, release: (parent.params || {}).engineVersion || null } : null,
+    // the parent's release where a stage set stamps it, at the top of its own
+    // record (3.234.2: this read its settings, where nothing is stamped)
+    parent: parent ? { id: parent.id, name: parent.name, release: parent.engineVersion || null } : null,
     // the target is a guide from the first step, never a trim
     target: target == null ? null : Math.max(0, Math.floor(target)),
     seed: seed || id,

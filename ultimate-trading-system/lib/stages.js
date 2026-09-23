@@ -4892,7 +4892,9 @@ async function rebuildRichFor(doc, wantedLabels, opts = {}) {
       + 'so it waits rather than competing for them');
   }
   const here = require('../package.json').version;
-  const there = (doc.params || {}).engineVersion || doc.release || null;
+  // where a stage set stamps its release (3.234.2): this read its settings,
+  // where nothing is stamped, so the refusal below could never see a mismatch
+  const there = doc.engineVersion || null;
   if (there && firstDigitOf(there) !== firstDigitOf(here)) {
     throw new Error(`this set was priced by release ${there} and this is ${here} — `
       + 'a rebuilt number would come from a different engine than the ones beside it');
@@ -6580,7 +6582,8 @@ async function funnelRead(id, state = {}) {
       name: doc.name,
       stage: 3,
       settings: all.length,
-      release: (doc.params || {}).engineVersion || null,
+      // where a stage set stamps its release (3.234.2: this read its settings)
+      release: doc.engineVersion || null,
       // named, never left blank -- a missing comparison that shows as nothing
       // reads as "nothing to report", which is the opposite of the truth
       noiseTwin: noiseTwinOf(doc),
@@ -8202,10 +8205,25 @@ async function funnelVerifyJoin(doc) {
   const sameOnParent = nowAll.length === wanted.length && nowAll.every((r) => want.has(r.label));
   return { parent, t, all, mine, rows: rows.filter(Boolean), gone, same, now: now.length, sameOnParent, nowOnParent: nowAll.length, had: wanted.length, rule, unit: board.unit || null };
 }
+// the window layout by the name the Sweep screen offers it under (lib/vocabulary.js)
+const layoutNameOf = (layout) => ((require('./vocabulary').vocabulary().windowLayout || []).find((c) => c.value === layout) || {}).label || null;
+// A LAYOUT THAT KEEPS NO RESERVE HAS NO SEALED WINDOW (3.234.2, owner 2026-09-23,
+// on the footing line on Held: "what does this mean"). The unit lookup below
+// ran on a 70/15/15 set too, found nothing in a list that is empty by design,
+// and blamed the parent: "its parent's records name no unit ..." -- the
+// parent's records name it; the layout seals nothing. Said as that now, in the
+// layout's own name, and marked `none` so a screen can tell it from a seal
+// that is broken.
+const noSealOf = (s) => (s && s.layout && s.layout !== 'reserve61'
+  ? { sealed: false, none: true, of: 0, missing: 0, fromTs: null, chunks: null,
+    why: `this set was built ${layoutNameOf(s.layout) || 'on a layout it did not record'}, which keeps no reserve window, so nothing is sealed` }
+  : null);
 // the sealed window on this set's own unit, read off what the cut recorded
 function sealedOnUnitOf(doc) {
   const s = doc.sealed || null;
   if (!s) return { sealed: false, of: 0, missing: 0, why: 'this set recorded no sealed window', fromTs: null, chunks: null };
+  const none = noSealOf(s);
+  if (none) return none;
   const us = Array.isArray(s.units) ? s.units : [];
   const mine = doc.unit ? us.filter((u) => unitKeyOf(u) === doc.unit) : us;
   if (doc.unit && !mine.length) return { sealed: false, of: 0, missing: 0, why: `its parent's records name no unit '${doc.unit}'`, fromTs: null, chunks: null };
@@ -8282,9 +8300,14 @@ function verifyFooting(doc, join) {
   const keys = V.ruleKeys(join.rule);
   const firstDigit = (v) => String(v || '').split('.')[0] || null;
   const setRel = doc.release || null;
-  const parentRel = (doc.parent || {}).release || ((join.parent.params || {}).engineVersion) || null;
+  // THE PARENT'S RELEASE, READ WHERE A STAGE SET STAMPS IT (3.234.2): at the top
+  // of its own record. This read the set's settings, where nothing is stamped,
+  // so every footing printed "parent ?" and called the gap a mismatch.
+  const parentRel = join.parent.engineVersion || null;
   const releases = { set: setRel, parent: parentRel, reader: ENGINE_VERSION };
-  releases.sameFirstDigit = !!(setRel && parentRel) && firstDigit(setRel) === firstDigit(parentRel) && firstDigit(parentRel) === firstDigit(ENGINE_VERSION);
+  // A RELEASE NOT RECORDED IS SAID AS THAT, never read as a first digit that differs
+  releases.unknown = [['set', setRel], ['parent', parentRel]].filter(([, v]) => !v).map(([k]) => k);
+  releases.sameFirstDigit = !releases.unknown.length && firstDigit(setRel) === firstDigit(parentRel) && firstDigit(parentRel) === firstDigit(ENGINE_VERSION);
   // the stage engine's own check (3.87.0): PASS belongs to the exact release
   const sg = require('./stagegate').status(ENGINE_VERSION, { running: examBusy() });
   const stageGate = { state: sg.state, release: sg.last ? sg.last.release : null, at: sg.last ? sg.last.at : null };
@@ -10712,6 +10735,9 @@ async function funnelSetRows(id, opts = {}) {
   const sealedOn = (() => {
     const s = doc.sealed || null;
     if (!s) return { sealed: false, of: 0, missing: 0, why: 'this set recorded no sealed window' };
+    // a layout that keeps no reserve seals nothing (3.234.2), said as that
+    const none = noSealOf(s);
+    if (none) return none;
     const us = Array.isArray(s.units) ? s.units : [];
     const mine = doc.unit ? us.filter((u) => unitKeyOf(u) === doc.unit) : us;
     if (doc.unit && !mine.length) return { sealed: false, of: 0, missing: 0, why: `its parent's records name no unit '${doc.unit}'` };
@@ -11304,7 +11330,7 @@ module.exports = {
   judgeDry, judgeStart, judgeStatus, judgeRunOn, judgeSummaryOf, judgeSetsOf, heldStandingOf, reserveOf, readingsIn, makeJudgeSet,
   reserveBoardStart, reserveBoardStatus, reserveBoardStop, reserveBoardOf, readReserveBoard, writeReserveBoard, reserveBoardFile, priceReserveBoard, withReserveBoard, readerRowsOf, BOARD_PRESS,
   priceSurvivorsOn, funnelVerifyJoin,
-  gateRefusalOf, STRETCHES, HELD_ALONE, NO_HELD_PASS, sealedOnUnitOf,
+  gateRefusalOf, STRETCHES, HELD_ALONE, NO_HELD_PASS, sealedOnUnitOf, verifyFooting,
   funnelDropped, funnelDroppedStart, droppedRefusalOf,
   stageGateStart, stageGateStatus, examBusy,
   funnelOthersStart, funnelOthersStatus, othersSummaryOf, funnelRideStart, funnelRideStatus, RICH_FIELDS,
@@ -11333,3 +11359,22 @@ module.exports = {
   createPoolForFillIn: () => createPool(),
   RECORDS_V,
 };
+
+// ---- REPAIR, DELETED ONCE IT HAS RUN ON THE BOX (3.234.2, RULE TEN) ---------
+// Every Stage 4 set recorded its parent's release from a field no stage set is
+// stamped in, so every one of them says it has none (RULE NINE: the records
+// are put right, not read around). Filled, once, from the parent's own stamp
+// where the parent carries one; nothing is guessed, and a set whose parent is
+// gone or carries no stamp is left as it is. After the first start under
+// 3.234.2 no set on the box is left to fill, and this block goes.
+try {
+  for (const x of listSets().filter((d) => d.stage === 4)) {
+    const doc = getSet(x.id);
+    if (!doc || !doc.parent || doc.parent.release) continue;
+    const parent = getSet(doc.parent.id);
+    if (!parent || !parent.engineVersion) continue;
+    doc.parent = { ...doc.parent, release: parent.engineVersion };
+    saveSet(doc);
+  }
+} catch (err) { console.error(`the parent releases of the Stage 4 sets could not be filled: ${err.message}`); }
+// ---- end of the repair ----------------------------------------------------

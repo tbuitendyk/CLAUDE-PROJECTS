@@ -1451,3 +1451,75 @@ module.exports.theTabsReadInProcessingOrderAndNoScreenBeforeHeldAsksForAVerdict 
     assert.ok(!/verdict/.test(section('tune', 'coins').slice(section('tune', 'coins').indexOf('tnSet: {'), section('tune', 'coins').indexOf('stopCustomPct: {'))), 'Tune\'s capture help still names a verdict');
   } finally { f.cleanup(); }
 };
+
+// THE FOOTING TELLS THE TRUTH (3.234.2, owner 2026-09-23, reading the footing
+// line on Held: "what does this mean"). A 70/15/15 set keeps no reserve, so it
+// has no sealed window: said as that, in the layout's own name, never as a unit
+// its parent's records fail to name. The parent's release is read where a stage
+// set stamps it, at the top of its own record, and a release that is not
+// recorded is said as that, never as a first digit that differs. A Stage 4 set
+// cut from here on records its parent's release from the same place.
+module.exports.theFootingSaysNoSealedWindowOnAReservelessLayoutAndReadsTheParentsReleaseWhereItIsStamped = function () {
+  const S4 = require('../lib/funnelset');
+  // no sealed window on 70/15/15, and it is not a broken seal
+  const split = stages.sealedOnUnitOf({ unit: 'BTCUSDT|ETCUSDT||daily-3d', sealed: { layout: 'split70', sealed: false, units: [], why: 'this set\'s window layout is split70' } });
+  assert.deepStrictEqual([split.sealed, split.none], [false, true], 'a layout that keeps no reserve reads as a seal that is broken');
+  assert.strictEqual(split.why, 'this set was built 70/15/15, which keeps no reserve window, so nothing is sealed');
+  assert.ok(!/name no unit/.test(split.why), 'the parent\'s records are blamed for a layout that seals nothing');
+  // on a layout that does seal, a unit missing from the record is still said as that
+  const missing = stages.sealedOnUnitOf({ unit: 'AAA|||daily-1d', sealed: { layout: 'reserve61', sealed: true, units: [{ trade: 'BBB', ctx1: null, ctx2: null, geometry: 'daily-1d', reserve: { fromTs: 1, chunks: 9 } }] } });
+  assert.ok(!missing.none && /its parent's records name no unit 'AAA\|\|\|daily-1d'/.test(missing.why), `a seal missing this unit is not said: ${missing.why}`);
+  // THE RELEASES: the parent's own stamp, one first digit when all three agree
+  const doc = { release: '3.233.0', rich: {}, check: {}, unit: 'AAA|||daily-1d', sealed: { layout: 'split70', units: [] }, marks: [], steps: [], backSteps: [], userRule: null };
+  const join = { rule: S4.normaliseRule({ ranges: {}, allowed: {}, floors: {} }), parent: { engineVersion: '3.220.4', params: {} }, same: true, gone: 0, now: 1, had: 1, sameOnParent: true, nowOnParent: 1 };
+  const f = stages.verifyFooting(doc, join);
+  assert.deepStrictEqual([f.releases.parent, f.releases.unknown, f.releases.sameFirstDigit], ['3.220.4', [], true], `the parent's release is not read where a stage set stamps it: ${JSON.stringify(f.releases)}`);
+  assert.ok(f.sealed.none, 'the footing does not carry that this layout seals nothing');
+  // a parent that carries no stamp is not recorded, and is never a first digit that differs
+  const g = stages.verifyFooting(doc, { ...join, parent: { params: { engineVersion: '9.9.9' } } });
+  assert.deepStrictEqual([g.releases.parent, g.releases.unknown, g.releases.sameFirstDigit], [null, ['parent'], false], 'a release read out of the settings, or a missing one read as known');
+  // a real difference is still a difference
+  const h = stages.verifyFooting(doc, { ...join, parent: { engineVersion: '2.9.0', params: {} } });
+  assert.deepStrictEqual([h.releases.unknown, h.releases.sameFirstDigit], [[], false]);
+  // THE LINE ON THE SCREEN says each of those in words
+  const page = src('public/construct.js');
+  const at = page.indexOf('function vFootingHtml(d) {');
+  // eslint-disable-next-line no-new-func
+  const vFootingHtml = new Function('esc', 'vDay', `${page.slice(at, page.indexOf('\n}\n', at) + 3)}\nreturn vFootingHtml;`)((t) => String(t), () => 'a day');
+  const line = (ff) => vFootingHtml({ footing: ff }).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+  assert.ok(line(f).includes('· no sealed window - this set was built 70/15/15, which keeps no reserve window, so nothing is sealed'), `the line does not say there is no sealed window: ${line(f)}`);
+  assert.ok(!line(f).includes('not intact'), 'a layout that seals nothing still reads as a seal not intact');
+  assert.ok(line(f).includes('releases: set 3.233.0, parent 3.220.4, reader') && line(f).includes('(one first digit)'), `the releases do not read as one first digit: ${line(f)}`);
+  assert.ok(line(g).includes('(the parent release is not recorded, so the first digits cannot be compared)') && !line(g).includes('the first digits differ'), `a release not recorded reads as a mismatch: ${line(g)}`);
+  assert.ok(line(h).includes('(the first digits differ)'), 'a real difference is no longer said');
+  // A STAGE 4 SET RECORDS ITS PARENT'S RELEASE FROM THE SAME PLACE
+  const cut = S4.newFunnelSet({ id: 's4-x', seq: 1, name: 'x', parent: { id: 's3-x', name: 'S3 x', engineVersion: '3.220.4', params: {} }, release: '3.234.2' });
+  assert.strictEqual(cut.parent.release, '3.220.4', 'a Stage 4 set records its parent\'s release from where no stage set stamps it');
+};
+
+// THE STAGE 4 SETS ALREADY ON DISK ARE PUT RIGHT (3.234.2, RULE NINE; RULE TEN:
+// this test goes with the repair in the next release). A set whose recorded
+// parent release is empty gets the parent's own stamp the next time the engine
+// starts; one whose parent carries none is left alone.
+module.exports.theParentReleaseIsFilledOnTheStageFourSetsAlreadyOnDisk = function () {
+  const { execFileSync } = require('child_process');
+  const tag = `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+  const p3 = `s3-test-${tag}-rel`;
+  const p3b = `s3-test-${tag}-rel2`;
+  const s4 = `s4-test-${tag}-rel`;
+  const s4b = `s4-test-${tag}-rel2`;
+  const files = [p3, p3b, s4, s4b].map((id) => path.join(SETS_DIR, `${id}.json`));
+  fs.mkdirSync(SETS_DIR, { recursive: true });
+  const now = new Date().toISOString();
+  fs.writeFileSync(files[0], JSON.stringify({ id: p3, stage: 3, seq: 999950, name: 'S3 rel', status: 'done', createdAt: now, engineVersion: '3.220.4', exam: true }));
+  fs.writeFileSync(files[1], JSON.stringify({ id: p3b, stage: 3, seq: 999951, name: 'S3 rel2', status: 'done', createdAt: now, exam: true }));
+  fs.writeFileSync(files[2], JSON.stringify({ id: s4, stage: 4, seq: 999952, name: 'S4 rel', status: 'done', createdAt: now, exam: true, parent: { id: p3, name: 'S3 rel', release: null } }));
+  fs.writeFileSync(files[3], JSON.stringify({ id: s4b, stage: 4, seq: 999953, name: 'S4 rel2', status: 'done', createdAt: now, exam: true, parent: { id: p3b, name: 'S3 rel2', release: null } }));
+  try {
+    execFileSync(process.execPath, ['-e', "require('./lib/stages')"], { cwd: ROOT, stdio: 'ignore' });
+    assert.strictEqual(stages.getSet(s4).parent.release, '3.220.4', 'a Stage 4 set already on disk still records no parent release');
+    assert.strictEqual(stages.getSet(s4b).parent.release, null, 'a parent release was invented where the parent carries none');
+  } finally {
+    for (const f of files) { try { fs.rmSync(f, { force: true }); } catch (_) { /* fixture */ } }
+  }
+};

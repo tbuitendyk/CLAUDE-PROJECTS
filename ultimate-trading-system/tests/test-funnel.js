@@ -424,9 +424,11 @@ module.exports = {
   // rebuilt number and a stored one can come from different engines, and the
   // set has to be able to say so.
   aFunnelSetNamesBothReleases() {
+    // 3.234.2: a stage set stamps its release at the top of its own record, and
+    // that is where the parent's release is read from -- the settings carry none
     const doc = FS4.newFunnelSet({
       id: 's4-x-7', release: '3.31.0',
-      parent: { id: 's3-y', name: 'S3 #1', params: { engineVersion: '3.26.1' } },
+      parent: { id: 's3-y', name: 'S3 #1', engineVersion: '3.26.1', params: {} },
     });
     assert.strictEqual(doc.release, '3.31.0');
     assert.strictEqual(doc.parent.release, '3.26.1');
@@ -483,7 +485,8 @@ module.exports = {
     assert.strictEqual(stages.firstDigitOf(null), null);
     let threw = null;
     try {
-      await stages.rebuildRichFor({ id: 's3-x', params: { engineVersion: '1.0.0' } }, ['some setting']);
+      // 3.234.2: the release where a stage set stamps it, at the top of its record
+      await stages.rebuildRichFor({ id: 's3-x', engineVersion: '1.0.0', params: {} }, ['some setting']);
     } catch (err) { threw = err.message; }
     assert.ok(threw && /different engine/.test(threw), `must refuse across the first digit: ${threw}`);
     // and asking for nothing is refused before any unit is rebuilt

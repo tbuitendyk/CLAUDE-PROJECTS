@@ -2486,10 +2486,12 @@ function vFootingHtml(d) {
       : `<b class="neg">the rule does not give back its own survivors today</b> - ${Number(f.now).toLocaleString()} now, ${Number(f.had).toLocaleString()} on the record, ${Number(f.gone).toLocaleString()} gone`)}
     · rule keys ${f.keys.ok ? 'are dials and the two limits' : `<b class="neg">include ${esc(f.keys.bad.join(', '))}</b>`}${f.keys.cut ? ` · a top ${f.keys.cut.n} cut, which each copy takes for itself` : ''}
     · check: ${f.check.kind === 'scrambles' ? `${f.check.copies} scrambled copies, bar ${f.check.bar} of them (${f.check.barPct}%)` : 'the two halves, no scrambled copies'}
-    · sealed window ${f.sealed.sealed ? `intact on this unit from ${vDay(f.sealed.fromTs)} onward` : `<b class="neg">not intact</b> - ${esc(String(f.sealed.why || ''))}`}
+    · ${f.sealed.sealed ? `sealed window intact on this unit from ${vDay(f.sealed.fromTs)} onward` : f.sealed.none ? `no sealed window - ${esc(String(f.sealed.why || ''))}` : `sealed window <b class="neg">not intact</b> - ${esc(String(f.sealed.why || ''))}`}
     · ${f.marks} mark(s) carried · ${f.steps} step(s) and ${f.backSteps} step(s) back
     · ${f.userRuleDiffers === null ? 'no User Rule recorded' : (f.userRuleDiffers ? 'the User Rule differs from the Final Rule' : 'the User Rule is the Final Rule')}
-    · releases: set ${esc(r.set || '?')}, parent ${esc(r.parent || '?')}, reader ${esc(r.reader || '?')}${r.sameFirstDigit ? ' (one first digit)' : ' <b class="warn">(the first digits differ)</b>'}</p>`;
+    · releases: set ${esc(r.set || '?')}, parent ${esc(r.parent || '?')}, reader ${esc(r.reader || '?')}${
+  (r.unknown || []).length ? ` <b class="warn">(the ${r.unknown.join(' and ')} release ${r.unknown.length > 1 ? 'are' : 'is'} not recorded, so the first digits cannot be compared)</b>`
+    : r.sameFirstDigit ? ' (one first digit)' : ' <b class="warn">(the first digits differ)</b>'}</p>`;
 }
 function vLooksHtml(d, stretch) {
   const l = d.looks;
