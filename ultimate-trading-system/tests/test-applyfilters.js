@@ -159,8 +159,15 @@ module.exports = {
     assert.ok(draw.includes("bSaveView({ stab: n });\n      bRedrawPeggedTo(`[data-bstab=\"${n}\"]`);"), 'a sub tab press is not remembered, or it moves the page');
     const pin = src.slice(src.indexOf("querySelectorAll('[data-bpin3b]')"), src.indexOf("querySelectorAll('[data-bpin3b]')") + 2200);
     assert.ok(pin.includes("s3tab: '3B',"), 'Show in 3.B does not land on the Table 3.B sub tab, so its answer is drawn nowhere');
+    // THE TABLE TABS JOIN THE STAGE STRIP, and only while Stage 3 is picked (3.239.0)
+    assert.ok(draw.includes("${stab !== 3 ? '' : `<div class=\"tab tab-gap${t3On('3A')}\" data-bt3tab=\"3A\">Table 3.A</div>"),
+      'the table tabs are not on the Stage strip, or they show under Stage 1 and Stage 2, or Table 3.A is not set apart from Stage 3');
+    assert.ok(/\.tab\.tab-gap \{ margin-left:/.test(HTML()), 'the space before Table 3.A styles against a class the stylesheet does not have');
+    assert.ok(draw.includes("bSaveView({ s3tab: k });\n      bRepaintTable(3, { peg: '#bStageTabs' });"), 'a table sub tab press is not remembered, or it moves the page');
     const b3 = src.slice(src.indexOf('async function bDrawStage3('));
-    assert.ok(b3.includes("bSaveView({ s3tab: k });\n      bRepaintTable(3, { peg: '#bT3Tabs' });"), 'a table sub tab press is not remembered, or it moves the page');
+    assert.ok(b3.includes("document.querySelectorAll('[data-bt3tab]').forEach((el) => el.classList.toggle('on', el.dataset.bt3tab === t3));"),
+      'the strip is not marked with the table the stage 3 draw drew, so Show in 3.B leaves Table 3.A marked');
+    assert.ok(!b3.slice(0, b3.indexOf('\nasync function ') > 0 ? b3.indexOf('\nasync function ') : undefined).includes('id="bT3Tabs"'), 'a second strip of table tabs is still drawn inside Stage 3');
   },
 
   // EACH STAGE 3 TABLE ON ITS OWN SUB TAB (3.238.0). They used to share one

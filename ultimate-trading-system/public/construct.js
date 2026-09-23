@@ -4559,6 +4559,9 @@ function bPollRedraw() {
 function bView() {
   try { return JSON.parse(localStorage.getItem(BOARDS_VIEW_KEY) || '{}') || {}; } catch (_) { return {}; }
 }
+// which of Table 3.A, 3.B and 3.C is picked: read by the strip that draws the
+// three tabs and by the stage 3 draw that draws the table, so they cannot differ
+const bT3Tab = (view) => (['3A', '3B', '3C'].includes(view.s3tab) ? view.s3tab : '3A');
 function bSaveView(patch) {
   try { localStorage.setItem(BOARDS_VIEW_KEY, JSON.stringify({ ...bView(), ...patch })); } catch (_) { /* private window */ }
 }
@@ -4688,6 +4691,13 @@ async function drawBoards() {
   // with none yet, the deepest stage picked opens.
   const stab = [1, 2, 3].includes(Number(view.stab)) ? Number(view.stab) : deepest;
   const stabOn = (n) => (n === stab ? ' on' : '');
+  // THE THREE TABLE TABS SIT ON THIS STRIP, beside Stage 3 and a little apart
+  // from it, and only while Stage 3 is picked (3.239.0, owner order 2026-09-23:
+  // "when Stage 3 tab is pressed ... display those three table tabs on the same
+  // level as the Stage 1/2/3 tabs but with a bit of a space between the Stage 3
+  // tab and the Table 3.A tab ... when Stage 1 or 2 are selected those three do
+  // not appear").
+  const t3On = (k) => (k === bT3Tab(view) ? ' on' : '');
   // NO TITLE AND NO DESCRIPTION ABOVE THE SUB TABS (3.238.2, owner order
   // 2026-09-23: "get rid of the title and description it's wasting WAY too much
   // space"). The only thing left above them is the line saying a run is going,
@@ -4697,6 +4707,9 @@ async function drawBoards() {
     <div class="tab${stabOn(1)}" data-bstab="1">Stage 1</div>
     <div class="tab${stabOn(2)}" data-bstab="2">Stage 2</div>
     <div class="tab${stabOn(3)}" data-bstab="3">Stage 3</div>
+    ${stab !== 3 ? '' : `<div class="tab tab-gap${t3On('3A')}" data-bt3tab="3A">Table 3.A</div>
+    <div class="tab${t3On('3B')}" data-bt3tab="3B">Table 3.B</div>
+    <div class="tab${t3On('3C')}" data-bt3tab="3C">Table 3.C</div>`}
   </div>
   ${stab !== 1 ? '' : `<div class="panel">
     <div class="row" style="align-items:flex-end">
@@ -4743,6 +4756,15 @@ async function drawBoards() {
       if (n === stab) return;
       bSaveView({ stab: n });
       bRedrawPeggedTo(`[data-bstab="${n}"]`);
+    };
+  });
+  // a table tab repaints the stage 3 table alone; the page holds still on the strip
+  document.querySelectorAll('[data-bt3tab]').forEach((t) => {
+    t.onclick = () => {
+      const k = t.dataset.bt3tab;
+      if (k === bT3Tab(bView())) return;
+      bSaveView({ s3tab: k });
+      bRepaintTable(3, { peg: '#bStageTabs' });
     };
   });
 
@@ -6321,9 +6343,11 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   // ONE TABLE AT A TIME, ON ITS OWN SUB TAB (3.238.0, owner order 2026-09-23:
   // "we need more subtabs for Table 3.A, Table 3.B, and Table 3.C"). The table
   // not on screen is not asked for: the lines about the whole set, and the
-  // held-back tick that reaches every table, stay above the sub tabs.
-  const t3 = ['3A', '3B', '3C'].includes(view.s3tab) ? view.s3tab : '3A';
-  const t3On = (k) => (k === t3 ? ' on' : '');
+  // held-back tick that reaches every table, stay above it. The three tabs sit
+  // on the Stage strip at the top (3.239.0), outside this table's own repaint,
+  // so every draw of the table marks the one it drew there.
+  const t3 = bT3Tab(view);
+  document.querySelectorAll('[data-bt3tab]').forEach((el) => el.classList.toggle('on', el.dataset.bt3tab === t3));
   const unitsQs = new URLSearchParams({ sort: unitsQ.sort || 'set', flip: unitsQ.flip ? '1' : '', offset: unitsQ.offset || 0, limit: 100 }).toString();
   const [ranked, coins, gap, filling, dropping, undoing, units] = await Promise.all([
     apiOr(`api/stageset/${doc.id}/ranked?${rankQs}`, null),
@@ -6372,11 +6396,6 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       ${(coins && coins.sortSetAside) ? `<span class="note warn">Table 3.B was sorting by ${esc(B_HELD_BACK_WORDS_3B[coins.sortSetAside] || coins.sortSetAside)}, a held-back column; while the window is hidden it reads by beat the kept null money</span>` : ''}
     </div>
     `}
-    <div class="tabs" id="bT3Tabs">
-      <div class="tab${t3On('3A')}" data-bt3tab="3A">Table 3.A</div>
-      <div class="tab${t3On('3B')}" data-bt3tab="3B">Table 3.B</div>
-      <div class="tab${t3On('3C')}" data-bt3tab="3C">Table 3.C</div>
-    </div>
     ${t3 !== '3A' ? '' : !bTableOpen('S3R') ? '<p class="note">put away — press the arrow to bring it back.</p>' : `
     <p class="t3head"><b>Table 3.A: Settings, ranked</b> — one row per permuted Sweep Stage 3 setting, averaged over its coin/chunk-shape combinations promoted from Stage 2</p>
     ${bFilterGrid('S3R', [
@@ -6567,15 +6586,6 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ${bPager((coins && coins.total) || 0, coinsQ.offset || 0, 100, 'S3C')}`}
     ${t3 !== '3C' ? '' : bUnitsSection(doc, units, view)}
   </div>`)) return;
-  // the three table sub tabs: the page holds still on the strip itself
-  $(mount).querySelectorAll('[data-bt3tab]').forEach((t) => {
-    t.onclick = () => {
-      const k = t.dataset.bt3tab;
-      if (k === t3) return;
-      bSaveView({ s3tab: k });
-      bRepaintTable(3, { peg: '#bT3Tabs' });
-    };
-  });
   // THE ORDERING BOX AND ITS Apply ARE GONE (owner order, 2026-08-28: "remove
   // obsolete ordering selections as we can do all row ordering by column
   // selections"). Every column sorts on one click and every filter asks again
