@@ -72,6 +72,18 @@ function splitCalls(calls, signs) {
   return { c, u, z };
 }
 
+// EACH CALL'S OWN SIZE under the three multipliers (3.235.0): the multiple of
+// the standard trade the lean gives it -- confirmed, unconfirmed or no lean --
+// and 0 where there is no call. The simulator settles each trade at it, so the
+// detailed figures are the trades' own at their own sizes.
+function sizesOf(calls, signs, kx, ux, zx = 1) {
+  return calls.map((call, i) => {
+    if (call !== 1 && call !== -1) return 0;
+    const s = signs ? (signs[i] || 0) : 0;
+    return s === 0 ? zx : (s === call ? kx : ux);
+  });
+}
+
 // MONEY AND SIZE under the two multipliers, from the three parts.
 // parts: { c: { pnl, n }, u: { pnl, n }, z: { pnl, n } } (n = trades taken)
 function combine(parts, kx, ux, zx = 1) {
@@ -151,5 +163,5 @@ function addParts(acc, parts) {
 
 module.exports = {
   CONFIRM_VALUES, DEFAULT_KX, DEFAULT_UX, VERDICTS,
-  isConfirm, multipliersOf, multiplierOrRefuse, leanSigns, foldLeanSigns, splitCalls, combine, verdictOf, verdictWhy, addParts,
+  isConfirm, multipliersOf, multiplierOrRefuse, leanSigns, foldLeanSigns, splitCalls, sizesOf, combine, verdictOf, verdictWhy, addParts,
 };

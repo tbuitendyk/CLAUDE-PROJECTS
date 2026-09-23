@@ -3847,8 +3847,10 @@ module.exports = {
     const at = page.indexOf('function fCutPickOption(c, st, who) {');
     assert.ok(at > 0, 'the row the list draws is no longer built in one place');
     const end = page.indexOf('\n}\n', at) + 3;
+    const rp = page.indexOf('function rebuildPrefix(x) {');
     const opt = new Function(`
       const esc = (x) => String(x);
+      ${page.slice(rp, page.indexOf('\n', rp) + 1)}
       ${page.slice(at, end)}
       return fCutPickOption;
     `)();

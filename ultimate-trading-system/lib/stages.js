@@ -252,6 +252,8 @@ function listSets() {
         continued: Array.isArray(d.continued) ? d.continued.length : 0,
         // the stage-engine check's own sets, kept off every screen's list (3.87.0)
         exam: !!d.exam,
+        // REBUILD REQUIRED, and why (3.235.0; the repair block below)
+        rebuild: d.stage >= 3 ? rebuildOf(d) : null,
       });
     } catch (_) { /* an unreadable doc is skipped, never invented */ }
   }
@@ -6588,6 +6590,7 @@ async function funnelRead(id, state = {}) {
       // reads as "nothing to report", which is the opposite of the truth
       noiseTwin: noiseTwinOf(doc),
       sealed: sealedWindowOf(doc),
+      rebuild: rebuildOf(doc),
     },
     money: 'test',
     // which board this walk is on, by key and by the name the screen prints,
@@ -7263,7 +7266,12 @@ const RICH_FIELDS = ['maxDrawdown', 'worstTrade', 'bestTrade', 'wins', 'stops', 
 // absent and is rebuilt, a coin and shape at a time as each is walked.
 // 5 (3.223.0): a folder, one file per coin and shape, the blend's sums beside
 // them; the one-file shapes 1 to 4 read as absent and are rebuilt.
-const FUNNEL_RICH_V = 5;
+// 6 (3.235.0, owner order 2026-09-23: "all upstream processes use the correct
+// resulting trade sizes IN EVERY SINGLE TRADE INSTANCE"): a sized setting's
+// drawdown, worst and best trade, thirds and money per trade are its trades at
+// their own sizes, where 5 read them at size 1. A folder of shape 5 reads as
+// absent and the pass works it out again (RULE NINE: derived, never migrated).
+const FUNNEL_RICH_V = 6;
 // WHAT A STAGE 4 RECORD SET'S ROW SAYS ABOUT THE HELD-BACK WINDOW (3.140.0):
 // the held-back row under each setting on the Funnel and the sorts on it.
 // Stripped from every row the Funnel is sent while the tick is off.
@@ -8285,7 +8293,7 @@ function verifyLooksOf(doc, keys, stamped) {
   const rides = readingsIn(doc, 'held').ride.length;
   if (rides) what.push(`the held-back ride was worked out ${rides} time(s) on Held, each a stamped look`);
   // a tool run on Tune that read the captured held-back entries (3.92.0): a look, stamped on the capture
-  const tuneReads = (((doc.capture || {}).reads) || []).filter((r) => r && r.look != null).length;
+  const tuneReads = (((captureOnSet(doc) || {}).reads) || []).filter((r) => r && r.look != null).length;
   if (tuneReads) what.push(`a scan on Tune read the captured held-back trades ${tuneReads} time(s), each a stamped look`);
   // a retrain run on History that was judged on the Held window (3.142.0 to 3.143.x) read it once per press; since
   // 3.144.0 the run is judged on the Test window and prices no held-back figure, so it is not a look -- the block says
@@ -8758,7 +8766,7 @@ function reserveLooksOf(doc, stamped, board = null) {
   const rides = readingsIn(doc, 'reserve').ride.length;
   const pricings = board && board.priced ? board.pricings : 0;
   // a scan on Tune that read the captured reserve entries (3.150.0): a look on the reserve, stamped on the capture
-  const tuneReads = (((doc.capture || {}).reads) || []).filter((r) => r && r.reserveLook != null).length;
+  const tuneReads = (((captureOnSet(doc) || {}).reads) || []).filter((r) => r && r.reserveLook != null).length;
   const what = [];
   if (pricings) what.push(`the reserve board of this unit was priced ${pricings} time(s), first on ${String(board.firstAt || '').slice(0, 10)} — that pricing was the one look at data nothing in the system had seen`);
   if (rides) what.push(`the reserve ride was worked out ${rides} time(s) on Reserve, each a stamped look`);
@@ -8808,11 +8816,13 @@ async function judgeRunOn(doc, stretch, asked, note = null) {
   // those tunings OR NOT ... However they are applied then we can run the Held
   // and Reserve"): before anything is read, every survivor carrying a stop or a
   // sizing is priced again under them off its captured trades on this stretch.
-  // AT ONE CLIP A TRADE (3.156.0, owner order 2026-09-16): the money every
-  // reading below reads for a survivor is its money under its STOP, and the
-  // sizing's dollars are written down beside it and substituted nowhere -- see
-  // TUNED_READS for why mixing the two scales made the mean and the gate
-  // meaningless. The scrambled copies are priced plain, and the block says so.
+  // THE STOP GOES IN, THE CONVICTION SIZING NEVER DOES (3.156.0, owner order
+  // 2026-09-16): the money every reading below reads for a survivor is its
+  // money under its STOP, and the sizing's dollars are written down beside it
+  // and substituted nowhere -- see TUNED_READS for why mixing the two scales
+  // made the mean and the gate meaningless. Every trade is at the size its own
+  // setting gave it (3.235.0), as in the reading's own money. The scrambled
+  // copies are priced plain, and the block says so.
   let tuned = null;
   const withTunings = async (rows) => {
     tuned = await tunedOnStretch(doc, stretch, rows.map((r) => ({ label: r.label, money: r.avgHold })));
@@ -8931,6 +8941,7 @@ async function judgeDry(id, stretch) {
   const reserve = reserveOf(doc);
   const out = {
     id: doc.id, name: doc.name, kind: doc.kind, unit: doc.unit || null, unitName: doc.unitName || null, release: doc.release || null,
+    rebuild: rebuildOf(doc),
     parent: doc.parent || null, stretch,
     ruleSentence: doc.ruleSentence || S4.ruleSentence(doc.rule),
     userSentence: doc.userRule ? S4.ruleSentence(S4.normaliseRule(doc.userRule)) : null,
@@ -9516,6 +9527,7 @@ async function stage4GreenlightDry(setId) {
   const r = reserveOf(doc);
   return {
     id: doc.id, name: doc.name, kind: doc.kind, from: doc.from || null, standsOn: doc.standsOn || null, unit: doc.unit || null, unitName: doc.unitName || null,
+    rebuild: rebuildOf(doc),
     ruleSentence: doc.ruleSentence || null, gate: gateOfSet(doc), standing: gateRefusalOf(doc),
     block: b ? { id: b.id, pass: !!(b.verdict && b.verdict.pass), at: b.at, release: b.release || null, look: b.look ?? null } : null,
     heldAlone: r.keeps ? null : HELD_ALONE, derived: doc.derived || null,
@@ -9534,15 +9546,21 @@ async function stage4GreenlightDry(setId) {
 // list of entries and price them themselves. A Stage 4 set holds money per
 // window and never the trades, so this writes them down: the same pricing pass
 // as the reserve grade with a flag (lib/stagework.js, s3UnitTask with
-// task.capture), every survivor that enters at market with no trailing stop,
-// on the training, test and held-back slices. The entries live in a file
-// beside the set; the set holds the summary. A tool run that reads the
-// held-back entries is a look, stamped on the capture. Refuses in words on a
-// blend set, without the parents, without a survivor of the right shape, and
-// while anything heavy is going. It asks for no verdict: Tune comes before
-// Verify in the order the tabs read (3.142.0), and a half-life set's standing
-// is read where it matters, on Greenlight.
-const CAPTURE_V = 1;
+// task.capture), every survivor, on the training, test and held-back slices.
+// The entries live in a file beside the set; the set holds the summary. A tool
+// run that reads the held-back entries is a look, stamped on the capture.
+// Refuses in words on a blend set, without the parents, and while anything
+// heavy is going. It asks for no verdict: Tune comes before Verify in the
+// order the tabs read (3.142.0), and a half-life set's standing is read where
+// it matters, on Greenlight.
+// 2 (3.235.0, owner order 2026-09-23: "all upstream processes use the correct
+// resulting trade sizes IN EVERY SINGLE TRADE INSTANCE"): every survivor is
+// captured, breakout entries too, only the trades the setting takes -- the
+// calls the field blocks are left out -- and each entry carries its size, its
+// money at that size. A capture of shape 1 reads as absent; its set says
+// REBUILD REQUIRED and the capture is taken again when the set is opened on
+// Tune (RULE NINE: derived, never migrated).
+const CAPTURE_V = 2;
 // 3.150.0: the capture gains the reserve window for a set whose layout keeps one (H3.2)
 const CAPTURE_WINDOWS = ['train', 'test', 'hold', 'reserve'];
 const CAPTURE_WINDOW_WORDS = { train: 'training', test: 'test', hold: 'held-back', reserve: 'reserve' };
@@ -9553,20 +9571,33 @@ function readCapture(id) {
     return raw && raw.v === CAPTURE_V && Array.isArray(raw.survivors) ? raw : null;
   } catch (_) { return null; }
 }
+// the capture summary on a set, when it is of today's shape; one of an older
+// shape reads as absent, like its file (RULE NINE)
+const captureOnSet = (doc) => (doc && doc.capture && doc.capture.v === CAPTURE_V ? doc.capture : null);
 function writeCapture(id, rec) {
   const tmp = `${captureFile(id)}.tmp${process.pid}-${++tmpSeq}`;
   fs.writeFileSync(tmp, zlib.gzipSync(Buffer.from(JSON.stringify(rec))));
   fs.renameSync(tmp, captureFile(id));
   return rec;
 }
-// why a setting cannot be captured, in words, or null when it can
-const captureShapeWhy = (st) => {
-  if ((st.entry || 'breakout') !== 'market') return 'it enters on a price level rather than at the hour, and the two scans on Tune price an entry at the hour, open to open';
-  if ((st.trailMult ?? null) != null) return 'it carries a trailing stop, so it already has a stop of its own';
-  return null;
-};
-const CAPTURE_NONE = 'no survivor of this set enters at market without a trailing stop, and those are the only trades the two scans on Tune price';
 const CAPTURE_NOT_YET = 'this set carries no per-trade capture yet — press "Capture the trades of this set" on Tune first';
+// the owner's words for the stop scan on breakout trades (2026-09-23)
+const STOP_NOT_ON_BREAKOUT = 'protective stops are not tuned currently on breakout trades';
+// THE MULTIPLIERS DOWN THE ROWS OF THE CONVICTION TABLE (3.235.0, owner order
+// 2026-09-23: "let me put in a number, any number I want, down each row"):
+// one per agreement count, 1 to the committee's size, any number of zero or
+// more, 0 turning that row off. Not given, the declared ladder: one clip a
+// member that agreed.
+function ladderAsked(body, members) {
+  const raw = body && body.ladder;
+  if (raw == null || raw === '') return Array.from({ length: members }, (_, i) => i + 1);
+  if (!Array.isArray(raw) || raw.length !== members) { const e = new Error(`give one multiplier for each agreement count, 1 to ${members}`); e.status = 400; throw e; }
+  return raw.map((v, i) => {
+    const x = Number(v);
+    if (v === '' || v == null || !Number.isFinite(x) || x < 0) { const e = new Error(`the multiplier for ${i + 1} of ${members} must be a number of zero or more — not ${JSON.stringify(v)}`); e.status = 400; throw e; }
+    return x;
+  });
+}
 function captureRefusalOf(doc) {
   if (!doc.unit) return BLEND_REFUSAL;
   if (doc.derived && !getSet(doc.derived.from)) return 'the set this half-life set was built from is gone, so its standing cannot be read';
@@ -9604,15 +9635,9 @@ async function tuneCaptureRun(doc, note = null) {
   const rec = shape.records[idx];
   const want = new Set(join.rows.map((r) => r.label));
   const held = new Set(shape.heldOn[idx]);
-  const onUnit = shape.settings.filter((st) => want.has(st.label) && held.has(st.si));
-  const missing = [...want].filter((L) => !onUnit.some((st) => st.label === L));
-  const notCaptured = [];
-  const settings = [];
-  for (const st of onUnit) {
-    const why = captureShapeWhy(st);
-    if (why) notCaptured.push({ label: st.label, why }); else settings.push(st);
-  }
-  if (!settings.length) throw new Error(CAPTURE_NONE);
+  const settings = shape.settings.filter((st) => want.has(st.label) && held.has(st.si));
+  const missing = [...want].filter((L) => !settings.some((st) => st.label === L));
+  if (!settings.length) throw new Error('none of this set\'s survivors is in the stage 3 set\'s block on this unit, so there is nothing to capture');
   const fee = Number((parent.params || {}).fee) || 0;
   // no scrambled copies: the capture is the real calendar's trades and nothing else
   const base = s3Payload({ doc: parent, parent: shape.parent, rec, settings, fee, nullN: 0 });
@@ -9684,20 +9709,80 @@ async function tuneCaptureRun(doc, note = null) {
     members: (rec.specs || []).length, fee: { feePerLeg: fee, feeUnits: 'fraction' }, windows: res.windows || null,
     reserve: reserveWhy ? { captured: false, why: reserveWhy } : { captured: true, window: reserveWindow },
     pick: pick ? { by: 'depth', among: 'the captured survivors', label: pick.label, worst: pick.worst, mean: pick.mean } : null,
-    survivors, notCaptured, missing,
+    survivors, missing,
   };
   writeCapture(doc.id, file);
   fresh.capture = {
-    id: `${doc.id}-c${times}`, at, release: ENGINE_VERSION, times, unit: doc.unit, members: file.members, fee: file.fee, windows: file.windows,
-    survivors: join.rows.length, captured: survivors.length, notCaptured, missing, entries: totals, pick: file.pick, reserve: file.reserve,
-    rows: survivors.map((sv) => ({ label: sv.label, tHours: sv.tHours, halfLife: sv.halfLife ?? null, entries: { train: sv.entries.train.length, test: sv.entries.test.length, hold: sv.entries.hold.length, reserve: (sv.entries.reserve || []).length }, test: sv.money.test, held: sv.money.hold })),
+    v: CAPTURE_V, id: `${doc.id}-c${times}`, at, release: ENGINE_VERSION, times, unit: doc.unit, members: file.members, fee: file.fee, windows: file.windows,
+    survivors: join.rows.length, captured: survivors.length, missing, entries: totals, pick: file.pick, reserve: file.reserve,
+    // each captured survivor's entry, so a scan knows a breakout trade from a market one (3.235.0)
+    rows: survivors.map((sv) => ({ label: sv.label, entry: sv.entry || 'breakout', tHours: sv.tHours, halfLife: sv.halfLife ?? null, entries: { train: sv.entries.train.length, test: sv.entries.test.length, hold: sv.entries.hold.length, reserve: (sv.entries.reserve || []).length }, test: sv.money.test, held: sv.money.hold })),
     derived: doc.derived || null,
     // every scan on Tune that read this capture, newest first; a read of the held-back entries carries its look number
-    reads: had && Array.isArray(had.reads) ? had.reads : [],
+    reads: readsKeptOnRecapture(had),
   };
   saveSet(fresh);
-  return { id: fresh.capture.id, times, captured: survivors.length, notCaptured: notCaptured.length, missing: missing.length, entries: totals };
+  return { id: fresh.capture.id, times, captured: survivors.length, missing: missing.length, entries: totals };
 }
+// ---- REPAIR (3.235.0): THE RECORDS WORKED OUT BEFORE EVERY TRADE WAS SIZED ----
+//
+// RULE TEN: this block is deleted, whole, the day no set on the box still
+// needs it -- counted on the box, not assumed. It holds everything that exists
+// only to bring the records of the size-1 era up to date, and nothing outside
+// it calls anything only it calls.
+//
+// A capture of shape 1 was garbage for a sized setting ("the garbage data does
+// not contribute to looks", owner 2026-09-23), so the capture taken in its
+// place starts its scans and its looks at zero. Every capture on the box had
+// zero looks when this was written.
+function readsKeptOnRecapture(had) {
+  if (!had || had.v !== CAPTURE_V) return [];
+  return Array.isArray(had.reads) ? had.reads : [];
+}
+// WHICH SETS SAY REBUILD REQUIRED (owner 2026-09-23: "flag somehow all the
+// data sets that need a rebuild. Maybe put a prefix on them"), and why, in
+// words. A stage 3 set whose settings size their trades -- a field named, or
+// confirm past off -- whose test history numbers are still of the shape that
+// read them at size 1; a Stage 4 set cut, read or built from such a stage 3
+// set before this release; and a Stage 4 set holding a capture of the old
+// shape. Each reason carries the key the screen rebuilds it by. Nothing else
+// is ever flagged: a set whose trades are all at the standard size came out
+// the same either way.
+const SIZED_FROM = [3, 235, 0];
+const releaseBefore = (rel, ref) => {
+  const a = String(rel || '0.0.0').split('.').map((x) => Number(x) || 0);
+  for (let i = 0; i < 3; i++) if ((a[i] || 0) !== ref[i]) return (a[i] || 0) < ref[i];
+  return false;
+};
+const sizesItsTrades = (s3) => {
+  const p = (s3 && s3.params) || {};
+  const field = p.fieldId != null && String(p.fieldId) !== '' && String(p.fieldId) !== 'none';
+  const lean = (p.confirm != null && p.confirm !== '' && p.confirm !== 'off') || !!p.permuteConfirm;
+  return field || lean;
+};
+const richOfOldShape = (id) => {
+  const index = readJsonOr(path.join(funnelRichDir(String(id)), 'index.json'), null);
+  return !!(index && index.v !== FUNNEL_RICH_V);
+};
+function rebuildOf(doc) {
+  if (!doc) return null;
+  const reasons = [];
+  if (doc.stage === 3 && sizesItsTrades(doc) && richOfOldShape(doc.id)) {
+    reasons.push({ key: 'rich', why: 'its test history numbers were worked out with every trade at the standard size, and are worked out again' });
+  }
+  if (doc.stage === 4) {
+    const parent = getSet((doc.parent || {}).id);
+    if (parent && sizesItsTrades(parent) && releaseBefore(doc.release, SIZED_FROM)) {
+      reasons.push({ key: 'stage4', why: `its survivors were chosen and read on figures worked out with every trade at the standard size, under release ${doc.release || 'unknown'}` });
+    }
+    if (doc.capture && doc.capture.v !== CAPTURE_V) {
+      reasons.push({ key: 'capture', why: 'its trades were captured with every trade at the standard size, and are captured again when it is chosen on Tune' });
+    }
+  }
+  return reasons.length ? { words: 'REBUILD REQUIRED', reasons } : null;
+}
+// ---- END REPAIR (3.235.0) ----
+
 async function tuneCaptureDry(id) {
   const doc = getSet(id);
   if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
@@ -9705,8 +9790,9 @@ async function tuneCaptureDry(id) {
   return {
     id: doc.id, name: doc.name, unit: doc.unit || null, unitName: doc.unitName || null, release: doc.release || null,
     ruleSentence: doc.ruleSentence || null, survivors: ((doc.counts || {}).survivors) ?? (doc.survivors || []).length,
-    capture: cap,
-    looks: cap ? (cap.reads || []).filter((r) => r && r.look != null).length : 0,
+    capture: cap && cap.v === CAPTURE_V ? cap : null,
+    looks: cap && cap.v === CAPTURE_V ? (cap.reads || []).filter((r) => r && r.look != null).length : 0,
+    rebuild: rebuildOf(doc),
     refused: captureRefusalOf(doc),
     running: captureRun && captureRun.id === doc.id && !captureRun.result && !captureRun.error ? { token: captureRun.token } : null,
   };
@@ -9732,10 +9818,10 @@ function tuneCaptureStatus(id) {
 // the Stage 4 sets a scan on Tune can be aimed at: those carrying a capture, with what the picker needs and nothing heavy
 function captureCandidates() {
   const paper = require('./paper');
-  return listFunnelSets().filter((d) => !d.exam && d.capture && d.capture.captured > 0).map((d) => {
+  return listFunnelSets().filter((d) => !d.exam && d.capture && d.capture.v === CAPTURE_V && d.capture.captured > 0).map((d) => {
     const fee = Number((d.capture.fee || {}).feePerLeg) || 0;
     return {
-      kind: 'stage4', id: d.id, name: d.name, unitName: d.unitName || null, at: d.capture.at, release: d.capture.release,
+      kind: 'stage4', id: d.id, name: d.name, rebuild: rebuildOf(d), unitName: d.unitName || null, at: d.capture.at, release: d.capture.release,
       survivors: d.capture.survivors, captured: d.capture.captured, members: d.capture.members, pick: d.capture.pick,
       // each captured survivor with the stop the owner forced onto it, when one is on record (3.145.0)
       rows: (d.capture.rows || []).map((r) => ({ ...r, stop: stopChoiceOf(d, r.label) })), entries: d.capture.entries, looks: (d.capture.reads || []).filter((r) => r && r.look != null).length,
@@ -9766,12 +9852,14 @@ function setStopChoice(setId, asked = {}) {
   if (!doc || doc.stage !== 4) { const e = new Error(`unknown Stage 4 record set '${setId}'`); e.status = 404; throw e; }
   // A HELD SET OR A RESERVE SET IS FROZEN AT ITS PRESS (3.147.0): its stop choices are what the rule carried then
   if (isJudgeSet(doc)) { const e = new Error(`${doc.name} is a ${doc.kind} set and its stop choices were frozen at the press — set the stop on the rule it was read from and read the rule again`); e.status = 400; throw e; }
-  if (!doc.capture) { const e = new Error(`${doc.name}: ${CAPTURE_NOT_YET}`); e.status = 400; throw e; }
+  const cap = captureOnSet(doc);
+  if (!cap) { const e = new Error(`${doc.name}: ${CAPTURE_NOT_YET}`); e.status = 400; throw e; }
   const pick = asked.pick == null || asked.pick === '' || asked.pick === 'depth' ? 'depth' : String(asked.pick);
   if (pick === 'all') { const e = new Error('a stop is forced onto one survivor — pick one under Tuning targets, not all survivors'); e.status = 400; throw e; }
-  const label = pick === 'depth' ? ((doc.capture.pick || {}).label || null) : pick;
-  const row = (doc.capture.rows || []).find((r) => r.label === label) || null;
-  if (!row) { const e = new Error(pick === 'depth' ? `${doc.name} has no survivor by depth among the captured` : `'${pick}' is not one of the ${doc.capture.captured} captured survivors of ${doc.name}`); e.status = 400; throw e; }
+  const label = pick === 'depth' ? ((cap.pick || {}).label || null) : pick;
+  const row = (cap.rows || []).find((r) => r.label === label) || null;
+  if (!row) { const e = new Error(pick === 'depth' ? `${doc.name} has no survivor by depth among the captured` : `'${pick}' is not one of the ${cap.captured} captured survivors of ${doc.name}`); e.status = 400; throw e; }
+  if ((row.entry || 'breakout') !== 'market') { const e = new Error(STOP_NOT_ON_BREAKOUT); e.status = 400; throw e; }
   // "NO STOP" AND "YOU DID NOT SAY" ARE DIFFERENT ANSWERS: the key must be present
   if (!Object.prototype.hasOwnProperty.call(asked, 'stopPct')) { const e = new Error('stopPct must be given explicitly — a fraction to force a stop, or null to clear it. A request that says nothing is refused.'); e.status = 400; throw e; }
   const raw = asked.stopPct;
@@ -9783,7 +9871,7 @@ function setStopChoice(setId, asked = {}) {
     // THE FLOOR IS TWICE THE ROUND TRIP AT THE FEE THE TRADES WERE PRICED AT: tighter
     // than the round trip and a triggered stop is a guaranteed net loss; tighter
     // than the floor and it fires on ordinary hourly noise
-    const fee = Number((doc.capture.fee || {}).feePerLeg) || 0;
+    const fee = Number((cap.fee || {}).feePerLeg) || 0;
     const floor = paper.minStopPct(fee);
     if (v < floor) {
       const pc = (x) => `${(100 * x).toFixed(3)}%`;
@@ -9816,24 +9904,41 @@ function setSizingChoice(setId, asked = {}) {
   const doc = getSet(String(setId || ''));
   if (!doc || doc.stage !== 4) { const e = new Error(`unknown Stage 4 record set '${setId}'`); e.status = 404; throw e; }
   if (isJudgeSet(doc)) { const e = new Error(`${doc.name} is a ${doc.kind} set and its choices were frozen at the press — set the sizing on the rule it was read from and read the rule again`); e.status = 400; throw e; }
-  if (!doc.capture) { const e = new Error(`${doc.name}: ${CAPTURE_NOT_YET}`); e.status = 400; throw e; }
+  const cap = captureOnSet(doc);
+  if (!cap) { const e = new Error(`${doc.name}: ${CAPTURE_NOT_YET}`); e.status = 400; throw e; }
   const pick = asked.pick == null || asked.pick === '' || asked.pick === 'depth' ? 'depth' : String(asked.pick);
-  if (pick === 'all') { const e = new Error('the sizing is applied to one survivor — pick one under Tuning targets, not all survivors'); e.status = 400; throw e; }
-  const label = pick === 'depth' ? ((doc.capture.pick || {}).label || null) : pick;
-  const row = (doc.capture.rows || []).find((r) => r.label === label) || null;
-  if (!row) { const e = new Error(pick === 'depth' ? `${doc.name} has no survivor by depth among the captured` : `'${pick}' is not one of the ${doc.capture.captured} captured survivors of ${doc.name}`); e.status = 400; throw e; }
+  // EVERY SURVIVOR IN THE TABLE (3.235.0, owner order 2026-09-23: "it is going
+  // to apply to all of the settings configurations that are represented in
+  // that table ... that's going to trickle back onto all the survivors"): with
+  // all survivors chosen the one table pools every captured survivor, and the
+  // sizing lands on every one of them.
+  let labels;
+  if (pick === 'all') {
+    labels = (cap.rows || []).map((r) => r.label);
+    if (!labels.length) { const e = new Error(`${doc.name} has no captured survivor to size`); e.status = 400; throw e; }
+  } else {
+    const label = pick === 'depth' ? ((cap.pick || {}).label || null) : pick;
+    const row = (cap.rows || []).find((r) => r.label === label) || null;
+    if (!row) { const e = new Error(pick === 'depth' ? `${doc.name} has no survivor by depth among the captured` : `'${pick}' is not one of the ${cap.captured} captured survivors of ${doc.name}`); e.status = 400; throw e; }
+    labels = [label];
+  }
   const on = !!asked.on;
   const why = typeof asked.why === 'string' ? asked.why.trim().slice(0, 300) : '';
+  const members = Math.max(1, Number(cap.members) || 1);
+  // the multipliers priced on the screen, one per agreement count (3.235.0); the declared ladder when none is given
+  const ladder = on ? ladderAsked(asked, members) : null;
   const fresh = getSet(doc.id);
   const choices = fresh.stopChoices && typeof fresh.stopChoices === 'object' ? fresh.stopChoices : {};
-  const members = Math.max(1, Number(doc.capture.members) || 1);
-  const mine = { ...(choices[label] || {}) };
-  if (on) mine.sizing = { on: true, ladder: Array.from({ length: members }, (_, i) => i + 1), clipUsd: require('./paper').NOTIONAL, why, at: new Date().toISOString(), by: 'owner' };
-  else delete mine.sizing;
-  choices[label] = mine;
+  const at = new Date().toISOString();
+  for (const L of labels) {
+    const mine = { ...(choices[L] || {}) };
+    if (on) mine.sizing = { on: true, ladder, clipUsd: require('./paper').NOTIONAL, why, at, by: 'owner' };
+    else delete mine.sizing;
+    choices[L] = mine;
+  }
   fresh.stopChoices = choices;
   saveSet(fresh);
-  return { setId: fresh.id, set: fresh.name, survivor: label, sizing: mine.sizing || null };
+  return { setId: fresh.id, set: fresh.name, survivor: pick === 'all' ? null : labels[0], survivors: labels, sizing: on ? { ...choices[labels[0]].sizing } : null };
 }
 // THE SURVIVOR'S MONEY WITH AND WITHOUT ITS TUNINGS, per window, off its captured
 // trades (3.151.0): the scans' own arithmetic -- a trade stopped when its
@@ -9864,21 +9969,34 @@ async function tunedOfRule(rule, labels) {
     const sz = c.sizing && c.sizing.on ? c.sizing : null;
     const clip = require('./paper').NOTIONAL;
     const windows = {};
+    // EACH TRADE AT ITS OWN SIZE, THE TUNINGS ON TOP (3.235.0, owner order
+    // 2026-09-23): the size the survivor itself traded it at, the sizing's
+    // multiplier multiplying that. A breakout trade is its own money -- it
+    // opens part way through an hour, which the stop's arithmetic cannot
+    // price -- and no stop is ever applied to it.
+    const breakout = (sv.entry || 'breakout') !== 'market';
     for (const [w, key] of [['train', 'train'], ['test', 'test'], ['held', 'hold'], ['reserve', 'reserve']]) {
       const entries = sv.entries[key] || [];
       let flat = 0; let stop = 0; let tuned = 0; let clips = 0; let priced = 0; let stopped = 0;
       for (const e of entries) {
-        const o = entryOutcome(e.ts, e.side, maps.trade, sv.tHours, fee);
-        if (!o.priced) continue;
+        const size = Number(e.size);
+        let netStandard;
+        let hit = false;
+        if (breakout) netStandard = e.usd / size / clip;
+        else {
+          const o = entryOutcome(e.ts, e.side, maps.trade, sv.tHours, fee);
+          if (!o.priced) continue;
+          netStandard = o.netPct;
+          hit = S != null && o.mae > S;
+        }
         priced++;
-        const hit = S != null && o.mae > S;
         if (hit) stopped++;
-        const net = hit ? -S - 2 * fee : o.netPct;
+        const net = hit ? -S - 2 * fee : netStandard;
         const mult = sz ? multFor(sz.ladder, e.agree) : 1;
-        clips += mult;
-        flat += o.netPct * clip;                       // no tuning at all: one clip a trade
-        stop += net * clip;                            // the stop applied, STILL one clip a trade
-        tuned += net * clip * mult;                    // and the sizing on top: up to one clip a member
+        clips += size * mult;
+        flat += netStandard * clip * size;             // no tuning at all: each trade at its own size
+        stop += net * clip * size;                     // the stop applied, each trade still at its own size
+        tuned += net * clip * size * mult;             // and the sizing multiplying that
       }
       windows[w] = {
         trades: entries.length, priced, unpriced: entries.length - priced, stopped,
@@ -9955,29 +10073,40 @@ function captureTargetOf(body) {
   const b = body || {};
   const doc = getSet(String(b.setId || ''));
   if (!doc || doc.stage !== 4) { const e = new Error(`unknown Stage 4 record set '${b.setId}'`); e.status = 404; throw e; }
-  if (!doc.capture) { const e = new Error(`${doc.name}: ${CAPTURE_NOT_YET}`); e.status = 400; throw e; }
+  const cap = captureOnSet(doc);
+  if (!cap) { const e = new Error(`${doc.name}: ${CAPTURE_NOT_YET}`); e.status = 400; throw e; }
   const windows = Array.isArray(b.windows) ? b.windows.map(String) : [];
   const bad = windows.filter((w) => !CAPTURE_WINDOWS.includes(w));
   if (bad.length) { const e = new Error(`no window called '${bad[0]}' — the windows are ${CAPTURE_WINDOWS.map((w) => CAPTURE_WINDOW_WORDS[w]).join(', ')}`); e.status = 400; throw e; }
   if (!windows.length) { const e = new Error('tick at least one window for the scan to read: training, test, held-back or reserve'); e.status = 400; throw e; }
   // the reserve window's entries exist only on a capture that read it (3.150.0)
-  if (windows.includes('reserve') && !(doc.capture.reserve && doc.capture.reserve.captured)) { const e = new Error(`${doc.name}: the capture holds no reserve entries — ${(doc.capture.reserve || {}).why || 'capture the trades of this set on Tune again'}`); e.status = 400; throw e; }
+  if (windows.includes('reserve') && !(cap.reserve && cap.reserve.captured)) { const e = new Error(`${doc.name}: the capture holds no reserve entries — ${(cap.reserve || {}).why || 'capture the trades of this set on Tune again'}`); e.status = 400; throw e; }
   const asked = b.pick == null || b.pick === '' || b.pick === 'depth' ? 'depth' : String(b.pick);
   // ALL SURVIVORS AT ONCE (3.143.0, owner order 2026-09-15: "why can't we just
   // sweep the entire table by selecting 'all survivors'"): every captured
   // survivor's trades pooled into one list, each trade at its own survivor's
   // hold length.
   if (asked === 'all') {
-    if (!(doc.capture.captured > 0)) { const e = new Error(`${doc.name} has no captured survivor to read`); e.status = 400; throw e; }
+    if (!(cap.captured > 0)) { const e = new Error(`${doc.name} has no captured survivor to read`); e.status = 400; throw e; }
     return { doc, label: null, pick: 'all', windows: CAPTURE_WINDOWS.filter((w) => windows.includes(w)), bookId: `${doc.name} · all survivors` };
   }
-  const label = asked === 'depth' ? ((doc.capture.pick || {}).label || null) : asked;
-  const row = (doc.capture.rows || []).find((r) => r.label === label) || null;
+  const label = asked === 'depth' ? ((cap.pick || {}).label || null) : asked;
+  const row = (cap.rows || []).find((r) => r.label === label) || null;
   if (!row) {
-    const e = new Error(asked === 'depth' ? `${doc.name} has no survivor by depth among the captured` : `'${asked}' is not one of the ${doc.capture.captured} captured survivors of ${doc.name}`);
+    const e = new Error(asked === 'depth' ? `${doc.name} has no survivor by depth among the captured` : `'${asked}' is not one of the ${cap.captured} captured survivors of ${doc.name}`);
     e.status = 400; throw e;
   }
   return { doc, label, pick: asked === 'depth' ? 'depth' : 'named', windows: CAPTURE_WINDOWS.filter((w) => windows.includes(w)), bookId: `${doc.name} · ${label}` };
+}
+// WHY A SCAN ON THIS TARGET WOULD REFUSE, in words, or null (3.235.0): the
+// stop scan prices an entry from the hour's open, which a breakout trade is
+// not, so it refuses whenever the trades it would read include one -- the one
+// survivor chosen, or any of them when all are pooled.
+function scanRefusalOf(target, tool) {
+  if (tool !== 'stop') return null;
+  const rows = (captureOnSet(target.doc) || {}).rows || [];
+  const read = target.pick === 'all' ? rows : rows.filter((r) => r.label === target.label);
+  return read.some((r) => (r.entry || 'breakout') !== 'market') ? STOP_NOT_ON_BREAKOUT : null;
 }
 // A SCAN ON TUNE, RUN ON THE CAPTURED ENTRIES (3.92.0): the same tuner and the
 // same ladder the older path runs, on the entries of one survivor -- or of
@@ -9996,8 +10125,14 @@ async function tuneOnCapture(body, tool) {
   if (!parent) throw new Error('the stage 3 set this was cut from is gone, so the prices its trades were captured on cannot be read');
   const sw = require('./stagework');
   const { maps } = await sw.tradeMapFor(cap.combo, cap.geometry, parent.params || {}, pinOf(parent));
-  const entries = svs.flatMap((s) => t.windows.flatMap((w) => (s.entries[w] || []).map((e) => ({ ...e, window: w, survivor: s.label, holdHours: s.tHours })))).sort((a, b) => a.ts - b.ts);
+  const entries = svs.flatMap((s) => t.windows.flatMap((w) => (s.entries[w] || []).map((e) => ({ ...e, window: w, survivor: s.label, holdHours: s.tHours, breakout: (s.entry || 'breakout') !== 'market' })))).sort((a, b) => a.ts - b.ts);
   const fee = Number((cap.fee || {}).feePerLeg) || 0;
+  // A BREAKOUT TRADE IS NOT PRICED FROM THE HOUR'S OPEN (3.235.0, owner order
+  // 2026-09-23): it opens where price reaches the level, part way through an
+  // hour, with its own stop on the far side. The stop scan cannot price that
+  // yet, so it refuses; conviction sizing reads each breakout trade's own money.
+  if (tool === 'stop' && svs.some((s) => (s.entry || 'breakout') !== 'market')) { const e = new Error(STOP_NOT_ON_BREAKOUT); e.status = 400; throw e; }
+  const { NOTIONAL } = require('./paper');
   const holdHours = t.pick === 'all' ? null : sv.tHours;           // one length, or each trade's own
   const who = t.pick === 'all' ? `all ${svs.length} survivors` : sv.label;
   const isLook = t.windows.includes('hold');
@@ -10014,7 +10149,7 @@ async function tuneOnCapture(body, tool) {
     // off the set, priced by the tuner's own arithmetic at that number (or as
     // the no-stop baseline row when the choice is none), never applied anywhere
     const chosen = t.pick === 'all' ? null : stopChoiceOf(fresh, t.label);
-    const { atStop, ...tune } = tuneFixedStop(entries.map((e) => ({ entryTs: e.ts, side: e.side, holdHours: e.holdHours })), maps.trade, { holdHours, feePerLeg: fee, clipUsd: require('./paper').NOTIONAL, ...(chosen ? { atStop: chosen.stopPct } : {}) });
+    const { atStop, ...tune } = tuneFixedStop(entries.map((e) => ({ entryTs: e.ts, side: e.side, holdHours: e.holdHours, size: e.size })), maps.trade, { holdHours, feePerLeg: fee, clipUsd: NOTIONAL, ...(chosen ? { atStop: chosen.stopPct } : {}) });
     out = {
       setup: { id: t.bookId, combo: cap.combo, cell: { entry: 'market', gate: t.pick === 'all' ? null : sv.gate, tHours: holdHours, trailMult: null, armMult: null }, holdHours },
       ...tune,
@@ -10026,12 +10161,14 @@ async function tuneOnCapture(body, tool) {
     const priced = [];
     let unpriced = 0;
     for (const e of entries) {
+      // a breakout trade's standard-size result is the simulator's own money for it, over its size, over the clip
+      if (e.breakout) { priced.push({ entryTs: e.ts, side: e.side, agree: e.agree, netPct: e.usd / e.size / NOTIONAL, holdHours: e.holdHours, size: e.size }); continue; }
       const o = entryOutcome(e.ts, e.side, maps.trade, e.holdHours, fee);
-      if (o.priced) priced.push({ entryTs: e.ts, side: e.side, agree: e.agree, netPct: o.netPct, holdHours: e.holdHours }); else unpriced++;
+      if (o.priced) priced.push({ entryTs: e.ts, side: e.side, agree: e.agree, netPct: o.netPct, holdHours: e.holdHours, size: e.size }); else unpriced++;
     }
     const members = Math.max(1, Number(cap.members) || 1);
-    const ev = evalConviction(priced, { clipUsd: require('./paper').NOTIONAL, ladder: Array.from({ length: members }, (_, i) => i + 1), holdHours: holdHours || 0 });
-    out = { setup: { id: t.bookId, combo: cap.combo, cell: { entry: 'market', gate: t.pick === 'all' ? null : sv.gate, tHours: holdHours, trailMult: null, armMult: null }, members }, unpricedEntries: unpriced, ...ev, holdHours };
+    const ev = evalConviction(priced, { clipUsd: NOTIONAL, ladder: ladderAsked(body, members), holdHours: holdHours || 0 });
+    out = { setup: { id: t.bookId, combo: cap.combo, cell: { entry: t.pick === 'all' ? null : (sv.entry || 'breakout'), gate: t.pick === 'all' ? null : sv.gate, tHours: holdHours, trailMult: null, armMult: null }, members }, unpricedEntries: unpriced, ...ev, holdHours };
   }
   const target = {
     kind: 'stage4', setId: t.doc.id, set: t.doc.name, unitName: t.doc.unitName || null, survivor: who, survivors: svs.length, pick: t.pick,
@@ -10364,7 +10501,7 @@ async function halfLifeDry(id) {
     ruleSentence: doc.ruleSentence || null, survivors: ((doc.counts || {}).survivors) ?? (doc.survivors || []).length,
     windowLayout: layoutOfSet(doc), layout, layoutWhy,
     halfLives: HL.HALF_LIVES_MONTHS.slice(),
-    runs: doc.halflife || [], looks: (doc.halflife || []).length,
+    runs: doc.halflife || [], looks: (doc.halflife || []).length, rebuild: rebuildOf(doc),
     // the half-life sets already built from this set, newest first
     built: listFunnelSets().filter((d) => d.kind === 'funnel' && d.derived && d.derived.from === doc.id).map((d) => ({ id: d.id, name: d.name, run: d.derived.run, at: d.derived.at, survivors: (d.counts || {}).survivors ?? (d.survivors || []).length, of: (d.counts || {}).of ?? null })),
     refused: halfLifeRefusalOf(doc),
@@ -10572,6 +10709,7 @@ function funnelCutsFor(parentId, unitKey) {
     .filter((d) => !d.exam && !d.derived && d.kind === 'funnel')
     .map((d) => ({
       id: d.id, seq: d.seq, name: d.name, createdAt: d.createdAt,
+      rebuild: rebuildOf(d),
       unit: d.unit || null,
       mine: (d.unit || null) === want,
       survivors: (d.counts || {}).survivors ?? null, target: (d.counts || {}).target ?? null,
@@ -11344,7 +11482,7 @@ module.exports = {
   tuneScanAimOf, saveTuneScan, readTuneScans, tuneScanFor, tuneScansFile,
   halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet, buildHalfLifeSet, gateOfSet,
   stopChoiceOf, setStopChoice,
-  CAPTURE_WINDOWS, CAPTURE_NONE, CAPTURE_NOT_YET,
+  CAPTURE_V, CAPTURE_WINDOWS, CAPTURE_NOT_YET, STOP_NOT_ON_BREAKOUT, scanRefusalOf, ladderAsked, rebuildOf,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,
   listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichDir, richUnitFile, funnelRichStop,

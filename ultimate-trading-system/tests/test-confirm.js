@@ -152,6 +152,52 @@ module.exports = {
     assert.strictEqual(none.res.pnl, plain.pnl);
   },
 
+  // THE RICH FIGURES OF A SIZED SETTING ARE ITS TRADES AT THEIR OWN SIZES
+  // (3.235.0, owner order 2026-09-23). The total stays the parts' arithmetic to
+  // the bit; the drawdown, worst and best trade, thirds and money per trade are
+  // read from each trade at the size the lean gave it, never at size 1.
+  theRichFiguresOfASizedSettingAreItsTradesAtTheirSizes() {
+    const { simCell } = require('../lib/bracket');
+    const { GEOMETRIES } = require('../lib/dataset');
+    const { FEE_PER_LEG: FEE, NOTIONAL } = require('../lib/paper');
+    const sw = require('../lib/stagework');
+    const geo = GEOMETRIES['daily-3d'];
+    const HOUR = 3600000;
+    const t0 = Date.UTC(2024, 0, 1);
+    const periods = [0, 1, 2, 3, 4, 5].map((i) => ({ startTs: t0 + i * 7 * 24 * HOUR }));
+    const m = new Map();
+    periods.forEach((p, i) => {
+      const up = [true, false, true, false, false, true][i];
+      for (let h = 0; h <= 80; h++) {
+        const o = 100 + (up ? 1 : -1) * h * 0.2;
+        m.set(p.startTs + geo.entryOffsetH * HOUR + h * HOUR, { open: o, high: o + 0.6, low: o - 0.6, close: o });
+      }
+    });
+    const cell = { entry: 'market', gate: null, dMult: null, tHours: 41, trailMult: null, armMult: null };
+    const calls = [1, 1, 1, 1, 1, 1];
+    const signs = [1, -1, 0, 1, 1, -1];     // confirmed, unconfirmed, no lean, confirmed, confirmed, unconfirmed
+    const got = sw.priceLeanWindow(cell, periods, calls, m, geo, 2, FEE, signs, { confirm: 'sized', kx: 2, ux: 0.5 }, true);
+    const one = periods.map((p) => simCell(cell, [p], [1], m, geo, 2, FEE).pnl);
+    const size = [2, 0.5, 1, 2, 2, 0.5];
+    const sized = one.map((v, i) => v * size[i]);
+    const near = (a, b, what) => assert.ok(Math.abs(a - b) < 1e-9, `${what}: ${a} vs ${b}`);
+    const c = got.parts.c.pnl; const u = got.parts.u.pnl; const z = got.parts.z.pnl;
+    assert.strictEqual(got.res.pnl, 2 * c + 0.5 * u + 1 * z, 'the total is the parts\' own arithmetic, to the bit');
+    near(got.res.pnl, sized.reduce((a, v) => a + v, 0), 'and it is the sum of the trades at their sizes');
+    near(got.res.worstTrade, Math.min(...sized), 'the worst trade at its size');
+    near(got.res.bestTrade, Math.max(...sized), 'the best trade at its size');
+    let cum = 0; let peak = 0; let dd = 0;
+    for (const v of sized) { cum += v; if (cum > peak) peak = cum; if (peak - cum > dd) dd = peak - cum; }
+    near(got.res.maxDrawdown, dd, 'the drawdown of the sized trades');
+    [0, 1, 2].forEach((j) => near(got.res.pnlThirds[j], sized[2 * j] + sized[2 * j + 1], `third ${j + 1}`));
+    near(got.res.grossPerTrade, (got.res.pnl + size.reduce((a, x) => a + x, 0) * NOTIONAL * 2 * FEE) / 6, 'the money per trade, the round trip paid on each size');
+    // and with every multiplier 1 the rich figures are the plain pass's, exactly
+    const at1 = sw.priceLeanWindow(cell, periods, calls, m, geo, 2, FEE, signs, { confirm: 'sized', kx: 1, ux: 1 }, true);
+    const plain = simCell(cell, periods, calls, m, geo, 2, FEE);
+    for (const f of ['maxDrawdown', 'worstTrade', 'bestTrade', 'wins', 'grossPerTrade']) assert.strictEqual(at1.res[f], plain[f], `${f} at x1/x1 is the plain pass's`);
+    assert.deepStrictEqual(at1.res.pnlThirds, plain.pnlThirds);
+  },
+
   theSumsAcrossUnitsAreTheSameSixNumbersAdded() {
     let acc = null;
     acc = C.addParts(acc, { c: { pnl: 1, n: 1 }, u: { pnl: 2, n: 2 }, z: { pnl: 3, n: 3 } });

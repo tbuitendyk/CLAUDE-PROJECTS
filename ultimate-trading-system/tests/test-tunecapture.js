@@ -59,7 +59,40 @@ async function settle(statusOf, label) {
   throw new Error(`${label} did not land`);
 }
 // the same launches the stage-engine check makes, on the same two coins
-async function chain(tag) {
+// A FIELD FABRICATED FOR THE PLANTED COIN (3.235.0): one day each calendar
+// day across the fabricated span, its sign, agreement and silence cycling so
+// the gate blocks some calls, lets some through at x1 and x2 and some at the
+// silent multiple -- every size the capture has to carry.
+function fabricatedField() {
+  const fset = require('../lib/fieldset');
+  const DAY = 24 * 3600 * 1000;
+  const from = Date.UTC(2020, 11, 1);
+  const to = Date.UTC(2025, 1, 1);
+  const cols = { ts: [], sign: [], agreement: [], size: [], certainty: [], speaking: [], evidence: [], full: [] };
+  for (let t = from, i = 0; t <= to; t += DAY, i++) {
+    cols.ts.push(t);
+    cols.sign.push(i % 5 === 2 ? -1 : 1);
+    cols.agreement.push([20, 40, 60, 90][i % 4]);
+    cols.size.push(1);
+    cols.certainty.push(null);
+    cols.speaking.push(i % 9 === 4 ? 0 : 3);
+    cols.evidence.push(4);
+    cols.full.push(1);
+  }
+  const key = `${G.PLANT}|daily-1d`;
+  const pair = {
+    key, coin: G.PLANT, geometry: 'daily-1d', standsFor: [], decisions: cols.ts.length, firstTs: from, lastTs: to,
+    windowDays: 30, capDays: 30, fullAt: from, copies: 0,
+    now: { ts: to, copies: 0, full: true, slidesAsGood: 0, scramblesAsGood: 0 },
+    state: { ts: to, sign: 1, agreement: 60, size: 1, certainty: null, speaking: 3, evidence: 4, full: true, daysInWindow: 30, decisionsInWindow: 30, yardsticks: [1], pointsWithEvidence: { rising: 1, falling: 1, of: 2 } },
+    range: { days: cols.ts.length, silentDays: 0, agreement: { lowest: 20, quarter: 40, median: 60, threeQuarters: 60, highest: 90 }, certainty: null },
+    grid: [], readingToday: [], days: cols,
+  };
+  const dials = { windowDays: 30, halfLifeDays: 10, floor: 0.1, bands: [50, 100], lookbackHours: [24], lookbackDays: [1], evidenceCap: 30, leastEvidence: 1, copies: 0, windowEachOwn: false };
+  return fset.saveField({ asked: { name: 'zzz sized capture field' }, dials, cap: { days: 30, coin: G.PLANT }, collapse: [], pairs: [pair], startedAt: 1, finishedAt: 2, name: 'zzz sized capture field' });
+}
+
+async function chain(tag, s3extra = {}) {
   const made = [];
   // WHAT A FAILED LAUNCH MADE IS REMOVED BEFORE THE THROW: a set left behind
   // collides on its name with the next run of this very test.
@@ -101,7 +134,7 @@ async function chain(tag) {
   made.push(s2.id);
   const d2 = await waitSet(s2.id, 'stage 2');
   if (d2.status !== 'done') throw new Error(`stage 2 ended ${d2.status}: ${JSON.stringify(d2.failures || [])}`);
-  s3 = stages.startStage3({ ...G.STAGE3, from: s2.id, exam: true, name: `${tag} S3` });
+  s3 = stages.startStage3({ ...G.STAGE3, ...s3extra, from: s2.id, exam: true, name: `${tag} S3` });
   made.push(s3.id);
   const d3 = await waitSet(s3.id, 'stage 3');
   if (d3.status !== 'done') throw new Error(`stage 3 ended ${d3.status}: ${JSON.stringify(d3.failures || [])}`);
@@ -159,8 +192,9 @@ module.exports = {
       assert.strictEqual(dry.refused, null, dry.refused);
       // 2. the capture
       const { result, file, set } = await captured(c);
-      assert.ok(file && file.v === 1, 'the capture file beside the set');
-      assert.deepStrictEqual({ captured: result.captured, times: result.times, notCaptured: result.notCaptured, missing: result.missing }, { captured: withVerdict.survivors.length, times: 1, notCaptured: 0, missing: 0 }, 'every survivor enters at market here, so every one is captured');
+      assert.ok(file && file.v === stages.CAPTURE_V && stages.CAPTURE_V === 2, 'the capture file beside the set, of the shape that carries each trade\'s size');
+      assert.deepStrictEqual({ captured: result.captured, times: result.times, missing: result.missing }, { captured: withVerdict.survivors.length, times: 1, missing: 0 }, 'every survivor is captured');
+      assert.strictEqual(set.capture.v, stages.CAPTURE_V, 'the summary on the set says which shape it is');
       assert.strictEqual(set.capture.id, `${c.cut.id}-c1`);
       assert.strictEqual(set.capture.release, require('../package.json').version);
       assert.ok(!('gate' in set.capture) && !('gate' in file), 'no verdict rides on the capture');
@@ -186,6 +220,7 @@ module.exports = {
             assert.ok(e.side === 'LONG' || e.side === 'SHORT', 'a side');
             assert.ok(Number.isInteger(e.agree) && e.agree >= 1 && e.agree <= sv.members, `agree ${e.agree} is a count of members`);
             assert.ok(Number.isFinite(e.usd), 'money');
+            assert.strictEqual(e.size, 1, 'nothing sizes this setting, so every trade is at the standard size');
           }
         }
         assert.deepStrictEqual(set.capture.rows.find((r) => r.label === sv.label).entries, { train: sv.entries.train.length, test: test.length, hold: hold.length, reserve: (sv.entries.reserve || []).length }, 'the summary counts the file, the reserve window too (3.150.0)');
@@ -475,7 +510,7 @@ module.exports = {
     }
     // THE SET'S COIN AND SHAPE ARE SAID ONCE (3.142.3): every set box prints the name through the one
     // helper, which adds the unit only when the name does not already carry it, with one separator
-    assert.ok(/function setNameWords\(x\) \{/.test(ui) && ui.includes("return String(x.name || '').includes(unit) ? esc(x.name) : `${esc(x.name)} · ${esc(unit)}`;"), 'the set boxes no longer say a set\'s coin and shape once');
+    assert.ok(/function setNameWords\(x\) \{/.test(ui) && ui.includes("return rebuildPrefix(x) + (String(x.name || '').includes(unit) ? esc(x.name) : `${esc(x.name)} · ${esc(unit)}`);"), 'the set boxes no longer say a set\'s coin and shape once');
     // (3.234.4 and 3.234.5, owner orders: the Stage 4 record set box under
     // Per-trade capture and the one on Held and Reserve show each set by its
     // name alone, so neither goes through the helper)
@@ -722,7 +757,7 @@ module.exports = {
   async theScansAreKeptPerTargetAndAPanelIsHandedOnlyItsOwn() {
     const id = `s4-test-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}-tsc`;
     const file = path.join(SETS_DIR, `${id}.json`);
-    const cap = { at: '2026-09-23T00:00:00.000Z', captured: 2, rows: [{ label: 'A' }, { label: 'B' }], pick: { label: 'A' } };
+    const cap = { v: stages.CAPTURE_V, at: '2026-09-23T00:00:00.000Z', captured: 2, rows: [{ label: 'A', entry: 'market' }, { label: 'B', entry: 'market' }], pick: { label: 'A' } };
     const doc = { id, stage: 4, seq: 999961, name: 'S4 #tsc', kind: 'funnel', status: 'done', createdAt: new Date().toISOString(), exam: true, capture: cap };
     fs.mkdirSync(SETS_DIR, { recursive: true });
     fs.writeFileSync(file, JSON.stringify(doc));
@@ -802,6 +837,96 @@ module.exports = {
     assert.ok(draw.includes("alert('No scan target: no Stage 4 record set on this box has its trades captured yet. '"), 'the message with nothing to aim at is not the one that says what is missing');
     assert.ok(!/opposite rail|breakout cell/.test(draw), 'the message from the older engine is still on Tune');
   },
+  // A SIZED SETTING'S CAPTURE ADDS UP TO ITS SET TO THE CENT (3.235.0, owner
+  // order 2026-09-23: "all upstream processes use the correct resulting trade
+  // sizes IN EVERY SINGLE TRADE INSTANCE"). Priced under the field's gate, the
+  // capture holds only the trades the setting takes -- a blocked call is not
+  // one -- each at the size its rung gave it, so on the test and held-back
+  // windows its count is the record's trades and its money the record's money.
+  // Before this release it held every call at size 1 and added up to nothing.
+  async aSizedSettingsCaptureAddsUpToItsSetToTheCent() {
+    const fset = require('../lib/fieldset');
+    const field = fabricatedField();
+    let c = null;
+    try {
+      c = await chain('tune sized capture test', { fieldId: field.id, fieldRead: 'agreement', fieldAgreeMin: '30', fieldRungs: '50:1,100:2', fieldSilent: '0.5' });
+      const { file, set } = await captured(c);
+      assert.ok(file && file.v === stages.CAPTURE_V, 'the capture of the shape that carries each trade\'s size');
+      const s3rows = rowstore.readAll(c.s3, 'records').filter((r) => r.trade === G.PLANT);
+      const sizes = new Set();
+      assert.ok(file.survivors.length > 0, 'something survived the rule to capture');
+      for (const sv of file.survivors) {
+        const row = s3rows.find((r) => r.label === sv.label);
+        assert.ok(row, `the stage 3 record holds ${sv.label}`);
+        assert.ok(row.field, `${sv.label} was priced under the field's gate`);
+        const test = sv.entries.test;
+        const hold = sv.entries.hold;
+        assert.strictEqual(test.length, row.trades, `${sv.label}: the test entries are the trades the setting took, not every call`);
+        assert.strictEqual(cents(test.reduce((a, e) => a + e.usd, 0)), cents(row.pnl), `${sv.label}: and their money at their sizes is the record's test money`);
+        assert.strictEqual(hold.length, row.holdout.trades, `${sv.label}: the held-back entries likewise`);
+        assert.strictEqual(cents(hold.reduce((a, e) => a + e.usd, 0)), cents(row.holdout.pnl), `${sv.label}: and their money is the record's held-back money`);
+        for (const w of ['train', 'test', 'hold']) for (const e of sv.entries[w]) { assert.ok(e.size > 0, 'a trade taken has a size'); sizes.add(e.size); }
+      }
+      assert.ok(sizes.has(2) && sizes.has(0.5), `the rungs and the silent multiple reach the capture: ${[...sizes].join(', ')}`);
+      assert.strictEqual(set.capture.v, stages.CAPTURE_V);
+      assert.strictEqual(stages.rebuildOf(stages.getSet(c.cut.id)), null, 'a set cut and captured under this release needs no rebuild');
+    } finally {
+      if (c) c.cleanup();
+      try { fset.deleteField(field.id, field.id); } catch (_) { /* never written */ }
+    }
+  },
+  // BREAKOUT TRADES TAKE NO PROTECTIVE STOP YET, AND THE CONVICTION ROWS TAKE
+  // YOUR NUMBERS (3.235.0, owner orders 2026-09-23: "when the tuning target is
+  // selected, for a record set that has breakout trades ... disables the tune
+  // protective stop feature ... protective stops are not tuned currently on
+  // breakout trades"; "let me put in a number, any number I want, down each
+  // row ... and then hit the recompute button ... that's going to trickle back
+  // onto all the survivors").
+  theStopIsHeldOnBreakoutTradesAndTheConvictionRowsTakeYourNumbers() {
+    const ui = src('public/construct.js');
+    const draw = ui.slice(ui.indexOf('async function drawTune()'), ui.indexOf('\n}\n', ui.indexOf('async function drawTune()')));
+    const words = 'protective stops are not tuned currently on breakout trades';
+    assert.strictEqual(stages.STOP_NOT_ON_BREAKOUT, words, 'the service refuses in the owner\'s words');
+    assert.ok(draw.includes(`const stopBreakoutWords = '${words}';`), 'the screen says it in the same words');
+    assert.ok(draw.includes("<button id=\"stopRun\" class=\"pri\" ${busy || stopBreakout ? 'disabled' : ''}>Tune protective stop</button>${stopBreakout ? `<span class=\"note warn\">${esc(stopBreakoutWords)}</span>` : ''}</div>"), 'the words sit beside Tune protective stop, in its own row, and hold it');
+    assert.ok(/const stopHeld = busy \|\| !stopLabel \|\| stopBreakout;/.test(draw), 'No stop (clear) and Apply custom hold on breakout trades as well');
+    assert.ok(/tnPickVal === 'all' \? \(chosen\.rows \|\| \[\]\)\.some\(isBreakout\) : isBreakout\(stopRow\)/.test(draw), 'all survivors holds the stop when any of them is breakout');
+    // the service holds it too, before anything starts
+    const doc = { capture: { v: stages.CAPTURE_V, rows: [{ label: 'm', entry: 'market' }, { label: 'b', entry: 'breakout' }] } };
+    assert.strictEqual(stages.scanRefusalOf({ doc, pick: 'named', label: 'm' }, 'stop'), null, 'a market survivor is tuned');
+    assert.strictEqual(stages.scanRefusalOf({ doc, pick: 'named', label: 'b' }, 'stop'), words, 'a breakout survivor is refused');
+    assert.strictEqual(stages.scanRefusalOf({ doc, pick: 'all', label: null }, 'stop'), words, 'all survivors with a breakout one among them is refused');
+    assert.strictEqual(stages.scanRefusalOf({ doc, pick: 'all', label: null }, 'conviction'), null, 'conviction sizing still runs on them');
+    // your numbers: one per row, any number of zero or more
+    assert.deepStrictEqual(stages.ladderAsked({}, 4), [1, 2, 3, 4], 'none typed: the declared ladder');
+    assert.deepStrictEqual(stages.ladderAsked({ ladder: [0, 0, '0.5', 1.5] }, 4), [0, 0, 0.5, 1.5], 'yours, as numbers');
+    const refuses = (ladder, part) => { let m = ''; try { stages.ladderAsked({ ladder }, 4); } catch (e) { m = e.message; } assert.ok(m.includes(part), `${JSON.stringify(ladder)}: ${m}`); };
+    refuses([1, 2, 3], 'one multiplier for each agreement count');
+    refuses([1, -1, 3, 4], 'zero or more');
+    refuses([1, '', 3, 4], 'zero or more');
+    // the rows carry a box each, Recompute prices what is typed, and Apply sends what was priced
+    assert.ok(ui.includes('<input class="tnMult" type="number" min="0" step="any" data-agree="${b.agree}" value="${esc(String(b.multiplier))}"'), 'each row of the table carries its own multiplier box');
+    assert.ok(ui.includes('<div class="row" style="margin-top:.4rem"><button id="convRecompute" ${busy ? \'disabled\' : \'\'}>Recompute</button><span id="convRecomputeMsg" class="note">'), 'Recompute sits in a row of its own with its message beside it');
+    assert.ok(ui.includes("tryPost('api/pilot/convictionsweep', { ...scanBody, ladder })"), 'Recompute sends the numbers typed');
+    assert.ok(ui.includes('...(on && pricedLadder ? { ladder: pricedLadder } : {})'), 'Apply sends the numbers the table was priced at');
+    assert.ok(ui.includes("if (ap && !sizeHeld) { ap.disabled = !same;"), 'typed numbers not yet priced hold Apply');
+    assert.ok(!ui.includes('the same p holds for the return on the amount traded'), 'the chance check still claims the money\'s p is the rate\'s, which sizes make untrue');
+  },
+  // REBUILD REQUIRED, AND ONLY WHERE IT IS (3.235.0, owner 2026-09-23: "flag
+  // somehow all the data sets that need a rebuild. Maybe put a prefix on them").
+  theFlagIsSaidInFrontOfTheNameAndOnlyForSetsWorkedOutAtTheStandardSize() {
+    const ui = src('public/construct.js');
+    assert.ok(ui.includes("function rebuildPrefix(x) { return x && x.rebuild ? 'REBUILD REQUIRED - ' : ''; }"), 'the words in front of the name, from what the service says');
+    for (const f of ['function vSetBoxHtml(', 'function tnSetBoxHtml(', 'function fCutPickOption(', 'function setNameWords(']) {
+      const at = ui.indexOf(f);
+      assert.ok(at > 0 && ui.slice(at, ui.indexOf('\n}\n', at)).includes('rebuildPrefix('), `${f.slice(9, -1)} does not say REBUILD REQUIRED in front of a name`);
+    }
+    // the service: a stage 3 set with no sizing is never flagged; a capture of the old shape is
+    assert.strictEqual(stages.rebuildOf({ stage: 3, id: 'zzz-none', params: {} }), null, 'nothing sizes it, so nothing changed for it');
+    const old = stages.rebuildOf({ stage: 4, id: 'zzz-none', parent: { id: 'zzz-no-parent' }, release: '3.234.6', capture: { v: 1 } });
+    assert.ok(old && old.words === 'REBUILD REQUIRED' && old.reasons.map((r) => r.key).join() === 'capture', `a capture of the old shape is flagged, and nothing else about a set whose parent is gone: ${JSON.stringify(old)}`);
+    assert.strictEqual(stages.rebuildOf({ stage: 4, id: 'zzz-none', parent: { id: 'zzz-no-parent' }, release: '3.234.6', capture: { v: stages.CAPTURE_V } }), null, 'a capture of today\'s shape is not');
+  },
   // THE STAGE 4 RECORD SET BOX UNDER PER-TRADE CAPTURE SHOWS EACH SET BY ITS
   // NAME AND NOTHING ELSE (3.234.4, owner order 2026-09-23: "it's suffixing
   // junk onto the name that ought not to be put there! just let the user name
@@ -809,14 +934,17 @@ module.exports = {
   theCaptureSetBoxShowsEachSetByItsNameAlone() {
     const ui = src('public/construct.js');
     const at = ui.indexOf('function tnSetBoxHtml(list, chosen) {');
+    const rp = ui.indexOf('function rebuildPrefix(x) {');
     // eslint-disable-next-line no-new-func
-    const tnSetBoxHtml = new Function('esc', `${ui.slice(at, ui.indexOf('\n}\n', at) + 3)}\nreturn tnSetBoxHtml;`)((t) => String(t));
+    const tnSetBoxHtml = new Function('esc', `${ui.slice(rp, ui.indexOf('\n', rp) + 1)}${ui.slice(at, ui.indexOf('\n}\n', at) + 3)}\nreturn tnSetBoxHtml;`)((t) => String(t));
     const list = [
       { id: 's4-a', name: 'HALF LIFE TABLE: my own name', unitName: 'BNBUSDT alongside LTCUSDT daily-4d', counts: { survivors: 51 }, derived: { fromName: 'the set it came from' } },
       { id: 's4-b', name: 'a rule on BTC', unitName: 'BTCUSDT alongside ETCUSDT daily-3d', counts: { survivors: 70 } },
+      // (3.235.0, owner 2026-09-23: "flag somehow all the data sets that need a rebuild. Maybe put a prefix on them")
+      { id: 's4-c', name: 'an older rule', unitName: 'LTCUSDT alongside XRPUSDT daily-2d', counts: { survivors: 140 }, rebuild: { words: 'REBUILD REQUIRED', reasons: [{ key: 'stage4', why: 'x' }] } },
     ];
     const html = tnSetBoxHtml(list, 's4-a');
     const options = [...html.matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)].map((m) => [m[1], m[2]]);
-    assert.deepStrictEqual(options, [['s4-a', 'HALF LIFE TABLE: my own name'], ['s4-b', 'a rule on BTC']], `a set in the box carries something after its name: ${JSON.stringify(options)}`);
+    assert.deepStrictEqual(options, [['s4-a', 'HALF LIFE TABLE: my own name'], ['s4-b', 'a rule on BTC'], ['s4-c', 'REBUILD REQUIRED - an older rule']], `a set in the box carries something after its name, or a set that needs a rebuild does not say so in front of it: ${JSON.stringify(options)}`);
   },
 };

@@ -48,13 +48,19 @@ function shuffled(arr, rand) {
 
 const multFor = (ladder, agree) => ladder[Math.min(agree, ladder.length) - 1] ?? 1;
 
-// Pure: evaluate the ladder on PRICED entries [{entryTs, side, agree, netPct}].
+// Pure: evaluate the ladder on PRICED entries [{entryTs, side, agree, netPct, size}].
 // clipUsd is the 1x clip. Returns totals, buckets, exposure metrics, and the
 // permutation null.
+// EACH TRADE AT ITS OWN SIZE, THE LADDER ON TOP (3.235.0, owner order
+// 2026-09-23: "sizing multiplies through"). `size` is the multiple of the clip
+// the survivor itself traded that trade at -- its field rung or its lean's
+// multiplier, 1 when the entry does not say -- so flat is the survivor as it
+// really trades, and the ladder multiplies that.
 function evalConviction(priced, { clipUsd = 10, ladder = [1, 2, 3, 4], holdHours = 137,
                                   seed = DEFAULT_SEED, shuffles = NULL_SHUFFLES } = {}) {
   const n = priced.length;
-  const pnl1x = priced.map((e) => e.netPct * clipUsd);
+  const size = priced.map((e) => (e.size == null ? 1 : Number(e.size)));
+  const pnl1x = priced.map((e, i) => e.netPct * clipUsd * size[i]);
   const flatUsd = pnl1x.reduce((a, b) => a + b, 0);
   const ladderUsdOf = (agrees) => {
     let t = 0;
@@ -71,6 +77,7 @@ function evalConviction(priced, { clipUsd = 10, ladder = [1, 2, 3, 4], holdHours
     const idx = [];
     for (let i = 0; i < n; i++) if (Math.min(agrees[i], maxAgree) === a) idx.push(i);
     const bFlat = idx.reduce((t, i) => t + pnl1x[i], 0);
+    const bAmount = idx.reduce((t, i) => t + clipUsd * size[i], 0);
     buckets.push({
       agree: a, multiplier: ladder[a - 1], n: idx.length,
       winners: idx.filter((i) => pnl1x[i] > 0).length,
@@ -78,14 +85,15 @@ function evalConviction(priced, { clipUsd = 10, ladder = [1, 2, 3, 4], holdHours
       // THE RETURN ON THE AMOUNT TRADED AT THIS LEVEL (3.143.0, owner order): the
       // bucket's money over the money put to work in it, as a percentage. The
       // ladder scales both by the same multiplier, so the rate is one number.
-      returnPct: idx.length ? round((bFlat / (idx.length * clipUsd)) * 100, 2) : null,
+      returnPct: bAmount ? round((bFlat / bAmount) * 100, 2) : null,
       thin: idx.length > 0 && idx.length < MIN_BUCKET_N,
     });
   }
 
   // exposure honesty
-  const deployedFlat = n * clipUsd;
-  const deployedLadder = agrees.reduce((t, a) => t + clipUsd * multFor(ladder, a), 0);
+  const deployedFlat = size.reduce((t, x) => t + clipUsd * x, 0);
+  const deployedOf = (agreesNow) => agreesNow.reduce((t, a, i) => t + clipUsd * size[i] * multFor(ladder, a), 0);
+  const deployedLadder = deployedOf(agrees);
   const worstTradeUsd = n ? Math.min(...priced.map((e, i) => pnl1x[i] * multFor(ladder, agrees[i]))) : null;
   // cumulative ladder book in entry order (hold is constant, so exit order ==
   // entry order); drawdown = deepest peak-to-trough of the realized cumulative
@@ -100,27 +108,42 @@ function evalConviction(priced, { clipUsd = 10, ladder = [1, 2, 3, 4], holdHours
   // peak concurrent notional: interval sweep over [entryTs, entryTs+hold)
   const events = [];
   for (let i = 0; i < n; i++) {
-    const notional = clipUsd * multFor(ladder, agrees[i]);
+    const notional = clipUsd * size[i] * multFor(ladder, agrees[i]);
+    const flatNotional = clipUsd * size[i];   // the trade at its own size, no ladder
     // an entry may carry its own hold length (3.143.0: every survivor of a table at once)
     const hold = priced[i].holdHours > 0 ? priced[i].holdHours : holdHours;
-    events.push([priced[i].entryTs, notional], [priced[i].entryTs + hold * HOUR_MS, -notional]);
+    events.push([priced[i].entryTs, notional, flatNotional], [priced[i].entryTs + hold * HOUR_MS, -notional, -flatNotional]);
   }
-  events.sort((a, b) => a[0] - b[0] || a[1] - b[1]); // exits (-) before entries (+) at a tie
+  // exits before entries at a tie, told apart by the flat amount's sign (a
+  // trade the ladder sizes to nothing still has one)
+  events.sort((a, b) => a[0] - b[0] || a[2] - b[2]);
   let cur = 0, peakConcurrentUsd = 0;
   for (const [, d] of events) { cur += d; if (cur > peakConcurrentUsd) peakConcurrentUsd = cur; }
-  const flatEvents = events.map(([t, d]) => [t, Math.sign(d) * clipUsd]);
   let curF = 0, peakConcurrentFlatUsd = 0;
-  for (const [, d] of flatEvents) { curF += d; if (curF > peakConcurrentFlatUsd) peakConcurrentFlatUsd = curF; }
+  for (const [, , d] of events) { curF += d; if (curF > peakConcurrentFlatUsd) peakConcurrentFlatUsd = curF; }
 
   // permutation null: same returns, same bucket sizes, shuffled assignment
   const rand = lcg(seed);
   const uplift = ladderUsd - flatUsd;
+  // THE RETURN ON THE AMOUNT TRADED GETS ITS OWN CHANCE CHECK (3.235.0). With
+  // every trade the same size a shuffle kept the ladder's amount traded, so the
+  // money's p was the rate's p too. A trade's own size stays with it through a
+  // shuffle while its multiplier moves, so the amount traded moves as well, and
+  // the rate is checked against its own shuffles.
+  const rateOf = (usd, deployed) => (deployed ? usd / deployed : null);
+  const flatRate = rateOf(flatUsd, deployedFlat);
+  const rateUplift = rateOf(ladderUsd, deployedLadder) == null || flatRate == null ? null : rateOf(ladderUsd, deployedLadder) - flatRate;
   let ge = 0;
+  let geRate = 0;
   const nullUplifts = [];
   for (let k = 0; k < shuffles; k++) {
-    const u = ladderUsdOf(shuffled(agrees, rand)) - flatUsd;
+    const dealt = shuffled(agrees, rand);
+    const usd = ladderUsdOf(dealt);
+    const u = usd - flatUsd;
     nullUplifts.push(u);
     if (u >= uplift) ge++;
+    const r = rateOf(usd, deployedOf(dealt));
+    if (rateUplift != null && r != null && r - flatRate >= rateUplift) geRate++;
   }
   nullUplifts.sort((a, b) => a - b);
   const q = (p) => nullUplifts.length ? nullUplifts[Math.min(nullUplifts.length - 1, Math.floor(p * nullUplifts.length))] : null;
@@ -150,7 +173,7 @@ function evalConviction(priced, { clipUsd = 10, ladder = [1, 2, 3, 4], holdHours
     maxDrawdownUsd: round(maxDrawdownUsd),
     peakConcurrentUsd: round(peakConcurrentUsd), peakConcurrentFlatUsd: round(peakConcurrentFlatUsd),
     buckets,
-    null: { pNull, mean: round(avg(nullUplifts)), p90: round(q(0.90)), p95: round(q(0.95)) },
+    null: { pNull, pNullReturn: shuffles && rateUplift != null ? geRate / shuffles : null, mean: round(avg(nullUplifts)), p90: round(q(0.90)), p95: round(q(0.95)) },
     minBucketN: MIN_BUCKET_N, nullPThreshold: NULL_P, thresholdsLabel: 'GUESSED',
     verdict:
       thinMultiplied ? 'INCONCLUSIVE — a multiplied bucket is thinner than the minimum N; the ladder rests on too few trades'

@@ -1006,6 +1006,8 @@ app.get('/api/funnel/sets', (req, res) => {
   return res.json({
     sets: stages.listFunnelSets(parent).filter((d) => !d.exam).map((d) => ({
       id: d.id, seq: d.seq, name: d.name, createdAt: d.createdAt,
+      // REBUILD REQUIRED, and why (3.235.0)
+      rebuild: stages.rebuildOf(d),
       parent: d.parent, unit: d.unit || null, unitName: d.unitName || null, target: d.target, counts: d.counts,
       ruleSentence: d.ruleSentence || null, warnings: d.warnings || [],
       closing: d.closing, boardNull: d.boardNull, release: d.release,
@@ -1758,6 +1760,9 @@ app.get('/api/pilot/stop-candidates', (req, res) => {
 // running, and the result is kept under that target, finished or failed (3.234.0).
 function captureScan(req, res, tool) {
   const target = stages.captureTargetOf(req.body || {});
+  // refused in words before anything starts: the stop scan on breakout trades (3.235.0)
+  const why = stages.scanRefusalOf(target, tool);
+  if (why) { const e = new Error(why); e.status = 400; throw e; }
   const aim = stages.tuneScanAimOf(target);
   const startedUtc = new Date().toISOString();
   heavyScanRunning = tool;

@@ -93,12 +93,17 @@ function tuneFixedStop(entries, map, opts = {}) {
   const holdOf = (e) => (e.holdHours > 0 ? e.holdHours : holdHours);
   if (!(holdHours > 0) && !entries.every((e) => e.holdHours > 0)) throw new Error('tuneFixedStop: holdHours required, on the call or on every entry');
 
+  // EACH ENTRY AT ITS OWN SIZE (3.235.0, owner order 2026-09-23: "all
+  // upstream processes use the correct resulting trade sizes IN EVERY SINGLE
+  // TRADE INSTANCE"): the multiple of the clip its setting traded it at, 1 when
+  // the entry does not say. Which entries are winners, and so the stop, does
+  // not depend on size; every dollar on the table does.
   const per = [];
   let unpriced = 0;
   for (const e of entries) {
     const o = entryOutcome(e.entryTs, e.side, map, holdOf(e), feePerLeg);
     if (!o.priced) { unpriced++; continue; }
-    per.push({ entryTs: e.entryTs, side: e.side, ...o, winner: o.netPct > 0 });
+    per.push({ entryTs: e.entryTs, side: e.side, size: e.size == null ? 1 : Number(e.size), ...o, winner: o.netPct > 0 });
   }
   const winners = per.filter((p) => p.winner);
   const losers = per.filter((p) => !p.winner);
@@ -152,7 +157,7 @@ function tuneFixedStop(entries, map, opts = {}) {
       if (p.mae > stopPct) {
         cut++;
         const stoppedNet = -stopPct - 2 * feePerLeg; // exit at the stop, pay fees
-        deltaOnLosers += stoppedNet - p.netPct;
+        deltaOnLosers += (stoppedNet - p.netPct) * p.size;
       }
     }
   }
@@ -188,7 +193,7 @@ function tuneFixedStop(entries, map, opts = {}) {
     : undefined;
   // the money the priced entries make with NO stop at the same clip: what
   // every NET $ on the table is a change against
-  const noStopUsd = round(per.reduce((a, p) => a + p.netPct * clipUsd, 0), 2);
+  const noStopUsd = round(per.reduce((a, p) => a + p.netPct * clipUsd * p.size, 0), 2);
 
   return {
     stopPct,                       // the tightest fixed stop that loses no winner
@@ -216,7 +221,7 @@ function tuneFixedStop(entries, map, opts = {}) {
       .slice()
       .sort((a, b) => b.mae - a.mae)
       .map((p) => ({
-        entryTs: p.entryTs, side: p.side, winner: p.winner,
+        entryTs: p.entryTs, side: p.side, size: p.size, winner: p.winner,
         maePct: round(p.mae, 6), netPct: round(p.netPct, 6),
       })),
   };
@@ -232,8 +237,9 @@ function stopRowAt(per, S, feePerLeg, clipUsd) {
   let wCount = 0; let wProfit = 0; let wDelta = 0; let lCount = 0; let lDelta = 0;
   for (const p of per) {
     if (p.mae > S) { // strict: the stop sits just above S, sparing the entry at S
-      const delta = (stoppedNet - p.netPct) * clipUsd;
-      if (p.winner) { wCount++; wProfit += p.netPct * clipUsd; wDelta += delta; }
+      const size = p.size == null ? 1 : p.size;   // the entry's own size (3.235.0)
+      const delta = (stoppedNet - p.netPct) * clipUsd * size;
+      if (p.winner) { wCount++; wProfit += p.netPct * clipUsd * size; wDelta += delta; }
       else { lCount++; lDelta += delta; }
     }
   }

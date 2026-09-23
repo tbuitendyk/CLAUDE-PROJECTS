@@ -201,3 +201,29 @@ module.exports.entryOutcomeReportsMaeAndPnl = function () {
   assert.ok(Math.abs(o.mae - 0.05) < 1e-9, 'MAE = (200-190)/200 = .05');
   assert.ok(Math.abs(o.grossPct - 0.1) < 1e-9, 'gross = (220-200)/200 = .10');
 };
+
+// EACH ENTRY AT ITS OWN SIZE (3.235.0, owner order 2026-09-23). The stop is
+// chosen by which entries win, which size does not change; every dollar on
+// the table -- the money with no stop, what a stop forfeits and saves -- is
+// each entry's at its own size. Every size 1 is exactly the table without sizes.
+module.exports.eachEntryAtItsOwnSize = function () {
+  const t0 = Date.UTC(2024, 0, 1);
+  const map = new Map();
+  const DAY = 24 * HOUR_MS;
+  // a winner that dips 2%, a winner that dips 1%, a loser that dips 5% and ends -3%
+  putHold(map, t0, { entry: 100, exit: 104, low: 98, high: 105 });
+  putHold(map, t0 + DAY, { entry: 100, exit: 103, low: 99, high: 104 });
+  putHold(map, t0 + 2 * DAY, { entry: 100, exit: 97, low: 95, high: 101 });
+  const entries = [0, 1, 2].map((k) => ({ entryTs: t0 + k * DAY, side: 'LONG' }));
+  const opts = { holdHours: 3, feePerLeg: 0, clipUsd: 100 };
+  const plain = tuneFixedStop(entries, map, opts);
+  assert.deepStrictEqual(tuneFixedStop(entries.map((e) => ({ ...e, size: 1 })), map, opts), { ...plain, perEntry: plain.perEntry.map((p) => ({ ...p })) }, 'every size 1 is the table without sizes');
+  const sizes = [2, 0.5, 1.5];
+  const sized = tuneFixedStop(entries.map((e, i) => ({ ...e, size: sizes[i] })), map, opts);
+  assert.strictEqual(sized.stopPct, plain.stopPct, 'the stop is the winners\' choice, whatever their sizes');
+  assert.strictEqual(sized.noStopUsd, Math.round((0.04 * 100 * 2 + 0.03 * 100 * 0.5 - 0.03 * 100 * 1.5) * 100) / 100, 'the money with no stop is each entry at its own size');
+  const row = sized.curve[0];
+  const base = plain.curve[0];
+  assert.strictEqual(row.losersCut, base.losersCut);
+  assert.ok(Math.abs(row.loserPnlDeltaUsd - base.loserPnlDeltaUsd * 1.5) < 0.011, `what the stop saves on the loser is at the loser's size: ${row.loserPnlDeltaUsd} vs ${base.loserPnlDeltaUsd} x 1.5`);
+};

@@ -90,3 +90,38 @@ module.exports.thinMultipliedBucketsMakeTheVerdictInconclusive = function () {
   assert.ok(/INCONCLUSIVE/.test(r.verdict), r.verdict);
   assert.ok(MIN_BUCKET_N >= 2, 'sanity: a declared minimum exists');
 };
+
+// EACH TRADE AT ITS OWN SIZE, THE LADDER ON TOP (3.235.0, owner order
+// 2026-09-23: "sizing multiplies through"). Flat is the survivor as it really
+// trades -- every trade at the size its own setting gave it -- the ladder
+// multiplies that, the amount traded is every trade's size at the clip, and a
+// multiplier of 0 takes a row's money and amount away together. Every size 1
+// is exactly the result with no sizes at all.
+module.exports.eachTradeAtItsOwnSizeTheLadderOnTop = function () {
+  const base = [
+    { agree: 1, netPct: 0.01 }, { agree: 2, netPct: -0.02 }, { agree: 3, netPct: 0.03 }, { agree: 3, netPct: -0.01 },
+  ];
+  const opts = { clipUsd: 100, ladder: [1, 2, 3], holdHours: 10, shuffles: 50 };
+  const plain = evalConviction(mk(base), opts);
+  const ones = evalConviction(mk(base).map((e) => ({ ...e, size: 1 })), opts);
+  assert.deepStrictEqual(ones, plain, 'every trade at size 1 is the result with no sizes');
+  const sizes = [1.5, 0.75, 2, 1];
+  const sized = evalConviction(mk(base).map((e, i) => ({ ...e, size: sizes[i] })), opts);
+  const own = base.map((e, i) => e.netPct * 100 * sizes[i]);   // each trade's money at its own size
+  const near = (a, b, what) => assert.ok(Math.abs(a - b) < 1e-3, `${what}: ${a} vs ${b}`);
+  near(sized.flatUsd, own.reduce((a, v) => a + v, 0), 'flat is every trade at its own size');
+  near(sized.ladderUsd, own[0] * 1 + own[1] * 2 + own[2] * 3 + own[3] * 3, 'the ladder multiplies each trade\'s own money');
+  near(sized.deployedFlatUsd, 100 * (1.5 + 0.75 + 2 + 1), 'the amount traded flat is every size at the clip');
+  near(sized.deployedLadderUsd, 100 * (1.5 * 1 + 0.75 * 2 + 2 * 3 + 1 * 3), 'and on the ladder, each size times its multiplier');
+  const b3 = sized.buckets.find((b) => b.agree === 3);
+  assert.ok(Math.abs(b3.returnPct - ((own[2] + own[3]) / (100 * (2 + 1))) * 100) < 0.006, `a row's return is its money over its trades' own amount, to the two places it is printed at: ${b3.returnPct}`);
+  near(sized.worstTradeUsd, Math.min(own[0] * 1, own[1] * 2, own[2] * 3, own[3] * 3), 'the worst trade at its size and its multiplier');
+  assert.ok(sized.null.pNullReturn != null, 'the return on the amount traded is checked against its own shuffles');
+  // YOUR NUMBERS, DOWN EACH ROW (owner 2026-09-23): 0 turns a row off -- its
+  // money and its amount traded go together
+  const off = evalConviction(mk(base).map((e, i) => ({ ...e, size: sizes[i] })), { ...opts, ladder: [0, 0, 1.5] });
+  near(off.ladderUsd, 1.5 * (own[2] + own[3]), 'only the row at 1.5 makes money on the ladder');
+  near(off.deployedLadderUsd, 100 * 1.5 * (2 + 1), 'and only it puts money to work');
+  assert.strictEqual(off.buckets.find((b) => b.agree === 1).ladderUsd, 0, 'a row at 0 makes nothing');
+  assert.deepStrictEqual(off.ladder, [0, 0, 1.5], 'the numbers priced are stamped on the result');
+};

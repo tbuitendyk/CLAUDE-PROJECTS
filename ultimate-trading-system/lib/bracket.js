@@ -235,12 +235,23 @@ const ENTRIES = ['breakout', 'market'];
 // single trade, and the period index says which third of the window the money
 // came from. FUNNEL-DESIGN.md section 4.2 — "$ totals flatter", and a mean
 // hides the row that would have ended you.
-function newBook(nPeriods, trip) {
+// EVERY TRADE AT ITS REAL SIZE (3.235.0, owner order 2026-09-23: "all upstream
+// processes use the correct resulting trade sizes IN EVERY SINGLE TRADE
+// INSTANCE, SIMULATED OR REAL"). `sizes` is one multiple of the standard trade
+// per period, as the setting's sizing gave it -- the field's rung, the lean's
+// multiplier -- and the book settles each trade at that multiple, so the
+// money, the drawdown, the worst and best trade, the thirds and the money per
+// trade are all the trades' own at their own sizes. The fee is a share of the
+// position, so a trade twice the size pays twice the fee: the round trip is
+// charged on the sum of the sizes. No sizes is every trade at the standard
+// size, and then nothing is multiplied at all.
+function newBook(nPeriods, trip, sizes = null) {
   const n = Math.max(0, Number(nPeriods) || 0);
   const cut1 = Math.floor(n / 3);
   const cut2 = Math.floor((2 * n) / 3);
   let pnl = 0;
   let trades = 0;
+  let sizeSum = 0;
   let wins = 0;
   let peak = 0;          // the book starts at zero, so drawdown is measured from there
   let maxDrawdown = 0;
@@ -248,9 +259,12 @@ function newBook(nPeriods, trip) {
   let bestTrade = null;
   const thirds = [0, 0, 0];
   return {
-    take(v, i) {
+    take(standard, i) {
+      const m = sizes ? Number(sizes[i]) : 1;
+      const v = sizes ? standard * m : standard;
       pnl += v;
       trades++;
+      sizeSum += m;
       if (v > 0) wins++;
       if (pnl > peak) peak = pnl;
       const dd = peak - pnl;
@@ -271,23 +285,24 @@ function newBook(nPeriods, trip) {
         worstTrade,
         bestTrade,
         pnlThirds: thirds,
-        grossPerTrade: trades ? (pnl + trades * trip) / trades : null,
+        grossPerTrade: trades ? (pnl + sizeSum * trip) / trades : null,
         ...rest,
       };
     },
   };
 }
 
-function simMarket(periods, calls, tradeMap, geo, { tHours, feePerLeg, stepMs = HOUR_MS }) {
+function simMarket(periods, calls, tradeMap, geo, { tHours, feePerLeg, stepMs = HOUR_MS, sizes = null }) {
   // feePerLeg is a FRACTION of the position (owner order, 2026-08-23) — see
   // lib/paper.js. The round trip is worked out as a percentage and turned into
   // this book's dollars once, here, instead of a dollar amount being assumed.
   const trip = NOTIONAL * 2 * feeRate(feePerLeg, 'simMarket');
-  const book = newBook(periods.length, trip);
+  const book = newBook(periods.length, trip, sizes);
   let unpriced = 0;
   periods.forEach((per, i) => {
     const dir = calls ? calls[i] : 0;
     if (dir === 0) return; // stood aside — the books' rule, not a skipped bar
+    if (sizes && !(Number(sizes[i]) > 0)) return; // a call sized to nothing is not taken
     const entryTs = per.startTs + geo.entryOffsetH * HOUR_MS;
     // An invented candle is not a price anything could have been bought at.
     const refRaw = tradeMap.get(entryTs);
@@ -334,11 +349,11 @@ function simMarket(periods, calls, tradeMap, geo, { tHours, feePerLeg, stepMs = 
 // ordering question rather than assume it. The rules are otherwise unchanged
 // on purpose — a minute run that also changed the fill logic would not be a
 // confirmation of anything.
-function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerLeg, trailPct = null, armPct = 0, stepMs = HOUR_MS }) {
+function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerLeg, trailPct = null, armPct = 0, stepMs = HOUR_MS, sizes = null }) {
   if (!GATES.includes(gate)) throw new Error(`gate must be one of ${GATES.join('/')} — not "${gate}"`);
   // A FRACTION of the position, priced onto this book once. See simMarket above.
   const trip = NOTIONAL * 2 * feeRate(feePerLeg, 'simBracket');
-  const book = newBook(periods.length, trip);
+  const book = newBook(periods.length, trip, sizes);
   let stops = 0;
   let ambiguous = 0;
   let trailAmbiguous = 0;
@@ -348,6 +363,7 @@ function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerL
   const arm = armPct / 100;
   periods.forEach((per, i) => {
     const call = calls ? calls[i] : 0;
+    if (sizes && !(Number(sizes[i]) > 0)) return; // a call sized to nothing is not taken
     let sides; // which rails may OPEN a position
     if (gate === 'active') sides = call !== 0 ? [1, -1] : [];
     else sides = call === 1 ? [1] : call === -1 ? [-1] : [];
@@ -656,9 +672,10 @@ function execSweep(periods, calls, tradeMap, geo, bandPct, feePerLeg, opts = {})
 // Used to score a chosen cell on the untouched holdout window, and it is the
 // same entry point minute confirmation will use — so the holdout and the
 // minute check can never be a different trade from the one that was selected.
-function simCell(cell, periods, calls, tradeMap, geo, bandPct, feePerLeg, stepMs = HOUR_MS) {
+// `sizes`, when given, is each period's multiple of the standard trade (see newBook).
+function simCell(cell, periods, calls, tradeMap, geo, bandPct, feePerLeg, stepMs = HOUR_MS, sizes = null) {
   if ((cell.entry || 'breakout') === 'market') {
-    return simMarket(periods, calls, tradeMap, geo, { tHours: cell.tHours, feePerLeg, stepMs });
+    return simMarket(periods, calls, tradeMap, geo, { tHours: cell.tHours, feePerLeg, stepMs, sizes });
   }
   return simBracket(periods, calls, tradeMap, geo, {
     dPct: cell.dMult * bandPct,
@@ -666,6 +683,7 @@ function simCell(cell, periods, calls, tradeMap, geo, bandPct, feePerLeg, stepMs
     gate: cell.gate,
     feePerLeg,
     stepMs,
+    sizes,
     trailPct: cell.trailMult == null ? null : cell.trailMult * bandPct,
     armPct: cell.armMult == null ? 0 : cell.armMult * bandPct,
   });

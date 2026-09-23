@@ -2447,7 +2447,16 @@ const vFix = (v, n = 2) => (v == null || !Number.isFinite(Number(v)) ? 'none' : 
 // name does not already carry it. Braces on purpose (see the History note).
 function setNameWords(x) {
   const unit = x.unitName || 'all units together';
-  return String(x.name || '').includes(unit) ? esc(x.name) : `${esc(x.name)} · ${esc(unit)}`;
+  return rebuildPrefix(x) + (String(x.name || '').includes(unit) ? esc(x.name) : `${esc(x.name)} · ${esc(unit)}`);
+}
+// REBUILD REQUIRED IN FRONT OF THE NAME (3.235.0, owner 2026-09-23: "flag
+// somehow all the data sets that need a rebuild. Maybe put a prefix on
+// them"): wherever a set is listed or opened, the words go before the name
+// the owner gave it while the service says the set carries a reason; the name
+// itself is never changed, and the words go when the set is rebuilt.
+function rebuildPrefix(x) { return x && x.rebuild ? 'REBUILD REQUIRED - ' : ''; }
+function rebuildLineHtml(x) {
+  return x && x.rebuild ? `<p class="note"><b class="warn">REBUILD REQUIRED</b> - ${(x.rebuild.reasons || []).map((r) => esc(r.why)).join(' · ')}</p>` : '';
 }
 // THE RULES A TAB LISTS (VERIFY-DESIGN.md Part 9): Held lists every rule, plain
 // or half-life; Reserve lists only rules whose layout keeps a reserve and whose
@@ -2472,7 +2481,7 @@ function vSetBoxHtml(list, chosen, stretch) {
     ? '<option value="">- no rule stands on the held-back window yet with a layout that keeps a reserve - read a rule on Held first -</option>'
     : '<option value="">- no Stage 4 record set on this box yet - cut one on the Funnel -</option>';
   return `<div class="row"><label class="f" title="every rule on this box that can be read on the ${stretchPlain(stretch)} window, newest first, by the name it was given. A rule is a Stage 4 record set cut on the Funnel or built on History.">Stage 4 record set<select id="vSet" style="min-width:28rem">${list.length
-    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${esc(x.name || x.id)}</option>`).join('')
+    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${rebuildPrefix(x)}${esc(x.name || x.id)}</option>`).join('')
     : empty}</select></label></div>`;
 }
 function vFootingHtml(d) {
@@ -2657,7 +2666,7 @@ function vSetPanelHtml(list, chosen, d, stretch) {
     ? ' The reserve window is the stretch of history no part of the search touched, sealed before anything trained, from where it begins to whatever the box holds today; only a rule whose newest held set passed is listed here, and only the first look at it is at data nothing has seen.'
     : ' A rule whose layout keeps no reserve is held alone: a held set of it that passed is the whole verdict, and it says so.'}</p>
     ${vSetBoxHtml(list, chosen, stretch)}
-    ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · <b>Final Rule:</b> ${esc(d.ruleSentence || '')}${d.userSentence ? ` · <b>User Rule:</b> ${esc(d.userSentence)}` : ''} · ${Number((d.counts || {}).survivors ?? 0).toLocaleString()} survivors${d.derived ? ` · a half-life set built from ${esc(d.derived.fromName || d.derived.from)}, judged as its own rule with its retrained members` : ''}${d.heldAlone ? ` · <b>${esc(d.heldAlone)}</b>` : ''}${stretch === 'reserve' ? ` · ${d.standsOn ? `stands on <b>${esc(d.standsOn.name)}</b> (PASS, release ${esc(d.standsOn.release || '?')})` : '<b class="neg">no held set of this rule stands</b>'} · ${vWindowWords(d.reserve)}` : ''}${(d.warnings || []).length ? ` · <b class="warn">${d.warnings.map(esc).join('; ')}</b>` : ''}</p>
+    ${d ? `${rebuildLineHtml(d)}<p class="note"><b>${rebuildPrefix(d)}${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · <b>Final Rule:</b> ${esc(d.ruleSentence || '')}${d.userSentence ? ` · <b>User Rule:</b> ${esc(d.userSentence)}` : ''} · ${Number((d.counts || {}).survivors ?? 0).toLocaleString()} survivors${d.derived ? ` · a half-life set built from ${esc(d.derived.fromName || d.derived.from)}, judged as its own rule with its retrained members` : ''}${d.heldAlone ? ` · <b>${esc(d.heldAlone)}</b>` : ''}${stretch === 'reserve' ? ` · ${d.standsOn ? `stands on <b>${esc(d.standsOn.name)}</b> (PASS, release ${esc(d.standsOn.release || '?')})` : '<b class="neg">no held set of this rule stands</b>'} · ${vWindowWords(d.reserve)}` : ''}${(d.warnings || []).length ? ` · <b class="warn">${d.warnings.map(esc).join('; ')}</b>` : ''}</p>
       ${vFootingHtml(d)}${vLooksHtml(d, stretch)}${vBoardHtml(d, stretch)}${vPressHtml(d, stretch)}
       ${sets.length ? sets.map((x, i) => vBlockHtml(x, i === 0, stretch)).join('') : (stretch === 'reserve' ? '<p class="note">No reserve set read from this rule yet. The first press writes one; later presses write later ones, numbered, and never replace it.</p>' : '<p class="note">No held set read from this rule yet. The first press writes one; later presses write later ones, numbered, and never replace it.</p>')}
       ${vOthersHtml(d, stretch)}${vDroppedHtml(d, stretch)}${vRideHtml(d, stretch)}` : ''}
@@ -3049,7 +3058,7 @@ function hHalfLifePanelHtml(list, chosen, d) {
       screen reads the held-back window: it stays secret until Held, or until a scan on Tune is told to read it. Every press
       appends a table; none is overwritten.</p>
     ${hSetBoxHtml(list, chosen)}
-    ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${Number(d.survivors || 0).toLocaleString()} survivors
+    ${d ? `${rebuildLineHtml(d)}<p class="note"><b>${rebuildPrefix(d)}${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${Number(d.survivors || 0).toLocaleString()} survivors
       · ${lay ? `window layout ${esc(layoutWords(lay.layout))}: retrains on its ${lay.train}%, judged on the <b>${esc(lay.judgeWord)}</b> window (${lay.test}%); the held-back ${lay.hold}% is not read here${lay.reserve ? `, and the last ${lay.reserve}% stays sealed` : ''}` : `<b class="warn">${esc(d.layoutWhy || 'no layout')}</b>`}
       · ${d.looks ? `run ${d.looks} time(s) so far` : 'not run yet'}</p>
       <div class="row" style="align-items:flex-end">
@@ -3149,6 +3158,10 @@ const TN_WINDOWS = [['train', 'tnWinTrain', 'training'], ['test', 'tnWinTest', '
 // while it is being watched, or on coming back to the tab later -- puts that
 // set under scan target and forgets it. A capture that failed moves nothing.
 const TN_CAPTURED_KEY = 'cx-tune-captured';
+// REBUILT ON FIRST OPEN (3.235.0, owner 2026-09-23: "rebuilding on first
+// open"): what this visit to the page has already started again, so a set is
+// rebuilt once when opened and a refusal is never pressed over and over
+const rebuiltThisVisit = new Set();
 function tnCapturedGet() { try { return localStorage.getItem(TN_CAPTURED_KEY) || ''; } catch (_) { return ''; } }
 function tnCapturedSet(id) {
   try { if (id) localStorage.setItem(TN_CAPTURED_KEY, id); else localStorage.removeItem(TN_CAPTURED_KEY); } catch (_) { /* private window */ }
@@ -3184,7 +3197,7 @@ function tnRememberedWindows() {
 function tnSetBoxHtml(list, chosen) {
   return `<div class="row" style="align-items:flex-end">
     <label class="f" title="which Stage 4 record set to capture the trades of, from every set on this box, newest first">Stage 4 record set<select id="tnSet">${list.length
-    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${esc(x.name || x.id)}</option>`).join('')
+    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${rebuildPrefix(x)}${esc(x.name || x.id)}</option>`).join('')
     : '<option value="">no Stage 4 record set on this box yet</option>'}</select></label></div>`;
 }
 function tnCaptureBlockHtml(c) {
@@ -3197,7 +3210,6 @@ function tnCaptureBlockHtml(c) {
     <p class="note"><b>${c.captured} of ${c.survivors} survivors captured</b> · ${Number(e.train || 0).toLocaleString()} training entries, ${Number(e.test || 0).toLocaleString()} test entries, ${Number(e.hold || 0).toLocaleString()} held-back entries${c.reserve && c.reserve.captured ? `, ${Number(e.reserve || 0).toLocaleString()} reserve entries` : ` · <span class="muted">no reserve entries: ${esc(String((c.reserve || {}).why || 'captured before the reserve window was written down'))}</span>`}
       · by depth among the captured: <b>${esc((c.pick || {}).label || 'none')}</b></p>
     <p class="note">training ${span(w.train)} · test ${span(w.test)} · held-back ${span(w.hold)}</p>
-    ${(c.notCaptured || []).length ? `<p class="note"><b class="warn">${c.notCaptured.length} survivor(s) not captured:</b> ${c.notCaptured.slice(0, 3).map((x) => `${esc(x.label)} - ${esc(x.why)}`).join(' · ')}${c.notCaptured.length > 3 ? ` · and ${c.notCaptured.length - 3} more` : ''}</p>` : ''}
     ${(c.missing || []).length ? `<p class="note"><b class="warn">${c.missing.length} survivor(s) are not in the stage 3 set's block on this unit</b></p>` : ''}
     <p class="note">${reads.length ? `scans run on this capture: ${reads.length} · <b>the held-back entries have been read ${reads.filter((r) => r && r.look != null).length} time(s)</b>${reads.some((r) => r && r.reserveLook != null) ? ` · <b>the reserve entries have been read ${reads.filter((r) => r && r.reserveLook != null).length} time(s)</b>` : ''}, each a counted look` : 'no scan has read this capture yet'}</p>
     ${reads.length ? `<details><summary>the scans, newest first</summary><div class="scrollx" style="max-height:12rem;overflow-y:auto"><table><thead><tr>
@@ -3209,16 +3221,16 @@ function tnCapturePanelHtml(list, chosen, d) {
   return `<div class="panel">
     <h3 style="margin-top:0">Per-trade capture of a Stage 4 record set</h3>
     <p class="note">The two scans below take a list of trades and price them themselves; a Stage 4 record set holds money per
-      window and never the trades. This writes them down: for every survivor that enters at market with no trailing stop,
-      every hour the rule spoke on the training, test and held-back windows, with the side, how many members called that
-      side, and the money the simulator made on that one trade. Tune comes before Held and asks nothing of it.
+      window and never the trades. This writes them down: for every survivor, every trade it takes on the training, test
+      and held-back windows, with the side, how many members called that side, the size its setting took it at, and the
+      money the simulator made on that one trade at that size. Tune comes before Held and asks nothing of it.
       Once captured, the set appears in the scan target box below, and a scan that reads the held-back entries is a
       counted look at the held-back window.</p>
     ${tnSetBoxHtml(list, chosen)}
-    ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${esc(d.ruleSentence || '')} · ${Number(d.survivors || 0).toLocaleString()} survivors
+    ${d ? `${rebuildLineHtml(d)}<p class="note"><b>${rebuildPrefix(d)}${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${esc(d.ruleSentence || '')} · ${Number(d.survivors || 0).toLocaleString()} survivors
       · ${d.capture ? `captured ${esc(String(d.capture.at || '').slice(0, 10))}` : 'no capture yet'}${d.looks ? ` · <b>the held-back entries have been read ${d.looks} time(s)</b>` : ''}</p>
       <div class="row" style="align-items:flex-end">
-        <button id="tnCapture" class="pri" ${d.refused ? 'disabled' : ''} title="writes down every trade of every survivor that enters at market with no trailing stop, on the training, test and held-back windows. A second press replaces the first; the looks already counted stay.">Capture the trades of this set${d.capture ? ' again' : ''}</button>
+        <button id="tnCapture" class="pri" ${d.refused ? 'disabled' : ''} title="writes down every trade every survivor takes, each at its own size, on the training, test and held-back windows. A second press replaces the first; the looks already counted stay.">Capture the trades of this set${d.capture ? ' again' : ''}</button>
         <span id="tnCaptureMsg" class="note">${d.refused ? `<b class="warn">refused:</b> ${esc(d.refused)}` : ''}</span></div>
       ${d.capture ? tnCaptureBlockHtml(d.capture) : '<p class="note">No capture on this set yet. The scans below cannot be aimed at it until there is one.</p>'}` : ''}
   </div>`;
@@ -3342,8 +3354,31 @@ async function drawTune() {
   const stopLabel = isSet && tnPickVal !== 'all' ? (tnPickVal === 'depth' ? ((chosen.pick || {}).label || null) : tnPickVal) : null;
   const stopRow = stopLabel ? ((chosen.rows || []).find((r) => r.label === stopLabel) || null) : null;
   const onRecord = stopRow && stopRow.stop ? stopRow.stop : null;
-  const stopHeld = busy || !stopLabel;
-  const stopHeldWhy = !isSet ? 'no Stage 4 record set with its trades captured is chosen under Tuning targets' : tnPickVal === 'all' ? 'a stop is forced onto one survivor — pick one under Tuning targets, not all survivors' : busy ? 'a heavy scan is running' : '';
+  // BREAKOUT TRADES TAKE NO PROTECTIVE STOP YET (3.235.0, owner order
+  // 2026-09-23): the stop tuner prices a trade from the hour's open, and a
+  // breakout trade opens where price reaches its level, part way through an
+  // hour. When the trades the scans read include one -- the survivor picked,
+  // or any survivor when all are pooled -- the stop's presses are held and the
+  // reason is said beside the button, in the owner's words.
+  const isBreakout = (r) => !!r && (r.entry || 'breakout') !== 'market';
+  const stopBreakout = isSet && (tnPickVal === 'all' ? (chosen.rows || []).some(isBreakout) : isBreakout(stopRow));
+  const stopBreakoutWords = 'protective stops are not tuned currently on breakout trades';
+  const stopHeld = busy || !stopLabel || stopBreakout;
+  const stopHeldWhy = !isSet ? 'no Stage 4 record set with its trades captured is chosen under Tuning targets' : stopBreakout ? stopBreakoutWords : tnPickVal === 'all' ? 'a stop is forced onto one survivor — pick one under Tuning targets, not all survivors' : busy ? 'a heavy scan is running' : '';
+  // THE SIZING LANDS ON EVERY SURVIVOR IN THE TABLE (3.235.0, owner order
+  // 2026-09-23): the one picked, or every captured survivor when all are
+  // chosen. What each carries is read off the target, and the conviction scan
+  // starts from the multipliers on record when every survivor it reads carries
+  // the same ones, so the boxes open on what is recorded.
+  const sizingOf = (r) => (r && r.stop && r.stop.sizing && r.stop.sizing.on ? r.stop.sizing : null);
+  const rowsSized = !isSet ? [] : (tnPickVal === 'all' ? (chosen.rows || []) : (stopRow ? [stopRow] : []));
+  const sizedOnRecord = rowsSized.filter((r) => sizingOf(r));
+  const sameLadders = rowsSized.length && sizedOnRecord.length === rowsSized.length
+    && sizedOnRecord.every((r) => JSON.stringify(sizingOf(r).ladder) === JSON.stringify(sizingOf(sizedOnRecord[0]).ladder));
+  const ladderOnRecord = sameLadders ? sizingOf(sizedOnRecord[0]).ladder : null;
+  const sizeHeld = busy || !isSet || !rowsSized.length;
+  const sizeHeldWhy = !isSet ? 'no Stage 4 record set with its trades captured is chosen under Tuning targets' : busy ? 'a heavy scan is running' : '';
+  const ladderWords = (ladder) => (ladder || []).map((x, i) => `${i + 1} of ${ladder.length}: ×${x}`).join(', ');
   $('#view').innerHTML = `
   ${busy ? `<div class="panel warn">A heavy scan is running (${esc(String(busy))}) — one at a time; both launchers are disabled until it lands (scans run minutes and cannot be aborted mid-flight).</div>` : ''}
   ${tnCapturePanelHtml(tnSets, tnChosen, tnd)}
@@ -3383,14 +3418,15 @@ async function drawTune() {
       <button id="stopWhySave" ${stopHeld || !onRecord ? `disabled title="${esc(stopHeldWhy || 'no choice about the stop is on record for this survivor yet — apply one, or clear it, first')}"` : 'title="saves the reason on its own, leaving the stop on record exactly as it is; no scan runs"'}>Save the reason</button>
 </div>
     ${stopLabel ? (onRecord ? `<div class="note" style="margin-bottom:.4rem">on record for <b>${esc(stopLabel)}</b>: ${onRecord.stopPct != null ? pct(onRecord.stopPct) : (Object.prototype.hasOwnProperty.call(onRecord, 'stopPct') ? 'no stop' : 'no stop chosen yet')}${onRecord.why ? ` — ${esc(onRecord.why)}` : ' — no reason recorded'}${onRecord.at ? ` (${esc(String(onRecord.at).slice(0, 10))}${onRecord.by ? ', ' + esc(onRecord.by) : ''})` : ''}</div>` : `<div class="note warn" style="margin-bottom:.4rem">no choice about the stop has been recorded for <b>${esc(stopLabel)}</b> yet</div>`) : ''}
-    <div class="row"><button id="stopRun" class="pri" ${busy ? 'disabled' : ''}>Tune protective stop</button></div>
+    <div class="row"><button id="stopRun" class="pri" ${busy || stopBreakout ? 'disabled' : ''}>Tune protective stop</button>${stopBreakout ? `<span class="note warn">${esc(stopBreakoutWords)}</span>` : ''}</div>
     <div id="stopOut">${stop.status === 'done' ? renderStopResult(stop) : stop.status === 'running' ? '<p class="note">running…</p>' : stop.status === 'error' ? `<p class="warn">last scan failed: ${esc(stop.error || '')}</p>` : isSet ? tnNotRunHtml(stop, 'Tune protective stop') : ''}</div>
   </div>
   <div class="panel">
     <h3 style="margin-top:0">Conviction sizing — bet more when more members agree?</h3>
-    <p class="note">Prices the DECLARED clip ladder (multiplier = winning-side vote count) as a pure $ overlay on the
-      same captured trades, against a shuffled-assignment chance check and exposure-honest metrics.
-      Target: ${target}.</p>
+    <p class="note">Prices a multiplier for each count of members agreeing, on top of each trade's own size, as a pure $
+      overlay on the same captured trades, against a shuffled-assignment chance check and exposure-honest metrics. The
+      declared ladder (one clip a member that agreed) until you type your own numbers down the rows and press Recompute;
+      0 turns a row off. Target: ${target}.</p>
     ${tnSizingChoiceHtml(onRecord)}
     <!-- THE SIZING'S OWN CONTROLS LIVE IN ITS OWN PANEL (3.234.0, owner 2026-09-23:
          "there's some bizarre mix of conviction sizing stuff on the stop tuner").
@@ -3398,13 +3434,14 @@ async function drawTune() {
          the stop's are: the reason box, its two buttons in a row of their own,
          what is on record under them, then the scan. -->
     <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
-      <label class="f" title="why you applied the conviction sizing to the survivor picked under Tuning targets, or took it off. Saved with the choice on that survivor.">your reason for the sizing<input id="sizingWhy" type="text" maxlength="300" placeholder="why size by conviction, or why not" value="${esc(onRecord && onRecord.sizing ? onRecord.sizing.why || '' : '')}" style="width:48rem"></label>
+      <label class="f" title="why you applied the conviction sizing to the survivor picked under Tuning targets, or to every survivor when all survivors are chosen, or took it off. Saved with the choice on each of them.">your reason for the sizing<input id="sizingWhy" type="text" maxlength="300" placeholder="why size by conviction, or why not" value="${esc(onRecord && onRecord.sizing ? onRecord.sizing.why || '' : '')}" style="width:48rem"></label>
     </div>
     <div class="row">
-      <button id="sizingApply" ${stopHeld ? `disabled title="${esc(stopHeldWhy)}"` : 'title="records on the survivor picked under Tuning targets that its trades are sized by conviction: one clip for each member that agreed, the ladder the conviction scan below reads. A held set or a reserve set read after this freezes the choice, and a greenlight carries it. Nothing is applied to any trading machine."'}>Apply the conviction sizing</button>
-      <button id="sizingOff" ${stopHeld || !(onRecord && onRecord.sizing) ? `disabled title="${esc(stopHeldWhy || 'no sizing is on record for this survivor')}"` : 'title="records that the survivor picked under Tuning targets is NOT sized by conviction: every trade at one clip"'}>Take the sizing off</button>
+      <button id="sizingApply" ${sizeHeld ? `disabled title="${esc(sizeHeldWhy)}"` : 'title="records on the survivor picked under Tuning targets -- or on every captured survivor when all survivors are chosen -- that its trades are sized by conviction: each trade at its own size times the multiplier of its row in the table below, the numbers the table was last priced at. A held set or a reserve set read after this freezes the choice, and a greenlight carries it. Nothing is applied to any trading machine."'}>Apply the conviction sizing</button>
+      <button id="sizingOff" ${sizeHeld || !sizedOnRecord.length ? `disabled title="${esc(sizeHeldWhy || 'no sizing is on record for what is chosen under Tuning targets')}"` : 'title="records that the survivor picked under Tuning targets -- or every captured survivor when all survivors are chosen -- is NOT sized by conviction: each trade at its own size alone"'}>Take the sizing off</button>
     </div>
-    ${stopLabel ? `<div class="note" style="margin-bottom:.4rem">sizing on record for <b>${esc(stopLabel)}</b>: ${onRecord && onRecord.sizing ? `<b>by conviction</b>, one clip ($${Number(onRecord.sizing.clipUsd) || 0}, the record's own dollars) a member that agreed${onRecord.sizing.why ? ` — ${esc(onRecord.sizing.why)}` : ''} (${esc(String(onRecord.sizing.at || '').slice(0, 10))})` : 'none — every trade at one clip'}</div>` : ''}
+    ${stopLabel ? `<div class="note" style="margin-bottom:.4rem">sizing on record for <b>${esc(stopLabel)}</b>: ${onRecord && onRecord.sizing ? `<b>by conviction</b> at the $${Number(onRecord.sizing.clipUsd) || 0} clip, ${esc(ladderWords(onRecord.sizing.ladder))}${onRecord.sizing.why ? ` — ${esc(onRecord.sizing.why)}` : ''} (${esc(String(onRecord.sizing.at || '').slice(0, 10))})` : 'none — each trade at its own size alone'}</div>`
+    : (isSet && tnPickVal === 'all' ? `<div class="note" style="margin-bottom:.4rem">sizing on record: <b>${sizedOnRecord.length} of ${rowsSized.length}</b> captured survivors by conviction${ladderOnRecord ? `, all at ${esc(ladderWords(ladderOnRecord))}` : (sizedOnRecord.length ? ', not all at the same numbers' : '')}</div>` : '')}
     <div class="row"><button id="convRun" class="pri" ${busy ? 'disabled' : ''}>Run conviction sweep</button></div>
     <div id="convOut">${conv.status === 'done' ? renderConvResult(conv) : conv.status === 'running' ? '<p class="note">running…</p>' : conv.status === 'error' ? `<p class="warn">last sweep failed: ${esc(conv.error || '')}</p>` : isSet ? tnNotRunHtml(conv, 'Run conviction sweep') : ''}</div>
   </div>
@@ -3469,11 +3506,12 @@ function renderStopResult(s) {
       </tbody></table></div>
       <div class="scrollx" style="margin-top:.8rem"><table><thead><tr>${cth('agreement','agreement')}${cth('mult','mult')}${cth('trades','trades')}${cth('wins','wins')}${cth('win %','winPct')}${cth('flat $','flatUsd')}${cth('ladder $','ladderUsd')}${cth('return % on $ traded','returnPct')}</tr></thead><tbody>
       ${(c.buckets || []).map((b) => `<tr><td>${b.agree} of ${(c.setup && c.setup.members) || '?'}${b.thin ? ' ⚠' : ''}</td>
-        <td>${b.multiplier}x</td><td>${b.n}</td><td>${b.winners}</td>
+        <td><input class="tnMult" type="number" min="0" step="any" data-agree="${b.agree}" value="${esc(String(b.multiplier))}" style="width:4.5rem" title="the multiplier for this row: each trade here at its own size times this number. Any number of zero or more; 0 turns the row off. Press Recompute to price the numbers typed."></td><td>${b.n}</td><td>${b.winners}</td>
         <td>${b.n ? ((100 * b.winners) / b.n).toFixed(1) + '%' : '—'}</td>
         <td>${usd(b.flatUsd)}</td><td><b>${usd(b.ladderUsd)}</b></td><td class="${(b.returnPct || 0) >= 0 ? 'pos' : 'neg'}">${rate(b.returnPct)}</td></tr>`).join('')}
       </tbody></table></div>
-      <p class="note"><b>Chance check:</b> ${c.shuffles} shuffled deals, mean uplift ${usd(n.mean)}, p=${n.pNull}; the same p holds for the return on the amount traded, because a shuffle keeps the ladder's amount traded.
+      <div class="row" style="margin-top:.4rem"><button id="convRecompute" ${busy ? 'disabled' : ''}>Recompute</button><span id="convRecomputeMsg" class="note">prices the same trades again at the numbers in the boxes above</span></div>
+      <p class="note"><b>Chance check:</b> ${c.shuffles} shuffled deals, mean uplift ${usd(n.mean)}, p=${n.pNull} on the money and p=${n.pNullReturn ?? '—'} on the return on the amount traded, each against its own shuffles.
       <b>Exposure:</b> per-$ ${c.flatPerDollar} → ${c.ladderPerDollar}; worst trade ${usd(c.worstTradeUsd)};
       drawdown ${usd(c.maxDrawdownUsd)}; peak concurrent ${usd(c.peakConcurrentUsd)} (flat ${usd(c.peakConcurrentFlatUsd)}).
       <b>Verdict:</b> ${esc(c.verdict || '')}</p>`;
@@ -3538,11 +3576,15 @@ function renderStopResult(s) {
   };
   // the sizing applied or taken off (3.151.0): a record on the survivor, no scan
   const sizeWhy = () => { const el = $('#sizingWhy'); return el ? el.value.trim() : ''; };
+  // THE NUMBERS APPLIED ARE THE NUMBERS PRICED (3.235.0): the multipliers the
+  // table on screen was last priced at; with no table, the declared ladder
+  const pricedLadder = conv.status === 'done' && Array.isArray(conv.ladder) ? conv.ladder : null;
   const sizing = async (on) => {
+    const who = tnPickVal === 'all' ? `all ${rowsSized.length} captured survivors` : `the survivor ${stopLabel}`;
     if (!confirm(on
-      ? `Apply the conviction sizing to the survivor ${stopLabel} of ${chosen.name}?\n\nThis records that its trades are sized by how many members agreed, one clip a member. The next held set or reserve set read from the rule freezes it, and a greenlight carries it. Nothing is applied to any trading machine.`
-      : `Take the conviction sizing off the survivor ${stopLabel} of ${chosen.name}?\n\nThis records that every trade is taken at one clip.`)) return;
-    const out = await tryPost(`api/funnel/set/${encodeURIComponent(chosen.id)}/sizing-choice`, { pick: tnPickVal, on, why: sizeWhy() }, 'The Stage 4 record set under Tuning targets lists what is captured.');
+      ? `Apply the conviction sizing to ${who} of ${chosen.name}?\n\nThis records that each trade is sized at its own size times the multiplier of its row: ${pricedLadder ? ladderWords(pricedLadder) : 'the declared ladder, one clip a member that agreed'}. The next held set or reserve set read from the rule freezes it, and a greenlight carries it. Nothing is applied to any trading machine.`
+      : `Take the conviction sizing off ${who} of ${chosen.name}?\n\nThis records that each trade is taken at its own size alone.`)) return;
+    const out = await tryPost(`api/funnel/set/${encodeURIComponent(chosen.id)}/sizing-choice`, { pick: tnPickVal, on, why: sizeWhy(), ...(on && pricedLadder ? { ladder: pricedLadder } : {}) }, 'The Stage 4 record set under Tuning targets lists what is captured.');
     if (out) drawTune();
   };
   const szOn = $('#sizingApply');
@@ -3582,8 +3624,33 @@ function renderStopResult(s) {
   $('#convRun').onclick = async () => {
     if (!scanBody) return noTarget();
     if (!tnConfirm('conviction sweep')) return;
-    const out = await tryPost('api/pilot/convictionsweep', scanBody); if (out) { clearTimeout(tunePoll); tunePoll = setTimeout(drawTune, 1500); }
+    // it starts from the multipliers on record when every survivor it reads carries the same ones (3.235.0)
+    const out = await tryPost('api/pilot/convictionsweep', { ...scanBody, ...(ladderOnRecord ? { ladder: ladderOnRecord } : {}) }); if (out) { clearTimeout(tunePoll); tunePoll = setTimeout(drawTune, 1500); }
   };
+  // YOUR NUMBERS DOWN THE ROWS, AND RECOMPUTE (3.235.0, owner order 2026-09-23:
+  // "let me put in a number, any number I want, down each row ... and then hit
+  // the recompute button"). Typing redraws nothing; it only says whether the
+  // boxes still match the numbers the table was priced at, and Apply holds
+  // until they do, so what is applied is always what was priced.
+  const multBoxes = () => [...document.querySelectorAll('.tnMult')].sort((a, b) => Number(a.dataset.agree) - Number(b.dataset.agree));
+  const typedLadder = () => multBoxes().map((el) => (el.value === '' ? NaN : Number(el.value)));
+  const recompute = $('#convRecompute');
+  if (recompute) recompute.onclick = async () => {
+    if (!scanBody) return noTarget();
+    const ladder = typedLadder();
+    const bad = ladder.findIndex((x) => !Number.isFinite(x) || x < 0);
+    if (bad >= 0) { alert(`the multiplier for ${bad + 1} of ${ladder.length} must be a number of zero or more`); return; }
+    if (!tnConfirm('conviction sweep at the numbers in the boxes')) return;
+    const out = await tryPost('api/pilot/convictionsweep', { ...scanBody, ladder }); if (out) { clearTimeout(tunePoll); tunePoll = setTimeout(drawTune, 1500); }
+  };
+  const onTyped = () => {
+    const same = pricedLadder && JSON.stringify(typedLadder()) === JSON.stringify(pricedLadder);
+    const msg = $('#convRecomputeMsg');
+    if (msg) msg.textContent = same ? 'prices the same trades again at the numbers in the boxes above' : 'the numbers in the boxes are not priced yet — press Recompute, then apply them';
+    const ap = $('#sizingApply');
+    if (ap && !sizeHeld) { ap.disabled = !same; ap.title = same ? '' : 'press Recompute to price the numbers in the boxes before applying them'; }
+  };
+  for (const el of multBoxes()) el.oninput = onTyped;
   // the survivor and the windows are remembered and redrawn, so what the
   // sentence above says is what the press sends
   const tnPickSel = $('#tnPick');
@@ -3604,7 +3671,7 @@ function renderStopResult(s) {
   };
   const tnb = $('#tnCapture');
   if (tnb && tnChosen && tnd && !tnd.refused) tnb.onclick = async () => {
-    if (!confirm(`Capture the trades of ${tnd.name}?\n\nEvery survivor that enters at market with no trailing stop, on the training, test and held-back windows. When it lands the set is chosen in the scan target box.${tnd.capture ? '\n\nThis replaces the capture on record; the looks already counted stay.' : ''}`)) return;
+    if (!confirm(`Capture the trades of ${tnd.name}?\n\nEvery trade every survivor takes, each at its own size, on the training, test and held-back windows. When it lands the set is chosen in the scan target box.${tnd.capture ? '\n\nThis replaces the capture on record; the looks already counted stay.' : ''}`)) return;
     tnb.disabled = true;
     $('#tnCaptureMsg').textContent = 'starting…';
     const started = await tryPost(`api/funnel/set/${encodeURIComponent(tnChosen)}/capture`, {}, 'The Stage 4 record set box on Tune lists what was captured - pick the set there.');
@@ -3613,6 +3680,23 @@ function renderStopResult(s) {
     tnCaptureFollow(tnChosen, started.token);
   };
   if (tnd && tnd.running && tnb) { tnb.disabled = true; tnCapturedSet(tnChosen); tnCaptureFollow(tnChosen, tnd.running.token); }
+  // A CAPTURE TAKEN AT THE STANDARD SIZE IS TAKEN AGAIN the first time its set
+  // is chosen here (3.235.0): once a visit, and a refusal is left in its own
+  // words beside the press
+  const recapture = tnd && !tnd.running && tnb && (((tnd.rebuild || {}).reasons) || []).some((r) => r.key === 'capture');
+  if (recapture && !rebuiltThisVisit.has(`capture|${tnChosen}`)) {
+    rebuiltThisVisit.add(`capture|${tnChosen}`);
+    if (tnd.refused) $('#tnCaptureMsg').textContent = `REBUILD REQUIRED - waiting: ${tnd.refused}`;
+    else {
+      tnb.disabled = true;
+      $('#tnCaptureMsg').textContent = 'REBUILD REQUIRED - capturing the trades again…';
+      tryPost(`api/funnel/set/${encodeURIComponent(tnChosen)}/capture`, {}, 'The Stage 4 record set box on Tune lists what was captured - pick the set there.').then((started) => {
+        if (!started) { tnb.disabled = false; return; }
+        tnCapturedSet(tnChosen);
+        tnCaptureFollow(tnChosen, started.token);
+      });
+    }
+  }
   // A running scan used to say "running…" and then never change: the result
   // only appeared if the operator happened to reload. It refreshes itself now,
   // ONE cancellable chain, at 30s — these scans take minutes, and checking a
@@ -3791,7 +3875,7 @@ function glStage4PanelHtml(list, chosen, d) {
       <label class="f" title="which held set or reserve set to take a survivor from, from every one on this box, newest first, with the verdict it carries. A rule is never greenlighted: the set a press made on Held or Reserve is.">Stage 4 record set<select id="gl4Set">${list.length
     ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors · ${x.judge && x.judge.block ? `${x.judge.block.pass ? 'PASS' : 'FAIL'} ${esc(String(x.judge.block.at || '').slice(0, 10))}` : 'no verdict'}${x.derived ? ` · half-life set from ${esc(x.derived.fromName || x.derived.from)}` : ''}</option>`).join('')
     : '<option value="">no held set or reserve set on this box yet - read a rule on Held first</option>'}</select></label></div>
-    ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${esc(d.ruleSentence || '')} · ${(d.survivors || []).length} survivors${d.from ? ` · read from <b>${esc(d.from.name)}</b>` : ''}${d.standsOn ? ` · stands on ${esc(d.standsOn.name)}` : ''}
+    ${d ? `${rebuildLineHtml(d)}<p class="note"><b>${rebuildPrefix(d)}${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${esc(d.ruleSentence || '')} · ${(d.survivors || []).length} survivors${d.from ? ` · read from <b>${esc(d.from.name)}</b>` : ''}${d.standsOn ? ` · stands on ${esc(d.standsOn.name)}` : ''}
       · verdict ${d.gate ? `<b class="pos">stood (PASS, release ${esc(d.gate.release || '?')})</b>` : `<b class="neg">does not stand</b> - ${esc(d.standing || '')}`}${d.heldAlone && d.kind === 'held' ? ` · ${esc(d.heldAlone)}` : ''}${d.members ? ` · ${d.members} members as the stage 2 set trained them` : ''}${d.refused ? ` · <b class="warn">refused:</b> ${esc(d.refused)}` : ''}</p>
       ${glPictureHtml(d)}
       ${d.refused ? '' : `<div class="row" style="align-items:flex-end">
@@ -4507,7 +4591,7 @@ async function drawBoards() {
     const head = above && !list.length
       ? `<option value="">— nothing came out of ${esc(above.name)} yet —</option>`
       : `<option value="">— pick a stage ${stage} record set${above ? ` out of ${esc(above.name)}` : ''} —</option>`;
-    return head + list.map((x) => `<option value="${esc(x.id)}"${x.id === sel ? ' selected' : ''}>${esc(x.name)} — ${esc(x.status)} — ${esc((x.createdAt || '').slice(0, 10))}${x.desc ? ` — ${esc(x.desc.slice(0, 40))}` : ''}</option>`).join('');
+    return head + list.map((x) => `<option value="${esc(x.id)}"${x.id === sel ? ' selected' : ''}>${rebuildPrefix(x)}${esc(x.name)} — ${esc(x.status)} — ${esc((x.createdAt || '').slice(0, 10))}${x.desc ? ` — ${esc(x.desc.slice(0, 40))}` : ''}</option>`).join('');
   };
   const foldBtn = (stage) => putAwayBtn('bfold', stage, fold[stage], "this stage's table");
   $('#view').innerHTML = `<div class="panel">
@@ -6993,7 +7077,8 @@ function fHead(d) {
   const n = (d.set && d.set.noiseTwin) || {};
   const sealed = (d.set && d.set.sealed) || {};
   const unitName = d.unit ? (d.unitName || d.unit) : 'all units together';
-  return `<h3 style="margin-top:0">Funnel - ${esc(d.set.name)} - ${esc(unitName)}</h3>
+  return `<h3 style="margin-top:0">Funnel - ${rebuildPrefix(d.set)}${esc(d.set.name)} - ${esc(unitName)}</h3>
+    ${rebuildLineHtml(d.set)}
     <p class="note"><b>Every money figure on this screen is test money.</b> The held-back window is opened once,
       at the cut, on what survives. <b>One rule per coin and shape:</b> this walk is on
       ${d.unit
@@ -8232,7 +8317,7 @@ async function fDrawCut(d, st, cutId) {
 // the list without remembering what was chosen when it was written).
 function fCutPickOption(c, st, who) {
   const say = !c.mine && who && !String(c.name || '').includes(who);
-  return `<option value="${esc(c.id)}" ${c.id === st.cut ? 'selected' : ''}>${esc(c.name)}${say ? ` — ${esc(who)}` : ''}</option>`;
+  return `<option value="${esc(c.id)}" ${c.id === st.cut ? 'selected' : ''}>${rebuildPrefix(c)}${esc(c.name)}${say ? ` — ${esc(who)}` : ''}</option>`;
 }
 // THE DROP-DOWN IS ON BOTH HEADINGS (3.58.0). It was on the Stage 4 heading
 // only, and that made the walk a one-way door: choose `new rule` and there was
@@ -9125,6 +9210,22 @@ function fWireHold(st, d) {
   // and if one is already going -- another tab pressed it, or this page was
   // reloaded -- it is watched without anything being pressed
   if (fRichGoing(d)) fRichWatch(st);
+  // TEST HISTORY NUMBERS WORKED OUT AT THE STANDARD SIZE ARE WORKED OUT AGAIN
+  // the first time the Funnel opens the set (3.235.0, owner 2026-09-23:
+  // "rebuilding on first open"), for the board on screen, once a visit, the
+  // same pass the press starts
+  const richAgain = d && d.set && (((d.set.rebuild || {}).reasons) || []).some((r) => r.key === 'rich');
+  const richKey = `rich|${st.set}|${(d && d.unit) || 'all'}`;
+  if (richAgain && !fRichGoing(d) && rbs.some((b) => !b.disabled) && !rebuiltThisVisit.has(richKey)) {
+    rebuiltThisVisit.add(richKey);
+    rbs.forEach((b) => { b.disabled = true; });
+    fRebuildSay('REBUILD REQUIRED - working out the test history numbers again, each trade at its own size');
+    tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, { unit: (d && d.unit) || 'all' }, WHERE_FUNNEL).then((started) => {
+      if (!started) { rbs.forEach((b) => { b.disabled = false; }); return; }
+      stops.forEach((b) => { b.disabled = false; });
+      fRichWatch(st);
+    });
+  }
   const rd = $('#fHoldRead');
   if (rd && !rd.disabled) {
     rd.onclick = async () => {

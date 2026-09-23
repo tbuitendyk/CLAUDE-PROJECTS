@@ -425,6 +425,63 @@ module.exports = {
     assert.ok(b.chunks.length > a.chunks.length,
       `a longer range must yield more chunks (${a.chunks.length} vs ${b.chunks.length}) — the cache is ignoring the range`);
   },
+  // EVERY TRADE SETTLES AT ITS OWN SIZE (3.235.0, owner order 2026-09-23: "all
+  // upstream processes use the correct resulting trade sizes IN EVERY SINGLE
+  // TRADE INSTANCE"). With no sizes, and with every size 1, the book is exactly
+  // what it always was. With sizes, every figure the book gives -- money,
+  // drawdown, worst and best trade, thirds, money per trade -- is the trades'
+  // own at their own sizes, and a call sized to nothing is not taken.
+  async everyTradeSettlesAtItsOwnSize() {
+    const t0 = Date.UTC(2024, 0, 1);
+    const WEEK = 7 * 24 * HOUR_MS;
+    const m = new Map();
+    const periods = [];
+    // six weeks, each an entry candle and a 17h exit: up, down, up, down, down, up
+    const moves = [[100, 104], [100, 97], [100, 103], [100, 95], [100, 99], [100, 106]];
+    moves.forEach(([open, exit], k) => {
+      const t = t0 + k * WEEK;
+      periods.push({ startTs: t });
+      const e = t + geo.entryOffsetH * HOUR_MS;
+      m.set(e, { open, high: Math.max(open, exit) + 0.5, low: Math.min(open, exit) - 0.5, close: open });
+      for (let h = 1; h < 17; h++) m.set(e + h * HOUR_MS, { open, high: open + 0.4, low: open - 0.4, close: open });
+      m.set(e + 17 * HOUR_MS, { open: exit, high: exit, low: exit, close: exit });
+    });
+    const calls = [1, 1, 1, 1, 1, 1];
+    const opts = { tHours: 17, feePerLeg: FEE };
+    const plain = simMarket(periods, calls, m, geo, opts);
+    assert.deepStrictEqual(simMarket(periods, calls, m, geo, { ...opts, sizes: null }), plain, 'no sizes is the book as it always was');
+    assert.deepStrictEqual(simMarket(periods, calls, m, geo, { ...opts, sizes: [1, 1, 1, 1, 1, 1] }), plain, 'every size 1 is the book as it always was');
+    const sizes = [1.5, 0.75, 1, 1.25, 0, 2];
+    const r = simMarket(periods, calls, m, geo, { ...opts, sizes });
+    // each trade on its own, at the standard size
+    const one = moves.map((_, k) => simMarket([periods[k]], [1], m, geo, opts).pnl);
+    const taken = sizes.map((x, k) => (x > 0 ? k : -1)).filter((k) => k >= 0);
+    const sized = taken.map((k) => one[k] * sizes[k]);
+    const near = (a, b, what) => assert.ok(Math.abs(a - b) < 1e-9, `${what}: ${a} vs ${b}`);
+    assert.strictEqual(r.trades, 5, 'the call sized to nothing is not taken');
+    near(r.pnl, sized.reduce((a, v) => a + v, 0), 'the money');
+    near(r.worstTrade, Math.min(...sized), 'the worst trade');
+    near(r.bestTrade, Math.max(...sized), 'the best trade');
+    let cum = 0; let peak = 0; let dd = 0;
+    for (const v of sized) { cum += v; if (cum > peak) peak = cum; if (peak - cum > dd) dd = peak - cum; }
+    near(r.maxDrawdown, dd, 'the drawdown');
+    const thirds = [0, 0, 0];
+    taken.forEach((k, j) => { thirds[k < 2 ? 0 : (k < 4 ? 1 : 2)] += sized[j]; });
+    r.pnlThirds.forEach((v, j) => near(v, thirds[j], `third ${j + 1}`));
+    const trip = NOTIONAL * 2 * FEE;
+    const sizeSum = taken.reduce((a, k) => a + sizes[k], 0);
+    near(r.grossPerTrade, (r.pnl + sizeSum * trip) / r.trades, 'the money per trade, the round trip paid on each size');
+    assert.strictEqual(r.wins, sized.filter((v) => v > 0).length);
+    // and the breakout book the same way, through the one entry point
+    const cell = { entry: 'breakout', gate: 'directional', dMult: 1, tHours: 17, trailMult: null, armMult: null };
+    const bPlain = simCell(cell, periods, calls, m, geo, 1, FEE);
+    assert.deepStrictEqual(simCell(cell, periods, calls, m, geo, 1, FEE, undefined, [1, 1, 1, 1, 1, 1]), bPlain, 'every size 1 is the breakout book as it always was');
+    const b = simCell(cell, periods, calls, m, geo, 1, FEE, undefined, sizes);
+    const bOne = moves.map((_, k) => simCell(cell, [periods[k]], [1], m, geo, 1, FEE));
+    const bSized = taken.filter((k) => bOne[k].trades === 1).map((k) => bOne[k].pnl * sizes[k]);
+    near(b.pnl, bSized.reduce((a, v) => a + v, 0), 'the breakout money');
+    assert.strictEqual(b.trades, bSized.length);
+  },
   async bestCellHonorsFloorAndTies() {
     const rows = [
       { gate: 'active', dMult: 1, tHours: 17, pnl: 50, trades: 4 }, // under floor

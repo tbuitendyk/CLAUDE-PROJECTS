@@ -1503,15 +1503,18 @@ module.exports.theFootingSaysNoSealedWindowOnAReservelessLayoutAndReadsTheParent
 module.exports.theHeldAndReserveSetBoxShowsEachRuleByItsNameAlone = function () {
   const page = src('public/construct.js');
   const at = page.indexOf('function vSetBoxHtml(list, chosen, stretch) {');
+  const rp = page.indexOf('function rebuildPrefix(x) {');
   // eslint-disable-next-line no-new-func
-  const vSetBoxHtml = new Function('esc', 'stretchPlain', `${page.slice(at, page.indexOf('\n}\n', at) + 3)}\nreturn vSetBoxHtml;`)((t) => String(t), (x) => (x === 'reserve' ? 'reserve' : 'held-back'));
+  const vSetBoxHtml = new Function('esc', 'stretchPlain', `${page.slice(rp, page.indexOf('\n', rp) + 1)}${page.slice(at, page.indexOf('\n}\n', at) + 3)}\nreturn vSetBoxHtml;`)((t) => String(t), (x) => (x === 'reserve' ? 'reserve' : 'held-back'));
   const list = [
     { id: 's4-a', name: 'HALF LIFE TABLE: my own name', unitName: 'BNBUSDT alongside LTCUSDT daily-4d', counts: { survivors: 51 }, target: null, derived: { fromName: 'the set it came from' }, judge: { held: { newest: { number: 2, pass: true, at: '2026-09-23' }, stands: true } } },
     { id: 's4-b', name: 'a rule on BTC', unitName: 'BTCUSDT alongside ETCUSDT daily-3d', counts: { survivors: 70 }, target: 100, judge: null },
+    // (3.235.0, owner 2026-09-23: "flag somehow all the data sets that need a rebuild. Maybe put a prefix on them")
+    { id: 's4-c', name: 'an older rule', unitName: 'LTCUSDT alongside XRPUSDT daily-2d', counts: { survivors: 66 }, target: 100, judge: null, rebuild: { words: 'REBUILD REQUIRED', reasons: [{ key: 'stage4', why: 'x' }] } },
   ];
   for (const stretch of ['held', 'reserve']) {
     const options = [...vSetBoxHtml(list, 's4-a', stretch).matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)].map((m) => [m[1], m[2]]);
-    assert.deepStrictEqual(options, [['s4-a', 'HALF LIFE TABLE: my own name'], ['s4-b', 'a rule on BTC']], `a rule in the box on ${stretch} carries something after its name: ${JSON.stringify(options)}`);
+    assert.deepStrictEqual(options, [['s4-a', 'HALF LIFE TABLE: my own name'], ['s4-b', 'a rule on BTC'], ['s4-c', 'REBUILD REQUIRED - an older rule']], `a rule in the box on ${stretch} carries something after its name, or one that needs a rebuild does not say so in front of it: ${JSON.stringify(options)}`);
   }
   assert.ok(!/function vNewestWords\(/.test(page), 'the words that followed each name are still in the page with nothing to draw them');
 };

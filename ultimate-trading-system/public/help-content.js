@@ -975,7 +975,7 @@ window.HELP = {
     title: 'Tune',
     how: [
       ['First, the trades of a Stage 4 record set',
-        'A Stage 4 record set holds money per window and never the trades, and the two scans need the trades. The first panel writes those down — every hour the rule of a survivor spoke, on the training, test and held-back windows, with the side and how many members called it — for every survivor that enters at market with no trailing stop. Once captured, the set can be chosen under "Tuning targets" below, with one survivor of it or all of them, and the windows to read.\n\nReading the held-back entries is a counted look at the held-back window, the same count Held keeps. Reading the training and test entries is not: those windows were read to choose the rule. Nothing from a Stage 4 record set is ever applied to the trading machine.'],
+        'A Stage 4 record set holds money per window and never the trades, and the two scans need the trades. The first panel writes those down — every trade each survivor takes, on the training, test and held-back windows, with the side, how many members called it and the size its setting took it at — for every survivor. Once captured, the set can be chosen under "Tuning targets" below, with one survivor of it or all of them, and the windows to read.\n\nReading the held-back entries is a counted look at the held-back window, the same count Held keeps. Reading the training and test entries is not: those windows were read to choose the rule. Nothing from a Stage 4 record set is ever applied to the trading machine.'],
       ['One variable at a time, on one survivor\'s trades',
         'The Sweep tab is wide and shallow: many settings, each scored once. This is the opposite — one setting, taken apart carefully.\n\nThe two scans work across every value of one thing, over the captured trades of one survivor on the windows ticked, and report the whole shape rather than a winner: which protective stops would have cost nothing, and how much requiring more agreement is worth. Both take minutes and cannot be stopped part-way.'],
     ],
@@ -984,8 +984,8 @@ window.HELP = {
     controls: {
       tnSet: { what: 'Which Stage 4 record set to capture the trades of, from every set on this box, newest first.' },
       tnCapture: {
-        what: 'Writes down every trade of every survivor that enters at market with no trailing stop, on the training, test and held-back windows, and on the reserve window when the set\'s layout keeps one and its seal is intact.',
-        more: 'Tune comes before Held and asks nothing of it. A second press replaces the capture on record; the looks already counted stay. When the capture lands, the set is chosen under scan target by itself - also if you left the tab while it ran and come back later.',
+        what: 'Writes down every trade every survivor takes, each at the size its setting took it at, on the training, test and held-back windows, and on the reserve window when the set\'s layout keeps one and its seal is intact.',
+        more: 'A call the field blocks is not a trade the survivor takes, so it is not written down; a trade the field or the lean sizes is written down at that size, with the money the simulator made on it at that size. Tune comes before Held and asks nothing of it. A second press replaces the capture on record; the looks already counted stay. When the capture lands, the set is chosen under scan target by itself - also if you left the tab while it ran and come back later.',
       },
       tuneTarget: { what: 'Which Stage 4 record set the two scans below work on, from those whose trades were captured. A set whose trades were just captured on this tab is chosen here by itself when the capture lands.' },
       tnPick: {
@@ -1007,14 +1007,14 @@ window.HELP = {
         more: 'The floor is twice the round trip at the fee this set\'s trades were priced at: tighter than the round trip and a triggered stop is a guaranteed loss; tighter than the floor and it fires on ordinary hourly noise.',
       },
       sizingWhy: {
-        what: 'Your reason for applying the conviction sizing to the survivor picked under Tuning targets, or for taking it off. Saved with the choice on that survivor.',
+        what: 'Your reason for applying the conviction sizing to the survivor picked under Tuning targets, or to every survivor when all survivors are chosen, or for taking it off. Saved with the choice on each of them.',
       },
       sizingApply: {
-        what: 'Records on the survivor picked under Tuning targets that its trades are sized by conviction: one clip for each member that agreed, the ladder the conviction scan reads.',
+        what: 'Records on the survivor picked under Tuning targets — or on every captured survivor when all survivors are chosen — that its trades are sized by conviction: each trade at its own size times the multiplier of its row in the conviction table, at the numbers the table was last priced at.',
         more: 'A tuning you can apply or not. The next held set or reserve set read from the rule freezes the choice, a greenlight carries it, and the picture on Greenlight shows the survivor\'s money with and without it, worked out from its captured trades by the scan\'s own arithmetic. Nothing is applied to any trading machine.',
       },
       sizingOff: {
-        what: 'Records that the survivor picked under Tuning targets is not sized by conviction: every trade at one clip.',
+        what: 'Records that the survivor picked under Tuning targets — or every captured survivor when all survivors are chosen — is not sized by conviction: each trade at its own size alone.',
         more: 'The same record, switched off; the reason box goes with it.',
       },
       stopCustomApply: {
@@ -1028,11 +1028,15 @@ window.HELP = {
       stopWhy: { what: 'Why you chose this stop, or no stop, for the survivor picked under Tuning targets. Kept with the choice on that survivor.' },
       stopWhySave: { what: 'Saves the reason on its own, leaving the stop on record exactly as it is. No scan runs.' },
       stopRun: {
-        what: 'Tries every protective stop across the whole history and reports which ones would have cost you nothing.',
+        what: 'Tries every protective stop across the whole history and reports which ones would have cost you nothing. Held, with the reason beside it, when the trades chosen under Tuning targets include breakout trades: protective stops are not tuned currently on breakout trades.',
         more: 'Takes minutes and cannot be stopped part-way. When a stop is on record for the survivor picked, the table carries it as its first row, priced on the same entries by the same arithmetic. Each answer is kept with the set, survivor and windows it read, and the table shows only the one read on what is chosen under Tuning targets - anything else says it has not been run on that choice yet.',
       },
+      convRecompute: {
+        what: 'Prices the same captured trades again at the multipliers typed down the rows of the conviction table: each trade at its own size times the number of its row, 0 turning a row off.',
+        more: 'Any number of zero or more, in each row. Until it is pressed the numbers typed are not priced, and Apply the conviction sizing holds, so what is applied is always what the table shows priced. A read of the held-back entries is a counted look, as for any scan.',
+      },
       convRun: {
-        what: 'Tries every level of agreement across the captured trades, to see how much conviction is worth requiring: as money, and as a return on the amount traded.',
+        what: 'Tries every level of agreement across the captured trades, to see how much conviction is worth requiring: as money, and as a return on the amount traded. Every trade is at its own size, with the multiplier of its row on top; breakout trades are read at the money the simulator made on them.',
         more: 'The money line can rise simply because the ladder trades more; the return on the amount traded, flat against ladder and per level of agreement, cannot. Takes minutes and cannot be stopped part-way. Each answer is kept with the set, survivor and windows it read, and the panel shows only the one read on what is chosen under Tuning targets.',
       },
     },

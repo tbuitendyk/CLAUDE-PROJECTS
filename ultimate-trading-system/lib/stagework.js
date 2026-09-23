@@ -1539,8 +1539,8 @@ async function s3UnitTask(task) {
   // the three kinds are priced by the one simulator each on their own so the
   // money can be scaled per kind and added back up: a trade at twice the size
   // is exactly twice the money, fees included, because the fee is a share of
-  // the position. The rich figures (drawdown, wins, thirds) are read at size 1
-  // from one pass over the trades actually taken.
+  // the position. The rich figures (drawdown, wins, thirds) are read from one
+  // pass over the trades actually taken, each at its own size (3.235.0).
   // THE LEAN IS A LIST OF ROWS (3.206.0): one for a unit whose coin and shape
   // pass on Coins, and every row of its plateau for a unit promoted from a
   // walk set -- each read at its own look-back and band against its own
@@ -1583,8 +1583,8 @@ async function s3UnitTask(task) {
     return foldedLean.get(key);
   };
   // price a window under a setting: plain when the setting is off or the unit
-  // has no lean; split three ways otherwise. `wantRich` adds the one pass at
-  // size 1 the rich figures are read from.
+  // has no lean; split three ways otherwise. `wantRich` adds the one pass, each
+  // trade at its own size, the rich figures are read from.
   const priceLean = (cell, chunksArr, idxs, callsAll, tradeMap, signsAll, st, bandPct, wantRich) => priceLeanWindow(
     cell, pick(chunksArr, idxs), pick(callsAll, idxs), tradeMap, geo, bandPct, fee, signsAll ? pick(signsAll, idxs) : null, st, wantRich,
   );
@@ -1624,7 +1624,7 @@ async function s3UnitTask(task) {
   };
   const priceField = (cell, chunksArr, idxs, callsAll, tradeMap, tsAll, gate, bandPct, wantRich) => priceFieldWindow(
     pick(callsAll, idxs), pick(tsAll, idxs), fieldDays, gate,
-    (list) => bracketLib.simCell(cell, pick(chunksArr, idxs), list, tradeMap, geo, bandPct, fee), wantRich,
+    (list, sizes = null) => bracketLib.simCell(cell, pick(chunksArr, idxs), list, tradeMap, geo, bandPct, fee, undefined, sizes), wantRich,
   );
   // THE PER-TRADE CAPTURE (3.92.0, Tune on a Stage 4 record set; VERIFY-DESIGN.md
   // section 9 step 8). The two tools on Tune take a LIST of entries -- the hour,
@@ -1640,8 +1640,14 @@ async function s3UnitTask(task) {
   // money for that trade, priced on that chunk alone, so the population is
   // exactly the simulator's (an invented entry candle or a missing exit drops
   // out here as it does there) and the list can be held to the record to the
-  // cent. Only a market entry with no trailing stop is captured: those are the
-  // only trades the two tools price.
+  // cent.
+  // EVERY SURVIVOR, EVERY TRADE IT TAKES, EACH AT ITS OWN SIZE (3.235.0, owner
+  // order 2026-09-23). Only a market entry with no trailing stop was captured,
+  // and every call was written down at the standard size -- the calls the
+  // field blocks included -- so a sized setting's capture held trades it never
+  // took and none of its sizes. Now a call is sized by the same rule the
+  // pricing above sizes it by, a call sized to nothing is left out, and each
+  // entry carries its size beside the money it made at that size.
   const wkTrain = maskIdx(trainChunks);
   let trainProbsMemo = null;
   const trainProbs = () => {
@@ -1666,6 +1672,33 @@ async function s3UnitTask(task) {
     if (!trainCallsCache.has(key)) trainCallsCache.set(key, C.foldOf(trainProbs(), decision, share).calls);
     return trainCallsCache.get(key);
   };
+  // THE SIZE EACH CALL IS TAKEN AT ON A SLICE (3.235.0): the field's rung when
+  // the setting reads the field, the lean's multiplier when confirm is past
+  // off, the standard size otherwise -- the rule priceOn prices by. Aligned
+  // with `idxs`; the training slice's field days and lean are read the same
+  // way as the other slices', from its own chunks.
+  let trainTsMemo = null;
+  let trainLeanRowsMemo;
+  const leanSignsOf = (slice, share) => {
+    if (slice !== 'train') return leanFor(slice, share);
+    if (trainLeanRowsMemo === undefined) trainLeanRowsMemo = rowSignsFor(trainChunks, maps.trade);
+    if (!trainLeanRowsMemo) return null;
+    const pct = trainLeanRowsMemo.length > 1 ? (share == null ? 50 : Number(share)) : 100;
+    return confirmLib.foldLeanSigns(trainLeanRowsMemo, pct);
+  };
+  const captureSizesOf = (st, slice, idxs, calls) => {
+    const sub = idxs.map((i) => calls[i]);
+    if (st.field && fieldDays) {
+      let tsAll = slice === 'test' ? fieldTsTest : fieldTsHold;
+      if (slice === 'train') tsAll = trainTsMemo || (trainTsMemo = decisionTsOf(trainChunks, maps.trade));
+      return Array.from(fieldGate.sizesFor(fieldDays, idxs.map((i) => tsAll[i]), sub, st.field).sizes);
+    }
+    const confirm = st.confirm || 'off';
+    const signsAll = confirm === 'off' ? null : leanSignsOf(slice, st.plateauPct);
+    if (!signsAll) return sub.map((c) => (c === 1 || c === -1 ? 1 : 0));
+    const { kx, ux, zx } = confirmLib.multipliersOf(confirm, st.kx, st.ux);
+    return confirmLib.sizesOf(sub, idxs.map((i) => signsAll[i]), kx, ux, zx);
+  };
   const captureOf = (st, agr, cell, bandPct, weekdaysOnly) => {
     const idxOf = (chunksArr, wk) => (weekdaysOnly ? wk : chunksArr.map((_, i) => i));
     const slices = [
@@ -1679,22 +1712,25 @@ async function s3UnitTask(task) {
       if (chunksArr.length) {
         const stream = streamOfSlice();
         const per = memberCallsOfSlice();
-        for (const i of idxs) {
+        const sizes = captureSizesOf(st, name, idxs, stream);
+        for (let j = 0; j < idxs.length; j++) {
+          const i = idxs[j];
           const call = stream[i];
           if (call !== 1 && call !== -1) continue;
-          // the one simulator, on this chunk alone: its money, and whether it took the trade at all
-          const one = bracketLib.simCell(cell, [chunksArr[i]], [call], tradeMap, geo, bandPct, fee);
+          const size = sizes[j];
+          if (!(size > 0)) continue;   // blocked by the field, or a lean part sized to nothing: not a trade it takes
+          // the one simulator, on this chunk alone, at this call's size: its money, and whether it took the trade at all
+          const one = bracketLib.simCell(cell, [chunksArr[i]], [call], tradeMap, geo, bandPct, fee, undefined, [size]);
           if (one.trades !== 1) continue;
           let agree = 0;
           for (const m of per) if (m[i] === call) agree++;
-          list.push({ ts: chunksArr[i].startTs + (geo.entryOffsetH || 0) * 3600000, side: call === 1 ? 'LONG' : 'SHORT', agree, usd: one.pnl });
+          list.push({ ts: chunksArr[i].startTs + (geo.entryOffsetH || 0) * 3600000, side: call === 1 ? 'LONG' : 'SHORT', agree, size, usd: one.pnl });
         }
       }
       out[name] = list;
     }
     return out;
   };
-  const captureShapeOk = (st) => st.entry === 'market' && (st.trailMult ?? null) == null;
   const holdCtlCache = new Map();
   const holdControlsFor = (chunksArr, idxs, tHours, cacheKey) => {
     const key = `${cacheKey}|${tHours}`;
@@ -1850,7 +1886,7 @@ async function s3UnitTask(task) {
       lead = leadOver(hRes.pnl, dealPnls);
       dealShape = shapeOf(dealPnls);
     }
-    const captured = task.capture && captureShapeOk(st) ? captureOf(st, agr, cell, bandPct, !!stream.weekdaysOnly) : null;
+    const captured = task.capture ? captureOf(st, agr, cell, bandPct, !!stream.weekdaysOnly) : null;
     // and the four on the TEST window, once per unit and hold length, only when
     // the caller asked for them (3.107.0)
     if (task.wantTestControls && testChunks.length) testControlsFor(testChunks, tIdx, tHours, stream.weekdaysOnly ? 'wk' : 'all');
@@ -1928,7 +1964,7 @@ async function s3UnitTask(task) {
           testPriced: tIdx.length,
           holdPriced: hIdx.length,
         },
-        // the per-trade capture (3.92.0), only when asked and only for a shape the tools price
+        // the per-trade capture (3.92.0), only when asked; every shape since 3.235.0
         capture: captured,
       },
     });
@@ -2111,8 +2147,9 @@ function tallyFold(acc, r, blockIdx, agreedAt = null) {
 // before this release priced. Otherwise the calls are split three ways
 // (confirmed, unconfirmed, no lean), each part is priced by the one simulator
 // on its own, and the money is scaled per part and added back up. `wantRich`
-// adds the one pass at size 1 over the trades actually taken, which the rich
-// figures (drawdown, wins, thirds) are read from; the noise copies skip it.
+// adds the one pass over the trades actually taken, each at its own size
+// (3.235.0), which the rich figures (drawdown, wins, thirds) are read from;
+// the noise copies skip it.
 function priceLeanWindow(cell, ch, calls, tradeMap, geo, bandPct, fee, signs, st, wantRich) {
   const confirm = (st && st.confirm) || 'off';
   if (!signs || confirm === 'off') return { res: bracketLib.simCell(cell, ch, calls, tradeMap, geo, bandPct, fee), parts: null };
@@ -2131,7 +2168,12 @@ function priceLeanWindow(cell, ch, calls, tradeMap, geo, bandPct, fee, signs, st
       if (signs[i] === 0) return zx === 0 ? 0 : v;
       return (ux === 0 && signs[i] !== v) ? 0 : ((kx === 0 && signs[i] === v) ? 0 : v);
     });
-    res = { ...bracketLib.simCell(cell, ch, taken, tradeMap, geo, bandPct, fee), pnl: g.pnl, trades: g.trades };
+    // AND EACH TRADE AT THE SIZE THE LEAN GAVE IT (3.235.0, owner order
+    // 2026-09-23). The rich figures were read at size 1 from this pass, so a
+    // setting that doubled its confirmed trades had its total at the real sizes
+    // and its drawdown, worst and best trade, thirds and money per trade as if
+    // it had not. The total stays the parts' own arithmetic, to the bit.
+    res = { ...bracketLib.simCell(cell, ch, taken, tradeMap, geo, bandPct, fee, undefined, confirmLib.sizesOf(taken, signs, kx, ux, zx)), pnl: g.pnl, trades: g.trades };
   }
   return { res, parts, size: g.size, kx, ux, zx };
 }
@@ -2144,7 +2186,13 @@ function priceFieldWindow(calls, decisionTs, days, gate, sim, wantRich) {
   const sz = fieldGate.sizesFor(days, decisionTs, calls, gate);
   const g = fieldGate.priceGated(calls, sz.sizes, sim);
   let res = { pnl: g.pnl, trades: g.trades, stops: g.stops };
-  if (wantRich) res = { ...sim(g.taken), pnl: g.pnl, trades: g.trades };
+  // THE RICH FIGURES AT EACH TRADE'S OWN SIZE (3.235.0, owner order 2026-09-23:
+  // "all upstream processes use the correct resulting trade sizes IN EVERY
+  // SINGLE TRADE INSTANCE"). They were read from the taken calls at size 1
+  // while the total was sized by the rung, so the drawdown, the worst and best
+  // trade, the thirds and the money per trade disagreed with the money beside
+  // them. The total stays the size groups' own arithmetic, to the bit.
+  if (wantRich) res = { ...sim(g.taken, sz.sizes), pnl: g.pnl, trades: g.trades };
   return {
     res, parts: null,
     field: {

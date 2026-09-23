@@ -170,10 +170,68 @@ function theTwoMinimumsCombineByBothOrEither() {
   assert.strictEqual(m, 'certainty minimum repeats a value');
 }
 
+// THE RICH FIGURES UNDER THE GATE ARE THE TRADES AT THEIR RUNGS' SIZES
+// (3.235.0, owner order 2026-09-23: "all upstream processes use the correct
+// resulting trade sizes IN EVERY SINGLE TRADE INSTANCE"). The window's total is
+// the size groups' arithmetic to the bit, as before; the drawdown, worst and
+// best trade, thirds and money per trade are the placed trades at their sizes.
+function theRichFiguresUnderTheGateAreTheTradesAtTheirSizes() {
+  const { simCell } = require('../lib/bracket');
+  const { GEOMETRIES } = require('../lib/dataset');
+  const { FEE_PER_LEG: FEE, NOTIONAL } = require('../lib/paper');
+  const sw = require('../lib/stagework');
+  const geo = GEOMETRIES['daily-3d'];
+  const HOUR = 3600000;
+  const t0 = Date.UTC(2024, 0, 1);
+  const periods = [0, 1, 2, 3, 4, 5].map((i) => ({ startTs: t0 + i * 7 * 24 * HOUR }));
+  const m = new Map();
+  periods.forEach((p, i) => {
+    const up = [true, false, true, false, false, true][i];
+    for (let h = 0; h <= 80; h++) {
+      const o = 100 + (up ? 1 : -1) * h * 0.2;
+      m.set(p.startTs + geo.entryOffsetH * HOUR + h * HOUR, { open: o, high: o + 0.6, low: o - 0.6, close: o });
+    }
+  });
+  const cell = { entry: 'market', gate: null, dMult: null, tHours: 41, trailMult: null, armMult: null };
+  const calls = [1, 1, 1, 1, 1, 1];
+  const ts = [10, 20, 30, 40, 50, 60];
+  const days = [
+    { ts: 10, sign: 1, agreement: 90, certainty: 80, speaking: 5 },
+    { ts: 20, sign: -1, agreement: 90, certainty: 80, speaking: 5 },
+    { ts: 30, sign: 0, agreement: 0, certainty: 0, speaking: 0 },
+    { ts: 40, sign: 1, agreement: 40, certainty: 50, speaking: 5 },
+    { ts: 50, sign: 1, agreement: 95, certainty: 80, speaking: 5 },
+    { ts: 60, sign: 1, agreement: 60, certainty: 80, speaking: 5 },
+  ];
+  const gate = { read: 'agreement', agreeMin: 30, certMin: null, rule: 'both', signOnly: false, rungs: '50:1,100:2', silent: 0.5 };
+  const size = [2, 0, 0.5, 1, 2, 2];
+  assert.deepStrictEqual(Array.from(G.sizesFor(days, ts, calls, gate).sizes), size, 'the fixture sizes as intended');
+  const sim = (list, sizes = null) => simCell(cell, periods, list, m, geo, 2, FEE, undefined, sizes);
+  const got = sw.priceFieldWindow(calls, ts, days, gate, sim, true);
+  assert.strictEqual(got.res.pnl, G.priceGated(calls, size, sim).pnl, 'the total is the size groups\' own arithmetic, to the bit');
+  const one = periods.map((p) => simCell(cell, [p], [1], m, geo, 2, FEE).pnl);
+  const placed = [0, 2, 3, 4, 5];
+  const sized = placed.map((i) => one[i] * size[i]);
+  const near = (a, b, what) => assert.ok(Math.abs(a - b) < 1e-9, `${what}: ${a} vs ${b}`);
+  near(got.res.pnl, sized.reduce((a, v) => a + v, 0), 'and it is the placed trades at their sizes');
+  assert.strictEqual(got.res.trades, 5, 'the blocked call is not a trade');
+  near(got.res.worstTrade, Math.min(...sized), 'the worst trade at its size');
+  near(got.res.bestTrade, Math.max(...sized), 'the best trade at its size');
+  let cum = 0; let peak = 0; let dd = 0;
+  for (const v of sized) { cum += v; if (cum > peak) peak = cum; if (peak - cum > dd) dd = peak - cum; }
+  near(got.res.maxDrawdown, dd, 'the drawdown of the sized trades');
+  const thirds = [0, 0, 0];
+  placed.forEach((i, j) => { thirds[i < 2 ? 0 : (i < 4 ? 1 : 2)] += sized[j]; });
+  [0, 1, 2].forEach((j) => near(got.res.pnlThirds[j], thirds[j], `third ${j + 1}`));
+  near(got.res.grossPerTrade, (got.res.pnl + (2 + 0.5 + 1 + 2 + 2) * NOTIONAL * 2 * FEE) / 5, 'the money per trade, the round trip paid on each size');
+  assert.strictEqual(got.field.at1, G.priceGated(calls, size, sim).at1, 'the placed trades at size 1 stay what they were');
+}
+
 module.exports = {
   theRungsAreReadInWordsAndClimbTo100,
   theGateBlocksSizesAndLetsSilenceThrough,
   theTwoMinimumsCombineByBothOrEither,
   theMoneyIsTheSumOfEachMultipleTimesItsGroup,
   theVerdictFollowsItsWrittenOrder,
+  theRichFiguresUnderTheGateAreTheTradesAtTheirSizes,
 };
