@@ -3868,7 +3868,11 @@ async function drawHelp() {
       <table style="width:100%;border-collapse:collapse">${rows}</table></div>`;
   }).join('');
 
-  $('#view').innerHTML = `<div class="panel">
+  // THE GUIDED NARROWING FLOW, HERE AND NOWHERE ELSE (3.239.2, owner order
+  // 2026-09-23: "put this line ... ONLY at the very top of the Help tab before
+  // the first box ... Get it off of the Construct level as it's wasting space").
+  $('#view').innerHTML = `<p class="note" style="font-size:.8rem;margin:0 0 .6rem">The guided narrowing flow: <b>Data → Coins → Sweep → Boards → Funnel → History → Tune → Held → Reserve → Greenlight</b>. Wide to find, one variable at a time to confirm; money claims only from the end of the chain. Everything here is deterministic code — no AI in any result.</p>
+    <div class="panel">
       <h3 style="margin-top:0">Help — what every control on every screen does</h3>
       <p class="note">One entry for every box, tick, dropdown and button on the seven screens.
         The list of controls is read from the screens themselves, so nothing can be left out of it
