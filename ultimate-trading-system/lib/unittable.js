@@ -63,6 +63,10 @@ const BEST_N = 30;
 //   settings with its share beside it; `count` names the count's field, and the
 //   share is what the column sorts and filters on)
 //   good: 'high' sorts high first and filters 'at least'; 'low' the other way
+//   rich: read off the numbers Work out the test history numbers rebuilds (the
+//   three parts, the four things a rule has to beat, the worst losing streak,
+//   the wins), so a coin and shape the pass has not reached carries nothing
+//   there. Every other column is read off the records alone (3.233.0).
 const COLUMNS = [
   { key: 'settings', kind: 'count', good: 'high', filter: 'minSettings' },
   // SETTINGS IN THE MONEY OVER THE WHOLE TEST WINDOW, a count with its share
@@ -76,17 +80,17 @@ const COLUMNS = [
   { key: 'perTradeNoGate', kind: 'money', good: 'high', filter: 'minPerTradeNoGate' },
   { key: 'midTest', kind: 'money', good: 'high', filter: 'minMidTest' },
   { key: 'bestTest', kind: 'money', good: 'high', filter: 'minBestTest' },
-  { key: 'inMoney1', kind: 'pct', good: 'high', filter: 'minInMoney1' },
-  { key: 'inMoney2', kind: 'pct', good: 'high', filter: 'minInMoney2' },
-  { key: 'inMoney3', kind: 'pct', good: 'high', filter: 'minInMoney3' },
-  { key: 'allThreePct', kind: 'pct', good: 'high', filter: 'minAllThree' },
+  { key: 'inMoney1', kind: 'pct', good: 'high', filter: 'minInMoney1', rich: true },
+  { key: 'inMoney2', kind: 'pct', good: 'high', filter: 'minInMoney2', rich: true },
+  { key: 'inMoney3', kind: 'pct', good: 'high', filter: 'minInMoney3', rich: true },
+  { key: 'allThreePct', kind: 'pct', good: 'high', filter: 'minAllThree', rich: true },
   // LOSING IN ALL THREE PARTS, a count with its share (3.232.0, the same order)
-  { key: 'loseAllPct', kind: 'countpct', count: 'loseAllN', good: 'low', filter: 'maxLoseAll' },
-  { key: 'h12', kind: 'hold', good: 'high', filter: 'minH12' },
-  { key: 'h23', kind: 'hold', good: 'high', filter: 'minH23' },
-  { key: 'h13', kind: 'hold', good: 'high', filter: 'minH13' },
-  { key: 'h123', kind: 'hold', good: 'high', filter: 'minH123' },
-  { key: 'top30Third', kind: 'money', good: 'high', filter: 'minTop30Third' },
+  { key: 'loseAllPct', kind: 'countpct', count: 'loseAllN', good: 'low', filter: 'maxLoseAll', rich: true },
+  { key: 'h12', kind: 'hold', good: 'high', filter: 'minH12', rich: true },
+  { key: 'h23', kind: 'hold', good: 'high', filter: 'minH23', rich: true },
+  { key: 'h13', kind: 'hold', good: 'high', filter: 'minH13', rich: true },
+  { key: 'h123', kind: 'hold', good: 'high', filter: 'minH123', rich: true },
+  { key: 'top30Third', kind: 'money', good: 'high', filter: 'minTop30Third', rich: true },
   // BEST 30 BEAT COPIES IS GONE (3.232.0, owner order 2026-09-23: "get rid of
   // 3"). The 30 were picked on the same money they were compared with, so it
   // passed 74 of the 86 coins and shapes on the owner's set and told nothing.
@@ -98,15 +102,17 @@ const COLUMNS = [
   // column. 3.232.0 renamed the id, and the floor of 50 stored on the owner's
   // set made the service refuse the whole filter, which took Table 3.C and
   // the Funnel down for that set -- the same reason columns 1 and 2 kept theirs.
-  { key: 'beatBestPct', kind: 'pct', good: 'high', filter: 'minBeatLong' },
-  { key: 'bestVsLong', kind: 'money', good: 'high', filter: 'minBestVsLong' },
+  { key: 'beatBestPct', kind: 'pct', good: 'high', filter: 'minBeatLong', rich: true },
+  { key: 'bestVsLong', kind: 'money', good: 'high', filter: 'minBestVsLong', rich: true },
   { key: 'midTrades', kind: 'trades', good: 'high', filter: 'minMidTrades' },
   { key: 'fieldBlocked', kind: 'pct', good: 'low', filter: 'maxFieldBlocked' },
-  { key: 'streakBest30', kind: 'money', good: 'low', filter: 'maxStreakBest30' },
-  { key: 'winsBest30', kind: 'pct', good: 'high', filter: 'minWinsBest30' },
+  { key: 'streakBest30', kind: 'money', good: 'low', filter: 'maxStreakBest30', rich: true },
+  { key: 'winsBest30', kind: 'pct', good: 'high', filter: 'minWinsBest30', rich: true },
   { key: 'chunksAPart', kind: 'count', good: 'high', filter: 'minChunksAPart' },
 ];
 const COLUMN_KEYS = COLUMNS.map((c) => c.key);
+// the boxes on those rebuilt columns, by box id
+const RICH_FILTERS = new Set(COLUMNS.filter((c) => c.rich && c.filter).map((c) => c.filter));
 // filter box id -> [field, kind], the shape lib/stages.js reads every table's
 // filters through, so the unit table's boxes are validated and applied by the
 // one definition of what a filter is
@@ -252,6 +258,19 @@ function cleanFilter(filters) {
   }
   return clean;
 }
+// THE FILTER THE PASS CAN APPLY BEFORE IT HAS RUN (3.233.0, owner order
+// 2026-09-23: "NOTHING should ignore the filter"). Work out the test history
+// numbers prices only the coins and shapes the filter keeps -- but a box on a
+// column the pass itself rebuilds cannot be read before the pass: a coin and
+// shape not yet priced carries nothing there, so it would be hidden, never
+// priced, and hidden for ever. So the pass reads the boxes on the records'
+// own columns, and the boxes on the rebuilt ones go on once there is
+// something in them to read.
+function filterBeforePass(filters) {
+  const clean = cleanFilter(filters);
+  for (const k of Object.keys(clean)) if (RICH_FILTERS.has(k)) delete clean[k];
+  return clean;
+}
 function applyFilter(rows, filters) {
   const active = Object.entries(cleanFilter(filters)).map(([k, want]) => [FILTER_DEFS[k][0], KINDS[FILTER_DEFS[k][1]], want]);
   if (!active.length) return (rows || []).slice();
@@ -277,4 +296,4 @@ function orderBy(key, flip) {
   return flip ? (a, b) => cmp(b, a) : cmp;
 }
 
-module.exports = { COLUMNS, COLUMN_KEYS, FILTER_DEFS, SORTS, BEST_N, CONTROL_KEYS, unitSummaryOf, applyFilter, cleanFilter, orderBy, unitKeyOf, controlKeyOf };
+module.exports = { COLUMNS, COLUMN_KEYS, FILTER_DEFS, RICH_FILTERS, SORTS, BEST_N, CONTROL_KEYS, unitSummaryOf, applyFilter, cleanFilter, filterBeforePass, orderBy, unitKeyOf, controlKeyOf };

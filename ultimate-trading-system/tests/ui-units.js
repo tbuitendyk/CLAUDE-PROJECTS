@@ -222,6 +222,20 @@ function cleanup() {
         expect(offered.length === keptCoins.size + 1 && offered.slice(1).every((c) => keptCoins.has(c)), `the coin box offers all units together and the kept coins alone: ${offered.join(', ')}`);
         const note = await page.evaluate(() => (document.body.textContent.replace(/\s+/g, ' ').match(/the filter on Table 3\.C keeps \d+ of \d+ coins and shapes/) || [])[0] || '');
         expect(/keeps \d+ of 4 coins and shapes/.test(note), `the line under the coin box says what the filter keeps: ${note}`);
+        // WORTH WALKING? SPEAKS FOR THE KEPT ONES (3.233.0): the line beside Work
+        // out the test history numbers names the filter, and the line under the
+        // ranking's boxes says the press reads Table 3.C for the kept ones alone
+        const pressLine = await page.evaluate(() => (document.querySelector('#fRebuildMsg') || {}).textContent || '');
+        expect(/the filter on Table 3\.C keeps/.test(pressLine), `the line beside Work out the test history numbers names the filter: ${pressLine}`);
+        const holdMsg = await page.evaluate(() => (document.querySelector('#fHoldMsg') || {}).textContent || '');
+        expect(/reads it off Table 3\.C for the \d+ coin\(s\) and shape\(s\) its filter keeps, and reads no board/.test(holdMsg) || /no setting in this record set carries/.test(holdMsg),
+          `Worth walking? says the press reads Table 3.C for the kept ones: ${holdMsg}`);
+        if (SHOTS) {
+          const ww = page.locator('#fHoldMsg');
+          await ww.scrollIntoViewIfNeeded();
+          await page.screenshot({ path: path.join(SHOTS, `funnel-worth-${width}.png`), fullPage: false });
+          console.log(`  screenshot: ${path.join(SHOTS, `funnel-worth-${width}.png`)}`);
+        }
         if (SHOTS) {
           await page.screenshot({ path: path.join(SHOTS, `funnel-filtered-${width}.png`), fullPage: false });
           console.log(`  screenshot: ${path.join(SHOTS, `funnel-filtered-${width}.png`)}`);

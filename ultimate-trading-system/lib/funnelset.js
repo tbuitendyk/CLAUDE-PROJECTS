@@ -454,7 +454,7 @@ function recordMark(doc, mark) {
 
 // ---- the record --------------------------------------------------------------
 
-function newFunnelSet({ id, seq, name, parent, release, target, seed, boardNull, sealed, unit = null, unitName = null, check = null }) {
+function newFunnelSet({ id, seq, name, parent, release, target, seed, boardNull, sealed, unit = null, unitName = null, keptUnits = null, check = null }) {
   return {
     id,
     // listSets summarises on stage AND seq, and seqFor counts the highest seq it
@@ -484,6 +484,11 @@ function newFunnelSet({ id, seq, name, parent, release, target, seed, boardNull,
     // blended board.
     unit: unit || null,
     unitName: unitName || null,
+    // WHAT THE FILTER ON TABLE 3.C KEPT WHEN THIS WAS CUT (3.233.0): the keys of
+    // the coins and shapes it kept, or null for every one. The blend this set
+    // reads back and the other coins and shapes it is read on come from this,
+    // never from whatever the filter says later.
+    keptUnits: Array.isArray(keptUnits) ? keptUnits.map(String) : null,
     // THE CHECK THIS WALK WAS READ AGAINST: the kind (scrambled copies or the
     // two halves), how many copies, the share of them a value had to beat and
     // the count that share came to on this set (beats at least `bar` of `k`),

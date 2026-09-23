@@ -439,4 +439,96 @@ module.exports = {
       fx.cleanup();
     }
   },
+  // NOTHING ON THE FUNNEL IGNORES THE FILTER (3.233.0, owner order 2026-09-23:
+  // "NOTHING should ignore the filter. wasn't it clear that was the WHOLE
+  // POINT?"). On a set on disk: Read the ranking answers off Table 3.C at once
+  // for the kept coins and shapes alone; the pass reaches only what the filter
+  // keeps, its boxes on rebuilt columns waiting; all units together carries
+  // the kept ones' own rebuilt numbers, so the count under step 6's boxes and
+  // the cut read the board the walk read; a Stage 4 set remembers what was
+  // kept and is read back under it after the filter moves; and nothing is cut
+  // from a coin and shape the filter hides.
+  async nothingOnTheFunnelIgnoresTheFilter() {
+    // the boxes the pass can read before it has run are the records' own
+    assert.deepStrictEqual(UT.filterBeforePass({ minAvgTest: '1', minH12: '0.5', maxStreakBest30: '9' }), { minAvgTest: '1' },
+      'a box on a column the pass rebuilds is read before the pass has run');
+    for (const box of ['minH12', 'minInMoney1', 'maxLoseAll', 'minBeatLong', 'maxStreakBest30', 'minWinsBest30']) assert.ok(UT.RICH_FILTERS.has(box), `${box} is not known to wait for the pass`);
+    for (const box of ['minAvgTest', 'minInMoney', 'minPerTrade', 'maxFieldBlocked', 'minChunksAPart', 'minBoardBeats']) assert.ok(!UT.RICH_FILTERS.has(box), `${box} waits for the pass though it is read off the records`);
+    const fx = await unitFixture();
+    const { id, keys } = fx;
+    const S4 = require('../lib/funnelset');
+    const keep = { ranges: {}, allowed: {}, floors: { maxDrawdown: { max: 120 } } };
+    try {
+      stages.ensureUnitTable(id);
+      await stages.unitTableWait();
+      const t = stages.readTally(id);
+      // THE PASS: the two coins and shapes a floor of 1 on avg test $ keeps; a
+      // box on the first part's ranking waits, and the third coin and shape --
+      // which carries no parts, so it could never clear that box -- is still in
+      stages.setUnitFilter(id, { minAvgTest: '1', minH12: '0.5' });
+      const pass = stages.passKeptOf(id, t);
+      assert.deepStrictEqual([...pass.kept].sort(), [keys[0], keys[2]].sort(), 'the pass does not reach what the filter keeps on the records alone');
+      assert.strictEqual(pass.waits, true, 'the pass does not say a box of the filter waits for it');
+      assert.ok(!stages.keptUnitKeys(id, t).kept.has(keys[2]), 'the fixture proves nothing: the box that waits does not hide the unpriced coin and shape from the walk');
+      stages.setUnitFilter(id, { minAvgTest: '1000' });
+      stages.funnelRichStart(id);
+      for (let i = 0; i < 400 && stages.funnelRichStatus(id).running; i++) await new Promise((r) => setTimeout(r, 25));
+      assert.ok(/keeps no coin and shape/.test(String(stages.funnelRichStatus(id).error || '')), `a filter that keeps nothing still prices: ${stages.funnelRichStatus(id).error}`);
+
+      // READ THE RANKING: answered on the press, off Table 3.C, for the kept
+      // ones -- no reading started, so nothing to wait for
+      stages.setUnitFilter(id, { minChunksAPart: '1' });   // keeps AAA daily-1d and AAA daily-2d
+      assert.ok(stages.funnelRankHoldStatus(id, {}).none, 'a ranking is answered before it is asked for');
+      const pressed = stages.funnelRankHoldStart(id, { atLeast: 0.5, fewestRanked: 3, fewestChunks: 0 });
+      assert.ok(!pressed.running && pressed.result, `the press starts a reading instead of answering off Table 3.C: ${JSON.stringify(pressed).slice(0, 200)}`);
+      assert.deepStrictEqual(pressed.result.units.map((u) => u.unit), [keys[0], keys[1]], 'the ranking lists a coin and shape the filter hides');
+      assert.deepStrictEqual(pressed.result.unitFilter, { kept: 2, of: 3 });
+      const row0 = stages.readUnitTable(id).units[0];
+      assert.deepStrictEqual(pressed.result.units[0].readings.map((x) => x.hold), [row0.h12, row0.h23, row0.h13, row0.h123], 'the ranking is not Table 3.C\'s own four numbers');
+      assert.deepStrictEqual([pressed.result.units[0].of, pressed.result.units[0].usable, pressed.result.units[0].noThirds, pressed.result.units[0].chunksAPart], [4, 4, 0, 40]);
+      // and the bar moves on what is in hand, asked again with another bar
+      const moved = stages.funnelRankHoldStatus(id, { atLeast: 1.5, fewestRanked: 3, fewestChunks: 0 });
+      assert.strictEqual(moved.result.passing, 0, 'a bar nothing can reach still passes a row');
+      stages.funnelRankHoldForget(id);
+      assert.ok(stages.funnelRankHoldStatus(id, {}).none, 'a pass beside the set leaves the answer standing');
+
+      // ALL UNITS TOGETHER: the blend of the two kept coins and shapes, with
+      // their own rebuilt numbers -- every one of them carries all four
+      // settings, where the set as a whole does not, so the set's own average
+      // is never laid on and the kept one is
+      const first = await stages.funnelRead(id, { unit: 'all', step: 6, rule: keep });
+      assert.ok(first.blending, 'the kept blend is not worked out in the background');
+      await stages.blendWait();
+      const d = await stages.funnelRead(id, { unit: 'all', step: 6, rule: keep });
+      assert.ok(!d.blending && d.unit == null, 'the blend did not land');
+      assert.strictEqual(d.richOn.have, 4, 'the kept blend\'s rows do not carry the kept coins and shapes\' own rebuilt numbers');
+      assert.strictEqual(d.survivors, 3, 'a limit on the worst losing streak does not read the kept blend\'s numbers');
+      assert.deepStrictEqual([d.richSet.units, d.richSet.unitsDone, d.richSet.of, d.richSet.filtered, d.richSet.waits], [2, 2, 3, true, false],
+        'the press beside Worth walking? does not speak for the kept coins and shapes alone');
+      // the set's own blend, where the third coin and shape carries nothing, lays no average on
+      assert.strictEqual(stages.withFunnelRich(t.ranked, stages.readFunnelRich(id)).filter((r) => r.maxDrawdown != null).length, 0,
+        'the fixture proves nothing: the set\'s own blend carries the numbers too');
+      // THE COUNT UNDER STEP 6'S BOXES IS THE WALK'S BOARD
+      const k = await stages.funnelKeeps(id, { unit: 'all', rule: keep });
+      assert.deepStrictEqual(k, { keeps: 3, of: 4 }, 'the count under the boxes reads another board than the walk');
+
+      // THE CUT: from the kept blend, the filter written on the set
+      const doc = await stages.cutFunnelSet(id, { unit: 'all', rule: keep, closing: { key: 'rule' }, name: 'kept blend' });
+      assert.deepStrictEqual(doc.keptUnits, [keys[0], keys[1]].sort(), 'the set does not record what the filter kept');
+      assert.strictEqual(doc.counts.survivors, 3, 'the cut is not made on the board the walk read');
+      // NOTHING IS CUT FROM A COIN AND SHAPE THE FILTER HIDES
+      await assert.rejects(() => stages.cutFunnelSet(id, { unit: keys[2], rule: keep, closing: { key: 'rule' } }), /no longer keeps BBB alongside AAA daily-1d/);
+      // AND THE SET IS READ BACK UNDER WHAT WAS KEPT when the filter has moved
+      stages.setUnitFilter(id, {});
+      const back = await stages.funnelSetRows(doc.id, {});
+      assert.ok(Array.isArray(back.rows), `the set did not read back: ${JSON.stringify(back).slice(0, 200)}`);
+      assert.strictEqual(back.rows.filter((r) => !r.gone).length, 3, 'the set lost its rows when the filter moved');
+      assert.deepStrictEqual([back.record.same, back.record.now], [true, 3], 'the set is read back on the blend of every coin and shape, where its rule no longer gives its list');
+      const join = await stages.funnelVerifyJoin(stages.getSet(doc.id));
+      assert.strictEqual(join.nowOnParent, 3, 'the set is asked on today\'s filter rather than the one it was cut under');
+      try { fs.rmSync(path.join(SETS_DIR, `${doc.id}.json`), { force: true }); } catch (_) { /* fixture */ }
+    } finally {
+      fx.cleanup();
+    }
+  },
 };

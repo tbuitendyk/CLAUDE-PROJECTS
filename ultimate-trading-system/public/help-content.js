@@ -714,9 +714,13 @@ window.HELP = {
         'Table 3.C on Boards draws one row per coin and shape, and the filter set there is saved on the record set. This '
         + 'screen reads it: the coin box offers only the coins and shapes that filter keeps, Worth walking? lists only '
         + 'those, all units together is the blend of those alone, and the rule steps walk only those. Work out the test '
-        + 'history numbers still runs over every coin and shape in the record set, because half of Table 3.C\u2019s columns '
-        + 'are worked out from what it rebuilds. A walk left on a coin and shape the filter no longer keeps opens on the '
-        + 'first one it does keep, and the line under the coin box says so.'],
+        + 'history numbers works out only the coins and shapes the filter keeps - but a box on one of Table 3.C\u2019s '
+        + 'columns worked out from what it rebuilds has nothing to read until it has run, so those boxes wait, and the '
+        + 'press reaches every coin and shape the other boxes keep. Read the ranking reads its four numbers off Table '
+        + '3.C for the coins and shapes the filter keeps and reads no board. A Stage 4 record set remembers what the '
+        + 'filter kept when it was cut, and its blend and its other coins and shapes on Held and Reserve are read under '
+        + 'that. A walk left on a coin and shape the filter no longer keeps opens on the first one it does keep, and '
+        + 'the line under the coin box says so; nothing is cut from a coin and shape the filter has put out of the walk.'],
     ],
     intro: 'Turns a stage 3 board of hundreds of thousands of priced settings into a small set worth investigating, '
       + 'by walking a fixed sequence of readings rather than letting you sort a table and pick the winner. '
@@ -853,11 +857,11 @@ window.HELP = {
       },
       fRichStop: 'lets the coin and shape being priced land and prices no further. What has landed is kept beside the record set, and pressing Work out the test history numbers again carries on from there \u2014 the same way a pass ended by a service restart carries on. Live only while the numbers are being worked out.',
       fRebuild: {
-        what: 'Works out the numbers a sweep does not keep - the worst losing streak, the biggest single loss, how many trades won, how much of the result rests on guessing what happened inside a single bar, and what each setting made in each of the three parts of the test window. Press it FIRST, before anything below: it runs for every setting of what is chosen under coin - one coin and shape, or every one when all units together is chosen - and nothing else on this screen can be read until it has. Every coin and shape needs it pressed once before it can be walked. When the coin and shape chosen under coin is already done and others in the set are not, the press stays live: it asks the whole-set question and works out the rest. The line beside it says where that coin and shape stands and where the whole set stands.',
+        what: 'Works out the numbers a sweep does not keep - the worst losing streak, the biggest single loss, how many trades won, how much of the result rests on guessing what happened inside a single bar, and what each setting made in each of the three parts of the test window. Press it FIRST, before anything below: it runs for every setting of what is chosen under coin - one coin and shape, or every one the filter on Table 3.C keeps when all units together is chosen - and nothing else on this screen can be read until it has. Every coin and shape needs it pressed once before it can be walked. When the coin and shape chosen under coin is already done and others in the set are not, the press stays live: it asks the whole-set question and works out the rest. The line beside it says where that coin and shape stands and where the whole set stands.',
         more: 'These are calculated during the sweep and thrown away, because keeping them for every one of half a million settings is not worth the disk. Here they are calculated again and kept beside the set, so a second press only works out what is still missing. It also re-checks the money and the trade count against what the sweep stored, for every setting on the board: if they disagree, something underneath has changed and it says so rather than mixing numbers from two different runs. Every copy of this press, here and on step 6, works out what is chosen under coin: a coin and shape picked means that one only, all units together means every one - and with all units together showing it asks first, because that is the long job on this screen. The line beside it says which, and each coin and shape prepared stays prepared.',
       },
       fHoldRead: {
-        what: 'Reads every coin and shape in this record set and asks whether putting its settings in order by what they made on one part of the test window still picks the good ones on another part.',
+        what: 'Reads, off Table 3.C, whether putting each coin and shape\'s settings in order by what they made on one part of the test window still picks the good ones on another part - for the coins and shapes the filter on Table 3.C keeps, or every one in this record set when no filter is set. No board is read: Table 3.C already holds the four numbers.',
         more: 'The whole walk below is one way of choosing: order the settings by their money and keep the best. Nothing else on this screen asks whether that order means anything. This does, and it does it before you narrow anything - a coin and shape whose own order does not survive its own test window is worth knowing about now rather than after the held-back window has been opened on it. It reads nothing from the held-back window and nothing from the unread stretch, so it costs nothing that can only be spent once. It changes no rule and writes nothing.',
       },
       fHoldAtLeast: {

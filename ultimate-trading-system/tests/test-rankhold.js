@@ -227,13 +227,18 @@ module.exports = {
     // and measuring a whole test window against a floor meant for one of its
     // three parts would let every short shape clear it. Read off the window
     // each run recorded, so the floor cannot be fooled by a layout change.
+    // Since 3.233.0 the reading is Table 3.C's: buildUnitTable produces the
+    // number, and the ranking takes it off the unit table's row.
     const st = src('lib/stages.js');
-    const read = st.slice(st.indexOf('async function funnelRankHoldRead('), st.indexOf('const holdAnswer ='));
-    assert.ok(read.includes('return Number.isFinite(n) && n > 0 ? Math.floor(n / 3) : null;'),
+    const build = st.slice(st.indexOf('async function buildUnitTable('), st.indexOf('function ensureUnitTable('));
+    assert.ok(build.includes('const chunksAPart = Number.isFinite(n) && n > 0 ? Math.floor(n / 3) : null;'),
       'the whole test window is handed to a floor meant for one of its three parts');
-    assert.ok(read.includes('const n = w && w.test && Number(w.test.chunks);'),
+    assert.ok(build.includes('const n = w && w.test && Number(w.test.chunks);'),
       'the window length is not read off what the run recorded');
-    assert.ok(read.includes('RH.holdOfUnit(rows, chunksAPartOf(u.key))'), 'the reading is taken without the window length beside it');
+    assert.ok(build.includes('UT.unitSummaryOf(board, { chunksAPart, testControls })'), 'the reading is taken without the window length beside it');
+    const shape = st.slice(st.indexOf('function holdRowsOf('), st.indexOf('const holdPressed ='));
+    assert.ok(shape.includes('chunksAPart: u.chunksAPart ?? null,'), 'the ranking does not carry the window length Table 3.C recorded');
+    assert.ok(src('lib/unittable.js').includes('const hold = RH.holdOfUnit(all, opts.chunksAPart);'), 'Table 3.C does not read the four through the ranking\'s own arithmetic');
   },
 
   // NOTHING HERE READS THE HELD-BACK WINDOW OR THE RESERVE (Part 3). This is
@@ -248,12 +253,18 @@ module.exports = {
       assert.ok(!lib.includes(field), `lib/rankhold.js reads '${field}' — nothing here may touch the held-back window or the reserve`);
     }
     assert.ok(lib.includes('pnlThirds'), 'it does not read the parts of the test window at all');
-    // and the engine's own reading of it takes its numbers off the test window
+    // and the engine's own reading of it takes its numbers off the test window:
+    // Table 3.C's unit table, built from each board with the numbers kept beside
+    // the set laid on (3.233.0: the ranking reads that and no board)
     const st = src('lib/stages.js');
-    const fn = st.slice(st.indexOf('async function funnelRankHoldRead('), st.indexOf('const holdAnswer ='));
-    assert.ok(fn.includes('const rich = readFunnelRich(String(id));'), 'the reading does not come from the numbers kept beside the set');
-    assert.ok(fn.includes('withFunnelRich(await loadUnitBoard(String(id), t, u.key), rich)'), 'it reads something other than each board with those numbers laid on');
-    assert.ok(!/heldBack|sealed|unread/.test(fn), 'the reading touches the held-back window or the unread stretch');
+    const build = st.slice(st.indexOf('async function buildUnitTable('), st.indexOf('function ensureUnitTable('));
+    assert.ok(build.includes('const rich = readFunnelRich(id);'), 'the reading does not come from the numbers kept beside the set');
+    assert.ok(build.includes('const board = withFunnelRich(await loadUnitBoard(id, t, u.key), rich);'), 'it reads something other than each board with those numbers laid on');
+    const fn = st.slice(st.indexOf('function holdRowsOf('), st.indexOf('function funnelRankHoldForget('));
+    assert.ok(fn.includes('const st = ensureUnitTable(key);') && fn.includes('result: { ...RH.withBar(holdRowsOf(rows), bar), setId: key, unitFilter },'),
+      'the ranking is not read off Table 3.C\'s unit table');
+    assert.ok(!/loadUnitBoard|readBlocks/.test(fn), 'the ranking reads a board again');
+    assert.ok(!/heldBack|sealed|unread|avgHold|noiseHold/.test(fn), 'the reading touches the held-back window or the unread stretch');
     // a set with no numbers beside it must SAY so rather than read as unrelated
     assert.ok(/press work out the missing numbers first/.test(fn), 'a set whose settings carry no parts is read as an answer instead of a refusal');
   },
@@ -263,17 +274,18 @@ module.exports = {
   // every board would make the control unusable and the walk slower for it.
   async theBarNeverCausesABoardToBeReadAgain() {
     const st = src('lib/stages.js');
-    const start = st.slice(st.indexOf('function funnelRankHoldStart(id, bar = {}) {'), st.indexOf('function funnelRankHoldForget('));
-    // 3.230.0: the answer is cut to what the filter on Table 3.C keeps, off the reading already in hand
-    assert.ok(start.includes('if (holdRun && holdRun.result && holdRun.id === String(id)) return holdAnswer(holdRun, bar, keptUnitKeysNow(id));'),
-      'a set already read is read again when the bar moves');
-    // 3.230.0: the rows the bar goes onto are the reading in hand, cut to what the filter on Table 3.C keeps
-    assert.ok(st.includes('result: rows ? { ...RH.withBar(rows, bar), setId: run.id, unitFilter } : null,')
-      && st.includes('const rows = all && cut && cut.kept ? all.filter((u) => cut.kept.has(u.unit)) : all;'),
+    const answer = st.slice(st.indexOf('function holdRowsOf('), st.indexOf('function funnelRankHoldForget('));
+    // 3.233.0: the readings in hand are Table 3.C's, and the bar goes onto them
+    // -- cut to what the filter on Table 3.C keeps -- every time it is asked
+    assert.ok(answer.includes('const rows = cut.kept ? all.filter((u) => cut.kept.has(u.unit)) : all;')
+      && answer.includes('result: { ...RH.withBar(holdRowsOf(rows), bar), setId: key, unitFilter },'),
       'the bar is not laid onto the reading in hand, so the two cannot be separate steps');
-    // and the run holds the reading BEFORE the bar, or there is nothing to re-bar
-    const read = st.slice(st.indexOf('async function funnelRankHoldRead('), st.indexOf('const holdAnswer ='));
-    assert.ok(read.includes('RH.holdOfUnit(rows, chunksAPartOf(u.key))') && !read.includes('withBar'), 'the reading is stored with a bar already on it');
+    assert.ok(answer.includes('function funnelRankHoldStatus(id, bar = {}) {') || st.includes('function funnelRankHoldStatus(id, bar = {}) {\n  if (!holdPressed.has(String(id))) return holdNone(id);\n  return holdAnswer(id, bar);'),
+      'a set already read is read again when the bar moves');
+    // and the table holds the readings BEFORE any bar, or there is nothing to re-bar
+    const lib = src('lib/unittable.js');
+    const sum = lib.slice(lib.indexOf('function unitSummaryOf('), lib.indexOf('const KINDS = {'));
+    assert.ok(sum.includes('const hold = RH.holdOfUnit(all, opts.chunksAPart);') && !sum.includes('withBar'), 'the reading is stored with a bar already on it');
     // THE PAGE NEVER WORKS OUT A PASS FOR ITSELF: one place decides it
     const page = src('public/construct.js');
     const panel = page.slice(page.indexOf('const F_HOLD_SHOW = ['), page.indexOf('function fStep6(d, st, r) {'));
@@ -285,18 +297,21 @@ module.exports = {
 
   // A READING WAS READ FROM THE NUMBERS BESIDE THE SET, so it goes when those
   // numbers are worked out again -- otherwise the table is drawn from figures
-  // it never saw.
+  // it never saw. Since 3.233.0 the reading is Table 3.C's, which is itself
+  // built again when those numbers move (unitTableFresh), and the press is
+  // asked for again once a pass lands.
   async aReadingIsDroppedWhenTheNumbersBesideTheSetAreWorkedOutAgain() {
     const st = src('lib/stages.js');
-    assert.ok(st.includes('function funnelRankHoldForget(id) { if (holdRun && holdRun.id === String(id)) holdRun = null; }'),
+    assert.ok(st.includes('function funnelRankHoldForget(id) { holdPressed.delete(String(id)); }'),
       'there is no way to drop a reading that has gone stale');
     const rich = st.slice(st.indexOf('function funnelRichStart(id, state = {}) {'), st.indexOf('function funnelRichStatus(id) {'));
     assert.ok(rich.includes('funnelRankHoldForget(doc.id);'), 'working the numbers out again leaves the old reading in place');
-    // and nothing else on the box reads the same boards at the same time
-    assert.ok(st.includes("const holdBusy = () => (holdRun && !holdRun.result && !holdRun.error\n  ? `the ranking of ${holdRun.id} is being read` : null);"),
-      'the reading is not named, so every other refusal built on the busy guards reads the box as idle while it runs');
-    assert.ok((st.match(/holdBusy\(\)/g) || []).length >= 8,
-      'the reading is named in fewer places than the other board readings, so something can start on top of it');
+    assert.ok(st.includes("&& (table.richSavedAt || null) === ((rich && rich.savedAt) || null));"),
+      'Table 3.C is served after the numbers it was built from have moved, so the ranking would be read off figures it never saw');
+    // AND IT READS NO BOARD, so it is no job: nothing waits on it and it waits
+    // on nothing it shares a board with (the old board reading was named in
+    // every busy guard; a name left behind would refuse on a job that is gone)
+    assert.ok(!/holdBusy|holdRun/.test(st), 'the board-reading ranking is still named somewhere, so something refuses on a job that no longer exists');
   },
 
   // IT SITS ABOVE STEP 1 AND CHANGES NOTHING (owner order 2026-09-10: "at the

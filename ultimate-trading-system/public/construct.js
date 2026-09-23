@@ -7599,12 +7599,13 @@ function fRichLine(d) {
   // the line says where the whole set stands as well, so "done" is never read
   // as done for everything, and it says what the press will do next
   const set = d && d.unit && d.richSet && Number(d.richSet.units) > 0 ? d.richSet : null;
-  const setWords = set ? `across the set ${Number(set.unitsDone || 0).toLocaleString()} of ${Number(set.units).toLocaleString()} coin(s) and shape(s) carry them for every setting` : '';
+  // of the coins and shapes the filter on Table 3.C keeps, when it keeps some (3.233.0)
+  const setWords = set ? `${set.filtered ? `of the coins and shapes ${fRichScope(set)},` : 'across the set'} ${Number(set.unitsDone || 0).toLocaleString()} of ${Number(set.units).toLocaleString()} coin(s) and shape(s) carry them for every setting` : '';
   if (x.have >= x.need) {
     const mine = `done — all ${Number(x.need).toLocaleString()} setting(s) ${where} carry them`;
     if (!set) return mine;
-    if (Number(set.unitsDone || 0) >= Number(set.units)) return `${mine}, and so does every one of the ${Number(set.units).toLocaleString()} coin(s) and shape(s) in this record set`;
-    return `${mine} · ${setWords} — the press works out the rest, every coin and shape`;
+    if (Number(set.unitsDone || 0) >= Number(set.units)) return `${mine}, and so does every one of the ${Number(set.units).toLocaleString()} coin(s) and shape(s) ${fRichScope(set)}`;
+    return `${mine} · ${setWords} — the press works out the rest, ${set.filtered ? 'those alone' : 'every coin and shape'}`;
   }
   const across = set ? ` · ${setWords}` : '';
   if (x.have) {
@@ -7628,20 +7629,37 @@ function fRichSetOff(d) {
 // twenty minutes -- and twice tonight it was pressed with all units together
 // showing when one coin was wanted. One coin and shape is never asked about;
 // that is what the press is for.
+// WHICH COINS AND SHAPES THE PRESS SPEAKS FOR (3.233.0, owner order
+// 2026-09-23: "NOTHING should ignore the filter"): the ones the filter on
+// Table 3.C keeps, when it keeps some, and the line says so -- a count of 2
+// that read as "every coin and shape in this record set" would be a lie about
+// what the press does. Its boxes on the numbers the press itself works out
+// cannot be read before the press has run, so while it has any the press
+// reaches every coin and shape its other boxes keep, and says that too.
+function fRichScope(s) {
+  if (!s || !s.filtered) return 'in this record set';
+  return `the filter on Table 3.C keeps${s.waits ? ' (counted without its boxes that read these numbers, which have nothing to read until they are worked out)' : ''}`;
+}
 function fAllUnitsAsk(d) {
   const s = (d && d.richSet) || { units: 0, unitsDone: 0 };
   const units = Number(s.units || 0);
   const left = Math.max(0, units - Number(s.unitsDone || 0));
-  return `Work out the test history numbers for ALL ${units.toLocaleString()} coins and shapes in this record set?\n\n`
+  const which = s.filtered
+    ? `Work out the test history numbers for the ${units.toLocaleString()} coins and shapes the filter on Table 3.C keeps, of the ${Number(s.of || 0).toLocaleString()} in this record set?\n\n`
+    : `Work out the test history numbers for ALL ${units.toLocaleString()} coins and shapes in this record set?\n\n`;
+  return which
     + `That is every setting on every one of them (${left.toLocaleString()} still to do) — the long job on this screen, minutes to tens of minutes. `
     + 'To price one coin and shape only, hit Cancel and pick it under coin.\n\nHit Cancel and nothing is done.';
 }
 function fRichSetLine(d) {
   const s = (d && d.richSet) || { units: 0, unitsDone: 0 };
   if (fRichGoing(d) || (fRichOf(d).run || {}).error) return fRichLine(d);
-  if (!s.units) return 'this record set has no coins and shapes on its board, so there is nothing to work out';
-  if (s.unitsDone >= s.units) return `done — every one of the ${Number(s.units).toLocaleString()} coin(s) and shape(s) in this record set carries them`;
-  return `${Number(s.unitsDone).toLocaleString()} of ${Number(s.units).toLocaleString()} coin(s) and shape(s) carry them for every setting — the press works out the rest, every coin and shape`;
+  if (!s.units) {
+    return s.filtered ? 'the filter on Table 3.C keeps no coin and shape, so there is nothing to work out'
+      : 'this record set has no coins and shapes on its board, so there is nothing to work out';
+  }
+  if (s.unitsDone >= s.units) return `done — every one of the ${Number(s.units).toLocaleString()} coin(s) and shape(s) ${fRichScope(s)} carries them`;
+  return `${Number(s.unitsDone).toLocaleString()} of ${Number(s.units).toLocaleString()} coin(s) and shape(s) ${s.filtered ? `${fRichScope(s)} ` : ''}carry them for every setting — the press works out the rest, ${s.filtered ? 'those alone' : 'every coin and shape'}`;
 }
 // ---- DOES THE RANKING HOLD? (3.102.0, SELECTION-DESIGN.md Part 4) ----------
 //
@@ -7764,8 +7782,7 @@ function fHoldTable(t, bar, walking) {
     <p class="note">${Number(all.length).toLocaleString()} of ${Number(t.of).toLocaleString()} row(s) match what <b>show</b> is set to -
       <b>${Number(t.passing).toLocaleString()}</b> clear the bar, <b>${Number(t.failing).toLocaleString()}</b> do not,
       <b>${Number(t.unreadable).toLocaleString()}</b> could not be read.${
-  t.unitFilter && t.unitFilter.pending ? ' The filter on Table 3.C is not applied here yet: the unit table it reads is still being worked out.'
-    : t.unitFilter ? ` The filter on Table 3.C keeps ${Number(t.unitFilter.kept).toLocaleString()} of ${Number(t.unitFilter.of).toLocaleString()} coins and shapes, and only those are listed.` : ''}</p>
+  t.unitFilter ? ` The filter on Table 3.C keeps ${Number(t.unitFilter.kept).toLocaleString()} of ${Number(t.unitFilter.of).toLocaleString()} coins and shapes, and only those are listed.` : ''}</p>
     <p class="note">Each column ranks the settings on one part of the test window and reads the money on another:
       <b>first → second</b> puts them in order by what they made in the first part and scores that order on the
       second. <b>1.00</b> is the same order on both parts, <b>0.00</b> no relation at all, and a number below zero is
@@ -7868,7 +7885,7 @@ function fHoldPanel(d, st) {
         id="fHoldShow">${F_HOLD_SHOW.map(([k, w]) => `<option value="${k}"${k === bar.show ? ' selected' : ''}>${esc(w)}</option>`).join('')}</select></label>
       <label class="f" title="the order the rows are drawn in. It changes nothing about what they say.">order by<select
         id="fHoldSort">${F_HOLD_SORT.map(([k, w]) => `<option value="${k}"${k === bar.sort ? ' selected' : ''}>${esc(w)}</option>`).join('')}</select></label>
-      <span id="fHoldMsg" class="note">${esc(ready ? `${t ? '' : 'not read yet - one press reads every coin and shape in this record set'}${partly}`
+      <span id="fHoldMsg" class="note">${esc(ready ? `${t ? '' : `not read yet - one press reads it off Table 3.C for ${d.unitFilter ? `the ${Number(d.unitFilter.kept).toLocaleString()} coin(s) and shape(s) its filter keeps` : 'every coin and shape in this record set'}, and reads no board`}${partly}`
     : 'no setting in this record set carries what it made in each part of the test window - the press above works that out first')}</span></div>
     <!-- WHAT IS TYPED AND WHAT IS APPLIED ARE TWO DIFFERENT THINGS (3.229.0, owner
          2026-09-22: "STOP redrawing the screen automatically on every field
@@ -8955,9 +8972,12 @@ async function fHoldPoll(st) {
         drawFunnel();
         return;
       }
+      // THE ANSWER IS READ OFF TABLE 3.C (3.233.0): while its unit table is
+      // being worked out the line says so, and what it is waiting for
       if (msg) {
-        msg.textContent = p.of ? `reading — ${Number(p.done || 0).toLocaleString()} of ${Number(p.of).toLocaleString()} coin and shape(s)`
-          : 'reading';
+        msg.textContent = p.waiting ? String(p.waiting)
+          : p.of ? `working out the unit table on Table 3.C — ${Number(p.done || 0).toLocaleString()} of ${Number(p.of).toLocaleString()} coin and shape(s)`
+            : 'reading';
       }
       // eslint-disable-next-line no-await-in-loop
       await new Promise((r) => setTimeout(r, 1200));
@@ -9002,7 +9022,8 @@ function fWireHold(st, d) {
       // every copy live and sends nothing
       if (blend && !confirm(fAllUnitsAsk(d))) return;
       rbs.forEach((b) => { b.disabled = true; });
-      fRebuildSay(blend ? 'working them out — this prices every setting in this record set again from its parent set'
+      const scoped = d && d.richSet && d.richSet.filtered;
+      fRebuildSay(blend ? `working them out — this prices every setting ${scoped ? 'of the coins and shapes the filter on Table 3.C keeps' : 'in this record set'} again from its parent set`
         : 'working them out — this prices every setting of this coin and shape again from its parent set');
       // THE BOARD ON SCREEN IS ALL IT NAMES (3.136.0): the coin and shape
       // chosen under coin, or all of them for all units together. The rule is

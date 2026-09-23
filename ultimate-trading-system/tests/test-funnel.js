@@ -608,8 +608,10 @@ module.exports = {
     // the blend, resolved by the same function the read resolves it through,
     // with the rebuilt numbers laid on -- and the closing is folded into the
     // rule on those rows
-    assert.ok(body.includes('const board = await funnelBoard(parentId, t, state.unit);')
-      && body.includes('const ranked = withFunnelRich(board.all, readFunnelRich(parentId));'),
+    // 3.233.0: resolved through the filter on Table 3.C, strictly, with the kept
+    // blend's own rebuilt numbers
+    assert.ok(body.includes('const got = await funnelBoardKept(parentId, t, state.unit, { strict: true });')
+      && body.includes('const ranked = withFunnelRich(board.all, readFunnelRich(parentId), board.richBlend);'),
       'the cut must be made on the board the walk was on, with the rebuilt numbers laid on');
     assert.ok(/const closed = S4\.ruleWithClosing\(ranked, state\.rule, state\.closing, doc\.target\);/.test(body),
       'the closing must be folded into the rule through the one function that folds it');
@@ -1192,8 +1194,8 @@ module.exports = {
     assert.ok(body.includes("check: { kind, positive: checkReads.map((x) => x.positive)"), 'step 4: the check count');
     assert.ok(body.includes('S4.regionRule(out.reading, { ordered, categorical: F.CATEGORICAL_DIALS })'), 'step 5: the region as a rule');
     assert.ok(body.includes("maxDrawdown: F.ladderFor(rows, 'maxDrawdown', 'max')"), 'step 6: the ladders');
-    assert.ok(body.includes('const board = await funnelBoard(id, t, state.unit);'), 'the read is on the board the walk chose (§17)');
-    assert.ok(body.includes('const all = withFunnelRich(board.all, rich);'), 'the rebuilt numbers are laid on before the rule');
+    assert.ok(body.includes('const got = await funnelBoardKept(id, t, state.unit);') && body.includes('const { board, cut, hidden } = got;'), 'the read is on the board the walk chose (§17)');
+    assert.ok(body.includes('const all = withFunnelRich(board.all, rich, board.richBlend);'), 'the rebuilt numbers are laid on before the rule');
   },
 
   // A POLL REDRAW LEAVES THE OWNER'S PLACE ALONE (owner, 2026-09-02: "when i
@@ -2377,7 +2379,7 @@ module.exports = {
     // coin and shape at a time, each board read whole, only what it still
     // lacks priced, and written before the next one starts -- so a killed prep
     // picks up where it stopped instead of starting again from nothing.
-    assert.ok(route.includes('const todo = unit ? units.filter((u) => u.key === unit) : units;'), 'the press prices something other than the coin and shape named, or every one');
+    assert.ok(route.includes('const todo = unit ? units.filter((u) => u.key === unit) : units.filter(inPass);'), 'the press prices something other than the coin and shape named, or every one the filter on Table 3.C keeps');
     assert.ok(route.includes('const board = await funnelBoard(String(id), t, x.unit.key);') && route.includes('const missing = richMissingFor(board.all, readFunnelRich(String(id)), x.unit.key);'),
       'a coin and shape is priced from something other than its whole board, or prices what it already carries again');
     const loop = route.slice(route.indexOf('for (const x of left) {'), route.indexOf('funnelRankHoldForget(doc.id);'));
@@ -4390,6 +4392,7 @@ module.exports.theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft = 
     lift('const fAcrossWords = (units, onUnit)', '\n'),
     lift('const fRichWhere = (d)', '\n'),
     lift('const fStoppingWords = (run)', '\n'),
+    lift('function fRichScope(s) {', '\n}\n'),
     lift('function fRichLine(d) {', '\n}\n'),
   ].join('\n')}\nreturn { fRichOff, fRichLine, fRichAimedDone }; })()`);
 
@@ -4453,6 +4456,16 @@ module.exports.theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft = 
   assert.ok(/the press works out the other 540 · across the set 1 of 86 coin\(s\) and shape\(s\) carry them for every setting$/.test(fRichLine({ ...aimedDone, richOn: { have: 100, need: 640, run: null } })),
     'a part-done coin and shape does not say where the set stands');
   assert.ok(/finishes on its own · across the set 1 of 86/.test(fRichLine({ ...aimedDone, richOn: { have: 0, need: 640, run: null } })));
+  // 3.233.0: a filter on Table 3.C cuts what the press reaches, and the line
+  // names the filter rather than the whole record set
+  const cutSet = { ...aimedDone, richSet: { units: 2, unitsDone: 1, of: 86, filtered: true, waits: false } };
+  assert.strictEqual(fRichLine(cutSet),
+    'done — all 640 setting(s) on this coin and shape carry them · of the coins and shapes the filter on Table 3.C keeps, 1 of 2 coin(s) and shape(s) carry them for every setting — the press works out the rest, those alone',
+    'a filtered set reads as though the press still reached every coin and shape in the record set');
+  assert.ok(/and so does every one of the 2 coin\(s\) and shape\(s\) the filter on Table 3.C keeps$/.test(fRichLine({ ...cutSet, richSet: { ...cutSet.richSet, unitsDone: 2 } })),
+    'a filtered set done everywhere reads as the whole record set done');
+  assert.ok(/counted without its boxes that read these numbers/.test(fRichLine({ ...cutSet, richSet: { ...cutSet.richSet, waits: true } })),
+    'a filter with boxes the press cannot read yet does not say the press reaches further than the coin box');
   assert.ok(/of them on this coin and shape and finishes/.test(fRichLine({ unit: 'AAA|||daily-4d', richOn: { have: 0, need: 640, run: null } })),
     'a not-done line on a walk does not say it is this coin and shape it works out');
   // a reading with nothing to difference against says nothing rather than 0%
@@ -4465,7 +4478,8 @@ module.exports.theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft = 
   // coin reading and Walk it forward at the top of it
   assert.ok(/function stageBusy\(\)[\s\S]{0,2000}const rich = richBusy\(\);\s*if \(rich\) return rich;/.test(svc),
     'stageBusy no longer names the step 6 press, so a stage launch can start on top of it');
-  assert.ok(/function funnelRichStart\([\s\S]{0,900}claimOrRefuse\(\);/.test(svc),
+  // (3.233.0: the filter on Table 3.C is resolved first, before the box is claimed)
+  assert.ok(/function funnelRichStart\([\s\S]{0,1800}claimOrRefuse\(\);/.test(svc),
     'and it can start on top of a sweep, a stage run or a totalling');
   for (const fn of ['funnelAcrossStart', 'funnelCrossesStart', 'cutFunnelSetStart', 'rebuildSetRichStart']) {
     assert.ok(new RegExp(`function ${fn}\\([^)]*\\) \\{\\s*//[^\\n]*\\n\\s*const richNow = richBusy\\(\\);`).test(svc),
@@ -4620,7 +4634,7 @@ module.exports.everyCopyOfThePressWorksOutWhatIsChosenUnderCoin = function () {
   const s = src('lib/stages.js');
   const start = s.slice(s.indexOf('function funnelRichStart(id, state = {}) {'), s.indexOf('function funnelRichStatus(id) {'));
   assert.ok(start.includes("const unit = state && state.unit && state.unit !== 'all' ? String(state.unit) : null;"), 'the press does not read which coin and shape it was aimed at');
-  assert.ok(start.includes('const todo = unit ? units.filter((u) => u.key === unit) : units;'), 'the board priced is not the one the press named');
+  assert.ok(start.includes('const todo = unit ? units.filter((u) => u.key === unit) : units.filter(inPass);'), 'the board priced is not the one the press named');
   assert.ok(start.includes('const got = await rebuildRichFor(doc, missing.labels, { unit: x.unit.key, testOnly: true, shape, pool, note:'), 'the pricing is not held to the one coin and shape');
   assert.ok(start.includes('run.unit = unit;'), 'the status does not carry which coin and shape is being worked out');
   assert.ok(s.slice(s.indexOf('function richStatus(run) {'), s.indexOf('function funnelRichStart(')).includes('unit: run.unit ?? null,'));
@@ -4644,8 +4658,11 @@ module.exports.everyCopyOfThePressWorksOutWhatIsChosenUnderCoin = function () {
     { units: 3, unitsDone: 0 }, 'a coin and shape whose board size is not known counts as done');
   assert.deepStrictEqual(stages.richSetOf(null, null, rich), { units: 0, unitsDone: 0 }, 'no tables counts as something');
   const read = s.slice(s.indexOf('async function funnelRead('), s.indexOf('\nfunction sliceRowsFor('));
-  assert.ok(read.includes('const richSet = richSetOf(String(id), t, rich);') && read.includes('    richOn,\n    richSet,\n'), 'the read does not carry the every-coin-and-shape count');
-  assert.ok(read.includes("return r.unit ? rich.has(r.label, r.unit) : (richAllIn(rich) && Object.keys(rich.blend()[r.label] || {}).length > 0);"), 'a row is counted as carrying the numbers by a different rule than the one that lays them on');
+  assert.ok(read.includes('const richSet = { ...richSetOf(String(id), t, rich, pass.kept), of: pass.of, filtered: !!pass.kept, waits: pass.waits };') && read.includes('    richOn,\n    richSet,\n'), 'the read does not carry the every-coin-and-shape count');
+  assert.ok(read.includes("return r.unit ? rich.has(r.label, r.unit) : Object.keys((blendRichRows(rich, board.richBlend) || {})[r.label] || {}).length > 0;"), 'a row is counted as carrying the numbers by a different rule than the one that lays them on');
+  assert.ok(s.includes('const blend = r.unit ? null : blendRichRows(rich, keptBlend);'), 'the numbers are laid on by a different rule than the one a row is counted as carrying them by');
+  // and the count narrows to the kept coins and shapes when it is handed them (3.233.0)
+  assert.deepStrictEqual(stages.richSetOf(null, t, rich, new Set([kB])), { units: 1, unitsDone: 0 }, 'the count does not narrow to the coins and shapes it is handed');
   // THE PAGE: ONE PRESS, DRAWN THREE TIMES, AND EVERY COPY FOLLOWS WHAT IS
   // CHOSEN UNDER coin (3.136.0, owner order 2026-09-14: "make the press follow
   // the coin chooser"). 3.134.0 split it by copy -- the copy beside Worth
@@ -4660,7 +4677,7 @@ module.exports.everyCopyOfThePressWorksOutWhatIsChosenUnderCoin = function () {
   assert.ok(wire.includes('const blend = !(d && d.unit) || fRichAimedDone(d);') && wire.includes("const unitNow = blend ? 'all' : d.unit;") && wire.includes('{ unit: unitNow }, WHERE_FUNNEL);'),
     'the press does not send the board on screen -- the coin and shape chosen under coin, or all of them');
   assert.ok(wire.includes("'working them out — this prices every setting of this coin and shape again from its parent set'")
-    && wire.includes("'working them out — this prices every setting in this record set again from its parent set'"), 'the press does not say which board it prices');
+    && wire.includes("`working them out — this prices every setting ${scoped ? 'of the coins and shapes the filter on Table 3.C keeps' : 'in this record set'} again from its parent set`"), 'the press does not say which board it prices');
   // ALL UNITS TOGETHER ASKS FIRST (3.138.0, owner order): before anything is
   // ghosted or sent, and never for one coin and shape
   const askAt = wire.indexOf('if (blend && !confirm(fAllUnitsAsk(d))) return;');
@@ -4681,7 +4698,7 @@ module.exports.everyCopyOfThePressWorksOutWhatIsChosenUnderCoin = function () {
   // eslint-disable-next-line no-new-func
   const { fRebuildPress, fRichSetOff, fRichSetLine } = new Function(`const esc = (t) => String(t == null ? '' : t);\n${[lift('const fRichOf = (d)', '\n'), lift('const fRichGoing = (d)', '\n'),
     lift('function fRichOff(d) {', '\n}\n'), lift('function fCpuWords(cpu) {', '\n}\n'), lift('const fAcrossWords = (units, onUnit)', '\n'), lift('const fRichWhere = (d)', '\n'),
-    lift('const fStoppingWords = (run)', '\n'), lift('function fRichLine(d) {', '\n}\n'), lift('function fRichSetOff(d) {', '\n}\n'), lift('function fRichSetLine(d) {', '\n}\n'), lift('function fRebuildPress(d, named) {', '\n}\n')].join('\n')}\nreturn { fRebuildPress, fRichSetOff, fRichSetLine };`)();
+    lift('const fStoppingWords = (run)', '\n'), lift('function fRichScope(s) {', '\n}\n'), lift('function fRichLine(d) {', '\n}\n'), lift('function fRichSetOff(d) {', '\n}\n'), lift('function fRichSetLine(d) {', '\n}\n'), lift('function fRebuildPress(d, named) {', '\n}\n')].join('\n')}\nreturn { fRebuildPress, fRichSetOff, fRichSetLine };`)();
   const oneCoin = { unit: 'AAA|||daily-1d', richOn: { have: 0, need: 640, run: null }, richSet: { units: 15, unitsDone: 14 } };
   const oneDone = { unit: 'AAA|||daily-1d', richOn: { have: 640, need: 640, run: null }, richSet: { units: 15, unitsDone: 1 } };
   const allOf = { unit: null, richOn: { have: 640, need: 640, run: null }, richSet: { units: 15, unitsDone: 1 } };
@@ -4703,6 +4720,12 @@ module.exports.everyCopyOfThePressWorksOutWhatIsChosenUnderCoin = function () {
     'with every coin and shape done, the press beside all units together is live');
   assert.strictEqual(fRichSetOff(allOf), false);
   assert.ok(fRichSetLine({ unit: null, richOn: { have: 0, need: 640, run: { running: true, done: 10, of: 640, cpu: null } }, richSet: { units: 15, unitsDone: 1 } }).startsWith('working them out'), 'while it works the line is not the working line');
+  // 3.233.0: with a filter on Table 3.C the press speaks for what it keeps, and
+  // a filter that keeps nothing is not read as a set with no coins and shapes
+  const allCut = { unit: null, richOn: { have: 0, need: 640, run: null }, richSet: { units: 2, unitsDone: 0, of: 86, filtered: true, waits: false } };
+  assert.strictEqual(fRichSetLine(allCut), '0 of 2 coin(s) and shape(s) the filter on Table 3.C keeps carry them for every setting — the press works out the rest, those alone',
+    'the press beside all units together speaks for every coin and shape while a filter keeps two');
+  assert.strictEqual(fRichSetLine({ ...allCut, richSet: { units: 0, unitsDone: 0, of: 86, filtered: true, waits: false } }), 'the filter on Table 3.C keeps no coin and shape, so there is nothing to work out');
 };
 
 // A KILLED PREP PICKS UP WHERE IT STOPPED (3.139.0, owner order 2026-09-14:
