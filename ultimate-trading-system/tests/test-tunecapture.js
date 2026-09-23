@@ -985,7 +985,8 @@ module.exports = {
     const a = 's4-zzdeletetest-1';
     const b = 's4-zzdeletetest-10';
     const owned = (id) => [`${id}-capture.json.gz`, `${id}-agreed.json.gz`, `${id}-reserve-AAA_daily-1d.json.gz`, `${id}-halflife-${id}-h1.json.gz`,
-      `${id}.json.before-rebuild`, `${id}-capture.json.gz.before-rebuild`, `${id}-halflife-${id}-h1.json.gz.before-rebuild`, `${id}-tunescans.json`];
+      `${id}.json.before-rebuild`, `${id}-capture.json.gz.before-rebuild`, `${id}-halflife-${id}-h1.json.gz.before-rebuild`, `${id}-tunescans.json`,
+      `${id}.funnelrich.json`];
     try {
       for (const id of [a, b]) {
         fs.writeFileSync(path.join(SETS_DIR, `${id}.json`), JSON.stringify({ id, stage: 4, name: `zz delete test ${id}`, status: 'done', parent: { id: 's3-none' } }));

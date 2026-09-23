@@ -5591,14 +5591,17 @@ function childrenOf(id) {
   return listSets().filter((x) => x.parent && x.parent.id === id).map((x) => ({ id: x.id, name: x.name }));
 }
 // the files beside a set that come in families named after it: the reserve
-// boards read off a stage 3 set, the half-life runs on a Stage 4 rule, and any
-// copy a rebuild kept beside it. Matched on the set's id and the separator after
+// boards read off a stage 3 set, the half-life runs on a Stage 4 rule, the
+// test history numbers in their old one-file shape, and any copy a rebuild
+// kept beside it. Matched on the set's id and the separator after
 // it, so s4-x-1 never takes s4-x-10's files.
 function ownedFilesOf(id) {
   const key = String(id).replace(/[^A-Za-z0-9._-]+/g, '_');
   let names = [];
   try { names = fs.readdirSync(SETS_DIR); } catch (_) { names = []; }
   return names.filter((f) => f.startsWith(`${key}-reserve-`) || f.startsWith(`${key}-halflife-`)
+    // the test history numbers in the one-file shape they had before the folder (3.139.0)
+    || f === `${key}.funnelrich.json`
     || (f.endsWith('.before-rebuild') && (f.startsWith(`${key}.`) || f.startsWith(`${key}-`))));
 }
 function deleteSet(id, confirm) {
