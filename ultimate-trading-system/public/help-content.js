@@ -985,9 +985,9 @@ window.HELP = {
       tnSet: { what: 'Which Stage 4 record set to capture the trades of, from every set on this box, newest first.' },
       tnCapture: {
         what: 'Writes down every trade of every survivor that enters at market with no trailing stop, on the training, test and held-back windows, and on the reserve window when the set\'s layout keeps one and its seal is intact.',
-        more: 'Tune comes before Held and asks nothing of it. A second press replaces the capture on record; the looks already counted stay.',
+        more: 'Tune comes before Held and asks nothing of it. A second press replaces the capture on record; the looks already counted stay. When the capture lands, the set is chosen under scan target by itself - also if you left the tab while it ran and come back later.',
       },
-      tuneTarget: { what: 'Which Stage 4 record set the two scans below work on, from those whose trades were captured.' },
+      tuneTarget: { what: 'Which Stage 4 record set the two scans below work on, from those whose trades were captured. A set whose trades were just captured on this tab is chosen here by itself when the capture lands.' },
       tnPick: {
         what: 'Which captured survivor of the Stage 4 record set the scans read, or all of them.',
         more: 'By depth is the setting nearest the middle of every range of the rule, among the captured survivors, chosen without looking at money: the same pick Greenlight makes, so a scan can be aimed without shopping the survivors. All survivors pools every captured survivor\'s trades into one list, each trade held for its own survivor\'s length, so the scan reads the whole table at once. Naming one records it as your pick.',

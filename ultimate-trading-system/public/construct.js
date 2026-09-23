@@ -3139,6 +3139,18 @@ const TN_SET_KEY = 'cx-tune-set';
 const TN_PICK_KEY = 'cx-tune-pick';
 const TN_WINDOWS_KEY = 'cx-tune-windows';
 const TN_WINDOWS = [['train', 'tnWinTrain', 'training'], ['test', 'tnWinTest', 'test'], ['hold', 'tnWinHold', 'held-back'], ['reserve', 'tnWinReserve', 'reserve']];
+// THE SET WHOSE TRADES WERE JUST CAPTURED BECOMES THE SCAN TARGET (3.233.1,
+// owner order 2026-09-23: "when trades have been captured on a stage 4 record
+// set on the tune tab the tuning targets dropdown must pick up the newly
+// created set automatically"). A capture pressed or picked up on this tab is
+// remembered here until it lands; the first draw of the tab after it lands --
+// while it is being watched, or on coming back to the tab later -- puts that
+// set under scan target and forgets it. A capture that failed moves nothing.
+const TN_CAPTURED_KEY = 'cx-tune-captured';
+function tnCapturedGet() { try { return localStorage.getItem(TN_CAPTURED_KEY) || ''; } catch (_) { return ''; } }
+function tnCapturedSet(id) {
+  try { if (id) localStorage.setItem(TN_CAPTURED_KEY, id); else localStorage.removeItem(TN_CAPTURED_KEY); } catch (_) { /* private window */ }
+}
 function tnDay(ts) { return ts == null ? '?' : new Date(Number(ts)).toISOString().slice(0, 10); }
 function tnWindowWords(list) { return (list || []).map((w) => (TN_WINDOWS.find(([k]) => k === w) || [])[2] || w).join(' + '); }
 function tnRememberedSet(list) {
@@ -3272,6 +3284,17 @@ async function drawTune() {
   const stage4 = books.filter((b) => b.kind === 'stage4');
   const optId = (b) => `s:${b.id}`;
   const known = new Set(books.map(optId));
+  // A CAPTURE THIS TAB PRESSED HAS LANDED: its set goes under scan target
+  // (3.233.1). Still going, it waits for a later draw; failed, it is forgotten
+  // and moves nothing; no answer at all, it is asked again on the next draw.
+  const tnPending = tnCapturedGet();
+  if (tnPending) {
+    const st = await apiOr(`api/funnel/set/${encodeURIComponent(tnPending)}/capture/status`, null);
+    if (st && !st.running) {
+      if (!st.error && known.has(`s:${tnPending}`)) { try { localStorage.setItem('cx-scan-target', `s:${tnPending}`); } catch (_) { /* private window */ } }
+      tnCapturedSet('');
+    }
+  }
   const savedTarget = localStorage.getItem('cx-scan-target') || '';
   // A stored preference pointing at something that no longer exists resolves to
   // the first real target rather than leaving a dangling option selected.
@@ -3548,14 +3571,15 @@ function renderStopResult(s) {
   };
   const tnb = $('#tnCapture');
   if (tnb && tnChosen && tnd && !tnd.refused) tnb.onclick = async () => {
-    if (!confirm(`Capture the trades of ${tnd.name}?\n\nEvery survivor that enters at market with no trailing stop, on the training, test and held-back windows. The set then appears in the scan target box.${tnd.capture ? '\n\nThis replaces the capture on record; the looks already counted stay.' : ''}`)) return;
+    if (!confirm(`Capture the trades of ${tnd.name}?\n\nEvery survivor that enters at market with no trailing stop, on the training, test and held-back windows. When it lands the set is chosen in the scan target box.${tnd.capture ? '\n\nThis replaces the capture on record; the looks already counted stay.' : ''}`)) return;
     tnb.disabled = true;
     $('#tnCaptureMsg').textContent = 'starting…';
     const started = await tryPost(`api/funnel/set/${encodeURIComponent(tnChosen)}/capture`, {}, 'The Stage 4 record set box on Tune lists what was captured - pick the set there.');
     if (!started) { tnb.disabled = false; $('#tnCaptureMsg').textContent = ''; return; }
+    tnCapturedSet(tnChosen);   // chosen under scan target when it lands (3.233.1)
     tnCaptureFollow(tnChosen, started.token);
   };
-  if (tnd && tnd.running && tnb) { tnb.disabled = true; tnCaptureFollow(tnChosen, tnd.running.token); }
+  if (tnd && tnd.running && tnb) { tnb.disabled = true; tnCapturedSet(tnChosen); tnCaptureFollow(tnChosen, tnd.running.token); }
   // A running scan used to say "running…" and then never change: the result
   // only appeared if the operator happened to reload. It refreshes itself now,
   // ONE cancellable chain, at 30s — these scans take minutes, and checking a

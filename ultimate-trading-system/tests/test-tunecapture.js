@@ -654,4 +654,55 @@ module.exports = {
       assert.strictEqual(fs.readFileSync(path.join(dir, 'index.json'), 'utf8'), before, 'a press with nothing to do rewrote the store');
     } finally { c.cleanup(); }
   },
+  // A SET WHOSE TRADES WERE JUST CAPTURED IS CHOSEN UNDER SCAN TARGET (3.233.1,
+  // owner order 2026-09-23: "when trades have been captured on a stage 4 record
+  // set on the tune tab the tuning targets dropdown must pick up the newly
+  // created set automatically"). The block that decides it is lifted out of
+  // drawTune and run against each way a capture can end: landed, still going,
+  // failed, no answer from the service, and gone with nothing on record.
+  async aSetWhoseTradesWereJustCapturedIsChosenUnderScanTarget() {
+    const ui = src('public/construct.js');
+    const lift = (head, end) => { const at = ui.indexOf(head); assert.ok(at > 0, `${head} is gone`); return ui.slice(at, ui.indexOf(end, at) + end.length); };
+    const helpers = [lift('function tnCapturedGet() {', '\n'), lift('function tnCapturedSet(id) {', '\n}\n')].join('\n');
+    const block = ui.slice(ui.indexOf('  const tnPending = tnCapturedGet();'), ui.indexOf("  const savedTarget = localStorage.getItem('cx-scan-target') || '';"));
+    assert.ok(block.length > 50 && block.length < 1200, 'the block that chooses a captured set is not where drawTune resolves the scan target');
+    const run = async (store, status, candidates) => {
+      const localStorage = {
+        getItem: (k) => (k in store ? store[k] : null),
+        setItem: (k, v) => { store[k] = String(v); },
+        removeItem: (k) => { delete store[k]; },
+      };
+      const apiOr = async () => status;
+      const known = new Set(candidates.map((id) => `s:${id}`));
+      // eslint-disable-next-line no-new-func
+      await new Function('localStorage', 'apiOr', 'known', `const TN_CAPTURED_KEY = 'cx-tune-captured';\n${helpers}\nreturn (async () => {\n${block}\n})();`)(localStorage, apiOr, known);
+      return store;
+    };
+    const was = { 'cx-scan-target': 's:s4-old', 'cx-tune-captured': 's4-new' };
+    // landed: chosen, and forgotten
+    let got = await run({ ...was }, { running: false, result: { captured: 3 } }, ['s4-old', 's4-new']);
+    assert.strictEqual(got['cx-scan-target'], 's:s4-new', 'a capture that landed does not choose its set under scan target');
+    assert.ok(!('cx-tune-captured' in got), 'a capture that landed is remembered after its set was chosen');
+    // still going: nothing moves, still remembered
+    got = await run({ ...was }, { running: true }, ['s4-old']);
+    assert.deepStrictEqual(got, was, 'a capture still going moved the scan target or was forgotten');
+    // failed: forgotten, and the scan target stays where it was
+    got = await run({ ...was }, { running: false, error: 'the prices are missing' }, ['s4-old', 's4-new']);
+    assert.strictEqual(got['cx-scan-target'], 's:s4-old', 'a capture that failed moved the scan target');
+    assert.ok(!('cx-tune-captured' in got), 'a capture that failed is remembered for ever');
+    // no answer from the service: asked again on the next draw
+    got = await run({ ...was }, null, ['s4-old', 's4-new']);
+    assert.deepStrictEqual(got, was, 'no answer from the service moved the scan target or forgot the capture');
+    // gone with nothing on record (the service restarted under a first capture): forgotten, nothing moves
+    got = await run({ ...was }, { running: false, none: true }, ['s4-old']);
+    assert.strictEqual(got['cx-scan-target'], 's:s4-old', 'a set with no capture on record was chosen under scan target');
+    assert.ok(!('cx-tune-captured' in got));
+    // THE PRESS REMEMBERS WHAT IT CAPTURED, and so does picking a capture back up
+    assert.ok(ui.includes("    tnCapturedSet(tnChosen);   // chosen under scan target when it lands (3.233.1)\n    tnCaptureFollow(tnChosen, started.token);"),
+      'the capture press does not remember which set it captured');
+    assert.ok(ui.includes('if (tnd && tnd.running && tnb) { tnb.disabled = true; tnCapturedSet(tnChosen); tnCaptureFollow(tnChosen, tnd.running.token); }'),
+      'a capture picked back up after a reload is not remembered, so its set is not chosen when it lands');
+    // and the question the press asks says so
+    assert.ok(ui.includes('When it lands the set is chosen in the scan target box.'), 'the press still says the set only appears in the scan target box');
+  },
 };
