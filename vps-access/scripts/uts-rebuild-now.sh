@@ -32,20 +32,23 @@ r = d.get("result")
 if r: print("  result   :", json.dumps({k: r.get(k) for k in ("settings", "units", "of", "stopped", "nothingMissing", "waiting", "failed") if k in r}))
 '
 echo "== the rebuild of each Stage 4 set the service flags"
-curl -sS -m 30 "http://127.0.0.1:8094/api/funnel/sets" | python3 -c '
+curl -sS -m 60 "http://127.0.0.1:8094/api/funnel/sets" > /tmp/uts-rebuild-now.$$ 2>&1
+python3 - /tmp/uts-rebuild-now.$$ <<'PYX'
 import sys, json, urllib.request
-try: d = json.load(sys.stdin)
-except Exception as e: print("  no readable answer:", e); sys.exit(0)
-rows = d.get("sets", d if isinstance(d, list) else [])
+try: d = json.load(open(sys.argv[1]))
+except Exception as e:
+    print("  no readable answer:", e, open(sys.argv[1]).read()[:300]); sys.exit(0)
+rows = d.get("sets", [])
 flagged = [x for x in rows if x.get("rebuild")]
-print(f"  flagged in the list: {len(flagged)}")
+print("  flagged in the list:", len(flagged), "of", len(rows))
 for x in flagged:
-    rb = x["rebuild"]
+    xid = x.get("id"); rb = x.get("rebuild") or {}
     keys = ",".join(r.get("key", "") for r in rb.get("reasons", []))
     st = {}
     if "stage4" in keys:
-        try: st = json.load(urllib.request.urlopen(f"http://127.0.0.1:8094/api/funnel/set/{x[\"id\"]}/rebuild-required", timeout=10))
-        except Exception as e: st = {"error": str(e)}
-    now = rb.get("failed") and ("STOPPED: " + rb["failed"]) or rb.get("running") or (st.get("words") if st and not st.get("none") else "") or "not started"
-    print(f"  - {x[\"id\"]} [{keys}] {str(x.get(\"name\", \"\"))[:55]} :: {now}")
-'
+        try: st = json.load(urllib.request.urlopen("http://127.0.0.1:8094/api/funnel/set/" + xid + "/rebuild-required", timeout=10))
+        except Exception as e: st = {"words": "no answer: " + str(e)}
+    now = ("STOPPED: " + rb["failed"]) if rb.get("failed") else (rb.get("running") or (st.get("words") if st and not st.get("none") else "") or "not started")
+    print("  -", xid, "[" + keys + "]", str(x.get("name", ""))[:50], "::", now)
+PYX
+rm -f /tmp/uts-rebuild-now.$$
