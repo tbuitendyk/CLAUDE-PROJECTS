@@ -2449,14 +2449,6 @@ function setNameWords(x) {
   const unit = x.unitName || 'all units together';
   return String(x.name || '').includes(unit) ? esc(x.name) : `${esc(x.name)} · ${esc(unit)}`;
 }
-// one set's standing on a stretch, for a set box: the newest set read from it, or none yet
-// short on purpose (3.153.1, owner order): the set is always the rule's own,
-// so its name is not repeated after the rule's; its number, verdict and date say which one
-function vNewestWords(j, stretch) {
-  const n = j && j[stretch] && j[stretch].newest;
-  if (!n) return `no ${stretch} set yet`;
-  return `${stretch} set${Number(n.number) > 1 ? ` #${n.number}` : ''} ${n.pass ? 'PASS' : 'FAIL'} ${esc(String(n.at || '').slice(0, 10))}`;
-}
 // THE RULES A TAB LISTS (VERIFY-DESIGN.md Part 9): Held lists every rule, plain
 // or half-life; Reserve lists only rules whose layout keeps a reserve and whose
 // newest held set passed. Held sets and reserve sets are never listed here:
@@ -2466,13 +2458,21 @@ function vRulesFor(sets, stretch) {
   if (stretch === 'held') return rules;
   return rules.filter((x) => x.judge && x.judge.keepsReserve && x.judge.held && x.judge.held.stands);
 }
-// the set is picked from the server's own list, newest first, never typed
+// the set is picked from the server's own list, newest first, never typed.
+// EACH RULE BY ITS NAME AND NOTHING ELSE (3.234.5, owner order 2026-09-23: "the
+// mangled stage 4 record set name on the Held tab drop down at the top ...
+// it's a mile long with a bunch of stuff the software repeats onto the name
+// that is not wanted"). Every option carried, after the name, the coin and
+// shape, its survivors of its target, on a half-life set the whole name of the
+// set it came from, and its newest held set -- on Reserve the one it stands on
+// as well. The line under the box and the sets under the press say those
+// things about the rule chosen. Held and Reserve draw this one box.
 function vSetBoxHtml(list, chosen, stretch) {
   const empty = stretch === 'reserve'
     ? '<option value="">- no rule stands on the held-back window yet with a layout that keeps a reserve - read a rule on Held first -</option>'
     : '<option value="">- no Stage 4 record set on this box yet - cut one on the Funnel -</option>';
-  return `<div class="row"><label class="f" title="every rule on this box that can be read on the ${stretchPlain(stretch)} window, newest first, with its coin and shape, its survivors of its target, and the newest ${stretchPlain(stretch)} set read from it. A rule is a Stage 4 record set cut on the Funnel or built on History.">Stage 4 record set<select id="vSet" style="min-width:28rem">${list.length
-    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} of ${x.target == null ? 'no target' : Number(x.target).toLocaleString()}${x.derived ? ` · half-life set from ${esc(x.derived.fromName || x.derived.from)}` : ''} · ${vNewestWords(x.judge, stretch)}${stretch === 'reserve' && x.judge && x.judge.held && x.judge.held.newest ? ` · stands on its ${vNewestWords(x.judge, 'held')}` : ''}</option>`).join('')
+  return `<div class="row"><label class="f" title="every rule on this box that can be read on the ${stretchPlain(stretch)} window, newest first, by the name it was given. A rule is a Stage 4 record set cut on the Funnel or built on History.">Stage 4 record set<select id="vSet" style="min-width:28rem">${list.length
+    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${esc(x.name || x.id)}</option>`).join('')
     : empty}</select></label></div>`;
 }
 function vFootingHtml(d) {

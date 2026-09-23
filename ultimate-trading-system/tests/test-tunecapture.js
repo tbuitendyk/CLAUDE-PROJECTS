@@ -476,9 +476,11 @@ module.exports = {
     // THE SET'S COIN AND SHAPE ARE SAID ONCE (3.142.3): every set box prints the name through the one
     // helper, which adds the unit only when the name does not already carry it, with one separator
     assert.ok(/function setNameWords\(x\) \{/.test(ui) && ui.includes("return String(x.name || '').includes(unit) ? esc(x.name) : `${esc(x.name)} · ${esc(unit)}`;"), 'the set boxes no longer say a set\'s coin and shape once');
-    // (3.234.4, owner order: the Stage 4 record set box under Per-trade capture
-    // shows each set by its name alone, so it no longer goes through the helper)
-    assert.strictEqual((ui.match(/\$\{setNameWords\((x|b)\)\}/g) || []).length, 4, 'a set box prints the name and unit its own way again');
+    // (3.234.4 and 3.234.5, owner orders: the Stage 4 record set box under
+    // Per-trade capture and the one on Held and Reserve show each set by its
+    // name alone, so neither goes through the helper)
+    assert.strictEqual((ui.match(/\$\{setNameWords\((x|b)\)\}/g) || []).length, 3, 'a set box prints the name and unit its own way again');
+    assert.ok(!ui.slice(ui.indexOf('function vSetBoxHtml('), ui.indexOf('function vFootingHtml(')).includes('setNameWords('), 'the Held and Reserve set box adds the coin and shape after the name again');
     assert.ok(!ui.slice(ui.indexOf('function tnSetBoxHtml('), ui.indexOf('function tnCaptureBlockHtml(')).includes('setNameWords('), 'the capture set box adds the coin and shape after the name again');
     assert.ok(!/\$\{esc\(x\.name\)\} · \$\{esc\(x\.unitName/.test(ui) && !/\$\{esc\(b\.name\)\} — /.test(ui), 'a set box still prints the unit beside the name itself');
     // THE UNIT LIVES IN THE CAPTION (3.142.2, owner: "why is the alignment of this stuff so ugly?"): a captioned

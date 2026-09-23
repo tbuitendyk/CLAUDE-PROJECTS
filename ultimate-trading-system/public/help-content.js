@@ -123,7 +123,7 @@ const JUDGE_HELP = (() => {
         + 'which is what Greenlight reads.',
       controls: {
         vSet: {
-          what: `Which rule to read on the ${w} window, from every rule on this box, newest first, each with its coin and shape, its survivors of its target, and the newest ${kind} read from it.${stretch === 'reserve' ? ' Only a rule whose layout keeps a reserve and whose newest held set passed is offered.' : ' A rule whose layout keeps no reserve says held alone.'}`,
+          what: `Which rule to read on the ${w} window, from every rule on this box, newest first, each by the name it was given and nothing else; the line under the box says the rule chosen's coin and shape and survivors, and the ${kind}s read from it are drawn under the press.${stretch === 'reserve' ? ' Only a rule whose layout keeps a reserve and whose newest held set passed is offered.' : ' A rule whose layout keeps no reserve says held alone.'}`,
           more: `Choosing a rule reads its footing only: whether it still gives back its own survivors, what it was checked against, its marks, and how many looks the ${w} window has already had. No ${w} figure is read until the button is pressed.`,
         },
         vBarPct: {

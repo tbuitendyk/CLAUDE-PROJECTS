@@ -1496,3 +1496,23 @@ module.exports.theFootingSaysNoSealedWindowOnAReservelessLayoutAndReadsTheParent
   const cut = S4.newFunnelSet({ id: 's4-x', seq: 1, name: 'x', parent: { id: 's3-x', name: 'S3 x', engineVersion: '3.220.4', params: {} }, release: '3.234.2' });
   assert.strictEqual(cut.parent.release, '3.220.4', 'a Stage 4 set records its parent\'s release from where no stage set stamps it');
 };
+
+// THE STAGE 4 RECORD SET BOX ON HELD AND RESERVE SHOWS EACH RULE BY ITS NAME
+// AND NOTHING ELSE (3.234.5, owner order 2026-09-23: "it's a mile long with a
+// bunch of stuff the software repeats onto the name that is not wanted").
+module.exports.theHeldAndReserveSetBoxShowsEachRuleByItsNameAlone = function () {
+  const page = src('public/construct.js');
+  const at = page.indexOf('function vSetBoxHtml(list, chosen, stretch) {');
+  // eslint-disable-next-line no-new-func
+  const vSetBoxHtml = new Function('esc', 'stretchPlain', `${page.slice(at, page.indexOf('\n}\n', at) + 3)}\nreturn vSetBoxHtml;`)((t) => String(t), (x) => (x === 'reserve' ? 'reserve' : 'held-back'));
+  const list = [
+    { id: 's4-a', name: 'HALF LIFE TABLE: my own name', unitName: 'BNBUSDT alongside LTCUSDT daily-4d', counts: { survivors: 51 }, target: null, derived: { fromName: 'the set it came from' }, judge: { held: { newest: { number: 2, pass: true, at: '2026-09-23' }, stands: true } } },
+    { id: 's4-b', name: 'a rule on BTC', unitName: 'BTCUSDT alongside ETCUSDT daily-3d', counts: { survivors: 70 }, target: 100, judge: null },
+  ];
+  for (const stretch of ['held', 'reserve']) {
+    const options = [...vSetBoxHtml(list, 's4-a', stretch).matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)].map((m) => [m[1], m[2]]);
+    assert.deepStrictEqual(options, [['s4-a', 'HALF LIFE TABLE: my own name'], ['s4-b', 'a rule on BTC']], `a rule in the box on ${stretch} carries something after its name: ${JSON.stringify(options)}`);
+  }
+  assert.ok(!/function vNewestWords\(/.test(page), 'the words that followed each name are still in the page with nothing to draw them');
+};
+
