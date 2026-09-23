@@ -511,6 +511,156 @@ const client = {
     ok(db.prepare('SELECT * FROM assets WHERE id = ?').get(again.id) !== undefined, 'the refused row survives untouched');
   }
 
+  // ---- the 377.27-USDC incident (2026-09-23): overdrafts queue, never clamp --
+  // Replays the live sequence on its own account: a BTC buy spends the whole
+  // shared USDC wallet (Production's 30 + Trial's 140.27), an XRP sale's
+  // proceeds wait in the inbox, a second BTC buy spends them. The old code
+  // T1-applied both buys to Production and clamped its USDC at zero —
+  // silently dropping 377.27 USDC of spending. Now each overdrawing fill
+  // queues with the shortfall named, assign refuses until the cash is on the
+  // books, and the human fix (assign the sale, carve Trial's cash) closes it.
+  {
+    const mk = (name) => db.prepare("INSERT INTO profiles (name, threshold_pct, poll_minutes, created_at) VALUES (?, 10, 15, 0)").run(name).lastInsertRowid;
+    const PX = mk('ProdX');
+    const TX = mk('TrialX');
+    add.run(PX, 'usd-coin', 'usdc', 30, 10, 1, 30);
+    add.run(PX, 'bitcoin', 'btc', 0.1, 60, 0, 0.1);
+    add.run(PX, 'ripple', 'xrp', 1_000, 30, 0, 1_000);
+    add.run(TX, 'usd-coin', 'usdc', 140.27458663, 10, 1, 140.27458663);
+    add.run(TX, 'pax-gold', 'paxg', 0.04, 90, 0, 0.04);
+    await bal.pollProfiles({ force: true });
+    const acct = sync.createAccount(PX, 'bitso', 'k2', 's2');
+    sub.linkProfile(PX, acct.id);
+    sub.linkProfile(TX, acct.id);
+    const shX = sub.ensureShell(acct.id);
+    const shXrp = sub.ensureAsset(shX.id, { coingecko_id: 'ripple', symbol: 'xrp' });
+    db.prepare('UPDATE assets SET quantity = 500 WHERE id = ?').run(shXrp.id);
+    const V = { balances: [], trades: [], flows: [] };
+    const cX = {
+      venue: 'test',
+      fetchBalances: async () => V.balances,
+      fetchTradesSince: async (since) => V.trades.filter((t) => t.ts > since),
+      fetchFlowsSince: async (since) => V.flows.filter((f) => f.ts > since),
+    };
+    const T0 = Date.now() + 1000;
+    V.trades = [
+      { id: 'inc-buy-1', ts: T0, pair: 'btc_usdc', side: 'buy', price: 50_000, deltas: [
+        { code: 'btc', delta: 0.0034 }, { code: 'usdc', delta: -170.27 }] },
+      { id: 'inc-sell-xrp', ts: T0 + 1000, pair: 'xrp_usdc', side: 'sell', price: 2.37, deltas: [
+        { code: 'xrp', delta: -100 }, { code: 'usdc', delta: 237.79184685 }, { code: 'usdc', delta: -0.79184685 }] },
+      { id: 'inc-buy-2', ts: T0 + 2000, pair: 'btc_usdc', side: 'buy', price: 50_000, deltas: [
+        { code: 'btc', delta: 0.0047 }, { code: 'usdc', delta: -237 }] },
+    ];
+    V.balances = [
+      { code: 'usdc', amount: 0.00458663 },
+      { code: 'btc', amount: 0.1081 },
+      { code: 'xrp', amount: 1_400 },
+      { code: 'paxg', amount: 0.04 },
+    ];
+    let si = await sync.syncAccount(acct.id, { client: cX });
+    ok(si.multi && si.tradesQueued === 3 && si.tradesApplied === 0, `all three fills wait in the inbox (queued=${si.tradesQueued})`);
+    ok(approx(qtyOf(PX, 'usdc'), 30) && approx(qtyOf(PX, 'btc'), 0.1), 'NOTHING applied — no silent clamp of Production\'s USDC');
+    ok(si.unexplained.length === 0, 'reconcile stays clean: queued deltas count as expected');
+    const q = (ref) => db.prepare('SELECT * FROM attribution_queue WHERE venue_ref = ?').get(ref);
+    ok(/short 140\.27 USDC/.test(q('inc-buy-1').reason) && /carve/.test(q('inc-buy-1').reason), `overdraft reason names the shortfall and the fix ("${q('inc-buy-1').reason.slice(0, 60)}…")`);
+    ok(q('inc-buy-1').suggested_profile_id === PX, 'overdrawing fill still suggests its natural owner');
+    ok(/short 207 USDC/.test(q('inc-buy-2').reason), 'second buy: short 207 (the XRP proceeds are not on the books yet)');
+
+    let msg = '';
+    try { sub.assignQueuedTrade(q('inc-buy-1').id, PX); } catch (e) { msg = e.message; }
+    ok(/Can't assign/.test(msg) && /short 140\.27 USDC/.test(msg), 'assign refuses an overdraft instead of clamping');
+    ok(approx(qtyOf(PX, 'usdc'), 30) && approx(qtyOf(PX, 'btc'), 0.1), 'a refused assign changes nothing');
+    ok(q('inc-buy-1').status === 'pending', 'refused fill stays in the inbox');
+
+    // The human fix, in UI order: the sale first, then the second buy …
+    sub.assignQueuedTrade(q('inc-sell-xrp').id, PX);
+    ok(approx(qtyOf(PX, 'usdc'), 267, 1e-9), 'XRP proceeds land on Production (30 + 237)');
+    sub.assignQueuedTrade(q('inc-buy-2').id, PX);
+    ok(approx(qtyOf(PX, 'usdc'), 30, 1e-9), 'second buy now fits: 267 − 237 = 30');
+    // … then Production borrows Trial's cash (a carve, both indices spliced) …
+    const vTrial = valueIndexNow(TX);
+    const trialUsdc = db.prepare("SELECT * FROM assets WHERE profile_id = ? AND symbol = 'usdc'").get(TX);
+    await sub.carveOut(acct.id, TX, PX, [{ asset_id: trialUsdc.id, qty: 140.27 }]);
+    ok(approx(valueIndexNow(TX), vTrial, 1e-6), "Trial's track record untouched by lending its cash");
+    sub.assignQueuedTrade(q('inc-buy-1').id, PX);
+    ok(Math.abs(qtyOf(PX, 'usdc')) < 1e-8 && approx(qtyOf(PX, 'btc'), 0.1081, 1e-9), 'first buy applies once the cash is booked there');
+    si = await sync.syncAccount(acct.id, { client: cX });
+    ok(si.unexplained.length === 0, 'books equal the venue — no residual at all');
+
+    // Fee-sized overdraft still applies (the true-up absorbs crumbs), and the
+    // log records what ACTUALLY moved so a rewind reverses exactly that.
+    db.prepare("UPDATE assets SET quantity = 10 WHERE profile_id = ? AND symbol = 'usdc'").run(PX);
+    V.trades.push({ id: 'inc-fee-slack', ts: T0 + 3000, pair: 'btc_usdc', side: 'buy', price: 50_000, deltas: [
+      { code: 'btc', delta: 0.0002 }, { code: 'usdc', delta: -10 }, { code: 'usdc', delta: -0.05 }] });
+    V.balances = V.balances.map((b) => (b.code === 'btc' ? { code: 'btc', amount: 0.1083 } : b));
+    si = await sync.syncAccount(acct.id, { client: cX });
+    ok(si.tradesApplied === 1 && si.tradesQueued === 0, 'a fee-sized overdraft (0.05 of 10.05 USDC) still auto-applies');
+    const feeLog = sub.listTxnLog(acct.id).find((r) => r.ref === 'inc-fee-slack');
+    const loggedUsdc = feeLog.deltas.filter((d) => d.symbol === 'usdc').reduce((s2, d) => s2 + d.delta, 0);
+    ok(approx(loggedUsdc, -10, 1e-12) && qtyOf(PX, 'usdc') === 0, 'the clamped leg is logged as applied (−10), not as asked (−10.05)');
+
+    // ---- Resolve: the live damage (phantom 377.27 USDC) fixed from the UI ---
+    db.prepare("UPDATE assets SET quantity = 237 WHERE profile_id = ? AND symbol = 'usdc'").run(PX);
+    db.prepare("UPDATE assets SET quantity = 140.27458663 WHERE profile_id = ? AND symbol = 'usdc'").run(TX);
+    si = await sync.syncAccount(acct.id, { client: cX });
+    const flag = si.unexplained.find((u2) => u2.code === 'usdc');
+    ok(flag && approx(flag.residual, -377.27, 1e-9), `legacy damage surfaces as a −377.27 USDC residual (${flag && flag.residual})`);
+
+    const refuse = async (args, re, label) => {
+      let m = '';
+      try { await sub.resolveResidual(acct.id, args); } catch (e) { m = e.message; }
+      ok(re.test(m), `${label} (${m.slice(0, 70)})`);
+    };
+    await refuse({ profileId: TX, code: 'usdc', amount: -377.27, kind: 'trade' }, /holds only 140\.27458663 USDC/, 'resolve refuses to drive a profile negative');
+    await refuse({ profileId: PX, code: 'usdc', amount: 5, kind: 'trade' }, /negative amount/, 'resolve refuses the wrong sign');
+    await refuse({ profileId: PX, code: 'usdc', amount: -400, kind: 'trade' }, /more than the flagged residual/, 'resolve refuses more than the flag');
+    await refuse({ profileId: PX, code: 'btc', amount: -1, kind: 'trade' }, /flagged no BTC residual/, 'resolve refuses an unflagged code');
+    await refuse({ profileId: PX, code: 'usdc', amount: -1, kind: 'bogus' }, /kind must be/, 'resolve refuses an unknown kind');
+
+    // Honest repair: Trial's cash was spent by Production → carve it over
+    // (splice), then book the dropped spending on Production as a missed
+    // trade leg (NO splice: the phantom gain leaves its value index).
+    const tU = db.prepare("SELECT * FROM assets WHERE profile_id = ? AND symbol = 'usdc'").get(TX);
+    await sub.carveOut(acct.id, TX, PX, [{ asset_id: tU.id, qty: 140.27 }]);
+    const relOf = (pid) => {
+      const as = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(pid);
+      const iu = bal.indexUsdFor(as, PRICES);
+      return as.reduce((s2, a) => { const pr = bal.priceAsset(a, iu, PRICES); return s2 + (pr ? a.quantity * pr.rel : 0); }, 0);
+    };
+    const v0 = valueIndexNow(PX);
+    const rel0 = relOf(PX);
+    const res = await sub.resolveResidual(acct.id, { profileId: PX, code: 'usdc', amount: flag.residual, kind: 'trade' });
+    ok(Math.abs(qtyOf(PX, 'usdc')) < 1e-8, 'missed trade leg removed the phantom USDC from Production');
+    ok(approx(valueIndexNow(PX) / v0, relOf(PX) / rel0, 1e-9) && valueIndexNow(PX) < v0, 'booked as P&L: the value index drops by the phantom amount (no splice)');
+    let acctRow = db.prepare('SELECT last_sync_note FROM exchange_accounts WHERE id = ?').get(acct.id);
+    let n2 = JSON.parse(acctRow.last_sync_note);
+    ok(!n2.unexplained.some((u2) => u2.code === 'usdc'), 'the flag clears at once (stored note shifted)');
+    ok(Math.abs(n2.perCode.find((r) => r.code === 'usdc').residual) < 1e-8, 'reconcile row reads ~0 residual');
+    const resLog = sub.listTxnLog(acct.id).find((r) => r.id === res.txnId);
+    ok(resLog.kind === 'residual-trade' && /missed trade leg/.test(resLog.note), 'logged in plain words as a residual resolution');
+    si = await sync.syncAccount(acct.id, { client: cX });
+    ok(si.unexplained.length === 0, 'the next real sync agrees: books equal the venue');
+
+    // Rewind puts quantity AND flag back; the flow kind splices both ways.
+    await sub.rewindTxn(res.txnId);
+    ok(approx(qtyOf(PX, 'usdc'), 377.27, 1e-9), 'rewind restores the booked quantity');
+    n2 = JSON.parse(db.prepare('SELECT last_sync_note FROM exchange_accounts WHERE id = ?').get(acct.id).last_sync_note);
+    const back = n2.unexplained.find((u2) => u2.code === 'usdc');
+    ok(back && approx(back.residual, -377.27, 1e-9), 'rewind re-flags the residual until the next sync');
+    const vF = valueIndexNow(PX);
+    const resF = await sub.resolveResidual(acct.id, { profileId: PX, code: 'usdc', amount: -377.27, kind: 'flow' });
+    ok(Math.abs(qtyOf(PX, 'usdc')) < 1e-8 && approx(valueIndexNow(PX), vF, 1e-6), 'flow kind: quantity leaves, value index continuous (spliced)');
+    await sub.rewindTxn(resF.txnId);
+    ok(approx(qtyOf(PX, 'usdc'), 377.27, 1e-9) && approx(valueIndexNow(PX), vF, 1e-6), 'flow-kind rewind splices back continuously');
+    // Split across profiles: part here, the rest elsewhere.
+    await sub.resolveResidual(acct.id, { profileId: PX, code: 'usdc', amount: -200, kind: 'trade' });
+    n2 = JSON.parse(db.prepare('SELECT last_sync_note FROM exchange_accounts WHERE id = ?').get(acct.id).last_sync_note);
+    ok(approx(n2.unexplained.find((u2) => u2.code === 'usdc').residual, -177.27, 1e-9), 'a partial resolve leaves the remainder flagged');
+    await sub.resolveResidual(acct.id, { profileId: PX, code: 'usdc', amount: -177.27, kind: 'trade' });
+    si = await sync.syncAccount(acct.id, { client: cX });
+    ok(si.unexplained.length === 0 && Math.abs(qtyOf(PX, 'usdc')) < 1e-8, 'resolved in two parts, books equal the venue');
+  }
+
   // ---- txn log keyset paging (the "Load older ↓" backend) -------------------
   {
     const total = db.prepare('SELECT COUNT(*) c FROM txn_log WHERE account_id = ?').get(account.id).c;

@@ -545,6 +545,25 @@ async function syncAccountMulti(account, client, profiles) {
             };
           }
         }
+        // A fill may only spend what its profile holds on the books: beyond
+        // fee-sized slack the venue paid with a sibling's money (or inbox
+        // proceeds), and clamping at zero would silently drop real spending.
+        if (decision.profileId) {
+          const target = profiles.find((p) => p.id === decision.profileId);
+          const targetAssets = assetsOf.get(target.id);
+          const od = sub.findOverdraft(
+            t.deltas.map((d) => {
+              const a = matchVenueAsset(targetAssets, d.code);
+              return {
+                key: a ? a.id : `code:${String(d.code).toLowerCase()}`,
+                symbol: a ? a.symbol : d.code,
+                have: a ? qty.get(a.id) || 0 : 0,
+                delta: d.delta,
+              };
+            })
+          );
+          if (od) decision = { queue: sub.overdraftReason(od, target.name), suggestedProfileId: target.id };
+        }
         const inserted = insTrade.run(
           account.id,
           decision.profileId ?? null,
@@ -573,9 +592,12 @@ async function syncAccountMulti(account, client, profiles) {
               assetsOf.get(target.id).push(asset);
               qty.set(asset.id, asset.quantity);
             }
-            const next = Math.max(0, (qty.get(asset.id) || 0) + d.delta);
+            // Only fee-slack can clamp here (the overdraft check queued
+            // anything bigger); log what actually moved so a rewind is exact.
+            const prev = qty.get(asset.id) || 0;
+            const next = Math.max(0, prev + d.delta);
             qty.set(asset.id, next);
-            applied.push({ asset_id: asset.id, symbol: asset.symbol, delta: d.delta });
+            applied.push({ asset_id: asset.id, symbol: asset.symbol, delta: prev + d.delta < 0 ? -prev : d.delta });
             summary.tradeDeltas[asset.symbol] = (summary.tradeDeltas[asset.symbol] || 0) + d.delta;
           }
           summary.tradesApplied++;

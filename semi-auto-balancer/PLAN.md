@@ -694,6 +694,32 @@ cross-snapshot annotation appears, same-day rewind stays clean);
 single-holder-only baseline adoption; migration no-op for existing 1:1
 accounts.
 
+### Overdrafts + residual resolution (2026-09-23, live incident)
+Bitso MAIN showed a −377.27 USDC residual: two BTC buys spent the whole
+shared USDC wallet — Production's own cash, Trial 1's 140.27 USDC tether,
+and 237 USDC of XRP-sale proceeds still waiting in the inbox — while T1
+gave each buy to Production (sole BTC holder), whose USDC then CLAMPED at
+zero, silently dropping 377.27 of spending; the later XRP assign put +237
+back. The user's withdrawal fix was refused (group flows live on the
+master, which held no USDC). Two changes, user-chosen ("resolve + prevent"):
+- **No silent clamp.** An attributed fill that would drive its profile's
+  asset below zero by more than fee slack (1% of the fill's outflow in that
+  currency) queues with the shortfall named; `assignQueuedTrade` refuses the
+  same overdraft (assign pending sales first, or carve the shortfall in).
+  Fee-slack clamps still apply, and the txn log now records the delta that
+  ACTUALLY moved, so rewinds reverse exactly what was applied.
+- **Resolve… on flagged residuals** (`subaccounts.resolveResidual`,
+  `POST /api/accounts/:id/resolve-residual`, button on the ⚠ row of the
+  master's reconcile table): book part or all of a flagged residual on one
+  linked profile as a missed trade leg (no splice → P&L) or an unreported
+  flow (recordFlow splice). Bounded by the last sync's flag (same sign, no
+  larger), no negative quantities; txn kinds `residual-trade` /
+  `residual-flow`, rewindable (flow kind splices back); the stored sync note
+  shifts so the flag clears at once and a rewind restores it.
+Live repair path: carve 140.27 USDC Trial 1 → Production (Production spent
+it; both indices splice), then Resolve −377.27 USDC on Production as a
+missed trade leg (removes the phantom gain the clamp created).
+
 ### Non-goals
 No auto-trading, no per-profile API keys, no venue-native sub-accounts
 (Bitso retail has none; Kraken's are institutional). The venue keys stay

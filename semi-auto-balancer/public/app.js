@@ -1777,8 +1777,11 @@ function renderExchange(x, pendingFlows, profile) {
     // Older multi-path sync notes lack `symbol` — never let a stored note
     // shape crash the render (it aborts the whole page, deposit box included).
     warnings.push(
-      `${String(u.symbol || u.code || '?').toUpperCase()}: venue balance differs by ${u.residual >= 0 ? '+' : ''}${u.residual} ` +
-        `beyond what synced trades/flows explain — record it as a deposit/withdrawal or fix the quantity.`
+      `${String(u.symbol || u.code || '?').toUpperCase()}: venue balance differs by ${u.residual >= 0 ? '+' : ''}${+Number(u.residual).toFixed(8)} ` +
+        `beyond what synced trades/flows explain — ` +
+        (note.multi
+          ? 'use Resolve… on its row in the Sub-accounts reconcile table below.'
+          : 'record it as a deposit/withdrawal or fix the quantity.')
     );
   }
   $('#x-note').textContent = warnings.join(' ');
@@ -2006,6 +2009,114 @@ function profileOptions(select, profiles, preselectId) {
   }
 }
 
+// Resolve a flagged residual: book it against one linked profile as a missed
+// trade leg (P&L, no splice) or an unreported deposit/withdrawal (spliced).
+// The server enforces the bounds (same sign, no larger than the flag, no
+// negative quantities); this form guides the choice and pre-fills the most
+// the chosen profile can absorb.
+function openResolve(u, row, profiles, accountId) {
+  const box = $('#resolve-box');
+  const code = String(u.code).toLowerCase();
+  const S = code.toUpperCase();
+  const neg = u.residual < 0;
+  const fmt = (n) => String(+Number(n).toFixed(8));
+  const holding = (p) => {
+    const a = p.assets.find((x) => String(x.symbol).toLowerCase() === code || x.coingecko_id === `fiat:${code}`);
+    return a ? a.quantity : 0;
+  };
+  const choices = neg ? profiles.filter((p) => holding(p) > 1e-12) : profiles;
+  box.innerHTML = '';
+  const el = (tag, props = {}, ...kids) => {
+    const n = Object.assign(document.createElement(tag), props);
+    n.append(...kids);
+    return n;
+  };
+
+  box.append(
+    el('h4', { textContent: `Resolve the ${S} residual (${fmt(u.residual)} ${S})` }),
+    el('p', {
+      className: 'muted',
+      textContent:
+        `The venue holds ${fmt(row.physical)} ${S}; the books add up to ${fmt(row.virtual)} ${S}` +
+        `${row.pending || row.queued ? ' plus pending/queued items' : ''}. ` +
+        (neg
+          ? `The books hold MORE than the venue: money a fill spent never came off the books, or it left the venue unrecorded. `
+          : `The venue holds MORE than the books: proceeds a fill received never landed, or money arrived unrecorded. `) +
+        'Book it against the profile it belongs to — split it across profiles by resolving part here and the rest after. ' +
+        'Logged in the transaction log; rewindable.',
+    })
+  );
+  if (choices.length === 0) {
+    box.append(el('p', { className: 'warn-text', textContent: `No linked profile holds any ${S} on the books to absorb this.` }));
+    box.classList.remove('hidden');
+    return;
+  }
+
+  const sel = el('select');
+  for (const p of choices) {
+    sel.append(el('option', { value: String(p.id), textContent: `${p.name}${p.isShell ? ' 🪣' : ''} (holds ${fmt(holding(p))} ${S})` }));
+  }
+  const amt = el('input', { type: 'number', step: 'any' });
+  amt.style.width = '9rem';
+  const prefill = () => {
+    const p = choices.find((q) => q.id === Number(sel.value));
+    amt.value = neg ? fmt(-Math.min(-u.residual, holding(p))) : fmt(u.residual);
+  };
+  sel.addEventListener('change', prefill);
+  prefill();
+
+  const kindRow = (value, title, text, checked) =>
+    el('label', { className: 'toggle-row' },
+      el('input', { type: 'radio', name: 'resolve-kind', value, checked }),
+      el('span', {}, el('strong', { textContent: title }), ` — ${text}`)
+    );
+  const status = el('span', { className: 'muted' });
+  const go = el('button', { textContent: 'Book it' });
+  const cancel = el('button', { className: 'ghost', textContent: 'Cancel' });
+  cancel.addEventListener('click', () => box.classList.add('hidden'));
+  go.addEventListener('click', async () => {
+    const kind = box.querySelector('input[name="resolve-kind"]:checked').value;
+    const p = choices.find((q) => q.id === Number(sel.value));
+    const n = Number(amt.value);
+    if (!Number.isFinite(n) || n === 0) { status.textContent = 'enter a non-zero amount'; return; }
+    const how = kind === 'trade' ? 'a missed trade leg (counts as profit/loss)' : `an unreported ${n > 0 ? 'deposit' : 'withdrawal'} (spliced)`;
+    if (!confirm(`Book ${n > 0 ? '+' : ''}${n} ${S} on "${p.name}" as ${how}?\n\nIt is logged in the transaction log and can be rewound.`)) return;
+    status.textContent = 'booking…';
+    try {
+      await api(`/accounts/${accountId}/resolve-residual`, {
+        method: 'POST',
+        body: { profileId: p.id, code, amount: n, kind },
+      });
+      await refresh();
+    } catch (err) {
+      status.textContent = err.message;
+    }
+  });
+
+  box.append(
+    el('div', { className: 'settings-row' },
+      el('label', {}, 'Book on', sel),
+      el('label', {}, 'Amount', amt, S)
+    ),
+    kindRow(
+      'trade',
+      'Missed trade leg',
+      neg
+        ? 'a fill spent this and the books missed it. Moves the quantity with no splice, so the value index and basket register it as profit/loss (use this to remove money the books kept after it was spent).'
+        : 'a fill received this and the books missed it. Moves the quantity with no splice, so the value index and basket register it as profit/loss.',
+      true
+    ),
+    kindRow(
+      'flow',
+      neg ? 'Unreported withdrawal' : 'Unreported deposit',
+      'money moved on/off the venue outside the synced ledger. Spliced, so the track record does not move.',
+      false
+    ),
+    el('div', { className: 'settings-row' }, go, cancel, status)
+  );
+  box.classList.remove('hidden');
+}
+
 async function loadSubaccounts(x) {
   $('#sub-status').textContent = 'loading…';
   const data = await api(`/accounts/${x.id}/subaccounts?viewProfileId=${state.selectedId}`);
@@ -2141,17 +2252,30 @@ async function loadSubaccounts(x) {
     })
     .join(' &nbsp;·&nbsp; ');
 
-  // Per-code reconcile view from the last sync.
+  // Per-code reconcile view from the last sync. Residuals the sync flagged
+  // as unexplained get a Resolve… button (the only way to book one inside a
+  // group — bare edits are blocked and flows live on the master).
   const rb = $('#sub-recon tbody');
   rb.innerHTML = '';
+  $('#resolve-box').classList.add('hidden');
   $('#sub-recon-wrap').classList.toggle('hidden', !data.perCode);
+  const flagged = new Map((data.unexplained || []).map((u) => [String(u.code).toLowerCase(), u]));
   for (const c of data.perCode || []) {
     const tr = document.createElement('tr');
     const bad = Math.abs(c.residual) > Math.max(1e-8, 5e-3 * Math.abs(c.physical)); // matches TRUEUP_REL
     tr.innerHTML =
       `<td>${c.code.toUpperCase()}</td><td class="num">${c.physical}</td><td class="num">${+c.virtual.toFixed(8)}</td>` +
       `<td class="num">${+(c.pending || 0).toFixed(8)}</td><td class="num">${+(c.queued || 0).toFixed(8)}</td>` +
-      `<td class="num${bad ? ' neg' : ''}">${+c.residual.toFixed(8)}${bad ? ' ⚠' : ''}</td>`;
+      `<td class="num${bad ? ' neg' : ''}">${+c.residual.toFixed(8)}${bad ? ' ⚠' : ''}</td><td></td>`;
+    const u = flagged.get(String(c.code).toLowerCase());
+    if (u) {
+      const btn = document.createElement('button');
+      btn.className = 'ghost';
+      btn.textContent = 'Resolve…';
+      btn.title = 'Book this residual against a profile — as a missed trade leg or an unreported deposit/withdrawal';
+      btn.addEventListener('click', () => openResolve(u, c, data.profiles, x.id));
+      tr.lastElementChild.appendChild(btn);
+    }
     rb.appendChild(tr);
   }
 

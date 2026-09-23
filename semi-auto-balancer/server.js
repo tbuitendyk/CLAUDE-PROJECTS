@@ -736,6 +736,7 @@ app.get('/api/accounts/:id/subaccounts', async (req, res) => {
       summary,
       summaryError,
       perCode: note.perCode || null,
+      unexplained: note.unexplained || [],
       inbox: subaccounts.listInbox(accountId),
       txnLog: subaccounts.listTxnLog(accountId, 100),
     });
@@ -829,6 +830,23 @@ app.post('/api/accounts/:id/carve', async (req, res) => {
   try {
     const b = req.body || {};
     const r = await subaccounts.carveOut(Number(req.params.id), b.fromProfileId, b.toProfileId, b.items);
+    res.json({ ok: true, ...r });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Book a flagged unexplained residual against one linked profile — as a
+// missed trade leg (P&L, no splice) or an unreported flow (spliced).
+app.post('/api/accounts/:id/resolve-residual', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const r = await subaccounts.resolveResidual(Number(req.params.id), {
+      profileId: Number(b.profileId),
+      code: b.code,
+      amount: Number(b.amount),
+      kind: b.kind,
+    });
     res.json({ ok: true, ...r });
   } catch (err) {
     res.status(400).json({ error: err.message });

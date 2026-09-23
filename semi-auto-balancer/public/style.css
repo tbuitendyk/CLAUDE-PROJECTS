@@ -163,6 +163,10 @@ tr.ref-row td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 /* Checkboxes are not number fields: the 90px input width was shoving the
    auto-apply box far from its own label text. */
 .settings-row input[type="checkbox"], .toggle-row input[type="checkbox"] { width: auto; }
+.toggle-row input[type="radio"] { width: auto; flex: none; }
+#resolve-box .toggle-row { align-items: baseline; }
+#resolve-box .settings-row label { flex-wrap: wrap; max-width: 100%; }
+#resolve-box select { max-width: 100%; }
 #flow-section { margin: 1rem 0; }
 .flow-row { display: flex; align-items: center; gap: .6rem; justify-content: flex-start; padding: .2rem 0; color: var(--text); font-size: .9rem; }
 .flow-row span { min-width: 90px; }

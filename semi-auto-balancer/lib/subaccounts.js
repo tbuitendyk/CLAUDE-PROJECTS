@@ -197,6 +197,50 @@ function attributeTrade({ trade, holders, shell, now = Date.now() }) {
   };
 }
 
+// ---- overdraft guard --------------------------------------------------------
+// A fill may only spend what its profile holds ON THE BOOKS. The venue has
+// one shared wallet per currency, so an order can quietly spend money booked
+// to a sibling sub-account, or proceeds still waiting in the inbox — and
+// clamping the profile at zero then silently DROPS real spending (observed
+// live 2026-09-23: two BTC buys spent Trial 1's 140.27 USDC plus 237 USDC of
+// unassigned XRP proceeds; the books kept 377.27 USDC the venue no longer
+// had). Fee-sized slack (1% of the fill's outflow in that currency) still
+// clamps — the balance true-up absorbs crumbs; anything bigger waits for a
+// human in the inbox.
+const OVERDRAFT_SLACK = 0.01;
+
+// legs: [{key, symbol, have, delta}] — one entry per delta; `have` = the
+// target asset's current book quantity (0 when the row doesn't exist yet),
+// `key` groups legs landing on the same asset. Returns the largest shortfall
+// {symbol, have, spend, short} or null.
+function findOverdraft(legs) {
+  const by = new Map();
+  for (const l of legs) {
+    const g = by.get(l.key) || { symbol: l.symbol, have: l.have, net: 0, out: 0 };
+    g.net += l.delta;
+    if (l.delta < 0) g.out -= l.delta;
+    by.set(l.key, g);
+  }
+  let worst = null;
+  for (const g of by.values()) {
+    const short = -(g.have + g.net);
+    if (short > Math.max(1e-8, OVERDRAFT_SLACK * g.out) && (!worst || short > worst.short)) {
+      worst = { symbol: g.symbol, have: g.have, spend: -g.net, short };
+    }
+  }
+  return worst;
+}
+
+function overdraftReason(o, profileName) {
+  const f = (n) => String(+n.toFixed(8));
+  const S = String(o.symbol).toUpperCase();
+  return (
+    `overdraws "${profileName}": spends ${f(o.spend)} ${S} but only ${f(o.have)} ${S} is booked there — ` +
+    `short ${f(o.short)} ${S}. The venue paid with money booked elsewhere (another sub-account, or sales ` +
+    `still waiting in this inbox): assign those first, or carve ${f(o.short)} ${S} to "${profileName}", then assign`
+  );
+}
+
 function listInbox(accountId) {
   const queued = db
     .prepare("SELECT * FROM attribution_queue WHERE account_id = ? AND status = 'pending' ORDER BY ts DESC")
@@ -220,7 +264,9 @@ function assignQueuedTrade(queueId, profileId, { kind = 'trade-assign', note = n
   const deltas = JSON.parse(q.deltas);
   const applied = [];
   db.transaction(() => {
-    for (const d of deltas) {
+    // Resolve every leg's asset first (rows created here roll back if the
+    // overdraft check below refuses), so the check sees the whole fill.
+    const legs = deltas.map((d) => {
       const assets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(profileId);
       let asset = matchVenueAssetLocal(assets, d.code);
       if (!asset) {
@@ -233,9 +279,21 @@ function assignQueuedTrade(queueId, profileId, { kind = 'trade-assign', note = n
         if (!donor) throw new Error(`no linked profile knows the asset "${d.code}" — add it first`);
         asset = ensureAsset(profileId, donor);
       }
-      const next = Math.max(0, asset.quantity + d.delta);
+      return { asset, delta: d.delta };
+    });
+    const od = findOverdraft(
+      legs.map((l) => ({ key: l.asset.id, symbol: l.asset.symbol, have: l.asset.quantity, delta: l.delta }))
+    );
+    if (od) throw new Error(`Can't assign — this fill ${overdraftReason(od, profile.name)}.`);
+    const qty = new Map(legs.map((l) => [l.asset.id, l.asset.quantity]));
+    for (const { asset, delta } of legs) {
+      const prev = qty.get(asset.id);
+      const next = Math.max(0, prev + delta);
+      qty.set(asset.id, next);
       db.prepare('UPDATE assets SET quantity = ? WHERE id = ?').run(next, asset.id);
-      applied.push({ asset_id: asset.id, symbol: asset.symbol, delta: d.delta });
+      // Log what actually moved: a fee-slack clamp applied less than asked,
+      // and a rewind must reverse exactly what was applied.
+      applied.push({ asset_id: asset.id, symbol: asset.symbol, delta: prev + delta < 0 ? -prev : delta });
     }
     db.prepare('UPDATE exchange_trades SET profile_id = ? WHERE account_id = ? AND venue_trade_id = ?').run(
       profileId, q.account_id, q.venue_ref
@@ -267,10 +325,16 @@ function dismissQueuedTrade(queueId) {
 }
 
 // Local copy of sync's venue-asset matcher (kept here to avoid a require
-// cycle; same semantics: symbol match, case-insensitive).
+// cycle; same semantics: symbol first, fiat:<code> second, USD's
+// pseudo/tether forms last).
 function matchVenueAssetLocal(assets, code) {
   const c = String(code || '').toLowerCase();
-  return assets.find((a) => String(a.symbol).toLowerCase() === c) || null;
+  return (
+    assets.find((a) => String(a.symbol).toLowerCase() === c) ||
+    assets.find((a) => a.coingecko_id === `fiat:${c}`) ||
+    (c === 'usd' ? assets.find((a) => a.coingecko_id === 'usd' || a.coingecko_id === 'fiat:usd') : undefined) ||
+    null
+  );
 }
 
 // ---- rewind / reassign ------------------------------------------------------
@@ -332,7 +396,7 @@ async function rewindTxn(txnId) {
     return { warnings };
   }
 
-  if (row.kind === 'flow-apply' || row.kind === 'adopt') {
+  if (row.kind === 'flow-apply' || row.kind === 'adopt' || row.kind === 'residual-flow') {
     // Flows spliced on apply, so the reversal must splice back too.
     await recordFlow(
       row.profile_id,
@@ -340,7 +404,7 @@ async function rewindTxn(txnId) {
       `rewind of ${row.kind} (${row.ref || 'manual'})`
     );
     db.transaction(() => {
-      if (row.ref) {
+      if (row.ref && row.kind === 'flow-apply') {
         db.prepare("UPDATE pending_flows SET status = 'pending' WHERE account_id = ? AND venue_ref = ? AND status = 'applied'").run(
           row.account_id, row.ref
         );
@@ -387,6 +451,12 @@ function profileName(id) {
 }
 
 function finishRewind(row, deltas, warnings) {
+  // A rewound residual resolution puts the flag back until the next sync
+  // re-checks it against the venue.
+  if (row.kind.startsWith('residual-') && row.ref) {
+    const code = row.ref.replace(/^residual:/, '');
+    for (const d of deltas) shiftNoteResidual(row.account_id, code, d.symbol, -d.delta);
+  }
   const compId = logTxn({
     accountId: row.account_id,
     profileId: row.profile_id,
@@ -424,8 +494,12 @@ async function reassignTxn(txnId, profileId) {
     .prepare("SELECT id FROM attribution_queue WHERE account_id = ? AND kind = 'trade' AND venue_ref = ? AND status = 'pending'")
     .get(row.account_id, row.ref);
   if (!q) throw new Error('rewound fill did not reach the inbox — assign manually');
-  const { applied } = assignQueuedTrade(q.id, profileId, { note: `reassigned to "${profileName(profileId)}"` });
-  return { warnings, applied };
+  try {
+    const { applied } = assignQueuedTrade(q.id, profileId, { note: `reassigned to "${profileName(profileId)}"` });
+    return { warnings, applied };
+  } catch (err) {
+    throw new Error(`Rewound — the fill is back in the inbox, but ${err.message}`);
+  }
 }
 
 // ---- account summary --------------------------------------------------------
@@ -537,6 +611,121 @@ async function carveOut(accountId, fromProfileId, toProfileId, items) {
   logTxn({ accountId, profileId: from.id, kind: 'carve-out', ref, deltas: legFrom, note: `carved ${human} out of "${from.name}" → "${to.name}"` });
   logTxn({ accountId, profileId: to.id, kind: 'carve-out', ref, deltas: legTo, note: `received ${human} from "${from.name}"` });
   return { ref, legFrom, legTo };
+}
+
+// ---- resolve an unexplained residual ----------------------------------------
+// The reconcile flags a residual it cannot explain and never fixes it on its
+// own. Inside a group the usual human fixes are closed — bare quantity edits
+// are blocked, and deposits/withdrawals live on the master, which may hold
+// none of the coin — so this is the explicit, logged, rewindable way to book
+// one against a chosen linked profile:
+//   'trade' — the books got a fill wrong (e.g. spending an old clamp silently
+//             dropped): quantities move with NO splice, so the value index
+//             and basket register it as profit/loss.
+//   'flow'  — an external deposit/withdrawal the ledger never reported:
+//             spliced through recordFlow, the track record doesn't move.
+// Bounded by the last sync's flagged residual (same sign, no larger), never
+// drives a quantity negative, and shifts the stored sync note so the flag
+// clears at once; the next sync re-checks everything against the venue.
+const parseNote = (acct) => {
+  try {
+    return acct && acct.last_sync_note ? JSON.parse(acct.last_sync_note) : {};
+  } catch {
+    return {};
+  }
+};
+
+// Book `booked` units of `code` into the stored note: the flagged residual
+// shrinks by it (entry dropped once it reads zero) and the reconcile row's
+// Σ virtual grows by it. Rewinds call it with the opposite sign.
+function shiftNoteResidual(accountId, code, symbol, booked) {
+  const note = parseNote(db.prepare('SELECT last_sync_note FROM exchange_accounts WHERE id = ?').get(accountId));
+  const list = note.unexplained || [];
+  let u = list.find((x) => String(x.code).toLowerCase() === code);
+  if (!u) {
+    u = { code, symbol, residual: 0 };
+    list.push(u);
+  }
+  u.residual -= booked;
+  note.unexplained = list.filter((x) => Math.abs(x.residual) > 1e-8);
+  const row = (note.perCode || []).find((x) => String(x.code).toLowerCase() === code);
+  if (row) {
+    row.virtual += booked;
+    row.residual -= booked;
+  }
+  db.prepare('UPDATE exchange_accounts SET last_sync_note = ? WHERE id = ?').run(JSON.stringify(note), accountId);
+}
+
+async function resolveResidual(accountId, { profileId, code, amount, kind }) {
+  const account = db.prepare('SELECT * FROM exchange_accounts WHERE id = ?').get(accountId);
+  if (!account) throw new Error('exchange account not found');
+  if (kind !== 'trade' && kind !== 'flow') throw new Error("kind must be 'trade' or 'flow'");
+  const c = String(code || '').toLowerCase();
+  const S = c.toUpperCase();
+  const amt = Number(amount);
+  if (!Number.isFinite(amt) || amt === 0) throw new Error('amount must be a non-zero number');
+  const flagged = (parseNote(account).unexplained || []).find((u) => String(u.code).toLowerCase() === c);
+  if (!flagged) throw new Error(`the last sync flagged no ${S} residual — sync again first`);
+  if (Math.sign(amt) !== Math.sign(flagged.residual)) {
+    throw new Error(
+      flagged.residual < 0
+        ? `the books hold MORE ${S} than the venue — book a negative amount`
+        : `the venue holds MORE ${S} than the books — book a positive amount`
+    );
+  }
+  if (Math.abs(amt) > Math.abs(flagged.residual) + 1e-8) {
+    throw new Error(`${amt} ${S} is more than the flagged residual (${+flagged.residual.toFixed(8)} ${S})`);
+  }
+  const linked = linkedProfiles(accountId);
+  const profile = linked.find((p) => p.id === Number(profileId));
+  if (!profile) throw new Error('profile is not linked to this account');
+  const assetsOfP = (pid) => db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(pid);
+  let asset = matchVenueAssetLocal(assetsOfP(profile.id), c);
+  if (amt < 0) {
+    const have = asset ? asset.quantity : 0;
+    if (have + amt < -1e-9) {
+      throw new Error(
+        `"${profile.name}" holds only ${+have.toFixed(8)} ${S} — pick a profile that holds it, ` +
+          'or resolve part here and the rest elsewhere'
+      );
+    }
+  } else if (!asset) {
+    const donor = linked.map((p) => matchVenueAssetLocal(assetsOfP(p.id), c)).find(Boolean);
+    if (!donor) throw new Error(`no linked profile knows ${S}`);
+    asset = ensureAsset(profile.id, donor);
+  }
+  // Float guard: a debit equal to the holding (to 1e-9) empties it exactly.
+  const delta = amt < 0 ? Math.max(amt, -asset.quantity) : amt;
+  const human = `${delta > 0 ? '+' : ''}${+delta.toFixed(8)} ${S}`;
+  const deltas = [{ asset_id: asset.id, symbol: asset.symbol, delta }];
+  if (kind === 'flow') {
+    await recordFlow(
+      profile.id,
+      [{ asset_id: asset.id, delta }],
+      `unreported ${delta > 0 ? 'deposit' : 'withdrawal'} (resolved ${S} residual)`
+    );
+  }
+  let txnId;
+  db.transaction(() => {
+    if (kind === 'trade') {
+      const cur = db.prepare('SELECT quantity FROM assets WHERE id = ?').get(asset.id).quantity;
+      db.prepare('UPDATE assets SET quantity = ? WHERE id = ?').run(Math.max(0, cur + delta), asset.id);
+    }
+    txnId = logTxn({
+      accountId,
+      profileId: profile.id,
+      kind: `residual-${kind}`,
+      ref: `residual:${c}`,
+      deltas,
+      note:
+        `resolved ${human} residual on "${profile.name}" as ` +
+        (kind === 'trade'
+          ? 'a missed trade leg (profit/loss, no splice)'
+          : `an unreported ${delta > 0 ? 'deposit' : 'withdrawal'} (spliced)`),
+    });
+    shiftNoteResidual(accountId, c, asset.symbol, delta);
+  })();
+  return { txnId, applied: deltas };
 }
 
 // Bare quantity edits don't mix with the group model: inside an account
@@ -674,6 +863,9 @@ module.exports = {
   rewindTxn,
   reassignTxn,
   carveOut,
+  resolveResidual,
+  findOverdraft,
+  overdraftReason,
   T2_SIZE_TOL,
   T2_WINDOW_MS,
 };

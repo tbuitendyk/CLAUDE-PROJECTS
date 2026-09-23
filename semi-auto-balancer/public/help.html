@@ -512,7 +512,8 @@
       <figcaption>The linked-profiles line and the <strong>reconcile table</strong>: per asset,
       the venue's physical balance must equal the sum of every profile's virtual holding + flows awaiting
       confirmation + fills awaiting attribution. Here 30 XRP sit queued (see inbox below) — the invariant
-      still balances. A residual beyond the 0.5% true-up cap is flagged ⚠ and never silently fixed;
+      still balances. A residual beyond the 0.5% true-up cap is flagged ⚠ and never silently fixed
+      (its row gets a <strong>Resolve…</strong> button — see below);
       drift within the cap — staking crumbs, fee-currency quirks, rounding — is trued up to the venue
       number automatically, pro-rata across the profiles holding the asset, and counted as plain
       profit/loss (no deposit is invented for it). True-ups bigger than 0.05% of the balance leave a
@@ -575,14 +576,30 @@
         advice (same symbol+side, size ±15%, within 36h) attributes to it; anything ambiguous waits in the
         <strong>attribution inbox</strong> with the best guess pre-selected and a stated reason. A queued
         fill applies nothing until you assign it. The tether leg always follows the traded asset's
-        profile.</li>
+        profile. A fill may only spend what its profile holds <em>on the books</em>: the venue has one
+        shared wallet per currency, so an order can quietly use a sibling's cash or proceeds still
+        waiting in the inbox. Such a fill queues with the shortfall named ("overdraws … short 140.27
+        USDC"), and <strong>Assign</strong> refuses until the money is booked there — assign the
+        pending sale first, or carve the shortfall over, then assign. (Fee-sized overdrafts, up to 1% of
+        what the fill spent, still apply; the true-up absorbs the crumbs.)</li>
       <li><span class="term">Reconcile table</span> — per asset: physical (venue truth) vs Σ virtual vs
         pending vs queued. Drift within 0.5% of the venue balance — and of the holdings it lands on —
         is trued up automatically into the holders' quantities as performance (logged above 0.05%).
         Anything larger, anything landing on positions too small to have produced it, and any drift seen
         while an API permission is degraded is flagged ⚠ instead and never silently fixed.</li>
+      <li><span class="term">Resolve…</span> — a flagged ⚠ row gets a <strong>Resolve…</strong> button: book
+        the residual against the profile it belongs to, as either a <strong>missed trade leg</strong>
+        (the quantity moves with no splice, so that profile's value index and basket count it as
+        profit/loss — the right choice when the books kept money a fill actually spent) or an
+        <strong>unreported deposit/withdrawal</strong> (spliced, so the track record doesn't move).
+        It can't book more than the flag, the wrong sign, or more than the profile holds; split a
+        residual across profiles by resolving part on one and the rest on another. Each resolution is
+        a transaction-log row, rewindable like any other, and the flag clears immediately — the next
+        sync re-checks it against the venue. If the money was really another sub-account's (one
+        profile spent a sibling's cash), carve that amount across first so neither track record takes a
+        fake gain or loss, then resolve.</li>
       <li><span class="term">Transaction log &amp; Rewind</span> — every applied transaction (auto or
-        manual: fills, flows, carve-outs, snaps, adoptions) appears in plain words, newest first, each row
+        manual: fills, flows, carve-outs, snaps, adoptions, residual resolutions) appears in plain words, newest first, each row
         rewindable once. <strong>Rewind</strong> reverses it (attributed fills return to the inbox);
         <strong>Reassign →</strong> rewinds and assigns to the right profile in one click. History is
         never edited — corrections append; a rewind reaching back across an already-chained daily
