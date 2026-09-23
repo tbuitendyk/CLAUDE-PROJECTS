@@ -148,7 +148,7 @@ module.exports = {
   async boardsDrawsOneStageAtATimeOnItsOwnSubTab() {
     const src = JS();
     const draw = src.slice(src.indexOf('async function drawBoards()'), src.indexOf('async function bDrawTable('));
-    assert.ok(draw.includes("const stab = B_T3.includes(view.stab) ? (fold[3] ? view.stab : 3) : [1, 2, 3].includes(Number(view.stab)) ? Number(view.stab) : deepest;"),
+    assert.ok(draw.includes("const stab = B_T3.includes(view.stab) ? (fold[3] && s3sel ? view.stab : 3) : [1, 2, 3].includes(Number(view.stab)) ? Number(view.stab) : deepest;"),
       'the stage sub tab is not remembered, or a first visit does not open on the deepest stage picked');
     for (const n of [1, 2, 3]) {
       assert.ok(draw.includes(`<div class="tab\${stabOn(${n})}" data-bstab="${n}">Stage ${n}</div>`), `there is no sub tab for Stage ${n}`);
@@ -162,11 +162,15 @@ module.exports = {
     const b3 = src.slice(src.indexOf('async function bDrawStage3('));
     // THE TABLE TABS JOIN THE STAGE STRIP, only while Stage 3 or one of them is
     // picked (3.239.0), and a table tab draws its table alone (3.239.1)
-    assert.ok(draw.includes('const onS3 = (stab === 3 || B_T3.includes(stab)) && fold[3];'), 'the table tabs do not know when Stage 3 or a table is picked, or stay while Stage 3 is put away');
+    assert.ok(draw.includes('const onS3 = (stab === 3 || B_T3.includes(stab)) && fold[3] && !!s3sel;'), 'the table tabs do not know when Stage 3 or a table is picked, or stay while Stage 3 is put away');
     // PUTTING A STAGE AWAY PUTS EVERY STAGE UNDER IT AWAY (3.240.0); Open opens its own
     // PUT AWAY LETS GO OF THE RECORD SET AND OF EVERY ONE UNDER IT (3.241.2); the stages above are written down as shown
     assert.ok(draw.includes("if (fold[sN] && selOf[sN]) {") && draw.includes("if (k < sN) patch[`s${k}`] = selOf[k];\n          else { patch[`s${k}`] = null; patch[`fold${k}`] = false; }"),
       'Put away on a Boards stage does not empty its record set box and the boxes under it');
+    // THE SAME RULES AS SWEEP (3.241.3): a stage under one with nothing picked or put away is greyed
+    assert.ok(draw.includes('const upEmpty = { 1: false, 2: !s1sel || !fold[1], 3: !s1sel || !s2sel || !fold[1] || !fold[2] };'),
+      'a Boards stage under one with nothing picked is not greyed');
+    for (const n of [2, 3]) assert.ok(draw.includes(`<select id="bPick${n}" style="min-width:26rem"\${upEmpty[${n}] ? ' disabled' : ''}>`), `the stage ${n} record set box is not greyed with nothing picked above it`);
     assert.ok(draw.includes("if (!s1sel && !s2sel && !s3sel && view.s1 === undefined && view.s2 === undefined && view.s3 === undefined) {"),
       'boxes emptied by Put away are filled again with the newest set on the next draw');
     assert.ok(draw.includes("bSaveView(Object.fromEntries([1, 2, 3].filter((k) => k >= sN).map((k) => [`fold${k}`, !fold[sN]])));"),

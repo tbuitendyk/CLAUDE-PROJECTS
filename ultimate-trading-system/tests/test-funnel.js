@@ -2861,7 +2861,7 @@ module.exports = {
       'the sentence left where the panels were is written in more than one place');
     assert.ok(/const putAwayBtn = \(attr, value, open, what, extra\) =>/.test(page), 'the shared press is gone');
     // Boards draws through it rather than keeping its own copy
-    assert.ok(page.includes("const foldBtn = (stage) => putAwayBtn('bfold', stage, fold[stage], \"this stage's table\");"),
+    assert.ok(page.includes("const foldBtn = (stage) => putAwayBtn('bfold', stage, fold[stage], \"this stage's table\", upEmpty[stage] ? 'disabled class=\"ctl-off\"' : '');"),
       'Boards keeps its own copy of the press, which is the drift this shares one to stop');
     assert.ok(page.includes('if (!fold[stage]) { mount.innerHTML = putAwayNote; continue; }'),
       'Boards keeps its own copy of the sentence');

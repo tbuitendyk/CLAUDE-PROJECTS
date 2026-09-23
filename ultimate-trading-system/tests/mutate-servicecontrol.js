@@ -1154,7 +1154,7 @@ const GUARDS = [
     'const fAway = () => false;',
     'thePutAwayPressIsTheOneBoardsDrawsAndItLeavesTheTopTwoSectionsUp',
     'put away is never remembered, so the press redraws the screen exactly as it was'],
-  [path.join(ROOT, 'public', 'construct.js'), 'const foldBtn = (stage) => putAwayBtn(\'bfold\', stage, fold[stage], "this stage\'s table");',
+  [path.join(ROOT, 'public', 'construct.js'), 'const foldBtn = (stage) => putAwayBtn(\'bfold\', stage, fold[stage], "this stage\'s table", upEmpty[stage] ? \'disabled class="ctl-off"\' : \'\');',
     'const foldBtn = (stage) => `<button data-bfold="${stage}" title="puts this stage\'s table away, or brings it back. The last state is remembered.">${fold[stage] ? \'Put away\' : \'Open\'}</button>`;',
     'thePutAwayPressIsTheOneBoardsDrawsAndItLeavesTheTopTwoSectionsUp',
     'Boards keeps its own copy of the press again, so one screen can be renamed without the other'],

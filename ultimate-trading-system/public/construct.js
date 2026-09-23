@@ -4708,7 +4708,12 @@ async function drawBoards() {
       : `<option value="">— pick a stage ${stage} record set${above ? ` out of ${esc(above.name)}` : ''} —</option>`;
     return head + list.map((x) => `<option value="${esc(x.id)}"${x.id === sel ? ' selected' : ''}>${rebuildPrefix(x)}${esc(x.name)} — ${esc(x.status)} — ${esc((x.createdAt || '').slice(0, 10))}${x.desc ? ` — ${esc(x.desc.slice(0, 40))}` : ''}</option>`).join('');
   };
-  const foldBtn = (stage) => putAwayBtn('bfold', stage, fold[stage], "this stage's table");
+  // THE SAME RULES AS SWEEP (3.241.3, owner order 2026-09-23: "Same rules for
+  // selectors and record sets on Boards"): a stage under one with nothing
+  // picked, or under one put away, has its record set box and its Put away /
+  // Open greyed -- pick from the top down.
+  const upEmpty = { 1: false, 2: !s1sel || !fold[1], 3: !s1sel || !s2sel || !fold[1] || !fold[2] };
+  const foldBtn = (stage) => putAwayBtn('bfold', stage, fold[stage], "this stage's table", upEmpty[stage] ? 'disabled class="ctl-off"' : '');
   // ONE STAGE AT A TIME, ON ITS OWN SUB TAB (3.238.0, owner order 2026-09-23:
   // "Boards gets 3 sub tabs: Stage 1, Stage 2, Stage 3"). The provenance is
   // unchanged: picking a stage 3 record set still fills the other two with its
@@ -4717,14 +4722,14 @@ async function drawBoards() {
   // and while Stage 3 is put away its three tables are closed with it (3.240.0,
   // owner order: "when the Stage 3 record set is Put away the 3.A, 3.B, and 3.C
   // tables must be closed also"): their tabs leave the strip and Stage 3 shows
-  const stab = B_T3.includes(view.stab) ? (fold[3] ? view.stab : 3) : [1, 2, 3].includes(Number(view.stab)) ? Number(view.stab) : deepest;
+  const stab = B_T3.includes(view.stab) ? (fold[3] && s3sel ? view.stab : 3) : [1, 2, 3].includes(Number(view.stab)) ? Number(view.stab) : deepest;
   // ON STAGE 3 OR ONE OF ITS TABLES (3.239.1, owner order 2026-09-23: "when tab
   // Stage 3 is pressed ONLY have down to the button 'Check this set' -- THAT'S
   // THE ONLY THING ON THE STAGE 3 TAB ... Table 3.A/B/C tabs ALL START WITH
   // their title line ... not duplicate a bunch of info between tabs"). Stage 3
   // shows the record set down to Check this set; a table tab shows that table
   // and nothing above its title.
-  const onS3 = (stab === 3 || B_T3.includes(stab)) && fold[3];
+  const onS3 = (stab === 3 || B_T3.includes(stab)) && fold[3] && !!s3sel;
   const stabOn = (n) => (n === stab ? ' on' : '');
   // THE THREE TABLE TABS SIT ON THIS STRIP, beside Stage 3 and a little apart
   // from it, and only while Stage 3 is picked (3.239.0, owner order 2026-09-23:
@@ -4750,7 +4755,7 @@ async function drawBoards() {
     <div class="row" style="align-items:flex-end">
       ${foldBtn(1)}
       <h3 style="margin:0">Stage 1</h3>
-      <label class="f">record set<select id="bPick1" style="min-width:26rem">${bOptions(1, s1sel)}</select></label>
+      <label class="f${upEmpty[1] ? ' ctl-off' : ''}">record set<select id="bPick1" style="min-width:26rem"${upEmpty[1] ? ' disabled' : ''}>${bOptions(1, s1sel)}</select></label>
     </div>
     <div class="row">
       <button id="bDelete1" class="danger" ${s1sel ? '' : 'disabled'}>Delete record set…</button>
@@ -4763,7 +4768,7 @@ async function drawBoards() {
     <div class="row" style="align-items:flex-end">
       ${foldBtn(2)}
       <h3 style="margin:0">Stage 2</h3>
-      <label class="f">record set<select id="bPick2" style="min-width:26rem">${bOptions(2, s2sel, s1sel)}</select></label>
+      <label class="f${upEmpty[2] ? ' ctl-off' : ''}">record set<select id="bPick2" style="min-width:26rem"${upEmpty[2] ? ' disabled' : ''}>${bOptions(2, s2sel, s1sel)}</select></label>
     </div>
     <div class="row">
       <button id="bDelete2" class="danger" ${s2sel ? '' : 'disabled'}>Delete record set…</button>
@@ -4776,7 +4781,7 @@ async function drawBoards() {
     <div class="row" style="align-items:flex-end">
       ${foldBtn(3)}
       <h3 style="margin:0">Stage 3</h3>
-      <label class="f">record set<select id="bPick3" style="min-width:26rem">${bOptions(3, s3sel, s2sel)}</select></label>
+      <label class="f${upEmpty[3] ? ' ctl-off' : ''}">record set<select id="bPick3" style="min-width:26rem"${upEmpty[3] ? ' disabled' : ''}>${bOptions(3, s3sel, s2sel)}</select></label>
     </div>
     <div class="row">
       <button id="bDelete3" class="danger" ${s3sel ? '' : 'disabled'}>Delete record set…</button>
@@ -4835,6 +4840,7 @@ async function drawBoards() {
   }
   document.querySelectorAll('[data-bfold]').forEach((btn) => {
     btn.onclick = () => {
+      if (btn.disabled) return;
       const sN = Number(btn.dataset.bfold);
       // PUT AWAY LETS GO OF THE RECORD SET (3.241.2, owner order 2026-09-23:
       // "put away buttons on opened record sets on the stage 1/2/3 tabs needs
