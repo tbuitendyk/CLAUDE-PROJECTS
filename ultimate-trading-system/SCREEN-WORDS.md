@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **9ce8246f58b9 — what the box is serving**, not from the working tree.
+Generated from **6617f102f858 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -806,9 +806,9 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - This cannot be undone.
 - ” deleted.
 - and the saved models and tuning files belonging to them.
-- — the stage starts wake when it lands
 - the filters saved on the parent's table leave
 - rows, and the carry takes the top of those. Press Clear filters under its table on Boards to carry from the whole set.
+- — the stage starts wake when it lands
 - priced the same trade and were folded into one)
 - units; on the rest its values are one setting)
 - gate value(s); on the rest the gate is one setting)
