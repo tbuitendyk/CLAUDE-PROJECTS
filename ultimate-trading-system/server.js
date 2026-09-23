@@ -811,32 +811,6 @@ app.get('/api/stagesets', (req, res) => res.json({
   // already ghosts them reads it.
   busy: (() => { try { return stages.stageBusy(); } catch (_) { return null; } })(),
   coinsDownloaded: require('./lib/dataset').defaultCoins(),
-  // THE PAIRS TICKED ON COINS NOW (3.130.3): the stage headings hold a set
-  // launched with "only what is ticked on Coins" up to these,
-  // not to the trade coins and chunk shape boxes the launch never read.
-  // Memoised on the record files, so the poll that asks every few seconds
-  // pays a handful of stats, not a read.
-  // ...AND ONE LIST PER SOURCE, BECAUSE THERE ARE THREE (3.194.2, owner: "is
-  // there a reason why the stage 2 section title text did not turn green").
-  //
-  // This served ONE list, resolved with no argument -- which is `both`. The
-  // heading's rule is "a box is compared as the launch resolved it", and a run
-  // launched with `what is ticked from a walk set` resolved only the walk list.
-  // Held up to both lists it could never match while anything was ticked under
-  // `coins and shapes that pass`, so the heading was red for ever and no box on
-  // the screen could change it. That is the same fault 3.130.3 fixed for the
-  // old on/off tick: 3.185.0 turned it into a choice of three and moved the
-  // comparison, and this, the data the comparison reads, stayed on `both`.
-  //
-  // `none` is not served: it is the empty list by definition and a name that
-  // can only ever mean one thing does not need a wire.
-  passersTicked: (() => {
-    const out = {};
-    for (const src of ['passers', 'walk', 'both']) {
-      try { out[src] = require('./lib/coinsrun').passingUnits(src); } catch (_) { out[src] = []; }
-    }
-    return out;
-  })(),
 }));
 
 app.get('/api/stageset/:id', (req, res) => {

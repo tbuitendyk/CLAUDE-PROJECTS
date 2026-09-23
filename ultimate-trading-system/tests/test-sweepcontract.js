@@ -636,10 +636,8 @@ module.exports = {
     assert.strictEqual(drops, 2, 'an empty compare box must be dropped from both, or the engine is handed [] where it expects nothing');
     // a remembered set puts both back
     assert.ok(SWEEP.includes("setV('#swCompare', (p.compare || []).join(','));"), 'a remembered set must restore the compare coins');
-    // and the provenance line watches both, or a changed compare box reads as
-    // a chain that still matches
-    assert.ok(SWEEP.includes("['trade coins', wantUni") && SWEEP.includes("['compare coins', wantCmp"),
-      'the provenance check must watch both boxes and name them separately');
+    // (the provenance line that compared both boxes with the set above went in
+    // 3.241.0: every section now shows the set its own box names, filled from it)
     // NOTHING READS IT UNDER SINGLES, SO IT IS GREYED (owner, 2026-09-06:
     // "what are you allowing that compare coins box for when only singles is
     // selected?"). A box that takes a list and changes nothing is a box that

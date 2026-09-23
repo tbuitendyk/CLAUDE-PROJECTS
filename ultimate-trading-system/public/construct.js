@@ -990,7 +990,6 @@ async function swProgress() {
   // cost line are both judged off it, so a stale copy would answer for a box
   // that has just moved.
   swSetsCache = st.sets || [];
-  if (st.passersTicked && typeof st.passersTicked === 'object') swPassersNow = st.passersTicked;
   const swMoved = swRefillParents(swSetsCache);
   // THE HEADING COLOURS ARE REPAINTED ON EVERY TICK, NOT ONLY WHEN A BOX MOVED
   // (3.76.2, owner order 2026-09-06: "JUST THINK ABOUT IT AND CODE IT RIGHT SO
@@ -1720,9 +1719,6 @@ function fillStageForm(doc) {
 
 let swSetsCache = null;
 let swDefaultCoins = [];   // every coin downloaded, which is what a blank coin box means
-// the coins and shapes ticked on Coins now, one list per source, off the same
-// answer the launch resolves (3.130.3; one list per source since 3.194.2)
-let swPassersNow = {};
 // WHICH OF THE THREE IS CHOSEN (3.185.0). Read from the radios themselves, so
 // there is one answer and the launch, the cost line and the greying cannot
 // disagree about it. Nothing chosen reads as 'none', which is the option that
@@ -3946,7 +3942,6 @@ async function drawSweep() {
   // stage headings compare a blank box the way the launch resolves it, so they
   // need the names and not just how many there are.
   swDefaultCoins = st.coinsDownloaded || [];
-  swPassersNow = st.passersTicked || {};
   // the next free name per stage, shown greyed in each name box as the
   // suggestion an empty box takes
   const nextNames = st.nextNames || {};

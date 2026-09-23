@@ -1724,10 +1724,10 @@ module.exports = {
     const fn = UI.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
     const body = fn.slice(fn.indexOf('function swProvenance() {'), fn.indexOf('\n}\n', fn.indexOf('function swProvenance() {')));
     assert.ok(!/swShownSet|s1Shown|s2Shown/.test(UI), 'the overtaken check is still there');
-    assert.ok(body.includes("else if (!v('#swFrom3') && s1row.status !== 'done') {"), 'a stage 2 built from an unfinished stage 1 set does not go red');
-    assert.ok(body.includes("else if (!cont && !s3pick && s2row.status !== 'done') {"), 'a stage 3 priced from an unfinished stage 2 set does not go red');
-    assert.ok(body.includes("sayWhy('#swWhy2', { what: 'stage 1 record set', say:") && body.includes("sayWhy('#swWhy3', { what: 'stage 2 record set', say:"),
-      'the red is not said on the screen');
+    // since 3.241.0 each heading says what is set at its own level (the truth table runs it)
+    assert.ok(body.includes("for (const [n, sel, why] of [[1, '#swFrom2', '#swWhy1'], [2, '#swFrom3', '#swWhy2'], [3, '#swSet3', '#swWhy3']]) {"),
+      'the headings do not each read their own level');
+    assert.ok(body.includes("paint('#swHC', campOn ? true : null, campOn ? '' : 'no campaign is set');"), 'the Campaign heading does not say whether a campaign is set');
     // A PICK WRITTEN BACK ON A DRAW FILLS ITS SECTION, so box and section agree
     const fill = UI.slice(UI.indexOf('async function swFillPicked() {'), UI.indexOf('\n}\n', UI.indexOf('async function swFillPicked() {')));
     assert.ok(fill.includes('if (got && got.set && swPicked(n) === v) fillStageForm(got.set);'), 'a remembered pick does not fill its section from its set');
@@ -1783,48 +1783,6 @@ module.exports = {
     run($, { coinsSource: 'passers', plainUnits: false });
     assert.strictEqual($('#swExtraShare').disabled, true, 'under coins and shapes that pass the split box is ghosted');
     assert.strictEqual($('#swPlainUnits').disabled, true, 'and so is the control arm tick');
-  },
-  theStageHeadingsCompareTheTickForASetLaunchedFromCoins() {
-    const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8')
-      .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
-    const fn = UI.slice(UI.indexOf('function swProvenance() {'), UI.indexOf('\n}\n', UI.indexOf('function swProvenance() {')));
-    // RE-AIMED 3.185.0: the tick became a choice of three, so what is compared
-    // is the NAME of the source, not on against off. A set written before this
-    // carries no source of its own and read both lists, so it reads as both --
-    // which says what happened rather than guessing.
-    assert.ok(fn.includes('const wantSource = swSourceNow();'), 'the chosen source is read as a thing of its own');
-    assert.ok(fn.includes('const setPairs = Array.isArray(p.passers) && p.passers.length ? p.passers : null;'), 'and the set says whether it was launched with it');
-    assert.ok(fn.includes("const setSource = p.coinsSource || (setPairs ? 'both' : 'none');"), 'a set written before the choice existed reads as both');
-    assert.ok(fn.includes("const tickBox = wantSource !== 'none';"), 'either list counts as taking the units off Coins');
-    // NAMED AS THE SCREEN NAMES THEM. Every one of these three is the label on
-    // its own choice, character for character.
-    for (const w of ['ignore what is on Coins', 'what is ticked under coins and shapes that pass', 'what is ticked from a walk set']) {
-      assert.ok(fn.includes(`'${w}'`), `the comparison does not name the choice by its label: ${w}`);
-      assert.ok(UI.includes(`> ${w}</label>`), `that label is not on the screen: ${w}`);
-    }
-    assert.ok(fn.includes("['where this run takes its units from', sourceWords[wantSource] || wantSource, sourceWords[setSource] || setSource],"), 'the source is compared, name against name');
-    assert.ok(fn.includes("? (tickBox && setPairs ? [['Candidates for Sweep', pairWords(swPassersNow[wantSource]), pairWords(setPairs)]] : [])"),
-      'with both on, the pairs ticked now are held up to the pairs the set recorded — for the source the screen has chosen');
-    assert.ok(/: \[\['trade coins', wantUni\.split/.test(fn) && /\['chunk shape', shape\(c\('#swPermGeom'\), v\('#swGeom'\)\)/.test(fn),
-      'without the tick on either side the two boxes are compared as before');
-    // the launch records the pairs on the set, which is what the screen reads
-    const LIB = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
-    assert.ok(LIB.includes('passers: passers || null, campaign:'), 'the launch writes the pairs it ran, or null, on the set');
-    // and the pairs ticked now ride on the same answer the headings already read the downloaded coins off
-    const SRV = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-    // ONE LIST PER SOURCE, AND THE HEADING READS THE ONE THE SCREEN CHOSE
-    // (3.194.2). Served as a single list resolved with no argument -- which is
-    // `both` -- a run launched from the walk list alone was held up to both
-    // lists, so with anything ticked under coins and shapes that pass the
-    // heading was red for ever and no box could change it.
-    assert.ok(SRV.includes("for (const src of ['passers', 'walk', 'both']) {")
-      && SRV.includes("out[src] = require('./lib/coinsrun').passingUnits(src);"),
-      'the stagesets answer carries the pairs ticked on Coins now, resolved once per source');
-    assert.ok(UI.includes('swPassersNow = st.passersTicked || {};')
-      && UI.includes("if (st.passersTicked && typeof st.passersTicked === 'object') swPassersNow = st.passersTicked;"),
-      'the screen keeps them on the draw and on every poll');
-    assert.ok(/pairWords\(swPassersNow\[wantSource\]\)/.test(fn),
-      'and the heading compares the list for the source the screen has chosen, never a different one');
   },
 
   // THE CEILING BOX AND ITS COLUMN NAME EACH OTHER EXACTLY (3.130.2, owner
@@ -5605,25 +5563,6 @@ module.exports = {
   // is looked up in what publicParams actually returns, so adding a comparison
   // to one side and not the other fails the suite instead of painting a
   // heading red for ever.
-  theProvenanceCheckIsSentEveryFieldItReads() {
-    const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
-    const at = UI.indexOf('function swProvenance() {');
-    const whole = UI.slice(at, UI.indexOf('\n}\n', at));
-    // ONLY the block where `p` IS the record set's params. Scanned whole, this
-    // also picks up the `p` that is a paragraph element further down, and a
-    // test that reports style and innerHTML as missing fields is noise.
-    const from = whole.indexOf('const p = s1row.params || {};');
-    const fn = whole.slice(from, whole.indexOf("paint('#swH2'", from));
-    assert.ok(fn.length > 300, 'the stage 2 judgement is gone');
-    const sent = stages.publicParams({ params: {} });
-    const reads = [...new Set([...fn.matchAll(/\bp\.([A-Za-z][A-Za-z0-9]*)/g)].map((m) => m[1]))];
-    assert.ok(reads.length >= 6, `the check reads only ${reads.length} fields off the record set — it is not being read`);
-    const absent = reads.filter((k) => !(k in sent));
-    assert.deepStrictEqual(absent, [],
-      `the stage heading judges a record set by ${absent.join(', ')}, and the service never sends `
-      + `${absent.length > 1 ? 'those fields' : 'that field'} to the page — so every set disagrees about `
-      + `${absent.length > 1 ? 'them' : 'it'} and the heading is red whatever the owner types`);
-  },
 
   // THE STAGE HEADINGS, RUN RATHER THAN GREPPED (3.76.4, owner: "STILL RED").
   //
@@ -5636,172 +5575,63 @@ module.exports = {
   // It also reads the line the screen now prints under a red heading, because
   // a colour with no way to act on it cost three sittings: the reason lived in
   // the heading's hover and nowhere else.
-  theStageHeadingsFollowTheOwnersTruthTableRowForRow() {
+theStageHeadingsFollowTheOwnersTruthTableRowForRow() {
+    // THE OWNER'S TRUTH TABLE SINCE 3.241.0 ("Nothing is selected on stage 1,
+    // it should be black ... Put away was used on the campaign ... so there
+    // should be nothing currently set and it should be black too"): each
+    // heading says what is set at its own level. Run, not grepped: swProvenance
+    // is lifted out of the page and handed a stub screen.
     const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     const at = UI.indexOf('function swProvenance() {');
     assert.ok(at > 0, 'swProvenance is gone');
     const body = UI.slice(at, UI.indexOf('\n}\n', at) + 3);
-    // ITS OWN LIST, NOT THE MACHINE'S CACHE. This is a truth table about
-    // colours; which coins are downloaded where it runs is not part of it.
-    // BTCUSDT is deliberately NOT in it: two rows below type that coin into a
-    // box precisely because it is one the set was not run with.
-    const DEFAULTS = ['LTCUSDT', 'ETHUSDT', 'XRPUSDT', 'ADAUSDT', 'SOLUSDT'];
-
-    // the owner's own set, read off the box 2026-09-06
-    // THROUGH publicParams, WHICH IS WHAT THE PAGE ACTUALLY RECEIVES. Handing
-    // this test the whole set document is how the last fault got through: the
-    // check read `compare` and `trainOn`, the service sent neither, and a test
-    // fed the full document could never see it (owner, 2026-09-06: "STILL
-    // RED"). What the screen is given is what the screen is tested on.
-    // finished, as a set a stage 2 is built from is (3.240.1: the heading reds an unfinished one)
-    const S1 = {
-      id: 's1-a', name: 'S1 #1', status: 'done',
-      params: stages.publicParams({
-        params: {
-          universe: ['LTCUSDT'], compare: DEFAULTS.slice(),
-          sizes: { singles: false, doubles: false, triples: true },
-          geometries: ['weekly-8d', 'daily-1d', 'daily-2d', 'daily-3d', 'daily-4d'],
-          windowLayout: 'reserve61', trainOn: 'money', weightCap: 5, nullN: 20, fee: 0.00125,
-          allLoaded: true, startMonth: '2019-11', endMonth: '2026-09',
-        },
-      }),
-    };
-    const S2 = { id: 's2-a', name: 'S2 #1', status: 'done', parent: { id: 's1-a', name: 'S1 #1', carry: 600, of: 600 } };
-    const run = (over = {}, ticksOver = {}) => {
-      const BOX = {
-        '#swUni': 'LTCUSDT', '#swCompare': '', '#swLayout': 'reserve61', '#swGeom': 'daily-4d',
-        '#swNull1': '20', '#swStart': '2019-11', '#swEnd': '2026-09',
-        '#swFrom2': 's1-a', '#swFrom3': 's2-a', '#swCarry': '600', ...over,
-      };
-      const TICK = {
-        '#swSingles': false, '#swDoubles': false, '#swTriples': true,
-        '#swPermGeom': true, '#swByMoney': true, '#swAllData': true, ...ticksOver,
-      };
-      // WHERE THIS RUN TAKES ITS UNITS FROM (3.185.0): three choices, one of
-      // which is on. Each carries the value the launch is sent, so the reader
-      // below is the page's own and not a second copy of it.
-      const SOURCE = {
-        '#swSourceOff': 'none', '#swSourcePass': 'passers', '#swSourceWalk': 'walk',
-      };
+    const SETS = [
+      { id: 's1-a', stage: 1, name: 'S1 #1', status: 'done' },
+      { id: 's1-r', stage: 1, name: 'S1 #2', status: 'running' },
+      { id: 's2-a', stage: 2, name: 'S2 #1', status: 'done', parent: { id: 's1-a' } },
+      { id: 's3-p', stage: 3, name: 'S3 #1', status: 'paused', checkpoint: true, parent: { id: 's2-a' } },
+      { id: 's3-a', stage: 3, name: 'S3 #2', status: 'done', parent: { id: 's2-a' } },
+    ];
+    const run = (camp, picks) => {
       const el = {};
       // eslint-disable-next-line no-unused-vars
       const $ = (sel) => {
+        if (sel === '#campOut') return { dataset: { current: camp } };
         if (/^#sw(H|Why)/.test(sel)) { el[sel] = el[sel] || { style: { color: 'UNSET' }, title: '', innerHTML: '' }; return el[sel]; }
-        if (sel in SOURCE) return { checked: (ticksOver.source || 'none') === SOURCE[sel], value: SOURCE[sel] };
-        if (sel in TICK) return { checked: TICK[sel], value: '' };
-        return { value: BOX[sel] === undefined ? '' : BOX[sel] };
+        return { value: picks[sel] || '', checked: false };
       };
       // eslint-disable-next-line no-unused-vars
       const esc = (x) => String(x);
-      // WHAT A BLANK COIN BOX RESOLVES TO, the way the page has it (3.122.0):
-      // off /api/stagesets, not off the vocabulary -- the vocabulary holds the
-      // CHOICES a control offers and no control offers a coin list.
       // eslint-disable-next-line no-unused-vars
-      const swDefaultCoins = DEFAULTS.slice();
-      // eslint-disable-next-line no-unused-vars
-      const swSetsCache = [S1, S2];
-      // eslint-disable-next-line no-unused-vars
-      const swPassersNow = [];
-      // eslint-disable-next-line no-unused-vars
-      const VOCAB = { geometry: [{ value: 'daily-4d', label: 'daily 4-day' }] };
-      // THE PAGE'S OWN READER, SLICED OUT RATHER THAN RETYPED (3.185.0). A
-      // second copy here would let the screen and this check disagree about
-      // which of the three is on, which is the one thing it is checking.
-      const srcFn = UI.slice(UI.indexOf('const swSourceNow = () => {'), UI.indexOf('\n};\n', UI.indexOf('const swSourceNow = () => {')) + 3);
-      assert.ok(srcFn.length > 60 && srcFn.length < 500, 'the page no longer reads the chosen source in one place');
+      const swSetsCache = SETS;
       // eslint-disable-next-line no-eval
-      eval(`${srcFn}\n${body}\nswProvenance();`);
+      eval(`${body}\nswProvenance();`);
       const colour = (k) => {
         const c = (el[k] || { style: {} }).style.color;
         return c === '' ? 'black' : c === 'var(--pos)' ? 'green' : c === 'var(--neg)' ? 'red' : c;
       };
-      return {
-        h1: colour('#swH1'), h2: colour('#swH2'), h3: colour('#swH3'),
-        why2: (el['#swWhy2'] || {}).innerHTML || '', why3: (el['#swWhy3'] || {}).innerHTML || '',
-      };
+      return { c: colour('#swHC'), h: [1, 2, 3].map((n) => colour(`#swH${n}`)), why: [1, 2, 3].map((n) => (el[`#swWhy${n}`] || {}).innerHTML || '') };
     };
-
-    // THE OWNER'S TRUTH TABLE, 2026-09-06, ROW FOR ROW. Nothing else decides
-    // these colours, and every row here is one line they wrote.
     const ROWS = [
-      ['all empty',
-        { '#swFrom2': '', '#swFrom3': '' }, { '#swSingles': false, '#swDoubles': false, '#swTriples': false },
-        ['black', 'black', 'black']],
-      ['s1 set, others empty',
-        { '#swFrom2': '', '#swFrom3': '' }, {},
-        ['green', 'black', 'black']],
-      ["s1 set, s2 doesn't match, s3 empty",
-        { '#swNull1': '19', '#swFrom3': '' }, {},
-        ['green', 'red', 'black']],
-      ['s1 set, s2 matches, s3 empty',
-        { '#swFrom3': '' }, {},
-        ['green', 'green', 'black']],
-      ["s1 set, s2 matches, s3 doesn't match",
-        { '#swCarry': '100' }, {},
-        ['green', 'green', 'red']],
-      ['s1 set, s2 matches, s3 matches',
-        {}, {},
-        ['green', 'green', 'green']],
-      // and the three the owner added after, which settle it: no section's
-      // colour is gated on the one above it being green -- each answers for
-      // its own box and nothing else
-      ["s1 set, s2 empty, s3 doesn't match",
-        { '#swFrom2': '' }, {},
-        ['green', 'black', 'red']],
-      ["s1 set, s2 doesn't match, s3 matches s1",
-        { '#swNull1': '19' }, {},
-        ['green', 'red', 'green']],
-      ["s1 set, s2 doesn't match, s3 doesn't match",
-        { '#swNull1': '19', '#swCarry': '100' }, {},
-        ['green', 'red', 'red']],
+      ['nothing set anywhere', '', {}, 'black', ['black', 'black', 'black']],
+      ['a campaign and nothing picked', 'camp', {}, 'green', ['black', 'black', 'black']],
+      ['a finished stage 1 picked', 'camp', { '#swFrom2': 's1-a' }, 'green', ['green', 'black', 'black']],
+      ['a running stage 1 picked', 'camp', { '#swFrom2': 's1-r' }, 'green', ['red', 'black', 'black']],
+      ['stage 1 and stage 2 picked', 'camp', { '#swFrom2': 's1-a', '#swFrom3': 's2-a' }, 'green', ['green', 'green', 'black']],
+      ['a paused stage 3 picked', 'camp', { '#swFrom2': 's1-a', '#swFrom3': 's2-a', '#swSet3': 'continue:s3-p' }, 'green', ['green', 'green', 'red']],
+      ['a finished stage 3 picked', 'camp', { '#swFrom2': 's1-a', '#swFrom3': 's2-a', '#swSet3': 's3-a' }, 'green', ['green', 'green', 'green']],
+      ['a pick that is gone', 'camp', { '#swFrom2': 'gone' }, 'green', ['red', 'black', 'black']],
     ];
-    for (const [label, box, tick, want] of ROWS) {
-      const r = run(box, tick);
-      assert.deepStrictEqual([r.h1, r.h2, r.h3], want,
-        `${label} must read ${want.join(' ')} — got ${[r.h1, r.h2, r.h3].join(' ')}`);
+    for (const [what, camp, picks, c, h] of ROWS) {
+      const got = run(camp, picks);
+      assert.strictEqual(got.c, c, `${what}: the Campaign heading reads ${got.c}, not ${c}`);
+      assert.deepStrictEqual(got.h, h, `${what} must read ${h.join(' ')} — got ${got.h.join(' ')}`);
     }
-
-    // AND EVERY WAY OF BREAKING IT NAMES THE CONTROL AND BOTH VALUES, because a
-    // colour with no way to act on it cost three sittings.
-    const cases = [
-      ['null set size', { '#swNull1': '19' }, {}, 'h2', 'why2', ['19', '20']],
-      ['chunk shape', {}, { '#swPermGeom': false }, 'h2', 'why2', ['daily-4d', 'every chunk shape']],
-      ['compare coins', { '#swCompare': 'BTCUSDT' }, {}, 'h2', 'why2', ['BTCUSDT', 'LTCUSDT']],
-      ['weigh each trade by the money it was worth', {}, { '#swByMoney': false }, 'h2', 'why2', ['off', 'on']],
-      ['trade coins', { '#swUni': 'BTCUSDT' }, {}, 'h2', 'why2', ['BTCUSDT', 'LTCUSDT']],
-      ['carry forward', { '#swCarry': '100' }, {}, 'h3', 'why3', ['100', '600 of 600']],
-    ];
-    for (const [what, box, tick, head, line, values] of cases) {
-      const r = run(box, tick);
-      assert.strictEqual(r[head], 'red', `${what} disagrees with the record set and the heading is ${r[head]}`);
-      const said = r[line].replace(/<[^>]+>/g, '');
-      assert.ok(said.includes(what), `the screen does not name the control that disagrees: ${said}`);
-      for (const val of values) {
-        assert.ok(said.includes(val), `the screen does not say ${val}, so there is no way to act on it: ${said}`);
-      }
-    }
-    assert.strictEqual(run().why2, '', 'a green section still prints a reason');
-
-    // WHERE THIS RUN TAKES ITS UNITS FROM IS ITSELF COMPARED (3.185.0). The
-    // owner's set above took its units from the boxes, so choosing either of
-    // the two lists disagrees with it, and the screen says which two it is
-    // holding up to each other -- by the labels the choices carry.
-    for (const [choice, label] of [['passers', 'what is ticked under coins and shapes that pass'], ['walk', 'what is ticked from a walk set']]) {
-      const r = run({}, { source: choice });
-      assert.strictEqual(r.h2, 'red', `choosing ${label} against a set that read neither list reads ${r.h2}`);
-      const said = r.why2.replace(/<[^>]+>/g, '');
-      assert.ok(said.includes('where this run takes its units from'), `the screen does not name the control that disagrees: ${said}`);
-      assert.ok(said.includes(label) && said.includes('ignore what is on Coins'), `the screen does not say both sides by their labels: ${said}`);
-    }
-    assert.strictEqual(run({}, { source: 'none' }).h2, 'green', 'the set took its units from the boxes, and so does the screen');
-
-    // AND THE PICKER ALWAYS OFFERS THAT EMPTY ENTRY, whatever is on the box.
-    const opts = UI.slice(UI.indexOf('function swSetOptions('), UI.indexOf('\n}\n', UI.indexOf('function swSetOptions(')));
-    // since 3.240.0 that entry is "new": it names no set, and the section builds one
-    assert.ok(/const head = `<option value=""\$\{on\}>— new stage \$\{stage\} sweep —<\/option>`;/.test(opts),
-      'a box with record sets on it offers no way back to naming nothing');
-    assert.ok(/const on = selected \? '' : ' selected';/.test(opts),
-      'the empty entry is not what an unset box shows, so the first record set on the list is named without the owner choosing it');
+    // a red says why, on the screen
+    assert.ok(/S1 #2 is running — nothing can be built from it until it has finished/.test(run('camp', { '#swFrom2': 's1-r' }).why[0]),
+      'a red stage 1 does not say why under its heading');
+    assert.ok(/S3 #1 is paused/.test(run('camp', { '#swFrom2': 's1-a', '#swFrom3': 's2-a', '#swSet3': 'continue:s3-p' }).why[2]),
+      'a paused stage 3 does not say so under its heading');
   },
 
   // A BOX IS COMPARED AS THE LAUNCH RESOLVED IT (3.76.3, owner: "you've got
@@ -5819,38 +5649,6 @@ module.exports = {
   // This reads BOTH files, because that is where the drift lives: the rule is
   // written twice, once in the launch and once in the screen, and nothing else
   // makes them move together.
-  theStageHeadingsCompareABoxTheWayTheLaunchResolvesIt() {
-    const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8')
-      .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
-    const LIB = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
-    const fn = UI.slice(UI.indexOf('function swProvenance() {'), UI.indexOf('\n}\n', UI.indexOf('function swProvenance() {')));
-    assert.ok(fn.length > 400, 'swProvenance is gone');
-
-    // THE COMPARE COINS. The launch records the resolved list, and records it
-    // EMPTY when neither doubles nor triples reads it; the screen must do both.
-    assert.ok(LIB.includes("const compareUsed = (compare.length ? compare : defaultCoins())\n    .filter(() => sizes.doubles || sizes.triples);"),
-      'the launch no longer resolves the compare coins this way — the screen below copies this rule and has to move with it');
-    assert.ok(/const wantCmp = \(\(c\('#swDoubles'\) \|\| c\('#swTriples'\)\) \? \(boxCmp\.length \? boxCmp : defaults\) : \[\]\)/.test(fn),
-      'the compare coins are compared as typed, so a blank box reads as disagreeing with the seventeen default pairs the run actually read — Stage 2 is red for ever');
-    assert.ok(/\['compare coins', wantCmp \? wantCmp\.split/.test(fn),
-      'the resolved compare coins are worked out and then not the thing compared');
-    assert.ok(!/boxCmp !== setCmp/.test(fn), 'the raw box is still what decides');
-
-    // THE MONTHS, the same fault in the same shape
-    assert.ok(LIB.includes("startMonth: params.startMonth || '2018-01',") && LIB.includes("endMonth: params.endMonth || '2026-06',"),
-      'the launch no longer falls back to those months — the screen below copies them and has to move with it');
-    assert.ok(/months\(c\('#swAllData'\), v\('#swStart'\) \|\| '2018-01', v\('#swEnd'\) \|\| '2026-06'\)/.test(fn),
-      'a blank month box reads as disagreeing with the month the run actually used');
-
-    // AND THE THIRD COLOUR. A heading with nothing to check claims nothing.
-    assert.ok(/if \(ok === null\) \{\n      h\.style\.color = '';/.test(fn),
-      'there are only two colours, so a heading with nothing to compare still claims green');
-    assert.ok(/paint\('#swH1', \(c\('#swSingles'\) \|\| c\('#swDoubles'\) \|\| c\('#swTriples'\)\) \? true : null,/.test(fn),
-      'stage 1 does not go green off its own section being set up, so the top of the truth table cannot hold');
-    assert.ok(/if \(!v\('#swFrom2'\)\) paint\('#swH2', null,/.test(fn), 'an empty stage 1 box still paints Stage 2 green');
-    assert.ok(/if \(!v\('#swFrom3'\) && !cont\) paint\('#swH3', null,/.test(fn), 'an empty stage 2 box still paints Stage 3 green');
-    assert.ok(!/names no record set yet\)/.test(fn), 'green still claims to cover the case that is now black');
-  },
 
   // The fee is the owner's, typed on the stage 1 panel and sent with the
   // launch as a share of the position; a launch without one is refused by

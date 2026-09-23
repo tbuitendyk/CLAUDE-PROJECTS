@@ -890,9 +890,9 @@ module.exports = {
     assert.ok(src.includes('await startPost(`api/stageset/${encodeURIComponent(cont)}/continue`, {});'), 'start stage 3 posts the start-again for the chosen run, through the post that does not put up a dialog when the gateway gives up');
     assert.ok(src.includes('started again <b>${esc(again.name)}</b> — progress above; the set lands on Boards.'), 'the message beside the button points at the running line, which carries the reading and then the pricing');
     assert.ok(src.includes("<button id=\"swStop\" class=\"danger\">${row.stage === 3 ? 'Pause' : 'Stop'}</button>"), 'the running line\'s control reads Pause on a stage 3 run and Stop on the others');
-    assert.ok(src.includes("const cont = s3pick.startsWith('continue:') ? s3pick.slice('continue:'.length) : null;") && src.includes('const pausedRow = cont ? rowOf(cont) : null;'),
-      'the provenance colours judge a paused run through its own stage 2 parent');
-    assert.ok(src.includes("else if (cont && !pausedRow) paint('#swH3', false, 'the paused record set named here is not on this box any more');"));
+    // a paused run picked there reads red and says it is paused (3.241.0; the
+    // owner's truth table in test-stages.js runs it)
+    assert.ok(src.includes("const id = raw.startsWith('continue:') ? raw.slice('continue:'.length) : raw;"), 'the heading does not read a paused run picked in stage 3 record set');
     // Boards says a paused set can be started again, and where
     assert.ok(src.includes("const canContinue = !!((sets.find((x) => x.id === doc.id) || {}).checkpoint);"), 'Boards reads whether a set can be started again off its LIST row — the set document does not carry it');
     assert.ok(src.includes("${canContinue ? ' It can be started again from the stage 3 section on Sweep.' : ''}"), 'Boards points at the control');
