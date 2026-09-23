@@ -1614,7 +1614,8 @@ module.exports = {
       const rich = stages.readFunnelRich(id);
       assert.strictEqual(rich.v, stages.FUNNEL_RICH_V);
       // 5 (3.223.0): the folder, one file per coin and shape, the blend's sums beside them
-      assert.strictEqual(rich.v, 5, 'the shape that keeps each coin and shape in its own file is the fifth (3.223.0)');
+      // 6 (3.235.0): the same folder, every sized setting's figures at its trades' own sizes
+      assert.strictEqual(rich.v, 6, 'the shape that keeps each coin and shape in its own file, every trade at its own size, is the sixth (3.235.0)');
       const q1 = rich.blend().q1;
       assert.strictEqual(q1.maxDrawdown, 15, 'the blend\'s number is the average across units');
       assert.deepStrictEqual(q1.pnlThirds, [2, 3, 4]);
@@ -1660,7 +1661,7 @@ module.exports = {
       // a store of the older shape reads as absent, never translated: the
       // one-file shapes have no index, and an index of another shape is not read
       fs.writeFileSync(path.join(SETS_DIR, `${id}.funnelrich.json`), JSON.stringify({ v: 4, settings: { q1: { maxDrawdown: 15 } } }));
-      assert.strictEqual(stages.readFunnelRich(id).v, 5, 'a one-file shape beside the folder is read instead of the folder');
+      assert.strictEqual(stages.readFunnelRich(id).v, stages.FUNNEL_RICH_V, 'a one-file shape beside the folder is read instead of the folder');
       fs.writeFileSync(path.join(dir, 'index.json'), JSON.stringify({ v: 4, unitsTotal: 2, unitsDone: 2 }));
       assert.strictEqual(stages.readFunnelRich(id), null, 'an older shape reads as absent, so the screen offers the rebuild again');
       assert.ok(!lib.includes('migrateFunnelRichV3'), 'the move of a third-shape file is still in the engine with nothing left to move (RULE TEN)');

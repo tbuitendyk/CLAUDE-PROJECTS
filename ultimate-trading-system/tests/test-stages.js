@@ -1577,13 +1577,13 @@ module.exports = {
     const sw = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
     const task = sw.slice(sw.indexOf('async function s3UnitTask(task) {'), sw.indexOf('\n}\n', sw.indexOf('async function s3UnitTask(task) {')));
     // the one direct call left is Tune's per-trade capture (3.92.0), which
-    // prices each entry on its own at size 1 and does not carry the lean --
-    // said in the loop record, left for the owner
+    // prices each entry on its own -- at the size the field or the lean gave
+    // it since 3.235.0, where before it was size 1 and carried neither
     // two simulators in the task since 3.212.0: the lean split's and the field
     // gate's, both inside the pricers; nothing prices a window beside them
     assert.strictEqual(task.split('bracketLib.simCell(').length - 1, 2, 'the task must not price a window beside the lean split and the field gate');
     assert.strictEqual(task.split('priceOn(').length - 1, 5, 'every window goes through the one chooser between the lean split and the field gate: five windows');
-    assert.ok(task.includes('const one = bracketLib.simCell(cell, [chunksArr[i]], [call], tradeMap, geo, bandPct, fee);'), 'and that one call is the per-trade capture');
+    assert.ok(task.includes('const one = bracketLib.simCell(cell, [chunksArr[i]], [call], tradeMap, geo, bandPct, fee, undefined, [size]);'), 'and that one call is the per-trade capture, each trade at its own size (3.235.0)');
     const st = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
     assert.ok(st.includes('    lean: leanOf((doc.params || {}).confirmLeans, rec),'), 'every unit is handed the lean the set wrote for it');
     assert.strictEqual(task.split('priceLean(cell,').length - 1, 1, 'the lean split is reached only through the chooser');
