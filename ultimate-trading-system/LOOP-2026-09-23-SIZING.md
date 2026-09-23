@@ -193,6 +193,41 @@ the rebuild may keep more or fewer survivors, and that is read, not guessed.
   row, Apply held while typed numbers are unpriced, REBUILD REQUIRED in front of
   the flagged set's name in both boxes.
 
+## Verified for 3.235.0 and 3.236.0 (the checking done after each deploy)
+
+- 3.235.0 deployed (7007324), then the suite: two tests pinned 3.234's shapes
+  and failed; fixed test-only (2cf807c). The box then flagged 11 sets and
+  nothing else, as S8 foresaw.
+- S9, S10: test-tunecapture.js `aFlaggedFamilyIsRebuiltInPlaceWhenOneOfItIsOpened`
+  -- a rule cut from a sized stage 3 set, a held set read from it and a
+  half-life set built from it, all stamped with the release before sizing:
+  opening the held set rebuilds all three under their own ids and names, each
+  kept as it was beside it and none flagged afterwards; the rule keeps the same
+  survivors on a board that has not moved; the held set is read again under
+  its own number; the half-life run is done again on the rule, is its only run,
+  and the old run's retrained members are kept aside; the half-life set is
+  built again in place from that run, each record it keeps carrying the
+  half-life that won on it. Every set of the family says the rebuild is going
+  while it goes, and says how it ended.
+- Hunting the instrument: the first version of that test passed without ever
+  building a half-life set again -- on the planted coin the run done again
+  improved no record, so the set was left as it was (D14, and it said why,
+  which is the refusal working). The test now makes the first row of every
+  table it reads won by the 12-month column when no row was won, so the part
+  that builds the set again in place is run and checked.
+- Guards: the ten on the family rebuild and the four left from 3.235.0 were
+  each broken in turn and every one was caught.
+- The flag line drawn in a browser on Tune with fabricated answers and read:
+  the reasons, then "rebuilding now: ..." in the same line, one press made, no
+  dialog, the screen not drawn again.
+- A capture pressed on a set still waiting for its rebuild is refused while the
+  rebuild keeps the box busy; one taken in a gap between two steps is of the
+  survivors as they were, and is marked to be taken again when the set is
+  rebuilt, with no look on it counted. Left as it is.
+- 3.236.0 deployed (477c97e): the whole suite after it, 1202 passed, none
+  failed. The box flags the same 11 sets after the deploy (nothing is rebuilt
+  until it is opened).
+
 ## Found, not in this loop (left for the owner)
 
 - The press beside Work out the test history numbers prices every coin and

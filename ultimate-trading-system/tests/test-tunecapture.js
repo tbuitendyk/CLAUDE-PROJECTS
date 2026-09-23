@@ -886,9 +886,21 @@ module.exports = {
   // name, each kept as it was beside it, and none flagged afterwards.
   async aFlaggedFamilyIsRebuiltInPlaceWhenOneOfItIsOpened() {
     const fset = require('../lib/fieldset');
+    const HLmod = require('../lib/halflife');
     const field = fabricatedField();
     let c = null;
     const aside = [];
+    // A RUN ON THE PLANTED COIN MAY IMPROVE NO RECORD (test-halflife.js says so
+    // too), and a half-life set whose run improves nothing is left as it was
+    // (D14) -- which would leave the rebuild of a half-life set, the part that
+    // builds it again in place, never run here. So every table read in this
+    // test has its first row won by the 12-month column when no row was won.
+    const realRead = HLmod.readTable;
+    HLmod.readTable = (rows, columns) => {
+      const out = realRead(rows, columns);
+      if (out.rows.length && !out.rows.some((r) => r.best && r.best !== HLmod.NONE)) out.rows[0].best = 'h12';
+      return out;
+    };
     try {
       c = await chain('tune rebuild family test', { fieldId: field.id, fieldRead: 'agreement', fieldAgreeMin: '30', fieldRungs: '50:1,100:2', fieldSilent: '0.5' });
       const rule = c.cut;
@@ -933,14 +945,9 @@ module.exports = {
       await stages.rebuildWait();
       const ended = stages.rebuildStatus(held.id);
       assert.ok(!ended.running && (ended.done || /could not be rebuilt/.test(ended.error || '')), `and each says how it ended: ${JSON.stringify(ended)}`);
-      // a half-life set whose redone run improves no record is left as it was, and says why (D14)
-      const hlAfter = stages.getSet(hl.id);
-      const hlStopped = (stages.rebuildOf(hlAfter) || {}).failed || null;
-      if (hlStopped) {
-        assert.ok(/no record improved/.test(hlStopped), `the half-life set that could not be built again says why: ${hlStopped}`);
-        assert.strictEqual(hlAfter.release, '3.234.6', 'and is left exactly as it was');
-        family.pop();
-      }
+      // the half-life set is built again, not left as it was
+      const hlStopped = (stages.rebuildOf(stages.getSet(hl.id)) || {}).failed || null;
+      assert.strictEqual(hlStopped, null, `the half-life set is built again from the run done again: ${hlStopped}`);
       for (const id of family) {
         const now = stages.getSet(id);
         const was = before[id];
@@ -960,12 +967,13 @@ module.exports = {
       assert.ok(runs.length === 1 && runs[0].look === 1 && runs[0].at > run1.at, `the half-life run was done again on the rule, and is its only one: ${runs.length}`);
       assert.ok(fs.existsSync(`${stages.halfLifeFile(rule.id, run1.id)}.before-rebuild`), 'the retrained members of the run as it was are kept beside it');
       assert.ok(fs.existsSync(stages.halfLifeFile(rule.id, runs[0].id)), 'and the run done again has its own');
-      if (!hlStopped) {
-        const x = stages.getSet(hl.id);
-        assert.strictEqual(x.derived.run, runs[0].id, 'the half-life set is built from the run done again');
-        assert.ok(x.derived.at > before[hl.id].derived.at, 'which is newer than the one it was built from');
-        assert.deepStrictEqual(x.derived.months, [12], 'at the half-lives its own run was ticked at');
-      }
+      const x = stages.getSet(hl.id);
+      assert.strictEqual(x.derived.run, runs[0].id, 'the half-life set is built from the run done again');
+      assert.ok(x.derived.at > before[hl.id].derived.at, 'which is newer than the one it was built from');
+      assert.deepStrictEqual(x.derived.months, [12], 'at the half-lives its own run was ticked at');
+      assert.ok(x.survivors.length >= 1 && x.survivors.every((sv) => sv.halfLife === 12), 'each record it keeps carries the half-life that won on it');
+      assert.deepStrictEqual(x.rule, r.rule, 'and it carries the rule cut again');
+      assert.strictEqual(x.counts.of, runs[0].rows.length, 'out of the rows of the table run again');
       // pressed by the screen once a visit, followed in place, never redrawn
       const ui = src('public/construct.js');
       const open = ui.slice(ui.indexOf('function rebuildOnOpen(id) {'), ui.indexOf('// THE RULES A TAB LISTS'));
@@ -981,6 +989,7 @@ module.exports = {
       }
       if (c) c.cleanup();
       try { fset.deleteField(field.id, field.id); } catch (_) { /* never written */ }
+      HLmod.readTable = realRead;
     }
   },
   // BREAKOUT TRADES TAKE NO PROTECTIVE STOP YET, AND THE CONVICTION ROWS TAKE
