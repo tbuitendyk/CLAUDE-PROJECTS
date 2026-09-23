@@ -3175,10 +3175,16 @@ function tnRememberedWindows() {
   } catch (_) { /* private window, or nothing saved */ }
   return ['train', 'test'];
 }
+// EACH SET BY ITS NAME AND NOTHING ELSE (3.234.4, owner order 2026-09-23: "it's
+// suffixing junk onto the name that ought not to be put there! just let the
+// user name things please!"). Every option carried the coin and shape, the
+// survivor count and, on a half-life set, the whole name of the set it came
+// from, after the name the owner gave it. The line under the box says those
+// things about the set chosen.
 function tnSetBoxHtml(list, chosen) {
   return `<div class="row" style="align-items:flex-end">
     <label class="f" title="which Stage 4 record set to capture the trades of, from every set on this box, newest first">Stage 4 record set<select id="tnSet">${list.length
-    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors${x.derived ? ` · half-life set from ${esc(x.derived.fromName || x.derived.from)}` : ''}</option>`).join('')
+    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${esc(x.name || x.id)}</option>`).join('')
     : '<option value="">no Stage 4 record set on this box yet</option>'}</select></label></div>`;
 }
 function tnCaptureBlockHtml(c) {

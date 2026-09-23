@@ -10317,7 +10317,12 @@ function buildHalfLifeSet(setId, asked = {}) {
   if (!readHalfLifeRun(src.id, run.id)) throw new Error('the retrained members for that table are missing beside the set — press Retrain at the ticked half-lives again');
   const kept = (run.rows || []).filter((r) => r.best && r.best !== HL.NONE);
   if (!kept.length) throw new Error('no record improved with any half-life on this table, so there is nothing to build');
-  const name = String(asked.name ?? '').trim().slice(0, 80);
+  // THE NAME TYPED IS THE NAME (3.234.4, owner order 2026-09-23: "when the user
+  // gives a name to a new half life record set on the history tab THAT IS THE
+  // NAME TO GO WITH"). It was cut at 80 characters, so a name that ended with
+  // its coin and shape lost them, and the boxes then added the coin and shape
+  // back after the cut. Nothing is cut or added now.
+  const name = String(asked.name ?? '').trim();
   if (!name) throw new Error('name the half-life set — something you will recognise on Tune and Greenlight');
   const taken = nameTaken(name);
   if (taken) throw new Error(`a record set called "${name}" already exists (${taken.id}) — pick another name`);

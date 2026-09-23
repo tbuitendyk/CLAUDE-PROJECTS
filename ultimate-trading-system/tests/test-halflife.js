@@ -324,8 +324,12 @@ module.exports = {
         assert.ok(/no record improved/.test(threw), threw);
         return;   // the fabricated year gave the half-lives nothing to win; the rest is covered when they do
       }
-      const built = stages.buildHalfLifeSet(c.cut.id, { runId: block.id, name: 'half-life build test set' });
+      // THE NAME TYPED IS THE NAME (3.234.4): a name longer than the old cut at
+      // 80 characters is kept whole, to the last character
+      const typed = 'half-life build test set - a name the owner typed that runs well past eighty characters, down to its coin and shape';
+      const built = stages.buildHalfLifeSet(c.cut.id, { runId: block.id, name: typed });
       c.made.push(built.id);
+      assert.strictEqual(stages.getSet(built.id).name, typed, 'the name typed for a half-life set is not the name it is given');
       assert.deepStrictEqual({ survivors: built.survivors, of: built.of, from: built.from, run: built.run }, { survivors: improved.length, of: block.rows.length, from: c.cut.id, run: block.id });
       const d = stages.getSet(built.id);
       assert.deepStrictEqual(d.survivors.map((s) => s.label), improved.map((r) => r.label), 'only the rows a half-life won, in the table\'s order');

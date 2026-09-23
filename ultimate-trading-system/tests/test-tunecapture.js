@@ -476,7 +476,10 @@ module.exports = {
     // THE SET'S COIN AND SHAPE ARE SAID ONCE (3.142.3): every set box prints the name through the one
     // helper, which adds the unit only when the name does not already carry it, with one separator
     assert.ok(/function setNameWords\(x\) \{/.test(ui) && ui.includes("return String(x.name || '').includes(unit) ? esc(x.name) : `${esc(x.name)} · ${esc(unit)}`;"), 'the set boxes no longer say a set\'s coin and shape once');
-    assert.strictEqual((ui.match(/\$\{setNameWords\((x|b)\)\}/g) || []).length, 5, 'a set box prints the name and unit its own way again');
+    // (3.234.4, owner order: the Stage 4 record set box under Per-trade capture
+    // shows each set by its name alone, so it no longer goes through the helper)
+    assert.strictEqual((ui.match(/\$\{setNameWords\((x|b)\)\}/g) || []).length, 4, 'a set box prints the name and unit its own way again');
+    assert.ok(!ui.slice(ui.indexOf('function tnSetBoxHtml('), ui.indexOf('function tnCaptureBlockHtml(')).includes('setNameWords('), 'the capture set box adds the coin and shape after the name again');
     assert.ok(!/\$\{esc\(x\.name\)\} · \$\{esc\(x\.unitName/.test(ui) && !/\$\{esc\(b\.name\)\} — /.test(ui), 'a set box still prints the unit beside the name itself');
     // THE UNIT LIVES IN THE CAPTION (3.142.2, owner: "why is the alignment of this stuff so ugly?"): a captioned
     // field is a column, so text after its box lands on a line of its own. The page's pattern is Verify's
@@ -796,5 +799,22 @@ module.exports = {
     // the message with nothing to aim at says what is missing, in the screen's words
     assert.ok(draw.includes("alert('No scan target: no Stage 4 record set on this box has its trades captured yet. '"), 'the message with nothing to aim at is not the one that says what is missing');
     assert.ok(!/opposite rail|breakout cell/.test(draw), 'the message from the older engine is still on Tune');
+  },
+  // THE STAGE 4 RECORD SET BOX UNDER PER-TRADE CAPTURE SHOWS EACH SET BY ITS
+  // NAME AND NOTHING ELSE (3.234.4, owner order 2026-09-23: "it's suffixing
+  // junk onto the name that ought not to be put there! just let the user name
+  // things please!").
+  theCaptureSetBoxShowsEachSetByItsNameAlone() {
+    const ui = src('public/construct.js');
+    const at = ui.indexOf('function tnSetBoxHtml(list, chosen) {');
+    // eslint-disable-next-line no-new-func
+    const tnSetBoxHtml = new Function('esc', `${ui.slice(at, ui.indexOf('\n}\n', at) + 3)}\nreturn tnSetBoxHtml;`)((t) => String(t));
+    const list = [
+      { id: 's4-a', name: 'HALF LIFE TABLE: my own name', unitName: 'BNBUSDT alongside LTCUSDT daily-4d', counts: { survivors: 51 }, derived: { fromName: 'the set it came from' } },
+      { id: 's4-b', name: 'a rule on BTC', unitName: 'BTCUSDT alongside ETCUSDT daily-3d', counts: { survivors: 70 } },
+    ];
+    const html = tnSetBoxHtml(list, 's4-a');
+    const options = [...html.matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)].map((m) => [m[1], m[2]]);
+    assert.deepStrictEqual(options, [['s4-a', 'HALF LIFE TABLE: my own name'], ['s4-b', 'a rule on BTC']], `a set in the box carries something after its name: ${JSON.stringify(options)}`);
   },
 };
