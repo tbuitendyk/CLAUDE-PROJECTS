@@ -25,7 +25,7 @@ const lines = [];
 for (const [u, w] of Object.entries(units)) {
   if (!w) continue;
   n++;
-  const key = pairs[u];
+  const parts = u.split("|"); const key = pairs[parts[0] + "|" + parts[3]];
   const pr = key && side.pairs ? side.pairs[key] : null;
   if (!pr) { noPair++; continue; }
   const full = pr.fullAt ?? null;
