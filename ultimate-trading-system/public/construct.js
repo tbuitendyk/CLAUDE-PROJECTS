@@ -894,16 +894,16 @@ function swLockSections() {
 // PUT AWAY ON SWEEP (3.240.0, owner order: "Put away buttons near the selectors
 // in each section including in the Campaign box ... putting away at a higher
 // level also closes all lower levels"). Remembered in this browser; it only
-// hides -- the campaign in force and every pick stay as they are -- and Open
-// opens its own level alone.
+// hides -- the campaign in force and every pick stay as they are. OPEN REOPENS
+// WHAT CLOSED WITH IT (3.240.1): it opened its own level alone, so bringing the
+// screen back after one press of the Campaign box's Put away took four presses.
 const SW_AWAY_KEY = 'cx-sweep-away';
 const SW_LEVELS = ['c', '1', '2', '3'];
 function swAwayAll() { try { return JSON.parse(localStorage.getItem(SW_AWAY_KEY) || '{}') || {}; } catch (_) { return {}; } }
 const swAway = (k) => swAwayAll()[String(k)] === true;
 function swSetAway(k, away) {
   const all = swAwayAll();
-  if (away) for (const x of SW_LEVELS.slice(SW_LEVELS.indexOf(String(k)))) all[x] = true;
-  else all[String(k)] = false;
+  for (const x of SW_LEVELS.slice(SW_LEVELS.indexOf(String(k)))) all[x] = !!away;
   try { localStorage.setItem(SW_AWAY_KEY, JSON.stringify(all)); } catch (_) { /* private window */ }
 }
 function swApplyAway() {
@@ -1106,23 +1106,6 @@ async function swProgress() {
 // naming no record set is green.
 function swProvenance() {
   const sets = swSetsCache || [];
-  // ...and the helper lives INSIDE this function on purpose: a test lifts
-  // swProvenance out of the page whole and runs it alone.
-  // WHAT A STAGE SECTION IS SHOWING (3.209.0, owner order: "if that copy
-  // settings button is used on BOTH then they should BOTH be green"). The set
-  // named in the section's own name box, when a set of that stage carries that
-  // name -- Copy settings into the form on Boards puts the name there, so the
-  // section shows the set the owner loaded, however many newer sets exist. With
-  // no such set, blank or a name not yet started, it is the NEWEST set of that
-  // stage on the box, a running one included (3.196.0): the run about to be
-  // started is what the section shows then.
-  function swShownSet(sets, stage, name) {
-    const mine = (sets || []).filter((x) => x && x.stage === stage);
-    const typed = String(name || '').trim();
-    const named = typed ? (mine.find((x) => String(x.name || '').trim() === typed) || null) : null;
-    if (named) return named;
-    return mine.reduce((a, b) => (a && String(a.createdAt || '') >= String(b.createdAt || '') ? a : b), null);
-  }
   const rowOf = (id) => sets.find((x) => x.id === id) || null;
   // A SECTION THAT NAMES NO RECORD SET CLAIMS NOTHING (3.76.3, owner order
   // 2026-09-06: "you've got stage 3 that's got nothing in it green. that's
@@ -1207,41 +1190,20 @@ function swProvenance() {
   paint('#swH1', (c('#swSingles') || c('#swDoubles') || c('#swTriples')) ? true : null,
     'stage 1 is set up once singles, doubles or triples is ticked — until then there is nothing here for the sections below to link to');
 
-  // WHAT THE STAGE 1 SECTION IS SHOWING (3.196.0, owner order: "when there are
-  // two green sections sweep 1 and sweep 2 on the sweep tab, and a new sweep 1
-  // is made, why would the existing sweep 2 set-up that's still named for the
-  // prior sweep 1 stay green? as soon that start stage 1 begins the stage 2
-  // sweep is no longer of that provenance, so turn it red").
-  //
-  // Stage 1 has no picker, so until now "the section above" meant its BOXES and
-  // nothing else -- and a new stage 1 run launched from the same boxes changed
-  // none of them. Two greens went on saying the chain was linked while the
-  // section above had moved on to a set the stage 2 box had never heard of.
-  //
-  // It is the NEWEST stage 1 set on the box, and a running one counts: the set
-  // exists from the moment Start stage 1 is pressed, which is when the owner
-  // says the provenance goes. Read off the box rather than off this screen's
-  // memory, so it survives a reload and says the same thing in every tab.
-  // ...or the set the stage 1 name box names (3.209.0), see swShownSet
-  const s1Shown = swShownSet(sets, 1, v('#swName1'));
+  // THE SET PICKED ABOVE IS THE PARENT (3.240.1). Each section shows the set its
+  // box names, filled from it, so the section above can no longer have moved on
+  // from the set this one builds from -- the old "overtaken" red is gone. What
+  // is left to say: nothing picked above (black), a set above that nothing can
+  // be built from yet (red), or a linked chain (green).
   const s1row = rowOf(v('#swFrom2'));
   sayWhy('#swWhy2', null);
   sayWhy('#swWhy3', null);
   if (!v('#swFrom2')) paint('#swH2', null, 'no stage 1 record set is picked in the stage 1 section above, so there is nothing for this section to come out of');
   else if (!s1row) paint('#swH2', false, 'the stage 1 record set named here is not on this box any more');
-  else if (s1Shown && s1Shown.id !== s1row.id) {
-    // OVERTAKEN, AND THE ONLY WAY BACK IS FORWARD. No box above can undo a
-    // newer stage 1 existing, so the line does not offer that: it names the set
-    // the section above is showing now, and that is what to choose here.
-    const made = s1Shown.status === 'done' ? 'has since made' : 'is making';
-    paint('#swH2', false, `the stage 1 section above ${made} ${s1Shown.name}, and this box still names ${s1row.name}`,
-      `Choose ${s1Shown.name} here and this goes green again — or put ${s1row.name} in the stage 1 name box, which is what Copy settings into the form on Boards does.`);
-    sayWhy('#swWhy2', {
-      what: 'stage 1 record set',
-      say: `this box names ${s1row.name}, and the stage 1 section above ${made} ${s1Shown.name}. `
-        + `A record set built here would come out of ${s1row.name}, which is not what stage 1 is showing any more. `
-        + `Choose ${s1Shown.name} to go green again, or put ${s1row.name} in the stage 1 name box.`,
-    });
+  else if (!v('#swFrom3') && s1row.status !== 'done') {
+    paint('#swH2', false, `${s1row.name} is ${s1row.status} — a stage 2 can be built only from a finished stage 1 record set`,
+      'Pick a finished stage 1 record set above, or wait for this one to land.');
+    sayWhy('#swWhy2', { what: 'stage 1 record set', say: `${s1row.name} is ${s1row.status}, and a stage 2 can be built only from a finished stage 1 record set.` });
   } else {
     const p = s1row.params || {};
     // A BOX IS COMPARED AS THE LAUNCH RESOLVED IT, NEVER AS IT IS TYPED
@@ -1365,17 +1327,6 @@ function swProvenance() {
   // was priced from, so the truth table reads exactly as it does for a launch
   // (read off the box's own value here rather than through swContinueOf, so
   // this function stays whole when a test lifts it out and runs it alone)
-  // AND WHAT THE STAGE 2 SECTION IS SHOWING, THE SAME WAY (3.197.0, owner order:
-  // "fix stage 3 the same way").
-  //
-  // Stage 3 already asked whether the stage 2 set it names came out of the
-  // stage 1 set in the stage 2 box. Make a SECOND stage 2 from that same stage
-  // 1 and that question still answers yes, so stage 3 stayed green while the
-  // section above had moved to a set it had never heard of -- the identical
-  // hole 3.196.0 closed one section up, and it is closed the same way here
-  // because the same job gets the same shape (RULE ELEVEN clause 5).
-  // ...or the set the stage 2 name box names (3.209.0), see swShownSet
-  const s2Shown = swShownSet(sets, 2, v('#swName2'));
   const s3v = v('#swFrom3');
   const s3pick = v('#swSet3');   // the paused runs are in the stage 3 section's own box (3.240.0)
   const cont = s3pick.startsWith('continue:') ? s3pick.slice('continue:'.length) : null;
@@ -1384,21 +1335,10 @@ function swProvenance() {
   if (!v('#swFrom3') && !cont) paint('#swH3', null, 'no stage 2 record set is picked in the stage 2 section above, so there is nothing for this section to come out of');
   else if (cont && !pausedRow) paint('#swH3', false, 'the paused record set named here is not on this box any more');
   else if (!s2row) paint('#swH3', false, 'the stage 2 record set named here is not on this box any more');
-  else if (!cont && s2Shown && s2Shown.id !== s2row.id) {
-    // A PAUSED RUN IS NOT OVERTAKEN, WHICH IS WHY THIS ASKS `!cont`. A paused
-    // stage 3 run was priced from its own parent and carrying on does not build
-    // anything from stage 2 -- its provenance is settled and cannot be pointed
-    // somewhere else. Reddening it would be a colour with no way back, which is
-    // the thing this whole block exists to avoid.
-    const made = s2Shown.status === 'done' ? 'has since made' : 'is making';
-    paint('#swH3', false, `the stage 2 section above ${made} ${s2Shown.name}, and this box still names ${s2row.name}`,
-      `Choose ${s2Shown.name} here and this goes green again — or put ${s2row.name} in the stage 2 name box, which is what Copy settings into the form on Boards does.`);
-    sayWhy('#swWhy3', {
-      what: 'stage 2 record set',
-      say: `this box names ${s2row.name}, and the stage 2 section above ${made} ${s2Shown.name}. `
-        + `A record set built here would come out of ${s2row.name}, which is not what stage 2 is showing any more. `
-        + `Choose ${s2Shown.name} to go green again, or put ${s2row.name} in the stage 2 name box.`,
-    });
+  else if (!cont && !s3pick && s2row.status !== 'done') {
+    paint('#swH3', false, `${s2row.name} is ${s2row.status} — a stage 3 can be priced only from a finished stage 2 record set`,
+      'Pick a finished stage 2 record set above, or wait for this one to land.');
+    sayWhy('#swWhy3', { what: 'stage 2 record set', say: `${s2row.name} is ${s2row.status}, and a stage 3 can be priced only from a finished stage 2 record set.` });
   } else {
     const par = s2row.parent || {};
     const carryBox = Number(v('#swCarry')) || 0;
@@ -1873,9 +1813,7 @@ function fillStageForm(doc) {
     setV('#swFee1', p.fee != null ? p.fee * 100 : 0.125);
     setV('#swDesc1', doc.desc || '');
     // AND THE NAME (3.209.0, owner order: "the settings INCLUDING the name
-    // must be loaded"). It is also what tells the stage 1 heading which set
-    // this section is showing, so the stage 2 section copied beside it can
-    // read green -- see swShownSet.
+    // must be loaded").
     setV('#swName1', doc.name || '');
   }
   if (doc.stage === 2) {
@@ -4660,6 +4598,7 @@ async function drawSweep() {
     if (box) box.addEventListener('change', () => swPick(n));
   }
   swApplyAway();
+  swFillPicked();
   for (const el of sweepControls()) {
     const onChange = () => {
       rememberSweepForm();
@@ -4715,6 +4654,25 @@ async function swPick(n) {
     } else {
       swForget(m);
     }
+  }
+  swLockSections();
+  rememberSweepForm();
+  swProvenance();
+  swSayCut2();
+  swCountsSoon();
+}
+// A PICK WRITTEN BACK ON A DRAW SHOWS ITS SET (3.240.1). The picks are
+// remembered with the rest of this screen's boxes, and written back they
+// named one set while the section below them still held whatever was typed
+// there last -- the box said S1 #7 and its section described another run. Each
+// picked section is filled from its set exactly as a pick by hand fills it.
+async function swFillPicked() {
+  for (const n of [1, 2, 3]) {
+    const v = swPicked(n);
+    if (!v) continue;
+    const id = v.startsWith('continue:') ? v.slice('continue:'.length) : v;
+    const got = await apiOr(`api/stageset/${encodeURIComponent(id)}`, null);
+    if (got && got.set && swPicked(n) === v) fillStageForm(got.set);
   }
   swLockSections();
   rememberSweepForm();
@@ -5016,9 +4974,8 @@ async function drawBoards() {
       const sN = Number(btn.dataset.bfold);
       // PUTTING A STAGE AWAY PUTS EVERY STAGE UNDER IT AWAY (3.240.0, owner
       // order: "when a Stage 1 board is Put away, all lower boards should be as
-      // well"); Open opens its own stage alone
-      if (fold[sN]) bSaveView(Object.fromEntries([1, 2, 3].filter((k) => k >= sN).map((k) => [`fold${k}`, false])));
-      else bSaveView({ [`fold${sN}`]: true });
+      // well"), and Open brings back what went with it (3.240.1)
+      bSaveView(Object.fromEntries([1, 2, 3].filter((k) => k >= sN).map((k) => [`fold${k}`, !fold[sN]])));
       bRedrawPeggedTo(`[data-bfold="${sN}"]`);
     };
   });

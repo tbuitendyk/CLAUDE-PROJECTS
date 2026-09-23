@@ -1712,118 +1712,28 @@ module.exports = {
   // THE REDUCER IS RUN, NOT READ. It is lifted out of the file by its own text
   // and exercised, so this cannot pass against a line that says the right words
   // and picks the wrong set.
-  theStageTwoHeadingGoesRedWhenANewerStageOneExists() {
+  // THE SET PICKED ABOVE IS THE PARENT, AND ITS HEADING SAYS WHETHER IT CAN
+  // BE BUILT FROM (3.240.1, owner: "there's a mix of red green and black on the
+  // screen. Makes no sense"). Since 3.240.0 each section shows the set its own
+  // box names, filled from it, so the old red -- the section above had moved on
+  // to a newer set than the one named below -- could only ever fire on a stale
+  // screen. Three states are left: black with nothing picked above, red when the
+  // set picked above is not finished, green otherwise.
+  theStageHeadingsSayWhetherTheSetPickedAboveCanBeBuiltFrom() {
     const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
-    // ONE FUNCTION SAYS WHAT A SECTION IS SHOWING (3.209.0), lifted out by its
-    // own text and run, so this cannot pass against words that pick the wrong set
-    const m = /\n  function swShownSet\(sets, stage, name\) \{\n([\s\S]*?)\n  \}\n/.exec(UI);
-    assert.ok(m, 'the page no longer works out which set a stage section is showing');
-    // eslint-disable-next-line no-new-func
-    const shown = new Function('sets', 'stage', 'name', m[1]);
-    const newest = (sets) => shown(sets, 1, '');
-
-    const at = (d) => `2026-09-${d}T00:00:00.000Z`;
-    const s1a = { id: 's1-a', stage: 1, name: 'S1 #1', status: 'done', createdAt: at('18') };
-    const s1b = { id: 's1-b', stage: 1, name: 'S1 #2', status: 'done', createdAt: at('19') };
-    const s1run = { id: 's1-c', stage: 1, name: 'S1 #3', status: 'running', createdAt: at('20') };
-    const s2 = { id: 's2-a', stage: 2, name: 'S2 #1', status: 'done', createdAt: at('19') };
-    const s2b = { id: 's2-b', stage: 2, name: 'S2 #2', status: 'done', createdAt: at('20') };
-    const s2run = { id: 's2-c', stage: 2, name: 'S2 #3', status: 'running', createdAt: at('21') };
-
-    assert.strictEqual(newest([s1a, s2]).id, 's1-a', 'with one stage 1 set it is the one being shown');
-    assert.strictEqual(newest([s1a, s1b, s2]).id, 's1-b', 'a newer stage 1 set is what the section shows');
-    assert.strictEqual(newest([s1b, s1a]).id, 's1-b', 'and the order the list arrives in does not decide it');
-    // A RUNNING ONE COUNTS. The owner's words are "as soon that start stage 1
-    // BEGINS" -- the set exists from the press, and that is when the older
-    // pairing stops being what stage 1 is showing.
-    assert.strictEqual(newest([s1a, s1b, s1run]).id, 's1-c', 'a stage 1 run that has begun is what the section is showing');
-    assert.strictEqual(newest([s2]), null, 'with no stage 1 set there is nothing being shown');
-    // and a stage 2 set is never mistaken for one
-    assert.strictEqual(newest([s2, s1a]).id, 's1-a', 'only stage 1 sets are looked at');
-
-    // THE NAME BOX POINTS (3.209.0, owner order: "if that copy settings button
-    // is used on BOTH then they should BOTH be green"). Copy settings into the
-    // form puts the set's name in the section's name box, and a section whose
-    // name box names a set of its own stage is showing THAT set, however many
-    // newer ones exist. Blank, or a name that is no set yet, falls back to the
-    // newest — the run about to be started.
-    assert.strictEqual(shown([s1a, s1b, s1run], 1, 'S1 #1').id, 's1-a', 'the set named in the name box is what the section shows, newer sets or not');
-    assert.strictEqual(shown([s1a, s1b, s1run], 1, '  S1 #1 ').id, 's1-a', 'the name is read trimmed');
-    assert.strictEqual(shown([s1a, s1b, s1run], 1, 'S1 #9').id, 's1-c', 'a name that is no set yet falls back to the newest');
-    assert.strictEqual(shown([s1a, s2], 1, 'S2 #1').id, 's1-a', "a stage 2 set's name never makes the stage 1 section show it");
-    assert.strictEqual(shown([s2, s2b, s2run], 2, 'S2 #1').id, 's2-a', 'and the stage 2 section reads its own name box the same way');
-    assert.strictEqual(shown([], 1, 'S1 #1'), null, 'with no set at all there is nothing being shown');
-
-    // THE HEADING ACTS ON IT, and says how to go green — which is NOT "set the
-    // boxes back": the way back is to choose the newer set, or to put the
-    // named set's name in the name box, which is what the copy does.
     const fn = UI.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
     const body = fn.slice(fn.indexOf('function swProvenance() {'), fn.indexOf('\n}\n', fn.indexOf('function swProvenance() {')));
-    assert.ok(/const s1Shown = swShownSet\(sets, 1, v\('#swName1'\)\);/.test(body),
-      'the stage 1 section does not read its own name box to say what it is showing');
-    assert.ok(/const s2Shown = swShownSet\(sets, 2, v\('#swName2'\)\);/.test(body),
-      'the stage 2 section does not read its own name box to say what it is showing');
-    assert.ok(/or put \$\{s1row\.name\} in the stage 1 name box/.test(body) && /or put \$\{s2row\.name\} in the stage 2 name box/.test(body),
-      'the red line does not say that the name box is a way back');
-    assert.ok(/else if \(s1Shown && s1Shown\.id !== s1row\.id\) \{/.test(body),
-      'the heading does not act on a stage 1 set newer than the one its box names');
-    assert.ok(/paint\('#swH2', false,/.test(body) && /Choose \$\{s1Shown\.name\} here and this goes green again/.test(body),
-      'it goes red and names the set to choose');
-    assert.ok(/sayWhy\('#swWhy2', \{[\s\S]*?say:/.test(body),
-      'and it says why on the screen, not only in a hover');
-    assert.ok(/const made = s1Shown\.status === 'done' \? 'has since made' : 'is making';/.test(body),
-      'a run still going is described as going, not as finished');
-
-    // AND STAGE 3 THE SAME WAY (3.197.0, owner order: "fix stage 3 the same
-    // way"). Stage 3 asked only whether the stage 2 set it names came out of
-    // the stage 1 set in the stage 2 box -- make a SECOND stage 2 from that
-    // same stage 1 and that answers yes, so stage 3 stayed green while the
-    // section above had moved on. The reducer is run here too.
-    const newest2 = (sets) => shown(sets, 2, '');
-    assert.strictEqual(newest2([s1a, s1b, s2]).id, 's2-a', 'only stage 2 sets are looked at');
-    assert.strictEqual(newest2([s2, s2b]).id, 's2-b', 'a newer stage 2 set is what the section shows');
-    assert.strictEqual(newest2([s2b, s2, s2run]).id, 's2-c', 'a stage 2 run that has begun is what the section is showing');
-    assert.strictEqual(newest2([s1a]), null, 'with no stage 2 set there is nothing being shown');
-    assert.ok(/else if \(!cont && s2Shown && s2Shown\.id !== s2row\.id\) \{/.test(body),
-      'the stage 3 heading does not act on a stage 2 set newer than the one its box names');
-    // A PAUSED RUN IS NOT OVERTAKEN. It was priced from its own parent and
-    // carrying on builds nothing from stage 2, so there is no other set to
-    // point it at -- reddening it would be a colour with no way back.
-    assert.ok(/else if \(!cont &&/.test(body),
-      'a paused stage 3 run is reddened by a newer stage 2 it can never be pointed at');
-    assert.ok(/Choose \$\{s2Shown\.name\} here and this goes green again/.test(body),
-      'the stage 3 red does not name the set to choose');
-
-    // AND LOADING A SET'S SETTINGS BACK SETS THE COLOURS AGAIN (3.197.0, owner:
-    // "if we load the settings from a sweep on boards back to the set on sweep
-    // the colors should be set again properly of course").
-    //
-    // Copy settings into the form writes straight into the boxes, which fires
-    // no change, so none of the wiring behind them ran. Three holes, one cause:
-    // the three choices were left wherever they were, so a set run from a walk
-    // set loaded as though it had been run from the boxes; the greyed boxes
-    // still matched the source selected BEFORE the load; and the colours stayed
-    // as they were until the four-second poll quietly corrected them.
-    const fill = UI.slice(UI.indexOf('function fillStageForm(doc) {'), UI.indexOf('\n}\n', UI.indexOf('function fillStageForm(doc) {')));
-    assert.ok(/const srcBox = \{ none: '#swSourceOff', passers: '#swSourcePass', walk: '#swSourceWalk' \}\[src\] \|\| null;/.test(fill),
-      'the load does not put back where the run took its units from');
-    assert.ok(/if \(srcBox\) setC\(srcBox, true\);/.test(fill),
-      'a source the screen has no control for is forced to the nearest one rather than left alone');
-    assert.ok(/setC\('#swPlainUnits', p\.plainUnits === true\);/.test(fill),
-      'the load does not put back whether the run was the control arm');
-    for (const call of ['swPassersGrey();', 'swProvenance();', 'swCounts();']) {
-      assert.ok(fill.includes(call), `the load does not settle the screen: ${call} is not called after it`);
-    }
-    // AND THE NAME RIDES WITH THE COPY, ON EVERY STAGE (3.209.0, owner order:
-    // "the settings INCLUDING the name must be loaded to the appropriate Sweep
-    // section"). Each stage's block fills its own name box and no other.
-    const blockOf = (n) => fill.slice(fill.indexOf(`doc.stage === ${n}`), n < 3 ? fill.indexOf(`doc.stage === ${n + 1}`) : fill.length);
-    for (const n of [1, 2, 3]) {
-      assert.ok(blockOf(n).includes(`setV('#swName${n}', doc.name || '');`), `a stage ${n} set's copy does not carry its name into the stage ${n} name box`);
-      for (const other of [1, 2, 3].filter((x) => x !== n)) {
-        assert.ok(!blockOf(n).includes(`#swName${other}`), `a stage ${n} set's copy must leave the stage ${other} name box alone`);
-      }
-    }
+    assert.ok(!/swShownSet|s1Shown|s2Shown/.test(UI), 'the overtaken check is still there');
+    assert.ok(body.includes("else if (!v('#swFrom3') && s1row.status !== 'done') {"), 'a stage 2 built from an unfinished stage 1 set does not go red');
+    assert.ok(body.includes("else if (!cont && !s3pick && s2row.status !== 'done') {"), 'a stage 3 priced from an unfinished stage 2 set does not go red');
+    assert.ok(body.includes("sayWhy('#swWhy2', { what: 'stage 1 record set', say:") && body.includes("sayWhy('#swWhy3', { what: 'stage 2 record set', say:"),
+      'the red is not said on the screen');
+    // A PICK WRITTEN BACK ON A DRAW FILLS ITS SECTION, so box and section agree
+    const fill = UI.slice(UI.indexOf('async function swFillPicked() {'), UI.indexOf('\n}\n', UI.indexOf('async function swFillPicked() {')));
+    assert.ok(fill.includes('if (got && got.set && swPicked(n) === v) fillStageForm(got.set);'), 'a remembered pick does not fill its section from its set');
+    assert.ok(UI.includes('  swApplyAway();\n  swFillPicked();'), 'the draw does not fill the picked sections');
+    // AND OPEN BRINGS BACK WHAT WENT AWAY WITH IT
+    assert.ok(UI.includes('  for (const x of SW_LEVELS.slice(SW_LEVELS.indexOf(String(k)))) all[x] = !!away;'), 'Open on Sweep does not reopen the levels under it');
   },
 
   // THE SPLIT FOR EXTRA MEMBERS STARTS GHOSTED AFTER A LOAD (3.209.1, owner:
@@ -5742,8 +5652,9 @@ module.exports = {
     // check read `compare` and `trainOn`, the service sent neither, and a test
     // fed the full document could never see it (owner, 2026-09-06: "STILL
     // RED"). What the screen is given is what the screen is tested on.
+    // finished, as a set a stage 2 is built from is (3.240.1: the heading reds an unfinished one)
     const S1 = {
-      id: 's1-a', name: 'S1 #1',
+      id: 's1-a', name: 'S1 #1', status: 'done',
       params: stages.publicParams({
         params: {
           universe: ['LTCUSDT'], compare: DEFAULTS.slice(),
@@ -5754,7 +5665,7 @@ module.exports = {
         },
       }),
     };
-    const S2 = { id: 's2-a', name: 'S2 #1', parent: { id: 's1-a', name: 'S1 #1', carry: 600, of: 600 } };
+    const S2 = { id: 's2-a', name: 'S2 #1', status: 'done', parent: { id: 's1-a', name: 'S1 #1', carry: 600, of: 600 } };
     const run = (over = {}, ticksOver = {}) => {
       const BOX = {
         '#swUni': 'LTCUSDT', '#swCompare': '', '#swLayout': 'reserve61', '#swGeom': 'daily-4d',
