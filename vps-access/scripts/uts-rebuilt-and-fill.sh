@@ -27,7 +27,9 @@ if f.get("why"): print("-", d.get("id"), "cannot be measured:", f["why"]); sys.e
 rows = f.get("rows") or []
 def row(p):
     r = rows[p]; t = r["total"] or 1
-    return f"{p}%: evidence {round(100*r[\"evidence\"])}%, building {r[\"building\"]}, partial {r[\"partial\"]}, full {r[\"full\"]} of {r[\"total\"]} days ({round(100*(r[\"partial\"]+r[\"full\"])/t)}% traded)"
-print(f"- {d.get(\"id\")} {str(d.get(\"name\",\"\"))[:55]} | window {f.get(\"windowDays\")} d | " + " | ".join(row(p) for p in (25, 33, 100) if len(rows) > p))
+    ev = round(100 * r["evidence"]); tr = round(100 * (r["partial"] + r["full"]) / t)
+    return "%d%%: evidence %d%%, building %d, partial %d, full %d of %d days (%d%% traded)" % (p, ev, r["building"], r["partial"], r["full"], r["total"], tr)
+parts = [row(p) for p in (25, 33, 100) if len(rows) > p]
+print("- %s %s | window %s d | %s" % (d.get("id"), str(d.get("name", ""))[:55], f.get("windowDays"), " | ".join(parts)))
 '
 done
