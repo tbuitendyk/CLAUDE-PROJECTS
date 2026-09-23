@@ -187,12 +187,18 @@ module.exports = {
     const at = ui.indexOf("$('#campTree').onclick");
     assert.ok(at > 0, 'the View tree button must still have a handler');
     const fn = ui.slice(at, ui.indexOf("$('#campDelete').onclick", at));
-    assert.ok(/if \(box\.dataset\.tree === name\) \{ box\.innerHTML = ''; delete box\.dataset\.tree; return; \}/.test(fn),
-      'a second press on the same campaign must put the tree away and forget it');
-    assert.ok(/box\.dataset\.tree = name;/.test(fn),
-      'showing a tree must record whose it is, or the button cannot know what to hide');
+    // SINCE 3.240.0 the tree is always the campaign that is set, and the button
+    // reads Hide tree while one is open: a press on an open tree puts it away
+    assert.ok(fn.includes("if (box.dataset.tree) { box.innerHTML = ''; campTreeShut(); return; }"),
+      'a second press must put the tree away and forget it');
+    const draw = ui.slice(ui.indexOf('const campTreeDraw = async () => {'), at);
+    assert.ok(/box\.dataset\.tree = name;/.test(draw) && draw.includes("campTreeBtn.textContent = 'Hide tree';"),
+      'showing a tree must record whose it is and say Hide tree, or the button cannot know what to hide');
+    assert.ok(draw.includes("const name = box.dataset.current || '';"), 'the tree is not the campaign that is set');
+    assert.ok(ui.includes("const campTreeShut = () => { const b = $('#campOut'); if (b) delete b.dataset.tree; if (campTreeBtn) campTreeBtn.textContent = 'View tree'; };"),
+      'putting the tree away does not forget it, or does not say View tree again');
     // and it must not fetch before deciding — hiding should cost no request
-    assert.ok(fn.indexOf('box.dataset.tree === name') < fn.indexOf('apiOr'),
+    assert.ok(fn.indexOf('box.dataset.tree') < fn.indexOf('campTreeDraw'),
       'the hide case must be decided before the request, not after it');
   },
 
@@ -227,7 +233,7 @@ module.exports = {
     const at = ui.indexOf("$('#campDelete').onclick");
     assert.ok(at > 0, 'the Delete campaign… button must still have a handler');
     const fn = ui.slice(at, at + 4000);
-    const clears = fn.indexOf('delete box.dataset.tree;');
+    const clears = fn.indexOf('campTreeShut();');
     const writes = fn.indexOf('box.innerHTML');
     assert.ok(clears > 0, 'the delete summary must clear the open-tree record before it writes the panel');
     assert.ok(clears < writes,

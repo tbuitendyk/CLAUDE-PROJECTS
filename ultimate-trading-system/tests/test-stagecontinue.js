@@ -798,20 +798,22 @@ module.exports = {
     // drawn beside the start press, dead until a paused run is chosen
     assert.ok(src.includes('<button id="swGo3" class="pri">Start stage 3</button>\n      <button id="swDelete3" class="danger" disabled'), 'the delete is not drawn beside Start stage 3, or is not dead to begin with');
     assert.ok(/<button id="swDelete3" class="danger" disabled title="[^"]*">Delete record set…<\/button>/.test(src), 'the delete is not named as Boards names it');
-    // the ghosting runs the other way for it: live exactly while a paused run is chosen
+    // the ghosting runs the other way for it: live exactly while a paused run is
+    // chosen. The boxes themselves are ghosted as one by the section's fieldset
+    // since 3.240.0 (swLockSections), whatever is picked in stage 3 record set.
     const ghost = src.slice(src.indexOf('function swContinueMode('), src.indexOf('// THE PARENT PICKERS FOLLOW WHAT IS ON THE BOX'));
-    const make = (id, tag) => ({ id, tag, disabled: false, off: false, closest: () => null, classList: { toggle(cls, on) { if (cls === 'ctl-off') this.owner.off = !!on; } } });
-    const controls = ['swFrom3', 'swGo3', 'swDelete3', 'swName3', 'swFee'].map((id) => { const c = make(id); c.classList.owner = c; return c; });
-    const panel = { querySelectorAll: () => controls };
+    const del = { id: 'swDelete3', disabled: false, off: false, classList: { toggle(cls, on) { if (cls === 'ctl-off') del.off = !!on; } } };
+    let locked = 0;
     // eslint-disable-next-line no-new-func
-    const swContinueMode = new Function('$', `${ghost}\nreturn swContinueMode;`)((sel) => (sel === '#swH3' ? { closest: () => panel } : null));
+    const swContinueMode = new Function('$', 'swLockSections', `${ghost}\nreturn swContinueMode;`)((sel) => (sel === '#swDelete3' ? del : null), () => { locked++; });
     swContinueMode(true);
-    assert.deepStrictEqual(controls.map((c) => [c.id, c.disabled]), [['swFrom3', false], ['swGo3', false], ['swDelete3', false], ['swName3', true], ['swFee', true]],
-      'with a paused run chosen the delete is not live, or the boxes below are');
+    assert.deepStrictEqual([del.disabled, del.off], [false, false], 'with a paused run chosen the delete is not live');
     swContinueMode(false);
-    assert.deepStrictEqual(controls.map((c) => [c.id, c.disabled]), [['swFrom3', false], ['swGo3', false], ['swDelete3', true], ['swName3', false], ['swFee', false]],
-      'with no paused run chosen the delete is live, or the boxes below are dead');
-    assert.ok(controls.find((c) => c.id === 'swDelete3').off === true && controls.find((c) => c.id === 'swName3').off === false, 'the ghosting class does not follow the disabled state');
+    assert.deepStrictEqual([del.disabled, del.off], [true, true], 'with no paused run chosen the delete is live');
+    assert.strictEqual(locked, 2, 'the section is not locked to what stage 3 record set names');
+    const lock = src.slice(src.indexOf('function swLockSections() {'), src.indexOf('\n}\n', src.indexOf('function swLockSections() {')));
+    assert.ok(lock.includes("if (body) { body.disabled = on; body.classList.toggle('ctl-off', on); }") && lock.includes("(on && !(n === 3 && swContinueOf()))"),
+      'a picked set does not ghost its section as one, or a paused run leaves Start asleep');
     // the press: the chosen run, through the one flow, then the boxes refill and the count line is asked again
     const wire = src.slice(src.indexOf("$('#swDelete3').onclick = async () => {"), src.indexOf("$('#swGo3').onclick = async () => {"));
     assert.ok(wire.includes('const cont = swContinueOf();\n    if (!cont) return;'), 'the delete acts on something other than the paused run the box names');
@@ -853,7 +855,7 @@ module.exports = {
     const seg = src.slice(src.indexOf('function swPausedOptions('), src.indexOf('// EVERYTHING BELOW THE BOX IS GHOSTED'));
     assert.ok(seg.includes('function swSetOptions('), 'both option builders are in the slice');
     // eslint-disable-next-line no-new-func
-    const { swPausedOptions, swSetOptions } = new Function('esc', `${seg}\nreturn { swPausedOptions, swSetOptions };`)((s) => String(s));
+    const { swPausedOptions, swSetOptions } = new Function('esc', 'rebuildPrefix', '$', `${seg}\nreturn { swPausedOptions, swSetOptions };`)((s) => String(s), () => '', () => null);
     const sets = [
       { id: 'p1', stage: 3, status: 'paused', checkpoint: true, name: 'S3 #9', createdAt: '2026-09-07T01:02:03Z', perf: { unitsDone: 3, unitsTotal: 8 }, plan: { units: 8, settings: 5 } },
       { id: 'p2', stage: 3, status: 'interrupted', checkpoint: true, name: 'S3 #10', createdAt: '2026-09-06T01:02:03Z', perf: { unitsDone: 0, unitsTotal: 2 }, plan: { units: 2, settings: 5 } },
@@ -870,23 +872,25 @@ module.exports = {
     assert.ok(!paused.includes('p4'), 'a paused run with no checkpoint cannot be started again, so it is not offered');
     assert.ok(!paused.includes('d3'), 'a finished stage 3 set is not offered');
     assert.ok(swPausedOptions(sets, 'continue:p2').includes('<option value="continue:p2" selected>'), 'the chosen one stays chosen');
-    const box3 = swSetOptions(sets, 2, '');
-    assert.ok(box3.startsWith('<option value="" selected>— none —</option><option value="continue:p1">'), `the stage 3 section's box lists the paused runs right after — none —: ${box3.slice(0, 120)}`);
-    assert.ok(box3.includes('<option value="d2">S2 #4 — 2026-09-02 — 2 units</option>'), 'and the finished stage 2 sets after them');
-    assert.ok(!swSetOptions(sets, 1, '').includes('continue:'), 'the stage 2 section\'s box, which names stage 1 sets, offers no paused stage 3 run');
-    assert.ok(swSetOptions(sets.filter((x) => x.stage !== 2), 2, '').includes('no finished stage 2 record set on this box</option><option value="continue:p1">'),
-      'a paused run is offered even when no finished stage 2 set is');
+    // SINCE 3.240.0 THE PAUSED RUNS ARE IN THE STAGE 3 SECTION'S OWN BOX, among
+    // the stage 3 sets of the stage 2 set picked above (every set here is that
+    // stage 2's child and belongs to no campaign, as the campaign in force is none)
+    const kids = sets.map((x) => (x.stage === 3 ? { ...x, parent: { id: 'd2' } } : x));
+    const box3 = swSetOptions(kids, 3, '', 'd2');
+    assert.ok(box3.startsWith('<option value="" selected>— new stage 3 sweep —</option><option value="continue:p1">'), `the stage 3 section's box lists the paused runs right after new: ${box3.slice(0, 120)}`);
+    assert.ok(box3.includes('<option value="d3">S3 #8 — done — 2026-09-03 — 2 units</option>'), 'and the other stage 3 sets after them, each with its status');
+    assert.ok(!box3.includes('value="p1"'), 'a paused run is offered twice');
+    assert.ok(!swSetOptions(kids, 3, '', 'someone-else').includes('continue:'), 'a paused run of another stage 2 set is offered');
+    assert.ok(!swSetOptions(sets, 2, '', 'd1').includes('continue:'), 'the stage 2 section\'s box offers a paused stage 3 run');
     // the section reads that value: ghosted boxes, the count line, the start
     // button, and the provenance colours through the paused run's own parent
-    assert.ok(src.includes("const swContinueOf = () => { const v = ($('#swFrom3') && $('#swFrom3').value) || ''; return v.startsWith('continue:') ? v.slice('continue:'.length) : null; };"));
-    const ghost = src.slice(src.indexOf('function swContinueMode('), src.indexOf('// THE PARENT PICKERS FOLLOW WHAT IS ON THE BOX'));
-    assert.ok(ghost.includes("if (c.id === 'swFrom3' || c.id === 'swGo3') continue;") && ghost.includes('c.disabled = !!on;') && ghost.includes("holder.classList.toggle('ctl-off', !!on);"),
-      'every control of the stage 3 section but the box and the start button is ghosted while a paused run is chosen');
+    assert.ok(src.includes("const swContinueOf = () => { const v = ($('#swSet3') && $('#swSet3').value) || ''; return v.startsWith('continue:') ? v.slice('continue:'.length) : null; };"));
+    assert.ok(src.includes('<fieldset id="swBody3" class="swbody">'), 'the stage 3 section\'s boxes are not ghosted as one while a set or a paused run is picked');
     assert.ok(src.includes('starts again where it was paused:') && src.includes('the boxes below are this run\'s own and cannot be changed here'), 'the count line says what a start-again does');
     assert.ok(src.includes('await startPost(`api/stageset/${encodeURIComponent(cont)}/continue`, {});'), 'start stage 3 posts the start-again for the chosen run, through the post that does not put up a dialog when the gateway gives up');
     assert.ok(src.includes('started again <b>${esc(again.name)}</b> — progress above; the set lands on Boards.'), 'the message beside the button points at the running line, which carries the reading and then the pricing');
     assert.ok(src.includes("<button id=\"swStop\" class=\"danger\">${row.stage === 3 ? 'Pause' : 'Stop'}</button>"), 'the running line\'s control reads Pause on a stage 3 run and Stop on the others');
-    assert.ok(src.includes("const cont = s3v.startsWith('continue:') ? s3v.slice('continue:'.length) : null;") && src.includes('const pausedRow = cont ? rowOf(cont) : null;'),
+    assert.ok(src.includes("const cont = s3pick.startsWith('continue:') ? s3pick.slice('continue:'.length) : null;") && src.includes('const pausedRow = cont ? rowOf(cont) : null;'),
       'the provenance colours judge a paused run through its own stage 2 parent');
     assert.ok(src.includes("else if (cont && !pausedRow) paint('#swH3', false, 'the paused record set named here is not on this box any more');"));
     // Boards says a paused set can be started again, and where
@@ -909,8 +913,8 @@ module.exports = {
     // eslint-disable-next-line no-new-func
     new Function('window', fs.readFileSync(path.join(ROOT, 'public', 'help-content.js'), 'utf8'))(sandbox);
     const h = sandbox.HELP.sweep.controls;
-    assert.ok(h.swFrom3.what.includes('A paused stage 3 run is offered here too, and Start stage 3 then starts it again where it stopped.'));
-    assert.ok(h.swFrom3.more.includes('While a paused run is chosen the boxes below are ghosted'));
+    assert.ok(h.swSet3.what.includes('A paused stage 3 run is offered here too, and Start stage 3 then starts it again where it stopped.'));
+    assert.ok(h.swSet3.more.includes('While a paused run is chosen the boxes below are ghosted'));
     assert.ok(h.swGo3.what.includes('With a paused run chosen in the box above, starts that run again where it stopped.'));
     assert.ok(h.swStop.what.startsWith('Pauses a stage 3 run, or stops a stage 1 or 2 run.'));
   },

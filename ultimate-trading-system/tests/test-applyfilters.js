@@ -148,7 +148,7 @@ module.exports = {
   async boardsDrawsOneStageAtATimeOnItsOwnSubTab() {
     const src = JS();
     const draw = src.slice(src.indexOf('async function drawBoards()'), src.indexOf('async function bDrawTable('));
-    assert.ok(draw.includes("const stab = B_T3.includes(view.stab) ? view.stab : [1, 2, 3].includes(Number(view.stab)) ? Number(view.stab) : deepest;"),
+    assert.ok(draw.includes("const stab = B_T3.includes(view.stab) ? (fold[3] ? view.stab : 3) : [1, 2, 3].includes(Number(view.stab)) ? Number(view.stab) : deepest;"),
       'the stage sub tab is not remembered, or a first visit does not open on the deepest stage picked');
     for (const n of [1, 2, 3]) {
       assert.ok(draw.includes(`<div class="tab\${stabOn(${n})}" data-bstab="${n}">Stage ${n}</div>`), `there is no sub tab for Stage ${n}`);
@@ -162,7 +162,10 @@ module.exports = {
     const b3 = src.slice(src.indexOf('async function bDrawStage3('));
     // THE TABLE TABS JOIN THE STAGE STRIP, only while Stage 3 or one of them is
     // picked (3.239.0), and a table tab draws its table alone (3.239.1)
-    assert.ok(draw.includes('const onS3 = stab === 3 || B_T3.includes(stab);'), 'the table tabs do not know when Stage 3 or a table is picked');
+    assert.ok(draw.includes('const onS3 = (stab === 3 || B_T3.includes(stab)) && fold[3];'), 'the table tabs do not know when Stage 3 or a table is picked, or stay while Stage 3 is put away');
+    // PUTTING A STAGE AWAY PUTS EVERY STAGE UNDER IT AWAY (3.240.0); Open opens its own
+    assert.ok(draw.includes("if (fold[sN]) bSaveView(Object.fromEntries([1, 2, 3].filter((k) => k >= sN).map((k) => [`fold${k}`, false])));\n      else bSaveView({ [`fold${sN}`]: true });"),
+      'putting a stage away leaves the stages under it open, or Open opens more than its own stage');
     assert.ok(draw.includes("${!onS3 ? '' : `<div class=\"tab tab-gap${t3On('3A')}\" data-bt3tab=\"3A\">Table 3.A</div>"),
       'the table tabs are not on the Stage strip, or they show under Stage 1 and Stage 2, or Table 3.A is not set apart from Stage 3');
     assert.ok(draw.includes("${B_T3.includes(stab) ? '<div id=\"bT3\"></div>' : ''}"), 'a table tab draws the Stage 3 section above its table');

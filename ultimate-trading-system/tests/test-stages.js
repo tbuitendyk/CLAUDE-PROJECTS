@@ -5475,16 +5475,17 @@ module.exports = {
     const i = UI.indexOf('function swRefillParents(');
     assert.ok(i >= 0, 'swRefillParents is gone');
     const fn = UI.slice(i, UI.indexOf('\n}\n', i));
-    assert.ok(/\['#swFrom2', 1\], \['#swFrom3', 2\]/.test(fn),
-      'both boxes are not covered -- the owner asked for the stage 2 box on a stage 1 landing AND the stage 3 box on a stage 2 one');
+    // the three boxes since 3.240.0: each section's own, each built off the pick above it
+    assert.ok(/\['#swFrom2', 1\], \['#swFrom3', 2\], \['#swSet3', 3\]/.test(fn),
+      'the three boxes are not all covered -- each section\'s box follows what lands on the box');
     assert.strictEqual((fn.match(/swSetOptions\(/g) || []).length, 2,
       'the rebuild does not go through the same builder the draw uses, so the two screens can say different things');
-    assert.ok(/swSetOptions\(sets, stage, box\.value \|\| null\)/.test(fn),
+    assert.ok(/swSetOptions\(sets, stage, box\.value \|\| null, parentId\)/.test(fn),
       "the rebuild drops the owner's choice instead of keeping the set the box already names");
     // COMPARED WITHOUT THE SELECTION, or the owner picking a set reads as the
     // list having moved and the next tick rewrites the box under their cursor,
     // which closes an open dropdown -- every four seconds
-    assert.ok(/swSetOptions\(sets, stage, null\)/.test(fn),
+    assert.ok(/swSetOptions\(sets, stage, null, parentId\)/.test(fn),
       'the comparison includes which option is selected, so the owner picking a set counts as the list moving');
     assert.ok(/if \(swParentShown\.get\(sel\) === shape\) continue;/.test(fn),
       'a box with nothing new in it is rewritten anyway, which closes a dropdown the owner has open');
@@ -5884,7 +5885,8 @@ module.exports = {
 
     // AND THE PICKER ALWAYS OFFERS THAT EMPTY ENTRY, whatever is on the box.
     const opts = UI.slice(UI.indexOf('function swSetOptions('), UI.indexOf('\n}\n', UI.indexOf('function swSetOptions(')));
-    assert.ok(/<option value=""\$\{on\}>— none —<\/option>/.test(opts),
+    // since 3.240.0 that entry is "new": it names no set, and the section builds one
+    assert.ok(/const head = `<option value=""\$\{on\}>— new stage \$\{stage\} sweep —<\/option>`;/.test(opts),
       'a box with record sets on it offers no way back to naming nothing');
     assert.ok(/const on = selected \? '' : ' selected';/.test(opts),
       'the empty entry is not what an unset box shows, so the first record set on the list is named without the owner choosing it');
@@ -5934,7 +5936,7 @@ module.exports = {
     assert.ok(/paint\('#swH1', \(c\('#swSingles'\) \|\| c\('#swDoubles'\) \|\| c\('#swTriples'\)\) \? true : null,/.test(fn),
       'stage 1 does not go green off its own section being set up, so the top of the truth table cannot hold');
     assert.ok(/if \(!v\('#swFrom2'\)\) paint\('#swH2', null,/.test(fn), 'an empty stage 1 box still paints Stage 2 green');
-    assert.ok(/if \(!v\('#swFrom3'\)\) paint\('#swH3', null,/.test(fn), 'an empty stage 2 box still paints Stage 3 green');
+    assert.ok(/if \(!v\('#swFrom3'\) && !cont\) paint\('#swH3', null,/.test(fn), 'an empty stage 2 box still paints Stage 3 green');
     assert.ok(!/names no record set yet\)/.test(fn), 'green still claims to cover the case that is now black');
   },
 
