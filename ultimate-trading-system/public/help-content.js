@@ -882,7 +882,7 @@ window.HELP = {
       },
       fHoldApply: {
         what: 'Puts every box above on at once. Greyed out until a box says something different from what the table is already showing, and greyed out again if you type it back. Not needed while auto-apply settings is ticked.',
-        more: 'Applying re-sorts the table already read; it reads nothing again and moves nothing on the page. Read the ranking is what takes the reading; this only changes what is drawn from it.',
+        more: 'Applying lays the four numbers on the reading the service holds and redraws the table where it stands, so which coins and shapes clear the bar follows the boxes; it reads no board, only Table 3.C, and moves nothing else on the page. show and order by only change what is drawn. Read the ranking is what takes the reading.',
       },
       fHoldAuto: {
         what: 'Ticked, each box goes on the moment you leave it. Unticked, nothing goes on until you press Apply settings.',

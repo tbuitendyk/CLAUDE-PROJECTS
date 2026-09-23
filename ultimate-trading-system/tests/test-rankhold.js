@@ -425,4 +425,57 @@ module.exports = {
     const funnel = page.slice(page.indexOf('function fLadder('), page.indexOf('function fStep7('));
     assert.ok(!/work out the missing numbers/.test(funnel), 'somewhere on the walk still names the press by the name it no longer has');
   },
+  // APPLY SETTINGS LAYS THE FOUR NUMBERS ON THROUGH THE SERVICE (3.234.6, owner
+  // report 2026-09-23: "the 'apply settings' on the worth walking of the funnel
+  // tab doesn't work ... doesn't update the selections"). The page held the
+  // table the service answered at the numbers of the press and only redrew it,
+  // so moving the four boxes changed nothing about which rows clear the bar.
+  // The ask is lifted out of the page and run against each answer the service
+  // can give: the reading at the new numbers; a service restarted since the
+  // press, asked with the press; Table 3.C being worked out, then the reading;
+  // and a failure.
+  async applySettingsAsksTheServiceForTheReadingAtTheNewNumbers() {
+    const page = src('public/construct.js');
+    const q0 = page.indexOf('const fHoldQuery = (bar) =>');
+    const r0 = page.indexOf('async function fHoldRelay(set, bar, say = () => {}) {');
+    assert.ok(q0 > 0 && r0 > 0, 'the ask is gone from the page');
+    const code = `${page.slice(q0, page.indexOf(';\n', q0) + 2)}\n${page.slice(r0, page.indexOf('\n}\n', r0) + 3)}`;
+    const make = (answers) => {
+      const asked = [];
+      const apiOr = async (p) => { asked.push(['GET', p]); return answers.shift(); };
+      const askPost = async (p, body) => { asked.push(['POST', p, body]); return answers.shift(); };
+      // eslint-disable-next-line no-new-func
+      const relay = new Function('apiOr', 'askPost', 'tab', 'setTimeout', `${code}\nreturn fHoldRelay;`)(apiOr, askPost, 'funnel', (f) => f());
+      return { relay, asked };
+    };
+    const bar = { atLeast: 0.4, onHowMany: 3, fewestRanked: 30, fewestChunks: 40 };
+    const table = { units: [{ unit: 'A', bar: { pass: true } }], passing: 1 };
+    // the reading at the new numbers, asked with them
+    let m = make([{ running: false, result: table }]);
+    let got = await m.relay('s3-x', bar);
+    assert.deepStrictEqual(got, { table }, 'the answer at the new numbers is not handed back');
+    assert.deepStrictEqual(m.asked, [['GET', 'api/funnel/s3-x/rankhold?atLeast=0.4&onHowMany=3&fewestRanked=30&fewestChunks=40']], 'the service is not asked with the numbers in the boxes');
+    // a service restarted since the press: asked again with the press itself
+    m = make([{ none: true }, { running: false, result: table }]);
+    got = await m.relay('s3-x', bar);
+    assert.deepStrictEqual(got, { table });
+    assert.deepStrictEqual(m.asked[1], ['POST', 'api/funnel/s3-x/rankhold', bar], 'a service that has forgotten the press is not pressed again with the numbers');
+    // Table 3.C being worked out: said, then the reading
+    const said = [];
+    m = make([{ running: true, done: 3, of: 86 }, { running: false, result: table }]);
+    got = await m.relay('s3-x', bar, (t) => said.push(t));
+    assert.deepStrictEqual(got, { table });
+    assert.deepStrictEqual(said, ['working out the unit table on Table 3.C — 3 of 86 coin and shape(s)'], 'the wait for Table 3.C is not said');
+    // a failure is said, never read as an answer
+    m = make([{ running: false, error: 'no numbers beside this set' }]);
+    assert.deepStrictEqual(await m.relay('s3-x', bar), { error: 'no numbers beside this set' });
+    // AND THE PAGE USES IT: an apply that moved one of the four asks, the
+    // answer becomes the table in hand, and the newest apply wins
+    const wire = page.slice(page.indexOf('function fWireHold(st, d) {'), page.indexOf('// WHAT COUNTS AS BEGINNING THE WALK'));
+    assert.ok(wire.includes("const barMoved = ['atLeast', 'onHowMany', 'fewestRanked', 'fewestChunks'].some((k) => now[k] !== was[k]);"), 'an apply does not know which of the four moved');
+    assert.ok(wire.includes('const got = await fHoldRelay(st.set, now, say);') && wire.includes('if (got.table) { fHoldSeen = { set: st.set, table: got.table }; say(msgWas); }'), 'an apply that moved the four does not take the service\'s answer as the table');
+    assert.ok(wire.includes('if (mine !== relayed || got.gone) return;'), 'an older answer landing late can overwrite a newer one');
+    const help = src('public/help-content.js');
+    assert.ok(/Applying lays the four numbers on the reading the service holds/.test(help), 'the help still says applying only redraws what was read');
+  },
 };

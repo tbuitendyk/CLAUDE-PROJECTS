@@ -7949,10 +7949,11 @@ function fHoldPanel(d, st) {
          change! that's just nasty"). The six boxes above go on with Apply
          settings, or one by one on leaving a box while auto-apply settings is
          ticked -- the row Boards' filters carry, in the same words. Applying
-         repaints the table below in place: the reading is in hand and the boxes
-         are arithmetic on it, so nothing is read from the service again and the
-         page does not move. Read the ranking, which takes the reading, keeps
-         the row under the boxes it fills. -->
+         repaints the table below in place and the page does not move: show and
+         order by are the page's own, and the four numbers are laid on the
+         reading by the service (3.234.6), which reads Table 3.C and no board.
+         Read the ranking, which takes the reading, keeps the row under the
+         boxes it fills. -->
     <div class="row">
       <button id="fHoldApply" disabled>Apply settings</button>
       <label class="c"><input type="checkbox" id="fHoldAuto"${bar.auto ? ' checked' : ''}> auto-apply settings</label>
@@ -9013,6 +9014,34 @@ async function fRichWatch(st) {
 const fHoldQuery = (bar) => `atLeast=${bar.atLeast == null ? '' : encodeURIComponent(bar.atLeast)}`
   + `&onHowMany=${encodeURIComponent(bar.onHowMany)}`
   + `&fewestRanked=${encodeURIComponent(bar.fewestRanked)}&fewestChunks=${encodeURIComponent(bar.fewestChunks)}`;
+// THE FOUR NUMBERS ARE LAID ON BY THE SERVICE, EVERY TIME THEY MOVE (3.234.6,
+// owner report 2026-09-23: "the 'apply settings' on the worth walking of the
+// funnel tab doesn't work ... doesn't update the selections"). Which rows
+// clear the bar is decided in one place, lib/rankhold.js, on the service, at
+// the numbers it is asked with -- and Apply settings only redrew the table the
+// page already held, answered at the numbers in the boxes when Read the
+// ranking was pressed. So the four boxes moved nothing but the page. Now
+// applying asks the service for the same reading with the new numbers laid on
+// it: it reads Table 3.C and no board, so it is an answer, not a job. A service
+// restarted since the press has forgotten it was asked, and is asked with the
+// press itself, which costs the same nothing. `say` carries a line while
+// Table 3.C's unit table is being worked out; `{ gone }` when the owner has
+// left the tab meanwhile.
+async function fHoldRelay(set, bar, say = () => {}) {
+  const path = `api/funnel/${encodeURIComponent(set)}/rankhold`;
+  let p = await apiOr(`${path}?${fHoldQuery(bar)}`, null);
+  if (p && p.none) p = await askPost(path, bar, null);
+  while (p && p.running) {
+    if (tab !== 'funnel') return { gone: true };
+    say(p.waiting ? String(p.waiting) : p.of ? `working out the unit table on Table 3.C — ${Number(p.done || 0).toLocaleString()} of ${Number(p.of).toLocaleString()} coin and shape(s)` : 'reading');
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((r) => setTimeout(r, 1200));
+    // eslint-disable-next-line no-await-in-loop
+    p = await apiOr(`${path}?${fHoldQuery(bar)}`, null);
+  }
+  if (p && p.result) return { table: p.result };
+  return { error: p && p.error ? String(p.error) : 'the service did not answer with the ranking' };
+}
 async function fHoldPoll(st) {
   if (fHoldWatching) return;
   fHoldWatching = true;
@@ -9142,14 +9171,36 @@ function fWireHold(st, d) {
   // for a change that is arithmetic on a reading already in hand. Now the
   // table under the boxes is drawn again where it stands and nothing else is
   // touched.
-  const keep = (fields) => {
-    const back = ['atLeast', 'onHowMany', 'fewestRanked', 'fewestChunks', 'show', 'sort'].some((k) => k in fields);
-    fRememberForSet(st.set, { hold: { ...fHoldBar(st.set), ...fields, ...(back ? { from: 0 } : {}) } });
+  // THE FOUR NUMBERS GO TO THE SERVICE (3.234.6): show, order by and the pages
+  // are the page's own and repaint at once; the four that decide which rows
+  // clear the bar are laid on by the service (fHoldRelay) and the table is
+  // repainted in place with its answer. The newest apply wins: an older answer
+  // landing late is dropped.
+  const msgWas = ($('#fHoldMsg') || {}).textContent || '';
+  let relayed = 0;
+  const repaint = () => {
     const box = $('#fHoldTableBox');
     const t = fHoldSeen && fHoldSeen.set === st.set ? fHoldSeen.table : null;
     if (box) box.innerHTML = t ? fHoldTable(t, fHoldBar(st.set), fWalkingUnit(st, d)) : '';
     wireTable();
     applyState();
+  };
+  const keep = async (fields) => {
+    const was = fHoldBar(st.set);
+    const back = ['atLeast', 'onHowMany', 'fewestRanked', 'fewestChunks', 'show', 'sort'].some((k) => k in fields);
+    fRememberForSet(st.set, { hold: { ...was, ...fields, ...(back ? { from: 0 } : {}) } });
+    const now = fHoldBar(st.set);
+    const barMoved = ['atLeast', 'onHowMany', 'fewestRanked', 'fewestChunks'].some((k) => now[k] !== was[k]);
+    if (barMoved && fHoldSeen && fHoldSeen.set === st.set) {
+      const mine = ++relayed;
+      const say = (text) => { const m = $('#fHoldMsg'); if (m && mine === relayed) m.textContent = text; };
+      say('applying');
+      applyState();
+      const got = await fHoldRelay(st.set, now, say);
+      if (mine !== relayed || got.gone) return;
+      if (got.table) { fHoldSeen = { set: st.set, table: got.table }; say(msgWas); } else say(`FAILED — ${got.error}`);
+    }
+    repaint();
   };
   // WHAT IS TYPED AND WHAT IS APPLIED ARE TWO DIFFERENT THINGS (3.229.0): the
   // six boxes go on together with Apply settings, or one by one on leaving a

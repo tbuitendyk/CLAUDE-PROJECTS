@@ -230,6 +230,31 @@ function cleanup() {
         const holdMsg = await page.evaluate(() => (document.querySelector('#fHoldMsg') || {}).textContent || '');
         expect(/reads it off Table 3\.C for the \d+ coin\(s\) and shape\(s\) its filter keeps, and reads no board/.test(holdMsg) || /no setting in this record set carries/.test(holdMsg),
           `Worth walking? says the press reads Table 3.C for the kept ones: ${holdMsg}`);
+        // APPLY SETTINGS MOVES WHICH ROWS CLEAR THE BAR (3.234.6, owner report
+        // 2026-09-23: "the 'apply settings' on the worth walking of the funnel
+        // tab doesn't work ... doesn't update the selections"): read the
+        // ranking, then apply a bar everything readable clears and one nothing
+        // can, and read the count under the table after each
+        const clearing = async () => page.evaluate(() => {
+          const m = ((document.querySelector('#fHoldTableBox') || {}).textContent || '').replace(/\s+/g, ' ').match(/(\d+) clear the bar/);
+          return m ? Number(m[1]) : null;
+        });
+        const readBtn = page.locator('#fHoldRead');
+        expect(await readBtn.isEnabled(), 'Read the ranking is live on a coin and shape that carries the numbers');
+        await readBtn.click();
+        await page.waitForSelector('#fHoldTableBox table', { timeout: 30000 });
+        const applyWith = async (atLeast, onHowMany) => {
+          await page.fill('#fHoldAtLeast', String(atLeast));
+          await page.fill('#fHoldOn', String(onHowMany));
+          await page.locator('#fHoldOn').dispatchEvent('input');
+          await page.locator('#fHoldApply').click();
+          await page.waitForFunction(() => !/applying/.test((document.querySelector('#fHoldMsg') || {}).textContent || ''), null, { timeout: 30000 });
+          await page.waitForTimeout(400);
+          return clearing();
+        };
+        const loose = await applyWith(-1, 1);
+        const strict = await applyWith(1.5, 4);
+        expect(loose != null && loose >= 1 && strict === 0, `Apply settings moves which coins and shapes clear the bar: ${loose} clear at -1 on one of the four, ${strict} at 1.5 on all four`);
         if (SHOTS) {
           const ww = page.locator('#fHoldMsg');
           await ww.scrollIntoViewIfNeeded();

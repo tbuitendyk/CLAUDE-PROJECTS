@@ -4933,9 +4933,13 @@ module.exports.readTheRankingSitsUnderTheWorthWalkingBoxes = function () {
 module.exports.theWorthWalkingBoxesApplyOnThePressAndRepaintInPlace = function () {
   const page = src('public/construct.js');
   const wire = page.slice(page.indexOf('function fWireHold(st, d) {'), page.indexOf('// WHAT COUNTS AS BEGINNING THE WALK'));
-  const keep = wire.slice(wire.indexOf('const keep = (fields) => {'), wire.indexOf('  };', wire.indexOf('const keep = (fields) => {')));
-  assert.ok(!keep.includes('drawFunnel()'), 'a change to the boxes still redraws the whole Funnel');
-  assert.ok(keep.includes("const box = $('#fHoldTableBox');") && keep.includes('if (box) box.innerHTML = t ? fHoldTable(t, fHoldBar(st.set), fWalkingUnit(st, d)) : \'\';') && keep.includes('wireTable();'),
+  // 3.234.6: the repaint is its own step, run after the four numbers have been
+  // laid on by the service (fHoldRelay), and still never a redraw of the Funnel
+  const from = wire.indexOf('const repaint = () => {');
+  const keep = wire.slice(from, wire.indexOf('\n  };', wire.indexOf('const keep = async (fields) => {')));
+  assert.ok(from > 0 && !keep.includes('drawFunnel()'), 'a change to the boxes still redraws the whole Funnel');
+  assert.ok(keep.includes("const box = $('#fHoldTableBox');") && keep.includes('if (box) box.innerHTML = t ? fHoldTable(t, fHoldBar(st.set), fWalkingUnit(st, d)) : \'\';') && keep.includes('wireTable();')
+    && keep.includes('    repaint();'),
     'applying does not draw the table again where it stands');
   assert.ok(wire.includes("for (const el of [at, on, rk, ch]) if (el) { el.oninput = applyState; el.onchange = onLeave; }")
     && wire.includes("for (const el of [sh, so]) if (el) el.onchange = onLeave;")
