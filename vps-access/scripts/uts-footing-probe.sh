@@ -23,7 +23,7 @@ for (const d of docs) {
   console.log(`   same coin and shape without the alongside coins among them: ${d.unit?trades.includes(d.unit.split("|")[0]+"|"+d.unit.split("|")[3]):"-"}`);
   const p=s.getSet((d.parent||{}).id)||{};
   const pp=p.params||{};
-  console.log(`   parent ${p.name||"-"}: set.parent.release ${(d.parent||{}).release??"none"} | parent.params.engineVersion ${pp.engineVersion??"none"} | parent.release ${p.release??"none"} | parent.recordsVersion ${p.recordsVersion??"none"} | params keys with version: ${Object.keys(pp).filter((k)=>/ersion/i.test(k)).join(",")||"none"}`);
+  console.log(`   parent ${p.name||"-"}: set.parent.release ${(d.parent||{}).release??"none"} | parent.params.engineVersion ${pp.engineVersion??"none"} | parent.release ${p.release??"none"} | parent.engineVersion ${p.engineVersion??"none"} | parent.recordsVersion ${p.recordsVersion??"none"} | params keys with version: ${Object.keys(pp).filter((k)=>/ersion/i.test(k)).join(",")||"none"}`);
   const gp=s.getSet(pp.from||(p.parent||{}).id)||{};
   console.log(`   grandparent ${gp.name||"-"}: units are ${(gp.params||{}).unitsMode||(gp.params||{}).combos||"?"}`);
 }'
