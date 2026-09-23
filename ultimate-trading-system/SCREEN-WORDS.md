@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **477c97e16e96 — what the box is serving**, not from the working tree.
+Generated from **ee898dfd20f8 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -1790,7 +1790,7 @@ again and appends are as at average behind beside best block both box Build buil
 
 # Tune
 
-## What the controls are called (102)
+## What the controls are called (121)
 
 - `- by conviction -`
 - `, each a counted look`
@@ -1802,14 +1802,19 @@ again and appends are as at average behind beside best block both box Build buil
 - `· by depth among the captured:`
 - `· held-back`
 - `· test`
+- `(an estimate: its window is`
 - `(flat`
 - `(worst distance`
+- `% complete`
+- `% of a full window's evidence`
+- `% the field holds about`
 - `A heavy scan is running (`
 - `all`
 - `all survivors -`
 - `amount traded $`
 - `Apply custom`
 - `Apply the conviction sizing`
+- `At`
 - `at the $`
 - `by conviction`
 - `by depth -`
@@ -1819,11 +1824,19 @@ again and appends are as at average behind beside best block both box Build buil
 - `captured survivors by conviction`
 - `Chance check:`
 - `clip,`
+- `days`
+- `days building, no trading`
+- `days on full evidence`
+- `days on partial evidence`
+- `days, half-life`
+- `days, weight floor`
 - `drawdown`
 - `entries`
 - `entries · money with no stop`
 - `entries on the`
+- `evidence held`
 - `Exposure:`
+- `field completion`
 - `flat`
 - `h`
 - `held-back`
@@ -1832,6 +1845,7 @@ again and appends are as at average behind beside best block both box Build buil
 - `ladder over flat`
 - `last scan failed:`
 - `last sweep failed:`
+- `left out`
 - `look`
 - `losers over`
 - `money $`
@@ -1874,9 +1888,13 @@ again and appends are as at average behind beside best block both box Build buil
 - `The last one kept on this set read`
 - `the rebuild stopped:`
 - `the reserve entries have been read`
+- `the same at`
 - `the scans, newest first`
 - `the survivor`
 - `time(s)`
+- `to`
+- `train traded`
+- `Train,`
 - `training`
 - `training entries,`
 - `Tune protective stop`
@@ -1890,6 +1908,7 @@ again and appends are as at average behind beside best block both box Build buil
 - `windows`
 - `windows the scans read`
 - `winners /`
+- `with full evidence (full since`
 - `yet`
 - `your choice`
 - `your reason for the sizing`
@@ -1899,7 +1918,7 @@ again and appends are as at average behind beside best block both box Build buil
 
 _none_
 
-## Sentences the page prints (39)
+## Sentences the page prints (45)
 
 - ) — one at a time; both launchers are disabled until it lands (scans run minutes and cannot be aborted mid-flight).
 - What the two scans below read: a Stage 4 record set whose trades are captured above, one survivor of it
@@ -1938,13 +1957,19 @@ _none_
 - reading the held-back entries is look
 - this read of the held-back entries was look
 - · nothing is applied from a Stage 4 record set
+- spent building the field with no trading ·
+- trading on partial field evidence ·
+- % of train traded.
 - no Stage 4 record set on this box yet
+- how complete the field is on each train day cannot be measured:
+- field completion before a train trade counts, %
+- train trades counted only on days the field was at least
 - survivor(s) are not in the stage 3 set's block on this unit
 
-## Every word, flat (275)
+## Every word, flat (302)
 
 ```
-aborted about above again against agree agreed agreeing aimed all among amount and any anywhere. appears applied apply Apply are as asks at baseline be been before below bet block both box boxes by called cannot capture Capture captured chance Chance changes check choice choose Choosing chosen clear clip clip. clipped comes concurrent Conviction conviction count counted curve custom deals declared depth disabled distance down drawdown each entries entries. every Exposure exposure-honest failed finds first fixed flat for force from give given green has have heavy Held held-back helps. here holds how in is it it. its kept ladder lands last launchers list look losers loses loss-side machine. made many mean means member members metrics. mid-flight minutes money more multiplier NET never newest no No no-stop no-winner-lost not Not nothing Nothing nothing. numbers of off off. on Once one one. onto or over overlay own peak per per- Per-trade plus positive press price priced Prices prices Protective protective pure read Read reading reads Reads reason rebuild REBUILD Recompute record recorded refused release REQUIRED reserve return row rows run Run running runs. sacrifice same Save says scan scanned scans see set setting shuffled shuffled-assignment shuffles. side simulator single size size. sizing Stage stage stop stopped survivor survivors sweep table table. Take take taken takes target Target targets test that the The their them themselves there this This those ticked ticked. tighter tightest time to took top trade traded trades trades. trading training Tune tuner Tuning turns two type under unit until up uplift Verdict vs was way What what when whose will window window. windows winner winners with worst would writes yet yet. you your yourself
+aborted about above again against agree agreed agreeing aimed all among amount an and any anywhere. appears applied apply Apply are as asks at At baseline be been before below bet block both box boxes building by called cannot capture Capture captured chance Chance changes check choice choose Choosing chosen clear clip clip. clipped comes complete completion concurrent Conviction conviction count counted counts curve custom day days deals declared depth disabled distance down drawdown each entries entries. estimate every evidence Exposure exposure-honest failed field finds first fixed flat floor for force from full give given green half-life has have heavy Held held held-back helps. here holds how in is it it. its kept ladder lands last launchers least left list look losers loses loss-side machine. made many mean means measured member members metrics. mid-flight minutes money more multiplier NET never newest no No no-stop no-winner-lost not Not nothing Nothing nothing. numbers of off off. on Once one one. only onto or out over overlay own partial peak per per- Per-trade plus positive press price priced Prices prices Protective protective pure read Read reading reads Reads reason rebuild REBUILD Recompute record recorded refused release REQUIRED reserve return row rows run Run running runs. sacrifice same Save says scan scanned scans see set setting shuffled shuffled-assignment shuffles. side simulator since single size size. sizing spent Stage stage stop stopped survivor survivors sweep table table. Take take taken takes target Target targets test that the The their them themselves there this This those ticked ticked. tighter tightest time to took top trade traded traded. trades trades. trading Train train training Tune tuner Tuning turns two type under unit until up uplift Verdict vs was way weight What what when whose will window window. windows winner winners with worst would writes yet yet. you your yourself
 ```
 
 ---
