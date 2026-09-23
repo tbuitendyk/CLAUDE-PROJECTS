@@ -2302,6 +2302,11 @@ const GUARDS = [
     'boardsDrawsOneStageAtATimeOnItsOwnSubTab', 'Stage 2\'s section is drawn whichever stage sub tab is picked'],
   [path.join(ROOT, 'public', 'construct.js'), '    ${bUnitSavedHtml(units.filters)}\n', '',
     'theTableIsDrawnOnItsOwnSubTabOnOneLineARow', 'Table 3.C draws no saved filters'],
+  // 3.239.0: the table tabs on the Stage strip, only under Stage 3, marked by the draw
+  [path.join(ROOT, 'public', 'construct.js'), "    ${stab !== 3 ? '' : `<div class=\"tab tab-gap${t3On('3A')}\" data-bt3tab=\"3A\">Table 3.A</div>", "    ${`<div class=\"tab tab-gap${t3On('3A')}\" data-bt3tab=\"3A\">Table 3.A</div>",
+    'boardsDrawsOneStageAtATimeOnItsOwnSubTab', 'the table tabs show beside Stage 1 and Stage 2 as well'],
+  [path.join(ROOT, 'public', 'construct.js'), "  document.querySelectorAll('[data-bt3tab]').forEach((el) => el.classList.toggle('on', el.dataset.bt3tab === t3));\n", "",
+    'boardsDrawsOneStageAtATimeOnItsOwnSubTab', 'Show in 3.B moves to Table 3.B and the strip still marks Table 3.A'],
 ];
 
 const only = process.argv[2] || '';
