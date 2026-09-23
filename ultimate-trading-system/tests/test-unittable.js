@@ -281,7 +281,7 @@ module.exports = {
   // THE TABLE IS DRAWN UNDER TABLE 3.B, ONE LINE A ROW, sorting, filtering and
   // paging through the same helpers the two tables above it use, and its
   // filter goes on the record set -- read from the source that draws it.
-  theTableIsDrawnUnderTableThreeBOnOneLineARow() {
+  theTableIsDrawnOnItsOwnSubTabOnOneLineARow() {
     const page = src('public/construct.js');
     const sec = page.slice(page.indexOf('function bUnitsSection(doc, units, view) {'), page.indexOf('// ---- WHAT EVERY TABLE ON THIS SCREEN GETS'));
     assert.ok(sec.includes('<b>Table 3.C: Every unit</b>'), 'the table is not named on the screen');
@@ -292,10 +292,17 @@ module.exports = {
     assert.ok(sec.includes("bPager(units.total || 0, units.from || 0, 100, 'S3U')"), 'the table has no paging bar');
     assert.ok(sec.includes('<tr data-bunithead'), 'the head row has no peg to hold the page still on');
     assert.ok(/colspan="\$\{1 \+ B_UNIT_COLS\.length\}"/.test(sec), 'the empty row types its colspan');
-    // under Table 3.B, in the stage 3 draw
+    // on its own sub tab, in the stage 3 draw (3.238.0), and asked for only there
     const draw = page.slice(page.indexOf('async function bDrawStage3('));
-    assert.ok(draw.includes("${bPager((coins && coins.total) || 0, coinsQ.offset || 0, 100, 'S3C')}\n    ${bUnitsSection(doc, units, view)}"), 'the table is not drawn under Table 3.B');
-    assert.ok(draw.includes('apiOr(`api/stageset/${doc.id}/units?${unitsQs}`, null),'), 'the table is not asked for with the other tables');
+    assert.ok(draw.includes("${t3 !== '3C' ? '' : bUnitsSection(doc, units, view)}"), 'the table is not drawn on its own sub tab');
+    assert.ok(draw.includes("t3 === '3C' ? apiOr(`api/stageset/${doc.id}/units?${unitsQs}`, null) : null,"), 'the table is not asked for, or asked for when it is not on screen');
+    // SAVED FILTERS (3.238.0): a picker, a name and Save in their own rows, wired with the set in hand
+    assert.ok(sec.includes('${bUnitSavedHtml(units.filters)}'), 'Table 3.C draws no saved filters');
+    const saved = page.slice(page.indexOf('function bUnitSavedHtml('), page.indexOf('function bWireUnitSaved('));
+    assert.ok(saved.includes('saved filter<select id="bUnitSaved"') && saved.includes('name to save it under<input id="bUnitName"'), 'the saved filter box or the name box is missing');
+    assert.ok(/<div class="row">\s*<button id="bUnitSave"/.test(saved), 'Save the filter does not sit in a row of its own');
+    assert.ok(saved.includes("'<option value=\"*\" selected>— the boxes below, not saved —</option>'"), 'boxes that match no saved filter are shown as one');
+    assert.ok(draw.includes('bWireUnitSaved(mount, doc, units);'), 'the saved filters are not wired');
     assert.ok(draw.includes('bWireUnitSort(mount);') && draw.includes('bWireFilters(mount, doc);'), 'the sort or the filters are not wired with the set in hand');
     // the filter saves on the record set and clears there too
     const ap = page.slice(page.indexOf('async function bApplyFilters('), page.indexOf('async function bApplyFilters(') + 1400);
@@ -307,6 +314,7 @@ module.exports = {
     // the routes the page calls
     const srv = src('server.js');
     assert.ok(srv.includes("app.get('/api/stageset/:id/units'") && srv.includes("app.post('/api/stageset/:id/unitfilter'"), 'the two doors are not on the server');
+    for (const verb of ['save', 'use', 'delete']) assert.ok(srv.includes(`app.post('/api/stageset/:id/unitfilter/${verb}'`), `the saved filters cannot be ${verb}d`);
     // and the Help tab says what the table is and what the filter reaches
     const help = src('public/help-content.js');
     assert.ok(help.includes("['Table 3.C: Every unit, and the filter the Funnel reads',"), 'Boards\' help does not describe the table');
@@ -448,6 +456,67 @@ module.exports = {
   // the cut read the board the walk read; a Stage 4 set remembers what was
   // kept and is read back under it after the filter moves; and nothing is cut
   // from a coin and shape the filter hides.
+  // SAVED FILTERS (3.238.0, owner order 2026-09-23: "subtab Table 3.C we want
+  // to have a filter save and picker -- these get offered as the Funnel
+  // source"). On a set on disk: saving puts the boxes in force under a name;
+  // which one is in force is worked out from the boxes, so a changed box names
+  // none; picking one puts it in force where every reader reads; deleting one
+  // leaves the boxes alone; the listing the Funnel's source box reads carries
+  // them; and a reading of all units is keyed on the filter in force.
+  async aSavedFilterIsANameForBoxesAndPickingItPutsThemInForce() {
+    const fx = await unitFixture();
+    const { id, keys } = fx;
+    try {
+      stages.ensureUnitTable(id);
+      await stages.unitTableWait();
+      assert.throws(() => stages.saveUnitFilterAs(id, '  ', { minAvgTest: '1' }), /type a name/);
+      assert.throws(() => stages.saveUnitFilterAs(id, 'nothing', {}), /no box holds a number/);
+      assert.throws(() => stages.saveUnitFilterAs(id, 'bad', { notABox: '1' }), /is not a filter on Table 3.C/);
+      const a = stages.saveUnitFilterAs(id, 'money', { minAvgTest: '1' });
+      assert.deepStrictEqual(stages.getSet(id).unitFilter, { minAvgTest: '1' }, 'saving does not put the boxes in force');
+      assert.strictEqual(a.filters.inForce, a.saved, 'the filter just saved is not the one in force');
+      const b = stages.saveUnitFilterAs(id, 'none kept', { minAvgTest: '1000' });
+      assert.notStrictEqual(a.saved, b.saved, 'two names share one id');
+      // the same name again replaces, capitals aside
+      const a2 = stages.saveUnitFilterAs(id, 'MONEY', { minAvgTest: '2' });
+      assert.strictEqual(a2.saved, a.saved, 'the same name made a second filter instead of replacing the first');
+      assert.deepStrictEqual(a2.filters.saved.map((f) => f.name), ['MONEY', 'none kept']);
+      // picking puts the saved boxes where every reader reads them
+      const used = stages.useUnitFilter(id, b.saved);
+      assert.deepStrictEqual(stages.getSet(id).unitFilter, { minAvgTest: '1000' });
+      assert.strictEqual(used.filters.inForce, b.saved);
+      assert.strictEqual(stages.keptUnitKeys(id, stages.readTally(id)).kept.size, 0, 'the Funnel does not read the filter picked');
+      assert.strictEqual(stages.stage3Units(id, {}).filters.inForce, b.saved, 'Table 3.C does not say which saved filter is in force');
+      // a box changed by hand names no saved filter
+      stages.setUnitFilter(id, { minAvgTest: '1000', minSettings: '1' });
+      assert.strictEqual(stages.unitFilterListOf(stages.getSet(id)).inForce, null, 'changed boxes still name the saved filter they came from');
+      // '' is every unit
+      stages.useUnitFilter(id, '');
+      assert.strictEqual(stages.getSet(id).unitFilter, null);
+      assert.strictEqual(stages.unitFilterListOf(stages.getSet(id)).any, false);
+      assert.throws(() => stages.useUnitFilter(id, 'f99'), /not on this record set any more/);
+      // the listing the Funnel's source box reads carries them
+      const row = stages.listSets().find((x) => x.id === id);
+      assert.deepStrictEqual(row.filters.saved.map((f) => f.id), [a.saved, b.saved], 'the listing does not carry the saved filters');
+      // deleting leaves the boxes in force alone
+      stages.useUnitFilter(id, a.saved);
+      const del = stages.deleteUnitFilter(id, a.saved);
+      assert.deepStrictEqual(stages.getSet(id).unitFilter, { minAvgTest: '2' }, 'deleting a saved filter changed what the Funnel reads');
+      assert.strictEqual(del.filters.inForce, null);
+      assert.deepStrictEqual(del.filters.saved.map((f) => f.name), ['none kept']);
+      // A READING OF THE OTHER UNITS IS KEYED ON THE FILTER IN FORCE: the same
+      // rule under another filter is another reading
+      const rule = { ranges: {}, allowed: {}, floors: {} };
+      const run1 = stages.funnelAcrossStart(id, { unit: keys[0], rule });
+      for (let i = 0; i < 250 && stages.funnelAcrossStatus(id).running; i++) await new Promise((r) => setTimeout(r, 20));
+      assert.strictEqual(stages.funnelAcrossStart(id, { unit: keys[0], rule }).token, run1.token, 'the fixture proves nothing: the same rule under the same filter is not the same reading');
+      stages.useUnitFilter(id, b.saved);
+      const run2 = stages.funnelAcrossStart(id, { unit: keys[0], rule });
+      assert.notStrictEqual(run1.token, run2.token, 'a reading of the units made under one filter answers for another');
+    } finally {
+      fx.cleanup();
+    }
+  },
   async nothingOnTheFunnelIgnoresTheFilter() {
     // the boxes the pass can read before it has run are the records' own
     assert.deepStrictEqual(UT.filterBeforePass({ minAvgTest: '1', minH12: '0.5', maxStreakBest30: '9' }), { minAvgTest: '1' },

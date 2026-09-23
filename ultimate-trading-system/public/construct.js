@@ -4681,15 +4681,24 @@ async function drawBoards() {
     return head + list.map((x) => `<option value="${esc(x.id)}"${x.id === sel ? ' selected' : ''}>${rebuildPrefix(x)}${esc(x.name)} — ${esc(x.status)} — ${esc((x.createdAt || '').slice(0, 10))}${x.desc ? ` — ${esc(x.desc.slice(0, 40))}` : ''}</option>`).join('');
   };
   const foldBtn = (stage) => putAwayBtn('bfold', stage, fold[stage], "this stage's table");
+  // ONE STAGE AT A TIME, ON ITS OWN SUB TAB (3.238.0, owner order 2026-09-23:
+  // "Boards gets 3 sub tabs: Stage 1, Stage 2, Stage 3"). The provenance is
+  // unchanged: picking a stage 3 record set still fills the other two with its
+  // parents, and they are one press away. The sub tab picked is remembered;
+  // with none yet, the deepest stage picked opens.
+  const stab = [1, 2, 3].includes(Number(view.stab)) ? Number(view.stab) : deepest;
+  const stabOn = (n) => (n === stab ? ' on' : '');
   $('#view').innerHTML = `<div class="panel">
     <h3 style="margin-top:0">Boards — the record sets, and what each stage wrote</h3>
-    <p class="note">One section per stage, the whole provenance on screen: picking a stage 3 record set fills the
-      stage 2 and stage 1 sections with its parents; picking a stage 2 set fills its stage 1 parent; picking a
-      parent puts the child selections away. Each box offers only the record sets that came out of what is picked
-      above it. Each section can be put away and comes back as you left it.</p>
+    <p class="note">Picking a record set fills the stages above it with its parents; each box offers only what came out of the pick above it.</p>
     ${running ? `<p class="note"><b>${esc(running.name)}</b> is going: ${esc(running.progress || '…')}</p>` : ''}
   </div>
-  <div class="panel">
+  <div class="tabs" id="bStageTabs">
+    <div class="tab${stabOn(1)}" data-bstab="1">Stage 1</div>
+    <div class="tab${stabOn(2)}" data-bstab="2">Stage 2</div>
+    <div class="tab${stabOn(3)}" data-bstab="3">Stage 3</div>
+  </div>
+  ${stab !== 1 ? '' : `<div class="panel">
     <div class="row" style="align-items:flex-end">
       ${foldBtn(1)}
       <h3 style="margin:0">Stage 1</h3>
@@ -4701,8 +4710,8 @@ async function drawBoards() {
       ${campaignNoteHtml(rowOf(s1sel))}
 </div>
     <div id="bS1"></div>
-  </div>
-  <div class="panel">
+  </div>`}
+  ${stab !== 2 ? '' : `<div class="panel">
     <div class="row" style="align-items:flex-end">
       ${foldBtn(2)}
       <h3 style="margin:0">Stage 2</h3>
@@ -4714,8 +4723,8 @@ async function drawBoards() {
       ${campaignNoteHtml(rowOf(s2sel))}
 </div>
     <div id="bS2"></div>
-  </div>
-  <div class="panel">
+  </div>`}
+  ${stab !== 3 ? '' : `<div class="panel">
     <div class="row" style="align-items:flex-end">
       ${foldBtn(3)}
       <h3 style="margin:0">Stage 3</h3>
@@ -4727,7 +4736,15 @@ async function drawBoards() {
       ${campaignNoteHtml(rowOf(s3sel))}
 </div>
     <div id="bS3"></div>
-  </div>`;
+  </div>`}`;
+  document.querySelectorAll('[data-bstab]').forEach((t) => {
+    t.onclick = () => {
+      const n = Number(t.dataset.bstab);
+      if (n === stab) return;
+      bSaveView({ stab: n });
+      bRedrawPeggedTo(`[data-bstab="${n}"]`);
+    };
+  });
 
   for (const stage of [1, 2, 3]) {
     const pick = $(`#bPick${stage}`);
@@ -5427,8 +5444,7 @@ function bWireUnitSort(root) {
   });
 }
 function bUnitsSection(doc, units, view) {
-  const head = `<div class="t3break"></div>
-    <p class="t3head"><b>Table 3.C: Every unit</b> — one row for each coin and shape: the traded coin, the coins it is read alongside and the chunk shape, on one line, worked out from its own records and from the numbers Work out the test history numbers rebuilt for them. The filter on this table is saved on this record set and the Funnel reads it: its coin box, Worth walking?, all units together and the rule steps see only the coins and shapes this filter keeps.</p>`;
+  const head = `<p class="t3head"><b>Table 3.C: Every unit</b> — one row for each coin and shape: the traded coin, the coins it is read alongside and the chunk shape, on one line, worked out from its own records and from the numbers Work out the test history numbers rebuilt for them. The filter on this table is saved on this record set and the Funnel reads it: its coin box, Worth walking?, all units together and the rule steps see only the coins and shapes this filter keeps. Save it under a name and the Funnel offers it as a source.</p>`;
   if (!units) return `${head}<p class="note"><b class="warn">the unit table could not be read</b> — the service did not answer for it.</p>`;
   if (units.pending) {
     const pd = units.pending;
@@ -5445,12 +5461,77 @@ function bUnitsSection(doc, units, view) {
         <td ${btdU0}>${bCoin(r)} <span class="muted">${esc(bGeo(r.geometry))}</span>${r.ctx1 ? ` <span class="muted">${esc(`+ ${[r.ctx1, r.ctx2].filter(Boolean).join(' + ')}`)}</span>` : ''}</td>
         ${B_UNIT_COLS.map((c) => `<td ${btdU}>${bUnitCell(r, c)}</td>`).join('')}</tr>`).join('');
   return `${head}
+    ${bUnitSavedHtml(units.filters)}
     ${bFilterGrid('S3U', specs, units.spread)}
     <div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-bunithead style="text-align:left;border-bottom:1px solid var(--line)">
         ${bUnitHeads(view)}</tr></thead>
       <tbody>${rows || `<tr><td colspan="${1 + B_UNIT_COLS.length}" class="empty">nothing cleared the floors</td></tr>`}</tbody></table></div>
     ${bShown({ total: units.total || 0, of: units.of || 0 })}
     ${bPager(units.total || 0, units.from || 0, 100, 'S3U')}`;
+}
+// TABLE 3.C'S SAVED FILTERS (3.238.0, owner order 2026-09-23: "subtab Table
+// 3.C we want to have a filter save and picker -- these get offered as the
+// Funnel source"). The picker puts a saved filter in force; the boxes below
+// always show what is in force, and when they match no saved filter the picker
+// says so rather than naming one that is not cutting the rows. Save takes the
+// boxes as they stand, typed or applied, and puts them in force under the name.
+function bUnitSavedHtml(fl) {
+  const f = fl || { saved: [], inForce: null, any: false };
+  const inForce = (f.saved || []).find((x) => x.id === f.inForce) || null;
+  return `<div class="row" style="align-items:flex-end">
+      <label class="f" title="puts a saved filter in force: its boxes fill the filter below and the table shows what it keeps. The Funnel offers the same list as its source.">saved filter<select id="bUnitSaved" style="min-width:18rem">
+        <option value=""${f.any ? '' : ' selected'}>— no filter: every unit —</option>
+        ${(f.saved || []).map((x) => `<option value="${esc(x.id)}"${x.id === f.inForce ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}
+        ${f.any && !inForce ? '<option value="*" selected>— the boxes below, not saved —</option>' : ''}
+      </select></label>
+      <label class="f" title="the name Save the filter stores the boxes under. The same name again replaces what was saved under it, after asking.">name to save it under<input id="bUnitName" type="text" style="width:16rem" value="${esc(inForce ? inForce.name : '')}"></label>
+    </div>
+    <div class="row">
+      <button id="bUnitSave" title="stores the boxes below as they stand, typed or applied, under the name beside, and puts them in force.">Save the filter</button>
+      <button id="bUnitDelete" class="danger" ${inForce ? '' : 'disabled'} title="deletes the saved filter picked in the box, and nothing else: the boxes below stay as they are, so what the table and the Funnel read does not change.">Delete this saved filter</button>
+      <span id="bUnitSaid" class="note"></span>
+    </div>`;
+}
+function bWireUnitSaved(root, doc, units) {
+  const pick = $(root) && $(root).querySelector('#bUnitSaved');
+  if (!pick || !units || !units.filters) return;   // no table on screen, or a newer draw owns it
+  const fl = units.filters;
+  const said = $(root).querySelector('#bUnitSaid');
+  const path = (verb) => `api/stageset/${encodeURIComponent(doc.id)}/unitfilter/${verb}`;
+  const landed = (r) => {
+    fSourceCache = null;                                   // the Funnel's source box lists these
+    bSetFilters('S3U', (r && r.unitFilter) || {});
+    bSaveView({ units: { ...(bView().units || {}), offset: 0 } });
+    bRepaintTable(3, { peg: '#bUnitSaved' });
+  };
+  pick.onchange = async () => {
+    const want = pick.value;
+    if (want === '*') return;                             // that is what is in force already
+    if (fl.any && !fl.inForce && !confirm('The boxes in force are not saved under any name. Picking another filter empties them. Carry on?')) {
+      pick.value = '*';
+      return;
+    }
+    const r = await tryPost(path('use'), { saved: want });
+    if (!r) { pick.value = fl.inForce || (fl.any ? '*' : ''); return; }
+    landed(r);
+  };
+  const save = $(root).querySelector('#bUnitSave');
+  if (save) save.onclick = async () => {
+    const name = ($(root).querySelector('#bUnitName').value || '').trim();
+    if (!name) { if (said) said.textContent = 'type a name for the filter first'; return; }
+    const clash = (fl.saved || []).find((x) => x.name.toLowerCase() === name.toLowerCase());
+    if (clash && !confirm(`A filter called "${clash.name}" is saved on this record set already. Replace it with the boxes as they stand now?`)) return;
+    const r = await tryPost(path('save'), { name, filters: bBoxesNow(root, 'S3U') });
+    if (r) landed(r);
+  };
+  const del = $(root).querySelector('#bUnitDelete');
+  if (del) del.onclick = async () => {
+    if (del.disabled || !fl.inForce) return;
+    const it = (fl.saved || []).find((x) => x.id === fl.inForce);
+    if (!confirm(`Delete the saved filter "${it ? it.name : fl.inForce}"? The boxes below stay as they are.`)) return;
+    const r = await tryPost(path('delete'), { saved: fl.inForce });
+    if (r) landed(r);
+  };
 }
 
 // ---- WHAT EVERY TABLE ON THIS SCREEN GETS (owner order, 2026-08-28) -------
@@ -5518,6 +5599,7 @@ async function bApplyFilters(root, key, doc) {
   // has already said why; the table is left as it stands.
   if (key === 'S3U' && doc && doc.id) {
     if (!(await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/unitfilter`, { filters: next }))) return;
+    fSourceCache = null;                                   // the Funnel's source box says which filter is in force
   }
   bRepaintTable(bStageOfKey(key), key === 'S3C' ? { peg: '[data-bcoinhead]' } : key === 'S3U' ? { peg: '[data-bunithead]' } : {});
 }
@@ -5624,6 +5706,7 @@ function bWireFilters(root, doc) {
       bSaveView({ filters: all, [`from${key}`]: 0, ...(key === 'S3C' ? { s3cBeforePin: null, s3cPin: null } : {}) });
       // and off the record set too, or the boxes empty while the carry stays cut
       if ((key === 'S1' || key === 'S2') && doc && doc.id) await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/filters`, { filters: {} });
+      if (key === 'S3U') fSourceCache = null;              // the Funnel's source box says which filter is in force
       if (key === 'S3U' && doc && doc.id) await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/unitfilter`, { filters: {} });
       bRepaintTable(bStageOfKey(key), key === 'S3C' ? { peg: '[data-bcoinhead]' } : key === 'S3U' ? { peg: '[data-bunithead]' } : {});
     };
@@ -6235,15 +6318,21 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   }).toString();
   const rankQs = new URLSearchParams({ from, n: 100, heldBack: bHeldBack ? '1' : '', ...bFilters('S3R') }).toString();
   const unitsQ = view.units || {};
+  // ONE TABLE AT A TIME, ON ITS OWN SUB TAB (3.238.0, owner order 2026-09-23:
+  // "we need more subtabs for Table 3.A, Table 3.B, and Table 3.C"). The table
+  // not on screen is not asked for: the lines about the whole set, and the
+  // held-back tick that reaches every table, stay above the sub tabs.
+  const t3 = ['3A', '3B', '3C'].includes(view.s3tab) ? view.s3tab : '3A';
+  const t3On = (k) => (k === t3 ? ' on' : '');
   const unitsQs = new URLSearchParams({ sort: unitsQ.sort || 'set', flip: unitsQ.flip ? '1' : '', offset: unitsQ.offset || 0, limit: 100 }).toString();
   const [ranked, coins, gap, filling, dropping, undoing, units] = await Promise.all([
     apiOr(`api/stageset/${doc.id}/ranked?${rankQs}`, null),
-    apiOr(`api/stageset/${doc.id}/coins?${qs}`, null),
+    t3 === '3B' ? apiOr(`api/stageset/${doc.id}/coins?${qs}`, null) : null,
     apiOr(`api/stageset/${doc.id}/missing`, null),
     apiOr(`api/stageset/${doc.id}/fill-in/status`, null),
     apiOr(`api/stageset/${doc.id}/drop-undeclared/status`, null),
     apiOr(`api/stageset/${doc.id}/undo-append/status`, null),
-    apiOr(`api/stageset/${doc.id}/units?${unitsQs}`, null),
+    t3 === '3C' ? apiOr(`api/stageset/${doc.id}/units?${unitsQs}`, null) : null,
   ]);
   // A finished set whose tables are missing totals itself when opened (the
   // durable fix, owner order 2026-08-27): the service reports how far the
@@ -6272,7 +6361,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   const swHead = `Stage 3 — settings priced from the kept votes (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})`;
   if (!bPut(mount, `${incomplete}<div class="panel">
     ${bFoldBtn('S3R', swHead)}
-    ${!bTableOpen('S3R') ? '<p class="note">put away — press the arrow to bring it back.</p>' : `
+    ${!bTableOpen('S3R') ? '' : `
     ${bCheckLine(doc, bView().checked && bView().checked.id === doc.id ? bView().checked.res : null)}
     ${bUndoLine(doc, undoing)}
     ${(undoing && undoing.half) ? '' : bDropLine(doc, gap, dropping)}
@@ -6282,6 +6371,13 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       ${(ranked && ranked.sortSetAside) ? `<span class="note warn">the sort saved on this set reads the held-back window (${esc(bHeldBackSortWords(ranked.sortSetAside))}); it is set aside while the window is hidden, and the table reads in its own order</span>` : ''}
       ${(coins && coins.sortSetAside) ? `<span class="note warn">Table 3.B was sorting by ${esc(B_HELD_BACK_WORDS_3B[coins.sortSetAside] || coins.sortSetAside)}, a held-back column; while the window is hidden it reads by beat the kept null money</span>` : ''}
     </div>
+    `}
+    <div class="tabs" id="bT3Tabs">
+      <div class="tab${t3On('3A')}" data-bt3tab="3A">Table 3.A</div>
+      <div class="tab${t3On('3B')}" data-bt3tab="3B">Table 3.B</div>
+      <div class="tab${t3On('3C')}" data-bt3tab="3C">Table 3.C</div>
+    </div>
+    ${t3 !== '3A' ? '' : !bTableOpen('S3R') ? '<p class="note">put away — press the arrow to bring it back.</p>' : `
     <p class="t3head"><b>Table 3.A: Settings, ranked</b> — one row per permuted Sweep Stage 3 setting, averaged over its coin/chunk-shape combinations promoted from Stage 2</p>
     ${bFilterGrid('S3R', [
     ['rule', 'quorum by', 'pick', 'shows only settings weighing the members this way. any shows every one.',
@@ -6392,7 +6488,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       nothing picked, or with the held-back window hidden and a held-back sort saved: beat the kept null money, best first. Independent voices below members means the committees held
       near-copies, so the setting rests on fewer real opinions than its member count suggests.</p>
     `}
-    <div class="t3break"></div>
+    ${t3 !== '3B' ? '' : `
     <p class="t3head"><b>Table 3.B: Every coin of every setting</b> — one row for each "short" setting x (each coin + chunk shape); every row averages the "factored out" settings: decision, band and 24/5 variants of the short setting, which are provided as sub-rows</p>
     ${bFilterGrid('S3C', [
     ...(bHeldBack ? [
@@ -6468,9 +6564,18 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}><button data-brec="${esc(k)}">${openKeys.has(k) ? '▾ Records' : 'Records'}</button></td></tr>`;
   }).join('') || '<tr><td colspan="19" class="empty">nothing cleared the floors</td></tr>'}</tbody></table></div>
     ${bShown({ total: (coins && coins.total) || 0, of: ((coins && coins.total) || 0) + ((coins && coins.removed) || 0) })}
-    ${bPager((coins && coins.total) || 0, coinsQ.offset || 0, 100, 'S3C')}
-    ${bUnitsSection(doc, units, view)}
+    ${bPager((coins && coins.total) || 0, coinsQ.offset || 0, 100, 'S3C')}`}
+    ${t3 !== '3C' ? '' : bUnitsSection(doc, units, view)}
   </div>`)) return;
+  // the three table sub tabs: the page holds still on the strip itself
+  $(mount).querySelectorAll('[data-bt3tab]').forEach((t) => {
+    t.onclick = () => {
+      const k = t.dataset.bt3tab;
+      if (k === t3) return;
+      bSaveView({ s3tab: k });
+      bRepaintTable(3, { peg: '#bT3Tabs' });
+    };
+  });
   // THE ORDERING BOX AND ITS Apply ARE GONE (owner order, 2026-08-28: "remove
   // obsolete ordering selections as we can do all row ordering by column
   // selections"). Every column sorts on one click and every filter asks again
@@ -6506,6 +6611,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
           weekdaysOnly: btn.dataset.bpinwk === '1',
         },
         openS3: 'all',                 // every coin's records, opened
+        s3tab: '3B',                   // the answer is on Table 3.B's own sub tab
         coins: { ...(bView().coins || {}), offset: 0 },
       });
       bRepaintTable(3, { scrollTo: '[data-bcoinhead]' });
@@ -6612,6 +6718,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   bWireUnitSort(mount);
   bWireFilters(mount, doc);
   bWireTableFold(mount);
+  bWireUnitSaved(mount, doc, units);
   // opened records rows, fetched and slotted under their coin row
   for (const k of openKeys) {
     const tr = $(mount).querySelector(`tr[data-bkey="${CSS.escape(k)}"]`);
@@ -6836,12 +6943,21 @@ const fHoldShown = (st, away, open) => !!away || !open || !st.walking;
 
 // WHAT A READING OF THE OTHER UNITS WAS READ FOR: the rule AND the bar. The
 // same rule under another share of the copies is another reading.
-const fAcrossKey = (st) => JSON.stringify([st.rule, st.barPct == null ? null : st.barPct]);
+// AND THE FILTER IN FORCE ON TABLE 3.C (3.238.0): the source box can change it,
+// and a reading of the units made under one filter shown under another would
+// list units the filter no longer keeps. Read off the source box's own list,
+// which is asked for again at the start of every draw of this screen.
+const fFilterSig = (set) => {
+  const row = fSourceCache && fSourceCache.sets.find((x) => x.id === set);
+  const b = (row && row.filters && row.filters.boxes) || {};
+  return JSON.stringify(Object.keys(b).sort().map((k) => [k, b[k]]));
+};
+const fAcrossKey = (st) => JSON.stringify([st.rule, st.barPct == null ? null : st.barPct, fFilterSig(st.set)]);
 // WHAT A CROSSES READING IS HELD UNDER (§18a.4): the rule, the bar AND the thin
 // floor, because the floor decides which squares count and so changes every
 // block on every pair. A reading whose key has moved is not shown -- a list
 // worked out under a rule that no longer holds is worse than no list.
-const fCrossKey = (st) => JSON.stringify([st.rule, st.barPct == null ? null : st.barPct, Math.max(0, Math.floor(Number(st.floor) || 0))]);
+const fCrossKey = (st) => JSON.stringify([st.rule, st.barPct == null ? null : st.barPct, Math.max(0, Math.floor(Number(st.floor) || 0)), fFilterSig(st.set)]);
 const fSecs = (ms) => (ms == null || !Number.isFinite(Number(ms)) ? '-'
   : (ms < 60000 ? `${Math.max(1, Math.round(ms / 1000))} second(s)` : `${Math.round(ms / 60000)} minute(s)`));
 function fLoad() {
@@ -6869,22 +6985,121 @@ function fSave() {
   try { localStorage.setItem(fWalkKeyFor(fState.set, fState.unit), JSON.stringify(fState)); } catch (_) { /* private window */ }
 }
 
-// WHICH SET THE FUNNEL IS WALKING: the one open on Boards, read from Boards'
-// own state. There is no second picker, because two places remembering which
-// set is open is how one set's numbers end up under another set's name.
-function pickedSet3() { return bView().s3 || null; }
+// WHICH SET THE FUNNEL IS WALKING: ITS OWN SOURCE (3.238.0, owner order
+// 2026-09-23: "that lack of a picker on funnel is a problem ... it should be
+// engineered the same as the other tabs", then "subtab Table 3.C we want to
+// have a filter save and picker -- these get offered as the Funnel source").
+//
+// It used to be whatever Boards had open, with no picker here -- so picking a
+// stage 1 set on Boards left the Funnel with nothing, and the only way to walk
+// another set was to go and open it somewhere else. The source is kept here
+// now, the way every other screen keeps its own set; what Boards has open is
+// only where a first visit starts.
+const F_SOURCE_KEY = 'cx-funnel-source';
+let fSourceMemory = null;          // the same, for a window whose storage throws
+function pickedSet3() {
+  let own = null;
+  try { own = localStorage.getItem(F_SOURCE_KEY); } catch (_) { own = null; }
+  return own || fSourceMemory || bView().s3 || null;
+}
+function fSourceChoose(set) {
+  fSourceMemory = set || null;
+  try { if (set) localStorage.setItem(F_SOURCE_KEY, set); else localStorage.removeItem(F_SOURCE_KEY); } catch (_) { /* private window */ }
+}
+// THE LIST THE SOURCE BOX OFFERS: every finished stage 3 record set, each with
+// the filters saved under its Table 3.C. Kept a few seconds, because the page
+// asks again every few seconds while a table is worked out and the list does
+// not change with that; anything that changes a set's filters drops it.
+let fSourceCache = null;
+async function fSourceSettle() {
+  if (!fSourceCache || Date.now() - fSourceCache.at > 15000) {
+    const got = await apiOr('api/stagesets', null);
+    if (!got) return fSourceCache;                          // unanswered: the list and the choice are left alone
+    fSourceCache = { at: Date.now(), sets: (got.sets || []).filter((x) => x.stage === 3 && !x.exam) };
+  }
+  const sets = fSourceCache.sets;
+  const cur = pickedSet3();
+  const usable = (x) => x.status === 'done' || x.status === 'incomplete';
+  if (!sets.some((x) => x.id === cur && usable(x))) {
+    // gone, or never chosen: the newest finished stage 3 set, or none
+    const next = sets.find(usable);
+    if ((next ? next.id : null) !== cur) { fSourceChoose(next ? next.id : null); fState = null; }
+  }
+  return fSourceCache;
+}
+// the choice as the box writes it: set id, a bar, and '' (every unit), a
+// saved filter's id, or '*' (the boxes in force, not saved)
+function fSourceHtml(src) {
+  const cur = pickedSet3();
+  const sets = ((src && src.sets) || []).filter((x) => x.status === 'done' || x.status === 'incomplete');
+  const opts = [];
+  for (const x of sets) {
+    const fl = x.filters || { saved: [], inForce: null, any: false };
+    const nm = `${rebuildPrefix(x)}${esc(x.name)}`;
+    const here = x.id === cur;
+    const at = here ? (fl.inForce || (fl.any ? '*' : '')) : null;
+    const opt = (v, words) => `<option value="${esc(`${x.id}|${v}`)}"${at === v ? ' selected' : ''}>${nm} — ${words}</option>`;
+    opts.push(opt('', 'every unit'));
+    for (const f of (fl.saved || [])) opts.push(opt(f.id, esc(f.name)));
+    if (fl.any && !fl.inForce) opts.push(opt('*', 'the filter on Table 3.C, not saved'));
+  }
+  return `<div class="panel" id="fSourcePanel">
+    <div class="row" style="align-items:flex-end">
+      <label class="f" title="the stage 3 record set the Funnel walks, and which of its coins and shapes: every unit, or a filter saved under Table 3.C on Boards. Picking a saved filter puts it in force on Table 3.C as well, because the Funnel and that table read the one filter.">source<select id="fSource" style="min-width:34rem">${
+  opts.length ? opts.join('') : '<option value="">— no finished stage 3 record set on this box yet —</option>'}</select></label>
+    </div>
+  </div>`;
+}
+// Put at the top of whatever the Funnel drew (drawFunnel says why every view).
+function fSourcePut(html, src) {
+  if (tab !== 'funnel' || !$('#view')) return;          // another screen was picked while this drew
+  const old = $('#fSourcePanel');
+  if (old) old.remove();
+  $('#view').insertAdjacentHTML('afterbegin', html);
+  const box = $('#fSource');
+  if (!box) return;
+  const was = box.value;
+  box.onchange = async () => {
+    const [set, want] = box.value.split('|');
+    const row = ((src && src.sets) || []).find((x) => x.id === set);
+    if (!row) { box.value = was; return; }
+    const fl = row.filters || { saved: [], inForce: null, any: false };
+    const already = want === '*' || (want === '' ? !fl.any : fl.inForce === want);
+    if (!already) {
+      if (fl.any && !fl.inForce && !confirm(`The boxes in force on Table 3.C of ${row.name} are not saved under any name. Picking this empties them. Carry on?`)) {
+        box.value = was;
+        return;
+      }
+      const r = await tryPost(`api/stageset/${encodeURIComponent(set)}/unitfilter/use`, { saved: want });
+      if (!r) { box.value = was; return; }
+    }
+    fSourceChoose(set);
+    fSourceCache = null;
+    fState = null;                                         // the walk is read again under the new source
+    fHoldSeen = null;                                      // Worth walking? is asked again, not shown from the last one
+    fHoldAsked = null;
+    drawFunnel();
+  };
+}
 
 const fFix = (v, n) => (v == null || !Number.isFinite(Number(v)) ? '-' : Number(v).toFixed(n == null ? 2 : n));
 
+// THE SOURCE BOX TOPS EVERY VIEW OF THE FUNNEL (3.238.0): the walk, a Stage 4
+// record set, Home, the waits and the failures. It is put on after the view is
+// drawn, whichever way the view ended, because a source picked wrongly is
+// exactly what lands on a wait -- and a wait with no source box would leave no
+// way back out.
 async function drawFunnel() {
+  const src = await fSourceSettle();
+  try { return await fDrawView(); } finally { fSourcePut(fSourceHtml(src), src); }
+}
+async function fDrawView() {
   let st = fLoad();
   if (!st.set) {
-    // Reachable only when there is no stage 3 set on the box at all: Boards
-    // now records the one it resolved, so "open one" is advice the owner can
-    // actually act on rather than a door with no handle.
-    $('#view').innerHTML = `<div class="panel empty">There is no stage 3 record set open. Open the Boards section
-      once - it will settle on one - and come back. The Funnel walks the set Boards has open, so there is no second
-      picker here to disagree with it.</div>`;
+    // Reachable only when there is no finished stage 3 set on the box at all:
+    // the source box settles on the newest one whenever there is one.
+    $('#view').innerHTML = `<div class="panel empty">There is no finished stage 3 record set on this box yet, so there
+      is nothing for the Funnel to walk. Run stage 3 on Sweep; the finished set appears under source.</div>`;
     return;
   }
   // the first read of a unit's board is a few seconds of reading its records;
@@ -6917,8 +7132,7 @@ async function drawFunnel() {
   if (!d) {
     $('#view').innerHTML = `<div class="panel"><h3 style="margin-top:0">Funnel</h3>
       <p class="note neg">This section could not read <b>${esc(st.set)}</b>. Nothing below is from it, because there
-        is nothing below. The reason came back in the message box; if that set has just been deleted or renamed,
-        pick one on the Boards section.</p></div>`;
+        is nothing below. The reason came back in the message box; pick another under source above.</p></div>`;
     return;
   }
   if (d.totalling || d.waiting || d.building || d.blending || d.failed) {
@@ -8478,7 +8692,7 @@ function fTitle(d, st, name, away, open) {
     ${d.unitFilter ? `<p class="note" style="margin:.35rem 0 0">the filter on Table 3.C keeps <b>${Number(d.unitFilter.kept).toLocaleString()}</b> of
       ${Number(d.unitFilter.of).toLocaleString()} coins and shapes, and the coin box, Worth walking?, all units together and the rule steps read those alone${
   d.unitFilter.hidden ? ` - the coin and shape this walk was left on, <b>${esc(d.unitFilter.hidden)}</b>, is not among them, so this walk is on the first one it keeps` : ''}.
-      Change the filter under Table 3.C on Boards.</p>` : ''}
+      Pick another under source above, or change the boxes under Table 3.C on Boards.</p>` : ''}
     <h3 id="fTitleName" style="margin:.55rem 0 0">${esc(name)}</h3>`;
 }
 // what the bold name says while the steps are being walked

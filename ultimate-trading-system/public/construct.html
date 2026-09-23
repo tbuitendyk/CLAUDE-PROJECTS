@@ -359,7 +359,9 @@
      The heading itself is bigger than the notes around it for the same reason:
      it is the name of a table, not a caption under one. */
   .t3head { font-size:1.05rem; margin:.6rem 0 .35rem; }
-  .t3break { border-top:2px solid var(--line); margin:1.9rem 0 0; }
+  /* EACH ON ITS OWN SUB TAB NOW (3.238.0): Table 3.A, 3.B and 3.C are never on
+     the screen together, so the rule that drew a break between them went with
+     them. The heading keeps its size: it is still the name of a table. */
   .pagetop { position:sticky; top:0; z-index:20; background:var(--bg);
     margin:-1.1rem -1.1rem 0; padding:1.1rem 1.1rem .3rem; }
   .pagetop .tabs { margin-bottom:0; }

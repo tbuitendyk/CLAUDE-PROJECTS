@@ -41,6 +41,7 @@ const UNITS = [
   { u: 3, trade: 'CCC', ctx1: 'AAA', ctx2: 'BBB', size: 3, geometry: 'weekly-8d' },
 ];
 const keys = UNITS.map((u) => stages.unitKeyOf(u));
+const UNITS_TRADES = UNITS.map((u) => u.trade);
 function writeFixture() {
   const doc = {
     id, stage: 3, seq: 999976, name: 'S3 #ui-units', status: 'done', createdAt: new Date().toISOString(),
@@ -113,7 +114,8 @@ function cleanup() {
         if (localStorage.getItem('ui-units-started')) return;
         localStorage.setItem('ui-units-started', '1');
         localStorage.setItem('cx-tab', 'boards');
-        localStorage.setItem('cx-boards-view', JSON.stringify({ s3: setId, fold1: true, fold2: true, fold3: true }));
+        // Stage 3's sub tab and Table 3.C's own (3.238.0)
+        localStorage.setItem('cx-boards-view', JSON.stringify({ s3: setId, fold1: true, fold2: true, fold3: true, stab: 3, s3tab: '3C' }));
         localStorage.removeItem('cx-scroll');
       }, id);
       await page.goto(`http://127.0.0.1:${PORT}/construct.html`, { waitUntil: 'domcontentloaded' });
@@ -207,6 +209,24 @@ function cleanup() {
         expect(cut.length === kept.kept.size && cut.length < UNITS.length, `the table shows the ${kept.kept.size} coins and shapes the floor keeps (${cut.length} rows)`);
         const shown = await page.evaluate(() => (document.querySelector('[data-bunithead]').closest('.panel').textContent.match(/\d+ of \d+ rows — the rest are held back by the filters above\./) || [])[0] || '');
         expect(/rows — the rest are held back/.test(shown), `the line under the table owns up to the cut: ${shown}`);
+        // SAVED UNDER A NAME (3.238.0): Save the filter keeps the boxes on the
+        // record set under the name typed, and the picker then names it
+        await page.locator('#bUnitName').scrollIntoViewIfNeeded();
+        await page.fill('#bUnitName', 'kept by money');
+        await page.locator('#bUnitSave').click();
+        await page.waitForFunction(() => { const w = document.querySelector('#waitbox'); return !w || w.hidden; }, null, { timeout: 30000 });
+        await page.waitForTimeout(600);
+        const savedList = stages.getSet(id).unitFilters || [];
+        expect(savedList.length === 1 && savedList[0].name === 'kept by money' && savedList[0].filters.minAvgTest === '0', `Save the filter keeps it on the record set: ${JSON.stringify(savedList)}`);
+        const picked = await page.evaluate(() => { const b = document.querySelector('#bUnitSaved'); return b ? b.options[b.selectedIndex].textContent : null; });
+        expect(picked === 'kept by money', `saved filter names the filter in force: ${picked}`);
+        if (SHOTS) {
+          await page.evaluate(() => window.scrollTo(0, 0));
+          await page.waitForTimeout(200);
+          await page.screenshot({ path: path.join(SHOTS, `boards-top-${width}.png`), fullPage: false });
+          const at = await page.evaluate(() => document.querySelector('#bUnitSaved').getBoundingClientRect().top + window.scrollY - 160);
+          await page.screenshot({ path: path.join(SHOTS, `units-saved-${width}.png`), fullPage: true, clip: { x: 0, y: Math.max(0, at), width, height: 700 } });
+        }
         // THE FUNNEL READS THE FILTER: its coin box offers only the kept coins, and says so
         await page.evaluate(() => { localStorage.setItem('cx-tab', 'funnel'); });
         await page.reload({ waitUntil: 'domcontentloaded' });
@@ -265,6 +285,26 @@ function cleanup() {
           await page.screenshot({ path: path.join(SHOTS, `funnel-filtered-${width}.png`), fullPage: false });
           console.log(`  screenshot: ${path.join(SHOTS, `funnel-filtered-${width}.png`)}`);
         }
+        // THE FUNNEL'S OWN SOURCE (3.238.0): it names the set and the saved
+        // filter in force, and picking every unit puts every coin back
+        const source = await page.evaluate(() => { const b = document.querySelector('#fSource'); return b ? { at: b.options[b.selectedIndex].textContent, all: [...b.options].map((o) => o.textContent), top: !b.closest('.panel').previousElementSibling } : null; });
+        expect(source && /S3 #ui-units — kept by money$/.test(source.at) && source.top, `source sits at the top and names the saved filter in force: ${JSON.stringify(source)}`);
+        if (SHOTS) {
+          await page.evaluate(() => window.scrollTo(0, 0));
+          await page.waitForTimeout(200);
+          await page.screenshot({ path: path.join(SHOTS, `funnel-source-${width}.png`), fullPage: false });
+        }
+        await page.selectOption('#fSource', `${id}|`);
+        await page.waitForFunction(() => { const w = document.querySelector('#waitbox'); return !w || w.hidden; }, null, { timeout: 30000 });
+        await page.waitForSelector('#fUnit', { timeout: 60000 });
+        await page.waitForTimeout(800);
+        expect(stages.getSet(id).unitFilter == null, `every unit, picked under source, puts the filter out of force: ${JSON.stringify(stages.getSet(id).unitFilter)}`);
+        const offeredAll = await page.evaluate(() => [...document.querySelectorAll('#fUnit option')].map((o) => o.textContent));
+        expect(offeredAll.length === new Set(UNITS_TRADES).size + 1, `and the coin box offers every coin again: ${offeredAll.join(', ')}`);
+        await page.selectOption('#fSource', `${id}|${savedList[0].id}`);
+        await page.waitForFunction(() => { const w = document.querySelector('#waitbox'); return !w || w.hidden; }, null, { timeout: 30000 });
+        await page.waitForTimeout(800);
+        expect(stages.getSet(id).unitFilter && stages.getSet(id).unitFilter.minAvgTest === '0', `the saved filter, picked under source, is put back in force: ${JSON.stringify(stages.getSet(id).unitFilter)}`);
         // CLEAR FILTERS PUTS EVERY COIN AND SHAPE BACK, on the set too
         await page.evaluate(() => { localStorage.setItem('cx-tab', 'boards'); });
         await page.reload({ waitUntil: 'domcontentloaded' });

@@ -254,6 +254,9 @@ function listSets() {
         exam: !!d.exam,
         // REBUILD REQUIRED, and why (3.235.0; the repair block below)
         rebuild: d.stage >= 3 ? rebuildOf(d) : null,
+        // Table 3.C's saved filters and which one is in force (3.238.0): the
+        // Funnel offers a stage 3 set together with one of them as its source
+        filters: d.stage === 3 ? unitFilterListOf(d) : null,
       });
     } catch (_) { /* an unreadable doc is skipped, never invented */ }
   }
@@ -6474,7 +6477,11 @@ function acrossKeyOf(id, state) {
   const S4 = require('./funnelset');
   // the bar is part of what was read: the same rule under another share of
   // the copies is another reading, and must not be answered from this one
-  return JSON.stringify([id, state.unit == null ? '' : String(state.unit), S4.normaliseRule(state.rule), require('./funnel').barPctOf(state)]);
+  // AND THE FILTER IN FORCE ON TABLE 3.C (3.238.0): the Funnel's source can
+  // now change it, and a reading of the units under one filter answered for
+  // another would list units the filter no longer keeps
+  return JSON.stringify([id, state.unit == null ? '' : String(state.unit), S4.normaliseRule(state.rule), require('./funnel').barPctOf(state),
+    filterSig(unitFilterOf(getSet(String(id))))]);
 }
 const acrossStatus = (run) => ({
   running: !run.result && !run.error,
@@ -6517,7 +6524,8 @@ let crossesRun = null;
 function crossesKeyOf(id, state) {
   const S4 = require('./funnelset');
   return JSON.stringify([id, state.unit == null ? '' : String(state.unit), S4.normaliseRule(state.rule),
-    require('./funnel').barPctOf(state), Math.max(0, Math.floor(Number(state.floor) || 0))]);
+    require('./funnel').barPctOf(state), Math.max(0, Math.floor(Number(state.floor) || 0)),
+    filterSig(unitFilterOf(getSet(String(id))))]);
 }
 const crossesStatus = (run) => ({
   running: !run.result && !run.error,
@@ -7239,6 +7247,90 @@ function setUnitFilter(id, filters) {
   saveSet(doc);
   return { id: doc.id, unitFilter: doc.unitFilter };
 }
+// SAVED FILTERS (3.238.0, owner order 2026-09-23: "subtab Table 3.C we want to
+// have a filter save and picker -- these get offered as the Funnel source").
+//
+// The boxes IN FORCE stay exactly where every reader already reads them,
+// doc.unitFilter, so nothing on the Funnel learned a second place to look. A
+// saved filter is a name and a copy of boxes; picking one -- on Table 3.C or
+// as the Funnel's source -- copies its boxes into force. Which saved filter is
+// in force is worked out by comparing boxes, never kept as a pointer: a pointer
+// goes stale the moment one box is changed, and then names a filter that is
+// not the one cutting the rows.
+const unitFiltersOf = (doc) => (doc && Array.isArray(doc.unitFilters) ? doc.unitFilters : []);
+const filterSig = (f) => JSON.stringify(Object.keys(f || {}).sort().map((k) => [k, f[k]]));
+function savedFilterInForce(doc) {
+  const now = filterSig(unitFilterOf(doc));
+  const hit = unitFiltersOf(doc).find((f) => filterSig(f.filters) === now);
+  return hit ? hit.id : null;
+}
+// what a listing row and Table 3.C show of them: names, which one is in
+// force, and the boxes in force themselves (the Funnel keys its readings on
+// them, so a reading made under one filter is never shown under another)
+function unitFilterListOf(doc) {
+  const boxes = unitFilterOf(doc);
+  return {
+    saved: unitFiltersOf(doc).map((f) => ({ id: f.id, name: f.name, savedAt: f.savedAt || null })),
+    inForce: savedFilterInForce(doc),
+    boxes,
+    any: Object.keys(boxes).length > 0,
+  };
+}
+function stage3ForFilters(id) {
+  const doc = getSet(String(id || ''));
+  if (!doc) throw new Error('unknown record set');
+  if (doc.stage !== 3) throw new Error('Table 3.C is a stage 3 table — this record set is not one');
+  if (doc.status === 'running') throw new Error('the record set is still being written — the filter saves after it finishes');
+  return doc;
+}
+// SAVE: the boxes as they stand, under a name, and in force from now on. The
+// same name again replaces what was saved under it; the page asks first.
+function saveUnitFilterAs(id, name, filters) {
+  const UT = require('./unittable');
+  const doc = stage3ForFilters(id);
+  const nm = String(name == null ? '' : name).replace(/\s+/g, ' ').trim().slice(0, 80);
+  if (!nm) throw new Error('type a name for the filter first');
+  const clean = UT.cleanFilter(filters);
+  if (!Object.keys(clean).length) throw new Error('no box holds a number, so there is no filter to save — every unit is already offered as it is');
+  const list = unitFiltersOf(doc).slice();
+  const at = list.findIndex((f) => String(f.name).toLowerCase() === nm.toLowerCase());
+  let fid = at >= 0 ? list[at].id : null;
+  if (!fid) {
+    const taken = new Set(list.map((f) => f.id));
+    let n = list.length + 1;
+    while (taken.has(`f${n}`)) n++;
+    fid = `f${n}`;
+  }
+  const entry = { id: fid, name: nm, filters: clean, savedAt: new Date().toISOString() };
+  if (at >= 0) list[at] = entry; else list.push(entry);
+  doc.unitFilters = list;
+  doc.unitFilter = clean;
+  saveSet(doc);
+  return { id: doc.id, unitFilter: doc.unitFilter, filters: unitFilterListOf(doc), saved: fid };
+}
+// PICK: a saved filter's boxes into force; '' puts every box out of force,
+// which is every unit.
+function useUnitFilter(id, savedId) {
+  const doc = stage3ForFilters(id);
+  const want = String(savedId == null ? '' : savedId);
+  if (!want) return { ...setUnitFilter(doc.id, {}), filters: unitFilterListOf(getSet(doc.id)) };
+  const hit = unitFiltersOf(doc).find((f) => f.id === want);
+  if (!hit) throw new Error('that saved filter is not on this record set any more');
+  const out = setUnitFilter(doc.id, hit.filters);
+  return { ...out, filters: unitFilterListOf(getSet(doc.id)) };
+}
+// DELETE: the name and its copy go; the boxes in force are left exactly as
+// they are, so deleting a filter never quietly changes what the Funnel reads.
+function deleteUnitFilter(id, savedId) {
+  const doc = stage3ForFilters(id);
+  const want = String(savedId == null ? '' : savedId);
+  const list = unitFiltersOf(doc);
+  if (!list.some((f) => f.id === want)) throw new Error('that saved filter is not on this record set any more');
+  doc.unitFilters = list.filter((f) => f.id !== want);
+  if (!doc.unitFilters.length) delete doc.unitFilters;
+  saveSet(doc);
+  return { id: doc.id, unitFilter: doc.unitFilter || null, filters: unitFilterListOf(doc) };
+}
 // WHICH COINS AND SHAPES THE FILTER KEEPS, for everything on the Funnel that
 // offers, ranks or blends them. `kept` is null when no filter is set (nothing
 // is cut); `pending` says the table the filter reads is not ready, so the cut
@@ -7297,7 +7389,7 @@ function stage3Units(id, query = {}) {
   const doc = getSet(key);
   const filter = unitFilterOf(doc);
   const st = ensureUnitTable(key);
-  if (!st.ready) return { pending: st, unitFilter: filter };
+  if (!st.ready) return { pending: st, unitFilter: filter, filters: unitFilterListOf(doc) };
   const UT = require('./unittable');
   const all = st.table.units;
   const kept = UT.applyFilter(all, filter);
@@ -7309,7 +7401,7 @@ function stage3Units(id, query = {}) {
   const spread = cachedSpread(`3U|${key}|${st.table.builtAt}|${JSON.stringify(filter)}`, () => spreadOf(kept, UT.FILTER_DEFS));
   return {
     total: kept.length, of: all.length, removed: all.length - kept.length, from, spread, sort, flip,
-    unitFilter: filter, builtAt: st.table.builtAt, columns: UT.COLUMN_KEYS,
+    unitFilter: filter, filters: unitFilterListOf(doc), builtAt: st.table.builtAt, columns: UT.COLUMN_KEYS,
     rows: kept.slice(from, from + limit),
   };
 }
@@ -11907,7 +11999,8 @@ module.exports = {
   missingSettingsIn, nextSettingNumber,
   rebuildRichFor, proveRebuild, firstDigitOf, funnelRead, sliceRowsFor, againstTestControls,
   funnelRankHoldStart, funnelRankHoldStatus, funnelRankHoldForget,
-  unitsFile, readUnitTable, buildUnitTable, ensureUnitTable, unitTableWait, stage3Units, setUnitFilter, unitFilterOf, keptUnitKeys, passKeptOf, ensureBlend, blendWait, UNITS_V,
+  unitsFile, readUnitTable, buildUnitTable, ensureUnitTable, unitTableWait, stage3Units, setUnitFilter, unitFilterOf, keptUnitKeys, passKeptOf,
+  saveUnitFilterAs, useUnitFilter, deleteUnitFilter, unitFilterListOf, ensureBlend, blendWait, UNITS_V,
   funnelRichStart, funnelRichStatus, cpuLoad, funnelKeeps,
   continueStage3, readCheckpoint, hasCheckpoint, checkpointFile, writeCheckpoint, CHECKPOINT_V,
   windowsOfSet, newestDataOf,

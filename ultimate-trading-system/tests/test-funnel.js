@@ -563,10 +563,27 @@ module.exports = {
     assert.ok(branch.includes('bSaveView({ s1: s1sel, s2: s2sel, s3: s3sel })'),
       'the set Boards settles on must be SAVED, or nothing else can know which one is open');
 
-    // and the Funnel must read that one record rather than keeping its own
+    // THE FUNNEL KEEPS ITS OWN SOURCE NOW (3.238.0, owner order 2026-09-23:
+    // "that lack of a picker on funnel is a problem ... it should be engineered
+    // the same as the other tabs"). What Boards has open is only where a first
+    // visit starts, never what overrides the Funnel's own choice.
     const fn = src.slice(src.indexOf('function pickedSet3'), src.indexOf('function pickedSet3') + 700);
-    assert.ok(fn.includes('bView().s3'), 'the Funnel reads the set Boards recorded');
-    assert.ok(!fn.includes('localStorage.getItem'), 'and does not keep a second key of its own');
+    assert.ok(fn.includes('localStorage.getItem(F_SOURCE_KEY)'), 'the Funnel does not read its own source');
+    assert.ok(/return own \|\| fSourceMemory \|\| bView\(\)\.s3 \|\| null;/.test(fn),
+      'the Funnel\'s own source does not win over what Boards has open, or a first visit does not start from it');
+    // a source that is gone settles on the newest finished stage 3 set, and the
+    // box is drawn on every view -- the waits and the failures included
+    const settle = src.slice(src.indexOf('async function fSourceSettle('), src.indexOf('function fSourceHtml('));
+    assert.ok(settle.includes("const usable = (x) => x.status === 'done' || x.status === 'incomplete';") && settle.includes('const next = sets.find(usable);'),
+      'a source that is gone does not settle on a finished stage 3 set');
+    assert.ok(src.includes('async function drawFunnel() {\n  const src = await fSourceSettle();\n  try { return await fDrawView(); } finally { fSourcePut(fSourceHtml(src), src); }\n}'),
+      'the source box is not put on every view of the Funnel');
+    // picking a saved filter puts it in force through the one door, and the
+    // walk and Worth walking? are read again under it
+    const put = src.slice(src.indexOf('function fSourcePut('), src.indexOf('function fSourcePut(') + 2400);
+    assert.ok(put.includes("tryPost(`api/stageset/${encodeURIComponent(set)}/unitfilter/use`, { saved: want })"), 'a saved filter picked as the source is not put in force');
+    assert.ok(put.includes('fState = null;') && put.includes('fHoldSeen = null;') && put.includes('fHoldAsked = null;'),
+      'a new source is shown with the last source\'s walk or Worth walking? rows');
   },
 
   // A section that cannot read its data must SAY SO. Returning without writing
@@ -1839,10 +1856,11 @@ module.exports = {
   // and on the page, which keeps the last result under the rule it was for.
   theAcrossIsKeyedOnTheBarAsWellAsTheRule() {
     const s = src('lib/stages.js');
-    assert.ok(s.includes("return JSON.stringify([id, state.unit == null ? '' : String(state.unit), S4.normaliseRule(state.rule), require('./funnel').barPctOf(state)]);"),
+    // ...and the filter in force on Table 3.C (3.238.0), which the source box can change
+    assert.ok(s.includes("return JSON.stringify([id, state.unit == null ? '' : String(state.unit), S4.normaliseRule(state.rule), require('./funnel').barPctOf(state),\n    filterSig(unitFilterOf(getSet(String(id))))]);"),
       'the box keys the reading of the other units on the rule alone');
     const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
-    assert.ok(ui.includes("const fAcrossKey = (st) => JSON.stringify([st.rule, st.barPct == null ? null : st.barPct]);"), 'the page has no key that carries the bar');
+    assert.ok(ui.includes("const fAcrossKey = (st) => JSON.stringify([st.rule, st.barPct == null ? null : st.barPct, fFilterSig(st.set)]);"), 'the page has no key that carries the bar and the filter');
     assert.ok(ui.includes("const a4 = st.across && st.across.ruleKey === fAcrossKey(st) ? st.across : null;"), 'the kept reading is shown under a bar it was not read for');
     // AND STEP 4 LOOKS UNDER THE SAME KEY (3.55.0): it looked under the rule
     // alone, never found the reading, and read the other units read as dead
@@ -3556,10 +3574,10 @@ module.exports = {
     assert.ok(wire.includes("what: 'the cross to read', chose: `${fDialLabel(ca)} x ${fDialLabel(cb)}`, fromList: true"),
       'loading a cross from the list is recorded as though it were hand-picked');
     // held under the floor as well as the rule and the bar
-    assert.ok(page.includes("const fCrossKey = (st) => JSON.stringify([st.rule, st.barPct == null ? null : st.barPct, Math.max(0, Math.floor(Number(st.floor) || 0))]);"),
-      'the list is not held under the thin floor, and the floor changes every block on every pair');
+    assert.ok(page.includes("const fCrossKey = (st) => JSON.stringify([st.rule, st.barPct == null ? null : st.barPct, Math.max(0, Math.floor(Number(st.floor) || 0)), fFilterSig(st.set)]);"),
+      'the list is not held under the thin floor and the filter, and the floor changes every block on every pair');
     const lib = src('lib/stages.js');
-    assert.ok(lib.includes("require('./funnel').barPctOf(state), Math.max(0, Math.floor(Number(state.floor) || 0))]);"),
+    assert.ok(lib.includes("require('./funnel').barPctOf(state), Math.max(0, Math.floor(Number(state.floor) || 0)),\n    filterSig(unitFilterOf(getSet(String(id))))]);"),
       'the service holds the reading under a different key from the one the page asks with');
   },
 

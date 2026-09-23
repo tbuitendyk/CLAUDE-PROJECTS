@@ -403,7 +403,14 @@ module.exports = {
       // from what is actually stored. tests/test-coinsscreens.js
       // (renamingOntoANameAlreadyOnTheBoxIsRefusedRatherThanSilentlyMerging and
       // deletingOneLeavesTheRestAndSaysSoWhenThereIsNothingToDelete) hold it.
-      'wScreen']);
+      'wScreen',
+      // TABLE 3.C'S SAVED FILTERS AND THE FUNNEL'S SOURCE (3.238.0): every
+      // value is an id the box itself listed (a saved filter's, or a set's with
+      // one), plus '' for every unit and '*' for the boxes as they stand, which
+      // the page never sends. lib/stages.js useUnitFilter IS the allow-list: it
+      // refuses an id the set does not hold, by name. tests/test-unittable.js
+      // (aSavedFilterIsANameForBoxesAndPickingItPutsThemInForce) holds it.
+      'bUnitSaved', 'fSource']);
     const withValues = [...SWEEP.matchAll(/<select id="([\w-]+)"[^>]*>((?:(?!<\/select>)[\s\S])*?)<\/select>/g)]
       .filter((m) => /<option value="/.test(m[2])).map((m) => m[1]);
     const unlisted = withValues.filter((id) => !known.has(id));

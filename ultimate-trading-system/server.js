@@ -1465,6 +1465,23 @@ app.post('/api/stageset/:id/unitfilter', (req, res) => {
   try { return res.json(stages.setUnitFilter(req.params.id, (req.body || {}).filters)); }
   catch (err) { return res.status(400).json({ error: String(err.message || err) }); }
 });
+// TABLE 3.C'S SAVED FILTERS (3.238.0): save the boxes under a name, put a
+// saved one in force ('' for none: every unit), delete one. The Funnel offers
+// a stage 3 set together with one of these as its source, through the same
+// door that puts it in force here.
+app.post('/api/stageset/:id/unitfilter/save', (req, res) => {
+  const b = req.body || {};
+  try { return res.json(stages.saveUnitFilterAs(req.params.id, b.name, b.filters)); }
+  catch (err) { return res.status(400).json({ error: String(err.message || err) }); }
+});
+app.post('/api/stageset/:id/unitfilter/use', (req, res) => {
+  try { return res.json(stages.useUnitFilter(req.params.id, (req.body || {}).saved)); }
+  catch (err) { return res.status(400).json({ error: String(err.message || err) }); }
+});
+app.post('/api/stageset/:id/unitfilter/delete', (req, res) => {
+  try { return res.json(stages.deleteUnitFilter(req.params.id, (req.body || {}).saved)); }
+  catch (err) { return res.status(400).json({ error: String(err.message || err) }); }
+});
 // WHAT A STAGE 2 LAUNCH WOULD CARRY (3.220.0): the stage 1 table in its saved
 // order under its saved filters, counted, so the set-up says it before the press
 app.get('/api/stageset/:id/carry', (req, res) => {

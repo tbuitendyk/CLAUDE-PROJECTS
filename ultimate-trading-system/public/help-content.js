@@ -527,11 +527,13 @@ window.HELP = {
 
   boards: {
     title: 'Boards',
-    intro: 'Where the record sets are read: one section per stage, the whole provenance on screen. Picking a '
-      + 'stage 3 record set fills the stage 2 and stage 1 sections with its parents; picking a stage 2 set fills '
-      + 'its stage 1 parent; picking a parent puts the child selections away. Each box offers only the record sets '
-      + 'that came out of what is picked above it. Each section can be put away and comes back as you left it. No '
-      + 'table mixes two stages.',
+    intro: 'Where the record sets are read: one sub tab per stage, Stage 1, Stage 2 and Stage 3, and the whole provenance '
+      + 'one press away. Picking a stage 3 record set fills Stage 2 and Stage 1 with its parents; picking a stage 2 set '
+      + 'fills its stage 1 parent; picking a parent puts the child selections away. Each box offers only the record sets '
+      + 'that came out of what is picked above it. Each section can be put away and comes back as you left it. Under '
+      + 'Stage 3 each of its three tables, Table 3.A, Table 3.B and Table 3.C, has a sub tab of its own; the lines about '
+      + 'the whole set and the show the held-back window tick sit above them, because they reach every table. The sub '
+      + 'tabs picked are remembered. No table mixes two stages.',
     how: [
       ['One table per stage, and the chain always visible',
         'A stage 1 set shows the ranking: every unit under the fixed rule — forecast score, beat its own null '
@@ -570,7 +572,7 @@ window.HELP = {
         + 'and every table under the banner is missing those units. The held-back window appears only on stage 3 '
         + 'tables, because only stage 3 prices it.'],
       ['Table 3.C: Every unit, and the filter the Funnel reads',
-        'Under Table 3.B a stage 3 set draws one row for each coin and shape \u2014 the traded coin, the coins it is read '
+        'On its own sub tab a stage 3 set draws one row for each coin and shape \u2014 the traded coin, the coins it is read '
         + 'alongside, and the chunk shape \u2014 on one line, worked out from that coin and shape\u2019s own records and from '
         + 'the numbers Work out the test history numbers rebuilt for them on the Funnel. The columns say how many of its '
         + 'settings are in the money over the whole test window, what they made on average, with and without the '
@@ -587,12 +589,32 @@ window.HELP = {
         + 'rule steps walk only those. A column that needs the rebuilt numbers stays empty until Work out the test history '
         + 'numbers has run, and a filter set on an empty column hides the row \u2014 a coin and shape with no figure has not '
         + 'cleared anything. The table is worked out again in the background whenever the tables or the rebuilt numbers '
-        + 'move, and says so while it is.'],
+        + 'move, and says so while it is.\n\n'
+        + 'A filter can be saved under a name, and as many as you like are kept on the record set. saved filter puts one '
+        + 'in force: its boxes fill the filter and the table shows what it keeps. When the boxes match no saved filter the '
+        + 'box says so rather than naming one that is not cutting the rows. The Funnel offers the same list as its source, '
+        + 'and picking one there puts it in force here too, because the table and the Funnel read the one filter.'],
     ],
     controls: {
       bHeldBack: {
         what: 'Shows the held-back window on the stage 3 tables: the held-back columns of Table 3.A and Table 3.B and of the records under a row. Off every time this tab is opened. Ticking it on is written on this record set as one dated look, which Held counts the way it counts a scan on Tune.',
         more: 'Off, a sort saved on a held-back column is set aside and the table reads in its own order, and a floor on a held-back column is not applied \u2014 a table ordered or cut by hidden held-back money would still be a look. The held-back window is priced at stage 3 and kept for Held; nothing on the Funnel reads it, and the trade floor on the Funnel\u2019s step 6 reads test trades.',
+      },
+      bUnitSaved: {
+        what: 'Puts a saved filter in force on Table 3.C: its boxes fill the filter and the table shows the coins and shapes it keeps. no filter: every unit empties every box.',
+        more: 'When the boxes in force match no saved filter the box reads the boxes below, not saved. Picking another filter then empties them, so it asks first. The Funnel offers the same list as its source, and a pick in either place is a pick in both: there is one filter on the record set and both read it.',
+      },
+      bUnitName: {
+        what: 'The name Save the filter stores the boxes under. It starts on the name of the saved filter in force.',
+        more: 'Saving under a name that is already saved replaces what was kept under it, after asking. Names are compared without regard to capitals.',
+      },
+      bUnitSave: {
+        what: 'Stores the boxes of Table 3.C\'s filter as they stand, typed or applied, under the name beside, and puts them in force.',
+        more: 'A filter with no box holding a number is not saved: every unit is already offered, as no filter: every unit. The saved filter then appears in saved filter here and under source on the Funnel.',
+      },
+      bUnitDelete: {
+        what: 'Deletes the saved filter picked in saved filter, and nothing else.',
+        more: 'The boxes stay exactly as they are, so what the table shows and what the Funnel reads do not change. Greyed out when the boxes match no saved filter, because then there is nothing picked to delete.',
       },
       bPin3b: {
         what: 'Shows, in Table 3.B below, only the coins this setting was priced on — and picks this exact setting out of them.',
@@ -711,7 +733,9 @@ window.HELP = {
       ['Why every number here is test money',
         'A sweep splits its history into three parts: one to learn from, one to try things on, and one that is held back and never looked at.\n\nThe held-back part is the only honest judge you get, and it stops being honest the moment you use it to CHOOSE. If you sort half a million rows by held-back money and take the best, you have fitted to it just as surely as if you had trained on it.\n\nSo every figure on this screen comes from the try-things-on part. The held-back part is opened once, at the very end, on the handful that survive - and then it still means something.'],
       ['Which coins and shapes this screen offers',
-        'Table 3.C on Boards draws one row per coin and shape, and the filter set there is saved on the record set. This '
+        'Table 3.C on Boards draws one row per coin and shape, and the filter set there is saved on the record set. source, '
+        + 'at the top of this screen, picks the stage 3 record set this screen walks and which of its coins and shapes: '
+        + 'every unit, or a filter saved under Table 3.C - picking a saved one puts it in force on Table 3.C too. This '
         + 'screen reads it: the coin box offers only the coins and shapes that filter keeps, Worth walking? lists only '
         + 'those, all units together is the blend of those alone, and the rule steps walk only those. Work out the test '
         + 'history numbers works out only the coins and shapes the filter keeps - but a box on one of Table 3.C\u2019s '
@@ -727,6 +751,10 @@ window.HELP = {
       + 'Every figure shown is test-window money; the held-back window is opened once, at the end, on what survives. '
       + 'What it writes is the RULE you arrived at, because a rule can be checked against scrambled data and a single row cannot.',
     controls: {
+      fSource: {
+        what: 'The stage 3 record set this screen walks, and which of its coins and shapes: every unit, or one of the filters saved under Table 3.C on Boards.',
+        more: 'It is this screen\'s own choice, kept across visits the way every other screen keeps its record set; the first visit starts on the set Boards has open, or the newest finished stage 3 set. Picking a saved filter puts it in force on Table 3.C as well - there is one filter on the record set and both read it - so if the boxes there match no saved filter, it asks before emptying them. Every walk, each coin and shape\'s own, is kept under its record set and comes back when that set is picked again.',
+      },
       fUnit: {
         what: 'The traded coin this walk is on, or "all units together" for the blend. One rule per coin and shape - ten of them, ten rules.',
         more: 'A unit\'s board is its own records: one row per setting it holds (a unit holds only the settings that place different orders on it), every dial on it, its own test money and its own scrambled copies. The units are listed in the order of the parent\'s stage 2 table on Boards - its saved sort - and the walk opens on the first of them. Each unit keeps its own walk, so you can leave one half-done and come back. "all units together" is the blended table, one row per setting averaged over the units that hold it; it hides what any one coin does and is kept only so the choice is yours.',

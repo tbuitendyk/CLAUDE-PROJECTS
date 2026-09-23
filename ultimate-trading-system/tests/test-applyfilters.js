@@ -140,20 +140,26 @@ module.exports = {
       'the words do not go quiet, so nothing on the button shows it is asleep');
   },
 
-  async theTwoStageThreeTablesDoNotRunIntoEachOther() {
+  // EACH STAGE 3 TABLE ON ITS OWN SUB TAB (3.238.0). They used to share one
+  // panel with a break drawn between them; now only the table whose sub tab
+  // is picked is drawn at all, so no heading can read as a note under another.
+  async theStageThreeTablesAreEachOnTheirOwnSubTab() {
     const src = JS();
     const html = HTML();
-    const a = src.indexOf('Table 3.A: Settings, ranked');
-    const b = src.indexOf('Table 3.B: Every coin of every setting');
-    assert.ok(a > 0 && b > a, 'the two Stage 3 tables are not where this expects them');
-    const between = src.slice(a, b);
-    assert.ok(/t3break/.test(between),
-      'nothing separates the two Stage 3 tables, so the second heading reads as another note under the first');
-    for (const [n, i] of [['3.A', a], ['3.B', b]]) {
+    const heads = [['3A', 'Table 3.A: Settings, ranked'], ['3B', 'Table 3.B: Every coin of every setting']];
+    for (const [k, words] of heads) {
+      const i = src.indexOf(words);
+      assert.ok(i > 0, `the Table ${k} heading is not where this expects it`);
       assert.ok(/class="t3head"/.test(src.slice(i - 40, i)),
-        `the Table ${n} heading is the same size as the notes around it, so it does not read as the name of a table`);
+        `the Table ${k} heading is the same size as the notes around it, so it does not read as the name of a table`);
+      const gate = src.lastIndexOf(`\${t3 !== '${k}' ? '' :`, i);
+      assert.ok(gate > 0 && i - gate < 400, `Table ${k} is drawn whichever sub tab is picked`);
+    }
+    assert.ok(src.includes("${t3 !== '3C' ? '' : bUnitsSection(doc, units, view)}"), 'Table 3.C is drawn whichever sub tab is picked');
+    for (const k of ['3A', '3B', '3C']) {
+      assert.ok(src.includes(`data-bt3tab="${k}">Table ${k[0]}.${k[1]}</div>`), `there is no sub tab for Table ${k}`);
     }
     assert.ok(/\.t3head \{ font-size:1\.05rem;/.test(html), 'the table headings have no size of their own');
-    assert.ok(/\.t3break \{ border-top:/.test(html), 'the break between the two tables draws nothing');
+    assert.ok(!/t3break/.test(src), 'a break between tables that are never on the screen together is still drawn');
   },
 };
