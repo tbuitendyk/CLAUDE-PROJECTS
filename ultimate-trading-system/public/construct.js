@@ -7038,10 +7038,12 @@ function fSourceHtml(src) {
     const nm = `${rebuildPrefix(x)}${esc(x.name)}`;
     const here = x.id === cur;
     const at = here ? (fl.inForce || (fl.any ? '*' : '')) : null;
-    const opt = (v, words) => `<option value="${esc(`${x.id}|${v}`)}"${at === v ? ' selected' : ''}>${nm} — ${words}</option>`;
-    opts.push(opt('', 'every unit'));
-    for (const f of (fl.saved || [])) opts.push(opt(f.id, esc(f.name)));
-    if (fl.any && !fl.inForce) opts.push(opt('*', 'the filter on Table 3.C, not saved'));
+    const val = (v) => `value="${esc(`${x.id}|${v}`)}"${at === v ? ' selected' : ''}`;
+    // the fixed words written out between the tags: a word handed to a helper
+    // is on the owner's screen and on no word list (RULE ONE-A)
+    opts.push(`<option ${val('')}>${nm} — every unit</option>`);
+    for (const f of (fl.saved || [])) opts.push(`<option ${val(f.id)}>${nm} — ${esc(f.name)}</option>`);
+    if (fl.any && !fl.inForce) opts.push(`<option ${val('*')}>${nm} — the filter on Table 3.C, not saved</option>`);
   }
   return `<div class="panel" id="fSourcePanel">
     <div class="row" style="align-items:flex-end">
