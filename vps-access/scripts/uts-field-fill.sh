@@ -22,11 +22,12 @@ console.log(`field "${side.name}": window ${Wd} days, half-life ${H} days, weigh
 // the weight a window of T days holds, one decision a day, under max(floor, 0.5^(age/H))
 const Af = f > 0 && f < 1 ? H * Math.log2(1 / f) : (f >= 1 ? 0 : Infinity);
 const weightOf = (T) => { const a = Math.min(T, Af); return (H / Math.LN2) * (1 - Math.pow(0.5, a / H)) + (f > 0 ? f * Math.max(0, T - Af) : 0); };
-const full = weightOf(Wd);
 const units = ((doc.windows || {}).units) || {};
 const pairs = (doc.params || {}).fieldPairs || {};
 const cuts = [0, 10, 20, 25, 33, 40, 50, 67, 75, 100];
 const kept = Object.fromEntries(cuts.map((c) => [c, 0]));
+const held = Object.fromEntries(cuts.map((c) => [c, 0]));
+let wins = [];
 let trainDays = 0, noReading = 0;
 for (const [u, w] of Object.entries(units)) {
   if (!w || !w.train) continue;
@@ -34,19 +35,24 @@ for (const [u, w] of Object.entries(units)) {
   const pr = side.pairs[pairs[parts[0] + "|" + parts[3]]];
   if (!pr || !pr.days || !Array.isArray(pr.days.ts) || !pr.days.ts.length) continue;
   const first = pr.days.ts[0];
+  const Wp = Number(pr.windowDays) || Wd;   // each coin and shape its own window when the field was built that way
+  wins.push(Wp);
   const a = w.train.fromTs, b = w.train.toTs;
   const len = (b - a) / DAY;
   trainDays += len;
   noReading += Math.max(0, Math.min(len, (first - a) / DAY));
   for (const c of cuts) {
-    const from = first + (c / 100) * Wd * DAY;       // the first day at this fill
+    const from = first + (c / 100) * Wp * DAY;       // the first day at this fill
     kept[c] += Math.max(0, Math.min(len, (b - Math.max(a, from)) / DAY));
+    held[c] += len * (weightOf((c / 100) * Wp) / weightOf(Wp));
   }
 }
 console.log(`train days over all coins and shapes: ${Math.round(trainDays)}; with no field reading at all (before the field starts): ${(100 * noReading / trainDays).toFixed(1)}%`);
-console.log("fill of the window | days behind the day | evidence held vs a full window | share of train kept");
+wins.sort((x, y) => x - y);
+console.log(`own window of each coin and shape: ${wins[0]} to ${wins[wins.length - 1]} days (the dial says ${Wd})`);
+console.log("fill of the window | days behind the day (shortest..longest window) | evidence held vs a full window | share of train kept");
 for (const c of cuts) {
-  const T = (c / 100) * Wd;
-  console.log(`${String(c).padStart(3)}% | ${String(Math.round(T)).padStart(4)} d | ${(100 * weightOf(T) / full).toFixed(0).padStart(3)}% | ${(100 * kept[c] / trainDays).toFixed(1)}%`);
+  const lo = Math.round((c / 100) * wins[0]), hi = Math.round((c / 100) * wins[wins.length - 1]);
+  console.log(`${String(c).padStart(3)}% | ${lo}..${hi} d | ${(100 * held[c] / trainDays).toFixed(0).padStart(3)}% | ${(100 * kept[c] / trainDays).toFixed(1)}%`);
 }
 ' "$S3" 2>&1 | tail -c 4000
