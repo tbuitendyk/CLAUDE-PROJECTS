@@ -4688,11 +4688,11 @@ async function drawBoards() {
   // with none yet, the deepest stage picked opens.
   const stab = [1, 2, 3].includes(Number(view.stab)) ? Number(view.stab) : deepest;
   const stabOn = (n) => (n === stab ? ' on' : '');
-  $('#view').innerHTML = `<div class="panel">
-    <h3 style="margin-top:0">Boards — the record sets, and what each stage wrote</h3>
-    <p class="note">Picking a record set fills the stages above it with its parents; each box offers only what came out of the pick above it.</p>
-    ${running ? `<p class="note"><b>${esc(running.name)}</b> is going: ${esc(running.progress || '…')}</p>` : ''}
-  </div>
+  // NO TITLE AND NO DESCRIPTION ABOVE THE SUB TABS (3.238.2, owner order
+  // 2026-09-23: "get rid of the title and description it's wasting WAY too much
+  // space"). The only thing left above them is the line saying a run is going,
+  // and only while one is.
+  $('#view').innerHTML = `${running ? `<p class="note" style="margin:0 0 .3rem"><b>${esc(running.name)}</b> is going: ${esc(running.progress || '…')}</p>` : ''}
   <div class="tabs" id="bStageTabs">
     <div class="tab${stabOn(1)}" data-bstab="1">Stage 1</div>
     <div class="tab${stabOn(2)}" data-bstab="2">Stage 2</div>
