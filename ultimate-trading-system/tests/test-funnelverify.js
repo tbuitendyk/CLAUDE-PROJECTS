@@ -1617,8 +1617,9 @@ module.exports.heldAndReserveKeepThePassCriteriaTypedAndSendThem = function () {
 // capture and its looks untouched, and nothing to do on a second open.
 module.exports.aCaptureWhosePickWasMadeTheOldWayIsChosenAgainAsTheSetIsOpened = async function () {
   const f = await fixture();
+  let doc = null;
   try {
-    const doc = await cutOn(f);
+    doc = await cutOn(f);
     const labels = doc.survivors.map((x) => x.label);
     const old = { by: 'depth', among: 'the captured survivors', label: labels[labels.length - 1], worst: 1, mean: 0.5 };
     fs.writeFileSync(stages.captureFile(doc.id), require('zlib').gzipSync(Buffer.from(JSON.stringify({
@@ -1644,5 +1645,9 @@ module.exports.aCaptureWhosePickWasMadeTheOldWayIsChosenAgainAsTheSetIsOpened = 
     assert.ok(ui.includes("if ((rb.reasons || []).some((r) => r.key === 'pick') && x.id) setTimeout(() => repickOnOpen(x.id), 0);"), 'the rebuild line asks for it');
     assert.ok(ui.includes('/repick`, {})'), 'at the route');
     assert.ok(src('server.js').includes("app.post('/api/funnel/set/:id/repick'"), 'the route is served');
-  } finally { f.cleanup(); }
+  } finally {
+    // the fixture's cleanup takes the sets and not the capture written beside one here
+    if (doc) { try { fs.rmSync(stages.captureFile(doc.id), { force: true }); } catch (_) { /* never written */ } }
+    f.cleanup();
+  }
 };
