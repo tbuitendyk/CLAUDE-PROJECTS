@@ -10587,7 +10587,8 @@ function copyStage4Set(setId, asked = {}) {
   const src = getSet(String(setId || ''));
   if (!src || src.stage !== 4) { const e = new Error(`unknown Stage 4 record set '${setId}'`); e.status = 404; throw e; }
   if (isJudgeSet(src)) { const e = new Error(`${src.name} is a ${src.kind} set, a reading frozen at its press — save the rule it was read from under a new name`); e.status = 400; throw e; }
-  const name = String(asked.name ?? '').trim().slice(0, 80);
+  // the name typed is the name: nothing cut, nothing added (the owner's order of 3.234.4, for History's saves)
+  const name = String(asked.name ?? '').trim();
   if (!name) { const e = new Error('name the copy — something you will recognise on Tune, Held and Greenlight'); e.status = 400; throw e; }
   const taken = nameTaken(name);
   if (taken) { const e = new Error(`a record set called "${name}" already exists (${taken.id}) — pick another name`); e.status = 400; throw e; }

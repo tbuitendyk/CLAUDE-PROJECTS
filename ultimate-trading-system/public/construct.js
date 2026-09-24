@@ -3567,7 +3567,7 @@ function tnCopyPanelHtml(cand, busy) {
       the held-back and reserve windows have had go with the copy and are counted on it.</p>
     <div class="note" style="margin-bottom:.4rem">on record on <b>${esc(cand.name)}</b>: a protective stop, or no stop chosen on purpose, for <b>${stops} of ${rows.length}</b> captured survivors; the conviction sizing on <b>${sized} of ${rows.length}</b></div>
     <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
-      <label class="f" title="the name the copy is saved under: filled with the name of the set under Tuning targets, to change. Names are unique across every set on this box.">new name<input id="tnCopyName" type="text" maxlength="80" value="${esc(cand.name)}" style="width:32rem"></label>
+      <label class="f" title="the name the copy is saved under: filled with the name of the set under Tuning targets, to change. Names are unique across every set on this box.">new name<input id="tnCopyName" type="text" value="${esc(cand.name)}" style="width:32rem"></label>
       <label class="c" title="ticked, the copy carries the protective stop on record for each survivor, or the no stop chosen on purpose, with its reason; unticked, the copy carries no choice about the stop"><input type="checkbox" id="tnCopyStops" checked> with its protective stops</label>
       <label class="c" title="ticked, the copy carries the conviction sizing on record for each survivor, at its numbers, with its reason; unticked, every trade of the copy is taken at its own size alone"><input type="checkbox" id="tnCopySizing" checked> with its conviction sizing</label>
     </div>
