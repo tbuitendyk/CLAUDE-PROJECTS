@@ -575,7 +575,8 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), '  keepBeside(was);\n  saveSet(fresh);\n  return fresh;\n}\n// A HELD OR RESERVE SET', '  keepBeside(was);\n  return fresh;\n}\n// A HELD OR RESERVE SET',
     'aFlaggedFamilyIsRebuiltInPlaceWhenOneOfItIsOpened',
     'a half-life set is retrained again and never written, so it stays flagged for ever'],
-  [path.join(ROOT, 'lib', 'stages.js'), '    si: r.si, label: r.label, halfLife: Number(String(r.best).slice(1)),\n    money: { judge: (r.money || {})[r.best] ?? null, unweighted: (r.money || {})[HL.NONE] ?? null },\n    trades: { judge: (r.trades || {})[r.best] ?? null, unweighted: (r.trades || {})[HL.NONE] ?? null },\n  }));\n  fresh.counts', '    si: r.si, label: r.label, halfLife: null,\n    money: { judge: (r.money || {})[r.best] ?? null, unweighted: (r.money || {})[HL.NONE] ?? null },\n    trades: { judge: (r.trades || {})[r.best] ?? null, unweighted: (r.trades || {})[HL.NONE] ?? null },\n  }));\n  fresh.counts',
+  // re-aimed 3.248.0: 3.245.0 moved the records into halfLifeSurvivorsOf, which the rebuild and the build both use
+  [path.join(ROOT, 'lib', 'stages.js'), '      si: r.si, label: r.label, halfLife: none ? null : Number(String(r.best).slice(1)), ...(none ? { unweighted: true } : {}),', '      si: r.si, label: r.label, halfLife: null, ...(none ? { unweighted: true } : {}),',
     'aFlaggedFamilyIsRebuiltInPlaceWhenOneOfItIsOpened',
     'a half-life set built again keeps its records without the half-life that won on each'],
   [path.join(ROOT, 'public', 'construct.js'), '  if (rebuiltThisVisit.has(`stage4|${id}`)) return;', '',
@@ -663,7 +664,8 @@ const GUARDS = [
     "      let ok = !!x && x.mean != null && checkGrids.length > 0;",
     'theBlockIsTheLargestRectangleThatBeatsTheCheck',
     'a thin square joins the recommended block, and it is often the best-looking square on the grid precisely because it is thin'],
-  [path.join(ROOT, 'lib', 'plateau.js'), '    if (lo != null) bounds[a] = { min: lo, max: hi };', '    if (lo != null) bounds[a] = { min: lo, max: lo };',
+  // re-aimed 3.248.0: since 3.243.0 the bound carries `no bar` beside the numbers
+  [path.join(ROOT, 'lib', 'plateau.js'), "    if (lo != null) bounds[a] = { min: lo, max: hi, ...(noBar ? { also: ['no bar'] } : {}) };", "    if (lo != null) bounds[a] = { min: lo, max: lo, ...(noBar ? { also: ['no bar'] } : {}) };",
     'theWidestRegionBecomesARuleNotAPoint',
     'the region collapses to its lowest edge on every dial and keeping it keeps a sliver, not the region'],
   [path.join(ROOT, 'lib', 'funnelset.js'), "  const dup = doc.marks.find((m) => m.key === mark.key && m.step === (mark.step ?? null) && m.detail === (mark.detail ?? null));\n  if (dup) return doc;",
@@ -1639,13 +1641,15 @@ const GUARDS = [
     'theReserveGradePricesTheUnreadWindowWithTheSavedForecastsAndCountsItsLooks', 'the members\' stored votes stand in for forecasts on a window they never voted on, and the unread window is priced on votes that run out before it ends'],
   [path.join(ROOT, 'lib', 'stagework.js'), "    holdChunks = got.chunks;\n    holdTrade = got.maps.trade;", "    holdTrade = got.maps.trade;",
     'theReserveGradePricesTheUnreadWindowWithTheSavedForecastsAndCountsItsLooks', 'the held-back window is priced in the unread window\'s place, and the grade reads a window the search already touched'],
-  [path.join(ROOT, 'lib', 'stages.js'), "    id: `${id}-v1`, at, release: ENGINE_VERSION, look: number, stretch,", "    id: `${id}-v1`, at, release: ENGINE_VERSION, look: 1, stretch,",
+  // re-aimed 3.248.0: since 3.247.0 the look adds the reads a set saved under a new name carries
+  [path.join(ROOT, 'lib', 'stages.js'), "    id: `${id}-v1`, at, release: ENGINE_VERSION, look: number + carried, stretch,", "    id: `${id}-v1`, at, release: ENGINE_VERSION, look: 1, stretch,",
     'theReserveGradePricesTheUnreadWindowWithTheSavedForecastsAndCountsItsLooks', 'every reserve set reads as the first look, and a window read five times claims data nothing has seen'],
   [path.join(ROOT, 'lib', 'funnelverify.js'), "  if (stretch === 'reserve') {\n    parts.push(look > 1\n      ? `look ${look}: this window had been read ${look - 1} time(s) before, so it is no longer data nothing has seen and the floor below is the best case, not the strength`\n      : 'look 1: the first look at data nothing in the system has seen');\n  }", "  if (stretch === 'reserve') {\n    parts.push('look 1: the first look at data nothing in the system has seen');\n  }",
     'theReserveGradePricesTheUnreadWindowWithTheSavedForecastsAndCountsItsLooks', 'every look reads as the first, and a reserve set of a window read five times claims data nothing has seen'],
   // ---- the Stage 4 door on Greenlight (3.90.0) ----
-  [path.join(ROOT, 'lib', 'funnelset.js'), "    if (!best || cand.worst < best.worst || (cand.worst === best.worst && cand.mean < best.mean)) best = cand;", "    if (!best || (r.avgHold || 0) > ((rows[best.index] || {}).avgHold || 0)) best = cand;",
-    'theDepthPickIsTheSurvivorNearestTheMiddleOfEveryRangeAndNeverReadsMoney', 'the pick is the survivor with the most held-back money, which is shopping the one window that must not be shopped'],
+  // re-aimed 3.248.0: the pick is by neighbouring settings
+  [path.join(ROOT, 'lib', 'funnelset.js'), '    const cmp = best ? (by(cand) - by(best)) || (best.nearby.of - cand.nearby.of) : -1;', '    const cmp = best ? ((rows[best.index] || {}).avgHold || 0) - (r.avgHold || 0) : -1;',
+    'theDepthPickIsTheSurvivorMostSurroundedByNeighbouringSettingsAndNeverReadsMoney', 'the pick is the survivor with the most held-back money, which is shopping the one window that must not be shopped'],
   [path.join(ROOT, 'lib', 'stages.js'), "  const why = gateRefusalOf(doc);\n  if (why) throw new Error(why);\n  const gate = gateOfSet(doc);", "  const why = null;\n  if (why) throw new Error(why);\n  const gate = gateOfSet(doc) || { id: null, at: null, release: null, look: null };",
     'theStage4GreenlightSourceIsReadOffTheSetAndRefusesWithoutAVerdictThatStood', 'a rule, or a set whose verdict never stood, is offered for a greenlight'],
   [path.join(ROOT, 'lib', 'stages.js'), "  if (doc.kind === 'held' && reserveOf(doc).keeps) return null;\n  return { id: b.id, at: b.at, release: b.release, look: b.look ?? null, set: doc.id, kind: doc.kind };", "  return { id: b.id, at: b.at, release: b.release, look: b.look ?? null, set: doc.id, kind: doc.kind };",
@@ -1681,7 +1685,8 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "          unit: { bandPct: rec.bandPct, probs: t.members.map((m) => m.probs), ts: t.ts, members: t.members.map((m) => ({ spec: m.spec, tauProbs: m.tauProbs, saved: m.saved })) },", "          unit: { bandPct: rec.bandPct, probs: base.unit.probs, ts: base.unit.ts, members: base.unit.members },",
     'theRunPricesEveryColumnOnOneStretchAndTheUnweightedColumnIsTheRecordsOwn', 'every half-life column is priced from the set\'s original votes, so the table shows the unweighted money under six names'],
   // ---- the 4.h set and the half-life carried forward (3.95.0) ----
-  [path.join(ROOT, 'lib', 'stages.js'), "  const kept = (run.rows || []).filter((r) => r.best && r.best !== HL.NONE);", "  const kept = (run.rows || []).slice();",
+  // re-aimed 3.248.0: since 3.245.0 the rows kept are decided in halfLifeSurvivorsOf, the cut and the complete alike
+  [path.join(ROOT, 'lib', 'stages.js'), '  return (rows || []).filter((r) => r.best && (complete || r.best !== HL.NONE)).map((r) => {', '  return (rows || []).filter((r) => r.best).map((r) => {',
     'theBuildKeepsOnlyRowsAHalfLifeWonAndEachRecordCarriesIts', 'the half-life set carries every record of the table, including the ones nothing improved'],
   [path.join(ROOT, 'lib', 'stages.js'), "  return { ...footing, ok: !why, why, same: null, halfLife: true };", "  return footing;",
     'theBuildKeepsOnlyRowsAHalfLifeWonAndEachRecordCarriesIts', 'a half-life set is refused on Held for not giving back survivors it was never the output of, so it is judged nowhere'],
@@ -2054,9 +2059,11 @@ const GUARDS = [
   // ---- EACH SURVIVOR AGAINST THE FOUR AT ITS OWN HOLD LENGTH, THE BAR SHARE OF THEM THE GATE (3.146.0, owner order 2026-09-15: "apples to apples") ----
   [path.join(ROOT, 'lib', 'funnelverify.js'), "    const four = byKey ? byKey[key] || null : null;", "    const four = byKey ? { alwaysLong: c.alwaysLong && c.alwaysLong.hi, alwaysShort: c.alwaysShort && c.alwaysShort.hi, buyHold: c.buyHold && c.buyHold.hi, shortHold: c.shortHold && c.shortHold.hi } : null;",
     'eachSurvivorIsReadAgainstTheFourAtItsOwnHoldLengthAndTheBarShareOfThemIsTheGate', 'every survivor is held to the four at the worst hold length in use again, and a rule whose plateau spans short and long holds fails on the longest one\'s figure'],
-  [path.join(ROOT, 'lib', 'funnelverify.js'), "    pass: comparisons.known && n > 0 && knownN === n && clearing >= ownBar,", "    pass: comparisons.known && n > 0 && knownN === n && clearing >= 1,",
+  // re-aimed 3.248.0 at the verdict as 3.246.0 writes it
+  [path.join(ROOT, 'lib', 'funnelverify.js'), "    pass: comparisons.known && n > 0 && knownN === n && clearing >= ownBar && (ofFour >= 4 || (real != null && real > 0)),", "    pass: comparisons.known && n > 0 && knownN === n && clearing >= 1 && (ofFour >= 4 || (real != null && real > 0)),",
     'eachSurvivorIsReadAgainstTheFourAtItsOwnHoldLengthAndTheBarShareOfThemIsTheGate', 'one survivor clearing passes the whole set, whatever share was declared'],
-  [path.join(ROOT, 'lib', 'funnelverify.js'), "    const clears = known && inMoney && GATED.every((k) => beats[k] === true);", "    const clears = known && GATED.every((k) => beats[k] === true);",
+  // re-aimed 3.248.0 at the clears as 3.246.0 writes it
+  [path.join(ROOT, 'lib', 'funnelverify.js'), "    const clears = known && inMoney && beaten >= ofFour;", "    const clears = known && beaten >= ofFour;",
     'eachSurvivorIsReadAgainstTheFourAtItsOwnHoldLengthAndTheBarShareOfThemIsTheGate', 'a survivor that lost money clears because the four lost more'],
   [path.join(ROOT, 'lib', 'stages.js'), "    out.byKey[k] = one;", "    out.byKey[k] = null;",
     'theVerdictOnTheFixtureIsWhatTheRowsSay', 'the set hands the verdict no figures by hold length, so no survivor is ever known at its own and nothing passes'],
@@ -2416,8 +2423,8 @@ const GUARDS = [
     'thePictureIsReadOffTheSetsAndPricesNothing', 'the average share of the four is not the mean of each survivor\'s share'],
   [path.join(ROOT, 'lib', 'stages.js'), "      if (k === 'test') before = rr ? { money: rr.avgTest ?? null, trades: rr.testTrades ?? null } : null;", "      if (k === 'test') before = null;",
     'thePictureIsReadOffTheSetsAndPricesNothing', 'the test money as stage 3 priced it is left out of the steps'],
-  [path.join(ROOT, 'lib', 'stages.js'), '      depth: d ? { worst: d.worst, mean: d.mean } : null,', '      depth: null,',
-    'thePictureIsReadOffTheSetsAndPricesNothing', 'no survivor says how far it sits from the middle of the rule'],
+  [path.join(ROOT, 'lib', 'stages.js'), '      depth: d ? { deviance: d.deviance, survived: d.survived, of: d.of } : null,', '      depth: null,',
+    'thePictureIsReadOffTheSetsAndPricesNothing', 'no survivor says how surrounded it is by its neighbouring settings'],
   [path.join(ROOT, 'public', 'construct.js'), '    <div class="gl-rows"></div>\n    <div class="gl-one"></div>', '    <div class="gl-one"></div>',
     'thePictureIsReadOffTheSetsAndPricesNothing', 'the table of every survivor has nowhere to be drawn'],
   // 3.247.2/3.247.3: each step of the one survivor over its own trades
@@ -2428,7 +2435,25 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), '      else before = history ? capOf(L, w, unretrained) : captured;', '      else before = history ? null : captured;',
     'theOneSurvivorsStepsAreEachOverTheirOwnTrades', 'train before History is a dash though the set History started from has a capture'],
   [path.join(ROOT, 'lib', 'stages.js'), "      const tw = t && t.windows && (w !== 'reserve' || (cap && cap.reserve && cap.reserve.captured)) ? t.windows[k] : null;", '      const tw = t && t.windows ? t.windows[k] : null;',
-    'theOneSurvivorsStepsAreEachOverTheirOwnTrades', 'a window the capture does not hold reads $0.00 after a tuning'],
+    'theOneSurvivorsStepsAreEachOverTheirOwnTrades', 'a window the capture does not hold reads $0.00 after a tuning'],  // 3.248.0: the deviance from centre and the survivor by depth by neighbouring settings; the repair; the heading reader
+  [path.join(ROOT, 'lib', 'funnelset.js'), '        of += 1;\n        const q = c.pos[ax] + step;\n        if (q < 0 || q >= len[ax]) continue;', '        const q = c.pos[ax] + step;\n        if (q < 0 || q >= len[ax]) continue;\n        of += 1;',
+    'theDepthPickIsTheSurvivorMostSurroundedByNeighbouringSettingsAndNeverReadsMoney', 'a notch off the end of the menu is not counted, so a survivor at the edge of what was swept reads as surrounded'],
+  [path.join(ROOT, 'lib', 'funnelset.js'), '      if (len[ax] <= 1 || c.pos[ax] < 0) continue;', '      if (c.pos[ax] < 0) continue;',
+    'theDepthPickIsTheSurvivorMostSurroundedByNeighbouringSettingsAndNeverReadsMoney', 'a dial the board holds at one value adds two dead notches to every survivor'],
+  [path.join(ROOT, 'lib', 'funnelset.js'), '    const cmp = best ? (by(cand) - by(best)) || (best.nearby.of - cand.nearby.of) : -1;', '    const cmp = best ? (by(cand) - by(best)) : -1;',
+    'theDepthPickIsTheSurvivorMostSurroundedByNeighbouringSettingsAndNeverReadsMoney', 'among the equally surrounded, the first in order wins even with fewer neighbouring settings to be surrounded by'],
+  [path.join(ROOT, 'lib', 'funnelset.js'), '    if (cmp < 0) { best = cand; tied = 1; } else if (cmp === 0) tied += 1;', '    if (cmp < 0) { best = cand; tied = 1; }',
+    'theDepthPickIsTheSurvivorMostSurroundedByNeighbouringSettingsAndNeverReadsMoney', 'the screen is told nobody ties at the top when several do'],
+  [path.join(ROOT, 'lib', 'stages.js'), "const pickBehind = (doc) => !!(doc && captureOnSet(doc) && !(doc.capture.pick && doc.capture.pick.measure === DEPTH_MEASURE));", 'const pickBehind = () => false;',
+    'aCaptureWhosePickWasMadeTheOldWayIsChosenAgainAsTheSetIsOpened', 'a capture whose survivor by depth was chosen the old way is never flagged or chosen again'],
+  [path.join(ROOT, 'lib', 'stages.js'), '    if (cap) writeCapture(doc.id, { ...cap, pick });', '',
+    'aCaptureWhosePickWasMadeTheOldWayIsChosenAgainAsTheSetIsOpened', 'the capture file keeps the old pick while the set says the new one'],
+  [path.join(ROOT, 'public', 'construct.js'), "  if ((rb.reasons || []).some((r) => r.key === 'pick') && x.id) setTimeout(() => repickOnOpen(x.id), 0);", '',
+    'aCaptureWhosePickWasMadeTheOldWayIsChosenAgainAsTheSetIsOpened', 'opening a flagged set never asks for its survivor by depth to be chosen again, so the flag never clears'],
+  [path.join(ROOT, 'tests', 'sweep-words.js'), "  const said = phrases([...htmlTemplates(body).map(readableText), ...headingWords(body)].join('\\n'));", "  const said = phrases(htmlTemplates(body).map(readableText).join('\\n'));",
+    'theWordListSeesEveryVisibleLabel', 'a heading handed to a helper is on the screen and on no list again'],
+  [path.join(ROOT, 'tests', 'sweep-words.js'), '  const place = new Map([...headingPlaces(SRC, true), ...headingPlaces(body, false)]);', '  const place = new Map([...headingPlaces(body, false)]);',
+    'theWordListSeesEveryVisibleLabel', 'a heading handed to a helper defined at the top of the file, as every table on Tune is, is on no list'],
 ];
 
 const only = process.argv[2] || '';

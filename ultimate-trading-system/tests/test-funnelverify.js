@@ -1609,3 +1609,38 @@ module.exports.heldAndReserveKeepThePassCriteriaTypedAndSendThem = function () {
   const help = src('public/help-content.js');
   assert.ok(help.includes('        vOfFour: {') && help.includes('        vAutoPass: {'), 'the two new controls have no help');
 };
+
+// REPAIR (3.248.0), DELETED WITH pickBehind IN lib/stages.js (RULE TEN): a
+// capture whose survivor by depth was chosen by the middle of the rule's ranges
+// is flagged with that reason, and chosen again by its neighbouring settings as
+// the set is opened: in place, on the set and in the capture file alike, the
+// capture and its looks untouched, and nothing to do on a second open.
+module.exports.aCaptureWhosePickWasMadeTheOldWayIsChosenAgainAsTheSetIsOpened = async function () {
+  const f = await fixture();
+  try {
+    const doc = await cutOn(f);
+    const labels = doc.survivors.map((x) => x.label);
+    const old = { by: 'depth', among: 'the captured survivors', label: labels[labels.length - 1], worst: 1, mean: 0.5 };
+    fs.writeFileSync(stages.captureFile(doc.id), require('zlib').gzipSync(Buffer.from(JSON.stringify({
+      v: stages.CAPTURE_V, id: doc.id, survivors: labels.map((label) => ({ label, entries: { train: [], test: [], hold: [], reserve: [] } })), pick: old,
+    }))));
+    rewrite(doc.id, (on) => { on.capture = { v: stages.CAPTURE_V, id: `${doc.id}-c1`, times: 1, captured: labels.length, reads: [{ tool: 'stop', look: 1 }], pick: old, rows: labels.map((label) => ({ label })) }; });
+    const before = stages.getSet(doc.id);
+    assert.ok(stages.pickBehind(before) && ((stages.rebuildOf(before) || {}).reasons || []).some((r) => r.key === 'pick'), 'a pick made the old way is flagged, with its reason');
+    const got = await stages.repickCapture(doc.id);
+    const join = await stages.funnelVerifyJoin(stages.getSet(doc.id));
+    const want = require('../lib/funnelset').pickByDepth(join.rows, join.mine);
+    const after = stages.getSet(doc.id);
+    assert.deepStrictEqual({ done: got.done, label: got.label }, { done: true, label: want.label });
+    assert.deepStrictEqual(after.capture.pick, { by: 'depth', measure: stages.DEPTH_MEASURE, among: 'the captured survivors', label: want.label, deviance: want.deviance, nearby: want.nearby, tied: want.tied }, 'chosen again by its neighbouring settings, in place');
+    assert.deepStrictEqual(stages.readCapture(doc.id).pick, after.capture.pick, 'the capture file says the same');
+    assert.deepStrictEqual([after.capture.id, after.capture.reads], [`${doc.id}-c1`, [{ tool: 'stop', look: 1 }]], 'the capture and its looks untouched');
+    assert.ok(!stages.pickBehind(after) && !((stages.rebuildOf(after) || {}).reasons || []).some((r) => r.key === 'pick'), 'and the flag is gone');
+    assert.deepStrictEqual(await stages.repickCapture(doc.id), { none: true }, 'a second open has nothing to do');
+    // the rebuild line asks for it as the set is opened, and the route is served
+    const ui = src('public/construct.js');
+    assert.ok(ui.includes("if ((rb.reasons || []).some((r) => r.key === 'pick') && x.id) setTimeout(() => repickOnOpen(x.id), 0);"), 'the rebuild line asks for it');
+    assert.ok(ui.includes('/repick`, {})'), 'at the route');
+    assert.ok(src('server.js').includes("app.post('/api/funnel/set/:id/repick'"), 'the route is served');
+  } finally { f.cleanup(); }
+};

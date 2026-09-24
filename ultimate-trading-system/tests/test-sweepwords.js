@@ -54,6 +54,8 @@ module.exports = {
   // is, which is what makes it able to catch the collector being wrong.
   async theWordListSeesEveryVisibleLabel() {
     const missing = [];
+    const S = require('./sweep-words').servedSourceForTests();
+    const heads = new Set();
     for (const t of tabs()) {
       const raw = htmlTemplates(drawBody(t.fn)).join('\n');
       const seen = new Set();
@@ -79,6 +81,29 @@ module.exports = {
           }
         }
       }
+      // A HEADING HANDED TO A HELPER IS VISIBLE TOO (owner order, 2026-09-24:
+      // "do ... the word list fix GO NOW!"). cth('winners cut', 'winnersCut')
+      // prints its first argument inside a <th>, and a table's own
+      // th(key, 'deviance from centre', title) its second; Tune's two tables and
+      // Greenlight's table of every survivor were headed that way and on no list.
+      // Read here by its own pattern, not the collector's: a helper whose one-line
+      // template opens a <th> and prints a parameter straight after the tag -- top
+      // level in the served file, or defined in the screen's own code -- and each
+      // call in the screen's code whose argument in that place is written out.
+      const body = drawBody(t.fn);
+      const helpers = [...S.matchAll(/^(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*\(([^)]*)\)\s*=>\s*`<th\b[^\n]*?>\$\{([A-Za-z_$][\w$]*)\}/gm),
+        ...body.matchAll(/\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*\(([^)]*)\)\s*=>\s*`<th\b[^\n]*?>\$\{([A-Za-z_$][\w$]*)\}/g)];
+      for (const d of helpers) {
+        const k = d[2].split(',').map((p) => p.trim()).indexOf(d[3]);
+        if (k < 0) continue;
+        const before = '\\s*(?:\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"|[^,()\'"`]+)\\s*,'.repeat(k);
+        for (const c of body.matchAll(new RegExp(`(?<![\\w$.])${d[1]}\\(${before}\\s*(['"])((?:(?!\\1)[^\\\\]|\\\\.)*)\\1`, 'g'))) {
+          heads.add(`${t.label}|${c[2]}`);
+          for (const w of c[2].split(/[^A-Za-z0-9%/.\-]+/)) {
+            if (w && /[A-Za-z]/.test(w) && w.length > 1) seen.add(w);
+          }
+        }
+      }
       const have = new Set(collect(t.fn).words);
       for (const w of seen) if (!have.has(w)) missing.push(`${t.label}: "${w}"`);
     }
@@ -86,6 +111,10 @@ module.exports = {
       'these words are plainly visible on a screen and are on no word list, so the rule that '
       + 'says the list is the only permitted vocabulary would forbid a word the owner can see:\n  '
       + missing.join('\n  '));
+    // and the heading reader has something to read: the two tables on Tune and the table of every survivor on Greenlight
+    for (const h of ['Tune|winners cut', 'Tune|return % on $ traded', 'Greenlight|deviance from centre', 'Greenlight|neighbouring settings that survived']) {
+      assert.ok(heads.has(h), `the heading ${h.split('|')[1]} on ${h.split('|')[0]} was not read, so this check reads no headings at all`);
+    }
   },
 
   // EVERY HELPER A SCREEN CALLS THAT DRAWS SOMETHING REACHES ITS READER

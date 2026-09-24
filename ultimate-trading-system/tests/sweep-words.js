@@ -358,6 +358,81 @@ function pageTextInside(code) {
   return out;
 }
 
+// COLUMN HEADINGS DRAWN THROUGH A HELPER (owner order, 2026-09-24: "do ... the
+// word list fix GO NOW!"). A heading written as cth('winners cut', 'winnersCut')
+// -- or through a helper of a table's own, th('deviance', 'deviance from
+// centre', title) -- is on the owner's screen, and nothing above could see it:
+// the words are an argument handed to a call, which the reading rightly never
+// takes as page text in general. Both tables on Tune and the table of every
+// survivor on Greenlight were headed that way, and their headings were on no
+// list. So a helper whose own template opens a <th> and prints one of its
+// parameters straight after the tag is found in the screen's own code, and every
+// call to it there gives up what it passes in that place -- when it is written
+// out, never when it is worked out. Kept to headings on purpose: an argument is
+// page text only where the helper that takes it says so, and a name defined twice
+// in one screen's code with the words in two different places is left alone
+// rather than guessed at.
+function headingWords(body) {
+  // where each helper prints its words: the file's own top-level helpers (the
+  // walk keeps only a one-line helper's template, not its parameters), then any
+  // this screen's code defines for itself, which speak for this screen
+  const place = new Map([...headingPlaces(SRC, true), ...headingPlaces(body, false)]);
+  const out = [];
+  for (const [name, k] of place) {
+    if (k < 0) continue;
+    for (const m of body.matchAll(new RegExp(`(?<![\\w$.])${name.replace(/\$/g, '\\$')}\\(`, 'g'))) {
+      const lit = literalOf(argsAt(body, m.index + m[0].length)[k]);
+      if (lit && /[A-Za-z0-9]/.test(lit)) out.push(lit);
+    }
+  }
+  return out;
+}
+// Each heading helper defined in a piece of code, and which of its parameters it
+// prints straight after the <th> it opens with; -1 for a name defined twice with
+// the words in two places.
+function headingPlaces(code, topLevel) {
+  const place = new Map();
+  const re = topLevel
+    ? /^(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*\(([^)]*)\)\s*=>\s*`<th\b/gm
+    : /\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*\(([^)]*)\)\s*=>\s*`<th\b/g;
+  for (const m of code.matchAll(re)) {
+    const params = m[2].split(',').map((p) => p.trim().split('=')[0].trim());
+    const open = m.index + m[0].length - 3;             // the backtick
+    const tpl = code.slice(open, endOfTemplate(code, open + 1));
+    const printed = [...tpl.matchAll(/>\$\{([A-Za-z_$][\w$]*)\}/g)].map((x) => params.indexOf(x[1])).find((k) => k >= 0);
+    if (printed == null) continue;
+    place.set(m[1], place.has(m[1]) && place.get(m[1]) !== printed ? -1 : printed);
+  }
+  return place;
+}
+// The arguments of the call whose opening bracket was just passed, as written.
+function argsAt(code, i) {
+  const out = [];
+  let depth = 0;
+  let from = i;
+  while (i < code.length) {
+    const ch = code[i];
+    if (ch === '\\') { i += 2; continue; }
+    if (ch === "'" || ch === '"') { i = endOfQuote(code, i + 1, ch); continue; }
+    if (ch === '`') { i = endOfTemplate(code, i + 1); continue; }
+    if ('([{'.includes(ch)) { depth++; i++; continue; }
+    if (')]}'.includes(ch)) {
+      if (!depth) { out.push(code.slice(from, i)); return out; }
+      depth--; i++; continue;
+    }
+    if (ch === ',' && !depth) { out.push(code.slice(from, i)); from = i + 1; }
+    i++;
+  }
+  return out;
+}
+// An argument that is written out -- a quoted string, or a template with nothing
+// worked out inside it -- and never one that is computed.
+function literalOf(arg) {
+  const a = String(arg == null ? '' : arg).trim();
+  const m = /^'((?:[^'\\]|\\.)*)'$/.exec(a) || /^"((?:[^"\\]|\\.)*)"$/.exec(a) || /^`((?:[^`\\$]|\\.|\$(?!\{))*)`$/.exec(a);
+  return m ? m[1].replace(/\\(.)/g, '$1') : null;
+}
+
 // Strip the things a person never reads: comments, tooltips, ids, classes,
 // styles, and the code inside interpolations.
 function readableText(src) {
@@ -503,7 +578,8 @@ function dataValueWords(body) {
 
 function collect(fnName = 'drawSweep') {
   const body = drawBody(fnName);
-  const said = phrases(htmlTemplates(body).map(readableText).join('\n'));
+  // the page's own text, and the headings its tables are given through a helper (2026-09-24)
+  const said = phrases([...htmlTemplates(body).map(readableText), ...headingWords(body)].join('\n'));
   const opts = optionWords(body);
   const dataValues = dataValueWords(body);
 
@@ -530,7 +606,7 @@ function collect(fnName = 'drawSweep') {
   };
 }
 
-module.exports = { collect, drawSweepBody, drawBody, tabs, htmlTemplates, readableText, stripInterpolations,
+module.exports = { collect, drawSweepBody, drawBody, tabs, htmlTemplates, readableText, stripInterpolations, headingWords,
   // the served screen source itself, for a check that must NOT go through
   // this file's own idea of what is on it
   servedSourceForTests: () => SRC };
