@@ -2377,6 +2377,23 @@ const GUARDS = [
     'theHistoryScreenOffersTheCutAndTheCompleteEachWithItsOwnName', 'an unweighted row reaches the live path as a half-life of 0 days'],
   [path.join(ROOT, 'public', 'construct.js'), '  hlSave(\'hHlBuildAll\', \'hHlNameAll\', \'complete\');\n', '',
     'theHistoryScreenOffersTheCutAndTheCompleteEachWithItsOwnName', 'Save the complete does nothing when pressed'],
+  // 3.246.0: Held and Reserve keep the pass criteria typed; 2, 3 or 4 of the four; the automatic pass
+  [path.join(ROOT, 'lib', 'funnelverify.js'), '    const clears = known && inMoney && beaten >= ofFour;', '    const clears = known && inMoney && beaten >= 4;',
+    'twoOrThreeOfTheFourPassOnlyWithAPositiveAverageAndTheAutomaticPassPassesOnOne', 'the comparisons box changes nothing: every survivor still has to beat all four'],
+  [path.join(ROOT, 'lib', 'funnelverify.js'), 'clearing >= ownBar && (ofFour >= 4 || (real != null && real > 0)),', 'clearing >= ownBar,',
+    'twoOrThreeOfTheFourPassOnlyWithAPositiveAverageAndTheAutomaticPassPassesOnOne', '2 or 3 of 4 passes a set whose survivors lost money on average'],
+  [path.join(ROOT, 'lib', 'funnelverify.js'), '  const pass = auto ? !!(f.ok && positiveAverage) : !!(f.ok && h.pass && cp.pass && sn.ok);', '  const pass = !!(f.ok && h.pass && cp.pass && sn.ok);',
+    'twoOrThreeOfTheFourPassOnlyWithAPositiveAverageAndTheAutomaticPassPassesOnOne', 'the automatic pass tick changes nothing'],
+  [path.join(ROOT, 'lib', 'funnelverify.js'), '  const ofFour = [2, 3].includes(Math.floor(Number(asked.ofFour))) ? Math.floor(Number(asked.ofFour)) : 4;', '  const ofFour = Math.floor(Number(asked.ofFour)) || 4;',
+    'twoOrThreeOfTheFourPassOnlyWithAPositiveAverageAndTheAutomaticPassPassesOnOne', 'a comparisons count nobody offered is taken as asked'],
+  [path.join(ROOT, 'public', 'construct.js'), '  const bar = typed(m.barPct) ? m.barPct : (Number(r.barPct) || 80);', '  const bar = Number(r.barPct) || 80;',
+    'heldAndReserveKeepThePassCriteriaTypedAndSendThem', 'bar share % goes back to the default on every draw'],
+  [path.join(ROOT, 'public', 'construct.js'), '  try { localStorage.setItem(vPassKey(stretch), JSON.stringify(kept)); } catch (_) { /* private window */ }', '',
+    'heldAndReserveKeepThePassCriteriaTypedAndSendThem', 'nothing typed on Held or Reserve is kept'],
+  [path.join(ROOT, 'public', 'construct.js'), 'ofFour: Number($(\'#vOfFour\').value), autoPass: !!$(\'#vAutoPass\').checked };', '};',
+    'heldAndReserveKeepThePassCriteriaTypedAndSendThem', 'the press sends neither the comparisons box nor the tick, so the verdict ignores both'],
+  [path.join(ROOT, 'lib', 'stages.js'), 'ofFour: r.ofFour ?? null, autoPass: r.autoPass === true };', '};',
+    'heldAndReserveKeepThePassCriteriaTypedAndSendThem', 'a flagged held or reserve set read again loses the criteria it was read under'],
 ];
 
 const only = process.argv[2] || '';

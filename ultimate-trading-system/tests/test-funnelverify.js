@@ -1519,3 +1519,61 @@ module.exports.theHeldAndReserveSetBoxShowsEachRuleByItsNameAlone = function () 
   assert.ok(!/function vNewestWords\(/.test(page), 'the words that followed each name are still in the page with nothing to draw them');
 };
 
+
+// THE LOOSER CRITERIA AND THE AUTOMATIC PASS (3.246.0, owner order 2026-09-24):
+// 2 or 3 of the four pass survivors that beat that many, only with a positive
+// average on the window; 4 of 4 is as it always was; the automatic pass passes
+// a positive average on its own, never a negative one, never without the footing
+module.exports.twoOrThreeOfTheFourPassOnlyWithAPositiveAverageAndTheAutomaticPassPassesOnOne = function () {
+  const k10 = { kind: 'scrambles', k: 10, barPct: 80 };
+  const r4 = V.declareRules(k10, {});
+  assert.deepStrictEqual([r4.ofFour, r4.needsPositive, r4.autoPass, r4.tags.comparisons], [4, false, false, 'DERIVED'], 'the rules are looser than 4 of 4 when nothing was asked');
+  const r3 = V.declareRules(k10, { ofFour: 3, autoPass: true });
+  assert.deepStrictEqual([r3.ofFour, r3.needsPositive, r3.autoPass, r3.tags.comparisons, r3.tags.autoPass], [3, true, true, 'GUESSED', 'GUESSED']);
+  assert.deepStrictEqual([V.declareRules(k10, { ofFour: 7 }).ofFour, V.declareRules(k10, { ofFour: '2' }).ofFour, V.declareRules(k10, { autoPass: 'yes' }).autoPass], [4, 2, false], 'anything but 2 or 3 is 4, and only a tick is a tick');
+  // the survivors beat three of the four here (always long at 10 is out of their reach), and two below
+  const list = rows(3, 10);
+  const three = { ...CONTROLS, alwaysLong: { lo: 10, hi: 10 }, byKey: { 'all|41': { ...CONTROLS.byKey['all|41'], alwaysLong: 10 } } };
+  const two = { ...three, buyHold: { lo: 10, hi: 10 }, byKey: { 'all|41': { ...three.byKey['all|41'], buyHold: 10 } } };
+  assert.strictEqual(V.heldBackRead(list, three, r4).pass, false, '4 of 4 passed survivors that beat three');
+  assert.strictEqual(V.heldBackRead(list, three, V.declareRules(k10, { ofFour: 3 })).pass, true, '3 of 4 failed survivors that beat three');
+  assert.strictEqual(V.heldBackRead(list, two, V.declareRules(k10, { ofFour: 3 })).pass, false, '3 of 4 passed survivors that beat two');
+  assert.strictEqual(V.heldBackRead(list, two, V.declareRules(k10, { ofFour: 2 })).pass, true, '2 of 4 failed survivors that beat two');
+  // one survivor deep in the red: two still clear the bar, and the negative average sinks the looser rule
+  const sunk = list.map((r, i) => (i === 2 ? { ...r, avgHold: -40 } : r));
+  const loose = V.heldBackRead(sunk, three, V.declareRules({ ...k10, barPct: 50 }, { ofFour: 3 }));
+  assert.deepStrictEqual({ clearing: loose.own.clearing, bar: loose.own.bar, positive: loose.own.positiveAverage, pass: loose.pass }, { clearing: 2, bar: 2, positive: false, pass: false }, 'a looser rule passed on a negative average');
+  // the automatic pass: these survivors fail 4 of 4 and noise profits here, so nothing else would pass them
+  const rules = V.declareRules(k10, { autoPass: true });
+  const base = { rules, footing: { ok: true, had: 3 }, looks: { unstamped: 3 }, read: V.heldBackRead(list, two, rules), copies: V.copiesRead(list, rules), survivors: V.perSurvivor(list, rules), sanity: V.sanity(list, list, rules), lineA: V.lineA(list, rules), lineB: V.lineB(list, 3, rules) };
+  const auto = V.buildBlock(base);
+  assert.strictEqual(auto.verdict.pass, true, 'the automatic pass did not pass a positive average');
+  assert.ok(/automatic pass on a positive average on the held-back window was ticked/.test(auto.verdict.sentence), auto.verdict.sentence);
+  assert.strictEqual(V.buildBlock({ ...base, rules: { ...rules, autoPass: false } }).verdict.pass, false, 'the same reading passed without the tick');
+  assert.strictEqual(V.buildBlock({ ...base, footing: { ok: false, why: 'gone' } }).verdict.pass, false, 'the automatic pass passed with the footing down');
+  const red = list.map((r) => ({ ...r, avgHold: -1 }));
+  assert.strictEqual(V.buildBlock({ ...base, read: V.heldBackRead(red, two, rules) }).verdict.pass, false, 'the automatic pass passed a negative average');
+  // the sentence says the looser rule and whether its average held
+  const s3 = V.buildBlock({ ...base, rules: V.declareRules(k10, { ofFour: 3 }), read: V.heldBackRead(list, three, V.declareRules(k10, { ofFour: 3 })) }).verdict.sentence;
+  assert.ok(/beat at least 3 of the four comparisons/.test(s3) && /3 of 4 requires the survivors' average on the held-back window to be positive, and it was/.test(s3), s3);
+};
+
+// HELD AND RESERVE KEEP WHAT WAS PUT IN (3.246.0): the four pass criteria open
+// on what was typed, keep it as it is typed, and go with the press; a held or
+// reserve set read again keeps its own
+module.exports.heldAndReserveKeepThePassCriteriaTypedAndSendThem = function () {
+  const page = src('public/construct.js');
+  const press = page.slice(page.indexOf('function vPressHtml(d, stretch) {'), page.indexOf('function vLinesHtml(b) {'));
+  assert.ok(press.includes('const m = vPassKept(stretch);'), 'the press row does not open on what was put in');
+  assert.ok(press.includes('const bar = typed(m.barPct) ? m.barPct : (Number(r.barPct) || 80);') && press.includes('const sanity = typed(m.sanityPct) ? m.sanityPct : (Number(r.sanityPct) || 50);'), 'bar share % or noise must lose at least % goes back to the defaults');
+  assert.ok(/>comparisons to beat<select id="vOfFour"><option value="2"[^>]*>2 of 4<\/option><option value="3"[^>]*>3 of 4<\/option><option value="4"[^>]*>4 of 4<\/option><\/select>/.test(press), 'the comparisons box does not offer 2 of 4, 3 of 4 and 4 of 4');
+  assert.ok(press.includes("'<b>requires + held back $ avg</b>'") && press.includes("'automatic pass on + held back $ avg'"), 'the flag or the tick is missing on Held');
+  assert.ok(press.includes("'<b>requires + reserve $ avg</b>'") && press.includes("'automatic pass on + reserve $ avg'"), 'the flag or the tick is missing on Reserve');
+  const keep = page.slice(page.indexOf('function vPassKeep(stretch) {'), page.indexOf('function vPressHtml(d, stretch) {'));
+  assert.ok(keep.includes('localStorage.setItem(vPassKey(stretch), JSON.stringify(kept))'), 'what was put in is not kept');
+  assert.ok(page.includes("for (const id of ['vBarPct', 'vSanityPct', 'vOfFour', 'vAutoPass']) {") && page.includes('      vPassKeep(stretch);'), 'the four controls do not keep what is put in as it is put in');
+  assert.ok(page.includes("const body = { barPct: vTyped('#vBarPct'), sanityPct: vTyped('#vSanityPct'), ofFour: Number($('#vOfFour').value), autoPass: !!$('#vAutoPass').checked };"), 'the press does not send the comparisons box and the tick');
+  assert.ok(src('lib/stages.js').includes('ofFour: r.ofFour ?? null, autoPass: r.autoPass === true };'), 'a held or reserve set read again forgets its criteria');
+  const help = src('public/help-content.js');
+  assert.ok(help.includes('        vOfFour: {') && help.includes('        vAutoPass: {'), 'the two new controls have no help');
+};
