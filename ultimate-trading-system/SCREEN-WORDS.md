@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **20c93154e905 — what the box is serving**, not from the working tree.
+Generated from **fbd91b017388 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -1882,7 +1882,7 @@ again and appends are as at average behind beside best block both box built by c
 
 # Tune
 
-## What the controls are called (142)
+## What the controls are called (141)
 
 - `- by conviction -`
 - `— no reason recorded`
@@ -1900,7 +1900,6 @@ again and appends are as at average behind beside best block both box built by c
 - `(by depth)`
 - `(flat`
 - `(named)`
-- `(worst distance`
 - `% complete`
 - `% of a full window's evidence`
 - `% the field holds about`
@@ -2091,10 +2090,10 @@ _none_
 - train trades counted only on days the field was at least
 - survivor(s) are not in the stage 3 set's block on this unit
 
-## Every word, flat (337)
+## Every word, flat (336)
 
 ```
-aborted about above again again. against agree agreed agreeing aimed all alone among amount an and any anywhere. appears applied apply Apply are as asks at At baseline be been before below bet block both box boxes building by called can cannot capture Capture captured carried chance Chance changes check choice choose Choosing chosen clear clip clip. clipped comes complete completion concurrent Conviction conviction copy could count counted counts curve custom day days deals declared depth disabled distance down drawdown each either entries entries. estimate every evidence Exposure exposure-honest failed field finds first fixed flat floor for force from full give given go green Greenlight had half-life has have heavy Held held held-back helps. here History history holds how in is it it. its itself kept ladder lands last launchers least left list longer look losers loses loss-side machine. made many mean means measured member members metrics. mid-flight minutes money more multiplier name named NET never new newest no No no-stop no-winner-lost none not Not nothing Nothing nothing. numbers of off off. on on. Once one one. only onto or out over overlay own partial peak per per- Per-trade plus positive press price priced Prices prices Protective protective pure purpose read Read reading reads Reads reason rebuild REBUILD Recompute record recorded refused release REQUIRED Reserve reserve result return row rows run Run running runs. sacrifice same Save saved Saves says scan scanned scans see set setting shuffled shuffled-assignment shuffles. side simulator since single size size. sizing so spent Stage stage stay stop stopped stops survivor survivors sweep table table. tables Take take taken takes target Target targets test than that the The their them themselves there they this This those ticked ticked. tighter tightest time to took top touched trade traded traded. trades trades. trading Train train training Tune tuned tuner Tuning turns two type typed under unit until up uplift Verdict vs was way weight were What what when where whose will window window. windows winner winners with worst would writes yet yet. you your yourself
+aborted about above again again. against agree agreed agreeing aimed all alone among amount an and any anywhere. appears applied apply Apply are as asks at At baseline be been before below bet block both box boxes building by called can cannot capture Capture captured carried chance Chance changes check choice choose Choosing chosen clear clip clip. clipped comes complete completion concurrent Conviction conviction copy could count counted counts curve custom day days deals declared depth disabled down drawdown each either entries entries. estimate every evidence Exposure exposure-honest failed field finds first fixed flat floor for force from full give given go green Greenlight had half-life has have heavy Held held held-back helps. here History history holds how in is it it. its itself kept ladder lands last launchers least left list longer look losers loses loss-side machine. made many mean means measured member members metrics. mid-flight minutes money more multiplier name named NET never new newest no No no-stop no-winner-lost none not Not nothing Nothing nothing. numbers of off off. on on. Once one one. only onto or out over overlay own partial peak per per- Per-trade plus positive press price priced Prices prices Protective protective pure purpose read Read reading reads Reads reason rebuild REBUILD Recompute record recorded refused release REQUIRED Reserve reserve result return row rows run Run running runs. sacrifice same Save saved Saves says scan scanned scans see set setting shuffled shuffled-assignment shuffles. side simulator since single size size. sizing so spent Stage stage stay stop stopped stops survivor survivors sweep table table. tables Take take taken takes target Target targets test than that the The their them themselves there they this This those ticked ticked. tighter tightest time to took top touched trade traded traded. trades trades. trading Train train training Tune tuned tuner Tuning turns two type typed under unit until up uplift Verdict vs was way weight were What what when where whose will window window. windows winner winners with worst would writes yet yet. you your yourself
 ```
 
 ---
@@ -2713,14 +2712,12 @@ about About above above. after against ahead all allow alone already always an a
 
 # Greenlight
 
-## What the controls are called (54)
+## What the controls are called (52)
 
-- `- distance`
 - `· no tuning on record`
 - `· read from`
 - `· verdict`
 - `(by depth)`
-- `(worst distance`
 - `$ a setting`
 - `after conviction sizing $`
 - `after History $`
@@ -2774,7 +2771,7 @@ about About above above. after against ahead all allow alone already always an a
 
 _none_
 
-## Sentences the page prints (28)
+## Sentences the page prints (29)
 
 - Greenlight — the decision that a config is fit to trade
 - Records WHO/WHEN/WHY with the exact frozen config, engine version, and the campaign's whole
@@ -2786,8 +2783,8 @@ _none_
 - Activation, deactivation and nuking live on the
 - The other way to write the decision down: from a reserve set that passed on Reserve, or from a held set that
 - passed on Held on a layout that keeps no reserve, held alone. One of its
-- survivors is taken forward, chosen by how surrounded it is inside the rule (the setting nearest the middle of every
-- range, never the one with the most money) or named by you, and both are recorded. The frozen settings carry the
+- survivors is taken forward, chosen by how surrounded it is (the survivor with the most of its neighbouring settings
+- surviving too, never the one with the most money) or named by you, and both are recorded. The frozen settings carry the
 - way its members agree exactly as the survivor does. Nothing here trades, and nothing built from it can be put to
 - work until the live path speaks that agreement.
 - no held set or reserve set on this box yet - read a rule on Held first
@@ -2795,7 +2792,8 @@ _none_
 - press a row to pick it; its own lines are drawn below
 - , and the set is refused, so nothing is greenlighted from here until that is cleared
 - , and it becomes the one survivor to greenlight
-- Deviance from the rule's centre is 0 in the middle of every range of the rule and 1 on an edge, for its worst dial and on average over them.
+- Deviance from the rule's centre is the share of its neighbouring settings that did not survive: the settings one notch up or down on one dial, every other dial the same.
+- 0 is surrounded on every side, 1 on none.
 - its money on each stretch step by step, each change in the order it is applied, with the trades each figure is over in brackets
 - The test stretch is without the History and Tune settings:
 - it is the forecasts as stage 3 priced them,
@@ -2805,10 +2803,10 @@ _none_
 - train off the capture on Tune, test off the stage 3 records, held off the held set, reserve off the reserve set. Nothing here
 - is priced and nothing counts as a look. Each stretch is held against the four simpler things at the survivors' own hold lengths.
 
-## Every word, flat (235)
+## Every word, flat (237)
 
 ```
-Activation activation. after against agree agreement. all alone. always an and appears applied are as at average be becomes before behind being below both box brackets built buy by campaign can capture carry centre chain. change changed chosen clear cleared clears config configs conviction counts dash deactivation decision depth Deviance dial distance does does. down drawn each Each edge engine ever ever. every Every evidence evidentiary exact exactly Existing fee figure first fit for forecasts forward found four from frozen Greenlight greenlight greenlighted greenlights hand-built has held Held here here. History history hold how in inside is It it its keeps layout lengths. lines live long look. means members middle money most name named nearest never no none not Nothing nothing nuked nuking of off on one One Only or order other out over own PASS passed path per period pick picture predates press priced put range read rebuild REBUILD record recorded. Records records refused release required REQUIRED reserve Reserve retraining row rule run sent set set. sets setting settings short sides simpler size sized sizing sizing. so speaks Stage stage stand starts step stood stop stopped stretch surrounded survivor survivors tab taken test that the The them them. then there. they things this through to trade Trade trades Train train Tune tuning tunings under until verdict version was way way. what when where WHO/WHEN/WHY whole why with without work worst write yes yet you
+Activation activation. after against agree agreement. all alone. always and appears applied are as at average be becomes before behind being below both box brackets built buy by campaign can capture carry centre chain. change changed chosen clear cleared clears config configs conviction counts dash deactivation decision depth Deviance dial did does does. down drawn each Each engine ever ever. Every every evidence evidentiary exact exactly Existing fee figure first fit for forecasts forward found four from frozen Greenlight greenlight greenlighted greenlights hand-built has held Held here here. History history hold how in is It it its keeps layout lengths. lines live long look. means members money most name named neighbouring never no none none. not notch Nothing nothing nuked nuking of off on one One Only or order other out over own PASS passed path per period pick picture predates press priced put read rebuild REBUILD record recorded. Records records refused release required REQUIRED reserve Reserve retraining row rule run same. sent set set. sets setting settings share short side sides simpler size sized sizing sizing. so speaks Stage stage stand starts step stood stop stopped stretch surrounded survive surviving survivor survivors tab taken test that the The them then there. they things this through to too trade Trade trades Train train Tune tuning tunings under until up verdict version was way way. what when where WHO/WHEN/WHY whole why with without work write yes yet you
 ```
 
 ---
