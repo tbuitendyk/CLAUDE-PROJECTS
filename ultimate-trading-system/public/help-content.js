@@ -130,6 +130,14 @@ const JUDGE_HELP = (() => {
           what: `The share of the scrambled copies the survivors' ${w} money has to beat, and the share of survivors that must beat all four comparisons at their own hold length, for the verdict to pass.`,
           more: 'It opens on the share the rule was cut under, which is the honest bar. A change is written onto the verdict as a guessed threshold, so a verdict read under a softer bar says so.',
         },
+        vOfFour: {
+          what: `How many of the four comparisons each survivor must be ahead of at its own hold length, in the money as well, to count toward the bar share: 2 of 4, 3 of 4, or 4 of 4.`,
+          more: `4 of 4 is every one of them, as the verdict always read. 2 of 4 and 3 of 4 are looser, and each also requires the survivors' average on the ${w} window to be positive, which the flag beside the box says. The choice is written onto the verdict, and kept for the next press.`,
+        },
+        vAutoPass: {
+          what: `Ticked, the set passes whenever its survivors' average money on the ${w} window is positive.`,
+          more: 'The copies, the comparisons and the noise check are still read and printed on the verdict, but none of them can stop the pass; the rule must still give back its own survivors. The tick is written onto the verdict, and kept for the next press.',
+        },
         vSanityPct: {
           what: `The share of the scrambled ${w} figures read that must be losing money for the copies to count as noise.`,
           more: 'A guessed threshold, written onto the verdict. On a window that paid one direction the copies are paid too, so this can fail honestly; when it fails, the readings above it are not to be read.',

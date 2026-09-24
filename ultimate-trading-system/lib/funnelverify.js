@@ -102,16 +102,25 @@ function declareRules(check, asked = {}) {
   // unreadable means the default
   const askedS = asked.sanityPct == null || asked.sanityPct === '' ? null : Number(asked.sanityPct);
   const sanityPct = askedS != null && Number.isFinite(askedS) && askedS >= 0 ? Math.min(100, askedS) : DEFAULT_SANITY_PCT;
+  // THE LOOSER CRITERIA (3.246.0, owner order 2026-09-24): how many of the four
+  // comparisons each survivor has to beat -- 2, 3, or 4 as it always was --
+  // with the survivors' average on the window required to be positive
+  // whenever it is fewer than 4; and an automatic pass on a positive average
+  // on the window, ticked or not. Anything but 2 or 3 is 4.
+  const ofFour = [2, 3].includes(Math.floor(Number(asked.ofFour))) ? Math.floor(Number(asked.ofFour)) : 4;
+  const autoPass = asked.autoPass === true || asked.autoPass === 'true';
   return {
     copies: K,
     barPct, ownBarPct: own, barChanged, bar, chance: K ? F.chanceOf(bar, K) : null,
     sanityPct,
+    ofFour, needsPositive: ofFour < 4, autoPass,
     gated: GATED.slice(),
     limits: LIMITS.slice(),
     tags: {
-      footing: 'DERIVED', comparisons: 'DERIVED',
+      footing: 'DERIVED', comparisons: ofFour < 4 ? 'GUESSED' : 'DERIVED',
       bar: barChanged ? 'GUESSED' : 'DERIVED',
       sanity: 'GUESSED',
+      autoPass: autoPass ? 'GUESSED' : null,
     },
   };
 }
@@ -169,6 +178,8 @@ function heldBackRead(rows, controls, rules = null) {
   // hold length has no figure is counted and never passes. The bar is the same
   // share the copies bar was declared at, resolved on the survivor count.
   const barPct = rules && rules.barPct != null && Number.isFinite(Number(rules.barPct)) ? Number(rules.barPct) : F.barPctOf({});
+  // how many of the four each survivor must beat (3.246.0); 4 when the rules say nothing looser
+  const ofFour = rules && [2, 3].includes(Number(rules.ofFour)) ? Number(rules.ofFour) : 4;
   const byKey = c.known && c.byKey ? c.byKey : null;
   const ownRows = (rows || []).map((r) => {
     const held = num(r[HELD]);
@@ -181,8 +192,9 @@ function heldBackRead(rows, controls, rules = null) {
       if (v == null) { known = false; beats[k] = null; } else beats[k] = F.beats(held, v);
     }
     const inMoney = held != null && held > 0;
-    const clears = known && inMoney && GATED.every((k) => beats[k] === true);
-    return { si: r.si, label: r.label, key, held, positive: inMoney, four: four ? { ...four } : null, beats, known, clears };
+    const beaten = GATED.filter((k) => beats[k] === true).length;
+    const clears = known && inMoney && beaten >= ofFour;
+    return { si: r.si, label: r.label, key, held, positive: inMoney, four: four ? { ...four } : null, beats, beaten, known, clears };
   });
   const n = ownRows.length;
   const knownN = ownRows.filter((x) => x.known).length;
@@ -194,8 +206,12 @@ function heldBackRead(rows, controls, rules = null) {
     beatingEach: Object.fromEntries(GATED.map((k) => [k, ownRows.filter((x) => x.beats[k] === true).length])),
     positive: ownRows.filter((x) => x.positive).length,
     rows: ownRows,
-    pass: comparisons.known && n > 0 && knownN === n && clearing >= ownBar,
-    definition: 'each survivor against the four at its own hold length: in the money and ahead of every one of them by at least a cent; the set passes when the bar share of its survivors do',
+    ofFour, needsPositive: ofFour < 4, positiveAverage: real != null && real > 0,
+    // fewer than 4 of the four needs the survivors' average on the window positive too
+    pass: comparisons.known && n > 0 && knownN === n && clearing >= ownBar && (ofFour >= 4 || (real != null && real > 0)),
+    definition: ofFour >= 4
+      ? 'each survivor against the four at its own hold length: in the money and ahead of every one of them by at least a cent; the set passes when the bar share of its survivors do'
+      : `each survivor against the four at its own hold length: in the money and ahead of at least ${ofFour} of them by at least a cent; the set passes when the bar share of its survivors do and the survivors' average on the window is positive`,
   };
   return {
     real, of, missing: (rows || []).length - of,
@@ -516,8 +532,10 @@ function ownPhrase(where, h, c) {
   const avg = `the ${h.of ?? 0} survivors made ${money(h.real)} a setting`
     + (c.known ? `, ${bestPhrase(c)} at the worst hold length in use` : `, and the four comparisons are not known (${c.why || 'unstated'})`);
   if (!o) return `on ${where} ${avg}`;
-  return `on ${where} ${o.clearing} of ${o.survivors} survivors made money and beat each of the four comparisons at their own hold length, the bar being ${o.bar} (${o.barPct}%)`
+  const loose = o.ofFour != null && o.ofFour < 4;
+  return `on ${where} ${o.clearing} of ${o.survivors} survivors made money and beat ${loose ? `at least ${o.ofFour} of the four comparisons` : 'each of the four comparisons'} at their own hold length, the bar being ${o.bar} (${o.barPct}%)`
     + (o.unknown ? `, ${o.unknown} with no figure at their hold length, which never passes` : '')
+    + (loose ? `; ${o.ofFour} of 4 requires the survivors' average on ${where} to be positive, and it ${o.positiveAverage ? 'was' : 'was not'}` : '')
     + `; averaged, ${avg}${c.known ? ', a hindsight reading and never a gate' : ''}`;
 }
 function verdict(block) {
@@ -572,7 +590,13 @@ function verdict(block) {
   parts.push(o
     ? `on the other units, read ${String(o.at || '').slice(0, 16)}: ${o.positive} of ${o.of} other units positive on ${where}, ${o.clearBar} clear the bar${o.keepsNothing ? `, ${o.keepsNothing} keep nothing` : ''}${o.notPriced ? `, ${o.notPriced} not priced on the reserve yet` : ''}${o.mark ? ` (${o.mark})` : ''}, information only`
     : 'the other units not read when this was stamped');
-  const pass = !!(f.ok && h.pass && cp.pass && sn.ok);
+  // THE AUTOMATIC PASS (3.246.0, owner order 2026-09-24): ticked, a positive
+  // average on the window passes the set on its own, with the footing standing;
+  // everything above is still read and printed, and none of it can stop it
+  const auto = !!(b.rules || {}).autoPass;
+  const positiveAverage = h.real != null && h.real > 0;
+  if (auto) parts.push(`automatic pass on a positive average on ${where} was ticked, and the survivors' average there ${positiveAverage ? `was ${money(h.real)}, positive, so the set passes on that alone` : `was ${money(h.real)}, not positive, so it does not pass on that`}${f.ok ? '' : ' — but the footing did not stand, and nothing passes without it'}`);
+  const pass = auto ? !!(f.ok && positiveAverage) : !!(f.ok && h.pass && cp.pass && sn.ok);
   const buys = stretch === 'held' ? 'this window only' : 'this window, and only the first look at it was unseen';
   return { pass, sentence: `${pass ? 'PASS' : 'FAIL'}: ${parts.join('; ')}. What a pass buys: ${buys}.` };
 }

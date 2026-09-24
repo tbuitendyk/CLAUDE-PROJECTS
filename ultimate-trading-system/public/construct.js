@@ -2504,11 +2504,39 @@ function vBoardHtml(d, stretch) {
       <span id="vBoardMsg" class="note">${d.boardRefused ? `<b class="warn">refused:</b> ${esc(d.boardRefused)}` : ''}</span></div>
   </div>`;
 }
+// THE PASS CRITERIA REMEMBER WHAT WAS PUT IN (3.246.0, owner order 2026-09-24:
+// "when bar share % and noise must lose at least % fields are set by the user
+// do not revert those fields back to the defaults -- they are to remember what
+// was put in -- for Held and Reserve"). One memory for Held and one for
+// Reserve, kept as typed; a box never typed in opens on the set's own.
+const vPassKey = (stretch) => `cx-verify-pass-${stretch === 'reserve' ? 'reserve' : 'held'}`;
+function vPassKept(stretch) {
+  try { return JSON.parse(localStorage.getItem(vPassKey(stretch)) || 'null') || {}; } catch (_) { return {}; }
+}
+function vPassKeep(stretch) {
+  const val = (id) => { const el = $(`#${id}`); return el ? el.value : null; };
+  const box = $('#vAutoPass');
+  const kept = { barPct: val('vBarPct'), sanityPct: val('vSanityPct'), ofFour: val('vOfFour'), autoPass: !!(box && box.checked) };
+  try { localStorage.setItem(vPassKey(stretch), JSON.stringify(kept)); } catch (_) { /* private window */ }
+}
 function vPressHtml(d, stretch) {
   const r = d.rules || {};
+  const m = vPassKept(stretch);
+  const typed = (v) => v != null && String(v).trim() !== '';
+  const bar = typed(m.barPct) ? m.barPct : (Number(r.barPct) || 80);
+  const sanity = typed(m.sanityPct) ? m.sanityPct : (Number(r.sanityPct) || 50);
+  // THE LOOSER CRITERIA AND THE AUTOMATIC PASS (3.246.0, owner order
+  // 2026-09-24): 2, 3 or 4 of the four comparisons, fewer than 4 flagged as
+  // needing a positive average on the window; and a tick that passes the set on
+  // a positive average there alone
+  const ofFour = [2, 3, 4].includes(Number(m.ofFour)) ? Number(m.ofFour) : 4;
+  const auto = m.autoPass === true;
   return `<div class="row" style="margin-top:.4rem;align-items:flex-end">
-    <label class="f" title="the share of the scrambled copies the survivors' ${stretchPlain(stretch)} money has to beat, and the share of survivors that must beat all four comparisons at their own hold length. Opens on the share this set was cut under; a change is written onto the verdict as a guessed threshold.">bar share %<input id="vBarPct" type="number" min="1" max="100" value="${Number(r.barPct) || 80}" style="width:5rem"></label>
-    <label class="f" title="the share of every scrambled ${stretchPlain(stretch)} figure read that must be losing money for the copies to count as noise. A guessed threshold, written onto the verdict.">noise must lose at least %<input id="vSanityPct" type="number" min="0" max="100" value="${Number(r.sanityPct) || 50}" style="width:5rem"></label>
+    <label class="f" title="the share of the scrambled copies the survivors' ${stretchPlain(stretch)} money has to beat, and the share of survivors that must beat the comparisons chosen beside this at their own hold length. Opens on the share this set was cut under until you type one, and then keeps what you typed; a change is written onto the verdict as a guessed threshold.">bar share %<input id="vBarPct" type="number" min="1" max="100" value="${esc(String(bar))}" style="width:5rem"></label>
+    <label class="f" title="the share of every scrambled ${stretchPlain(stretch)} figure read that must be losing money for the copies to count as noise. Keeps what you typed. A guessed threshold, written onto the verdict.">noise must lose at least %<input id="vSanityPct" type="number" min="0" max="100" value="${esc(String(sanity))}" style="width:5rem"></label>
+    <label class="f" title="how many of the four comparisons each survivor must be ahead of at its own hold length, in the money as well, for it to count toward the bar share. 4 of 4 is every one of them; 2 of 4 and 3 of 4 are looser, and each requires the survivors' average on the ${stretchPlain(stretch)} window to be positive too. Written onto the verdict.">comparisons to beat<select id="vOfFour"><option value="2"${ofFour === 2 ? ' selected' : ''}>2 of 4</option><option value="3"${ofFour === 3 ? ' selected' : ''}>3 of 4</option><option value="4"${ofFour === 4 ? ' selected' : ''}>4 of 4</option></select></label>
+    <span class="note" id="vOfFourFlag">${ofFour < 4 ? (stretch === 'reserve' ? '<b>requires + reserve $ avg</b>' : '<b>requires + held back $ avg</b>') : ''}</span>
+    <label class="c" title="ticked, the set passes whenever its survivors' average money on the ${stretchPlain(stretch)} window is positive, whatever the copies, the comparisons and the noise check say; they are still read and printed on the verdict, and the rule must still give back its own survivors. Written onto the verdict."><input type="checkbox" id="vAutoPass"${auto ? ' checked' : ''}> ${stretch === 'reserve' ? 'automatic pass on + reserve $ avg' : 'automatic pass on + held back $ avg'}</label>
     </div><div class="row"><button id="vRead" class="pri" ${d.refused ? 'disabled' : ''} title="the one press that opens the ${stretchPlain(stretch)} window on this screen. It writes a ${stretchPlain(stretch) === 'reserve' ? 'reserve' : 'held'} set of this rule: the rule and its survivors as they stand, the stop choices on record frozen in, and one verdict. A second press writes a second set, numbered; nothing is overwritten.${d.prices ? ` It prices the survivors on the ${stretchPlain(stretch)} window first: minutes.` : ''}">${stretch === 'reserve' ? '<span>Read the rule on the reserve window</span>' : '<span>Read the rule on the held-back window</span>'}</button>
     <span id="vReadMsg" class="note">${d.refused ? `<b class="warn">refused:</b> ${esc(d.refused)}` : ''}</span></div>`;
 }
@@ -2599,7 +2627,7 @@ function vBlockHtml(set, isNewest, stretch) {
     ${b.standsOn ? `<p class="note"><b>Stands on:</b> ${esc(b.standsOn.name || b.standsOn.id)}, which passed on the held-back window under release ${esc(b.standsOn.release || '?')}</p>` : ''}
     ${b.board ? `<p class="note"><b>Read off the reserve board of this unit:</b> priced ${esc(String(b.board.at || '').slice(0, 16))} under release ${esc(b.board.release || '?')} · pricing ${b.board.pricing} of this unit · ${Number(b.board.pricedRows || 0).toLocaleString()} of ${Number(b.board.settings || 0).toLocaleString()} settings</p>` : ''}
     ${w ? `<p class="note">${stretch === 'reserve' ? '<b>The reserve window priced:</b>' : '<b>The held-back window priced:</b>'} from ${vDay(w.fromTs)} to ${vDay(w.toTs)}, ${w.chunks ?? 0} whole chunks · the box's data reached ${vDay(w.seenToTs)}${b.forecasts ? ` · priced with ${esc(b.forecasts)}` : ''}</p>` : (b.forecasts ? `<p class="note"><b>Read from:</b> ${esc(b.forecasts)}</p>` : '')}
-    <p class="note"><b>Rules declared before the numbers:</b> bar ${r.bar} of ${r.copies} copies (${r.barPct}%, ${esc(tags.bar || '')}${r.barChanged ? `, changed from the set's own ${r.ownBarPct}%` : ''}); noise must lose at least ${r.sanityPct}% (${esc(tags.sanity || '')}); comparisons gated: each survivor against all four at its own hold length, and the same ${r.barPct}% share of survivors must be in the money and ahead of all four (${esc(tags.comparisons || '')}); the best of the four at the worst hold length is printed as the hindsight reading it is.</p>
+    <p class="note"><b>Rules declared before the numbers:</b> bar ${r.bar} of ${r.copies} copies (${r.barPct}%, ${esc(tags.bar || '')}${r.barChanged ? `, changed from the set's own ${r.ownBarPct}%` : ''}); noise must lose at least ${r.sanityPct}% (${esc(tags.sanity || '')}); comparisons gated: each survivor against all four at its own hold length, and the same ${r.barPct}% share of survivors must be in the money and ahead of ${r.ofFour < 4 ? `at least ${r.ofFour} of the four, with the survivors' average on the window positive` : 'all four'} (${esc(tags.comparisons || '')})${r.autoPass ? '; automatic pass on a positive average on the window: ticked' : ''}; the best of the four at the worst hold length is printed as the hindsight reading it is.</p>
     ${readPanel(`The ${stretchPlain(stretch)} read`, h, c, stretch)}
     <p class="note">${stretch === 'reserve' ? '<b>The rule on a noise board, reserve window:</b>' : '<b>The rule on a noise board, held-back window:</b>'} ${cp.incomplete
     ? '<b class="warn">no scrambled copies were kept, so nothing was read against nothing</b>'
@@ -2799,11 +2827,21 @@ async function drawJudge(stretch) {
     }
     btn.disabled = true;
     $('#vReadMsg').textContent = d.prices ? 'starting…' : 'reading…';
-    const body = { barPct: vTyped('#vBarPct'), sanityPct: vTyped('#vSanityPct') };
+    const body = { barPct: vTyped('#vBarPct'), sanityPct: vTyped('#vSanityPct'), ofFour: Number($('#vOfFour').value), autoPass: !!$('#vAutoPass').checked };
     const started = await tryPost(`api/funnel/set/${encodeURIComponent(chosen)}/judge/${stretch}`, body, where);
     if (!started) { btn.disabled = false; $('#vReadMsg').textContent = ''; return; }
     vFollow(chosen, started.token, stretch);
   };
+  // the pass criteria remember what was put in (3.246.0), and the flag follows the comparisons box
+  for (const id of ['vBarPct', 'vSanityPct', 'vOfFour', 'vAutoPass']) {
+    const el = $(`#${id}`);
+    if (!el) continue;
+    el.addEventListener(id === 'vBarPct' || id === 'vSanityPct' ? 'input' : 'change', () => {
+      vPassKeep(stretch);
+      const flag = $('#vOfFourFlag');
+      if (id === 'vOfFour' && flag) flag.innerHTML = Number(el.value) < 4 ? (stretch === 'reserve' ? '<b>requires + reserve $ avg</b>' : '<b>requires + held back $ avg</b>') : '';
+    });
+  }
   const ob = $('#vOthers');
   if (ob && chosen && d && !d.othersRefused) ob.onclick = async () => {
     ob.disabled = true;

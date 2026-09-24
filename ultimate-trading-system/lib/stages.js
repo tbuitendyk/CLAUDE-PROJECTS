@@ -10307,7 +10307,7 @@ async function judgeRebuild(judge, run) {
   if (!rule) throw new Error('the rule it was read from is gone, so it cannot be read again');
   await waitForBox(run);
   const r = (judge.block || {}).rules || {};
-  const asked = { barPct: r.barChanged ? r.barPct : null, sanityPct: r.sanityPct ?? null };
+  const asked = { barPct: r.barChanged ? r.barPct : null, sanityPct: r.sanityPct ?? null, ofFour: r.ofFour ?? null, autoPass: r.autoPass === true };
   const jr = { id: rule.id, stretch: judge.kind, prices: !!rule.derived, token: `${rule.id}:${judge.kind}:${Date.now()}`, done: 0, of: rule.derived ? 1 : 0, result: null, error: null, promise: null };
   judgeRun = jr;
   run.words = `reading it again on the ${judge.kind === 'reserve' ? 'reserve' : 'held-back'} window`;
