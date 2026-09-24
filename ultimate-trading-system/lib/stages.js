@@ -8574,8 +8574,16 @@ function verifyLooksOf(doc, keys, stamped) {
   // which window it priced, and only a held-priced one is counted here
   const halfLifeReads = (doc.halflife || []).filter((r) => r && r.judge === 'hold').length;
   if (halfLifeReads) what.push(`the half-life run on History priced the held-back window ${halfLifeReads} time(s), each a stamped look`);
+  // a set saved under a new name on Tune (3.247.0) carries the reads of the one it was saved from
+  const carried = copiedLooksOf(doc, 'held');
+  if (carried) what.push(`${carried} held-back read(s) of ${doc.copiedFrom.name}, the set this was saved from, each a stamped look`);
   return { unstamped: steps + back + 1, stamped: stamped || 0, rides, tuneReads, halfLifeReads, boardLooks, what };
 }
+// THE LOOKS A COPY'S DATA HAS HAD (3.247.0): a set saved under a new name on Tune
+// is the same survivors on the same windows, so the held and reserve reads of
+// the set it was saved from -- and of any it was saved from in turn -- are its
+// looks too; a copy never reads as a fresh look at data already seen
+const copiedLooksOf = (doc, stretch) => Number((((doc && doc.copiedFrom) || {}).looks || {})[stretch] || 0);
 function verifyFooting(doc, join) {
   const V = require('./funnelverify');
   const S4 = require('./funnelset');
@@ -9052,6 +9060,8 @@ function reserveLooksOf(doc, stamped, board = null) {
   if (pricings) what.push(`the reserve board of this unit was priced ${pricings} time(s), first on ${String(board.firstAt || '').slice(0, 10)} — that pricing was the one look at data nothing in the system had seen`);
   if (rides) what.push(`the reserve ride was worked out ${rides} time(s) on Reserve, each a stamped look`);
   if (tuneReads) what.push(`a scan on Tune read the captured reserve trades ${tuneReads} time(s), each a stamped look`);
+  const carried = copiedLooksOf(doc, 'reserve');
+  if (carried) what.push(`${carried} reserve read(s) of ${doc.copiedFrom.name}, the set this was saved from, each a stamped look`);
   // nothing before a pricing opens the reserve window: no walk printed it, no tick shows it
   return { unstamped: 0, stamped: (stamped || 0) + pricings + tuneReads, rides, tuneReads, boardPricings: pricings, what };
 }
@@ -9171,10 +9181,12 @@ async function judgeRunOn(doc, stretch, asked, note = null, opts = {}) {
   const at = new Date().toISOString();
   const seq = into ? into.seq : seqFor(4);
   const id = into ? into.id : `s4-${Date.now().toString(36)}-${seq}`;
+  // the reads of the set this one was saved from are looks too (3.247.0)
+  const carried = copiedLooksOf(fresh, stretch);
   const block = V.buildBlock({
-    id: `${id}-v1`, at, release: ENGINE_VERSION, look: number, stretch,
+    id: `${id}-v1`, at, release: ENGINE_VERSION, look: number + carried, stretch,
     rules, stageGate, footing: rest,
-    looks: stretch === 'held' ? verifyLooksOf(fresh, footing.keys, had.length) : reserveLooksOf(fresh, had.length, boardStamp ? reserveBoardOf(fresh) : null),
+    looks: stretch === 'held' ? verifyLooksOf(fresh, footing.keys, had.length + carried) : reserveLooksOf(fresh, had.length + carried, boardStamp ? reserveBoardOf(fresh) : null),
     read, copies, survivors, sanity, lineA, lineB,
     board: boardStamp,
     // the newest reading of the rule on the other units on this stretch, when one exists (3.88.0)
@@ -9742,6 +9754,15 @@ async function stage4GreenlightSource(setId, asked = {}) {
 // counts as no look. The four stretches are named train, test, held and
 // reserve, the owner's words.
 const STRETCH_NAMES = ['train', 'test', 'held', 'reserve'];
+// THE AVERAGE SHARE OF THE FOUR CLEARED (3.247.0, owner order 2026-09-24): each
+// survivor's share of the four comparisons it is ahead of at its own hold
+// length, 0 to 100, averaged over the survivors whose four are known
+function fourShareOf(h) {
+  const V = require('./funnelverify');
+  const rows = ((h && h.own && h.own.rows) || []).filter((x) => x && x.known && x.beats);
+  if (!rows.length) return null;
+  return (rows.reduce((a, x) => a + V.GATED.filter((k) => x.beats[k] === true).length / V.GATED.length, 0) / rows.length) * 100;
+}
 async function pictureOf(doc) {
   const V = require('./funnelverify');
   const rule = isJudgeSet(doc) ? getSet((doc.from || {}).id) : doc;
@@ -9753,20 +9774,24 @@ async function pictureOf(doc) {
   try { join = await funnelVerifyJoin(rule); } catch (err) { out.why = err.message; }
   const rows = join ? join.rows : [];
   const labels = (doc.survivors || rule.survivors || []).map((x) => x.label);
-  const readOf = (h) => ({ money: h.real, trades: h.trades, of: h.of, missing: h.missing, comparisons: h.comparisons, clearing: h.own ? h.own.clearing : null, survivors: h.own ? h.own.survivors : null, bar: h.own ? h.own.bar : null });
+  const readOf = (h) => ({ money: h.real, trades: h.trades, of: h.of, missing: h.missing, comparisons: h.comparisons, clearing: h.own ? h.own.clearing : null, survivors: h.own ? h.own.survivors : null, bar: h.own ? h.own.bar : null, fourShare: fourShareOf(h) });
   const blockRead = (set) => {
     const b = set && set.block ? set.block : null;
     if (!b || !b.read) return null;
     return { ...readOf(b.read), set: set.name, at: b.at, release: b.release || null, pass: !!(b.verdict && b.verdict.pass), look: b.look ?? null, window: b.window || null };
   };
   // TEST: the survivors' test money off the records, the four on the test window off the rebuilt numbers beside the stage 3 set
+  const testClears = new Map();
   if (join) {
     const rich = readFunnelRich(join.parent.id);
     const tc = rich && rich.testControls && doc.unit ? rich.testControls[doc.unit] || null : null;
     const controls = tc ? controlsOf({ controls: { units: { [doc.unit]: tc } } }, doc.unit, rows.map(controlKeyOf))
       : { known: false, why: 'the four on the test window are not kept beside this set yet — open the rule on the Funnel and work out the missing numbers' };
     const testRows = rows.map((r) => ({ ...r, [V.HELD]: r.avgTest, avgTrades: r.testTrades ?? null, avgVsLong: null }));
-    out.rule.test = readOf(V.heldBackRead(testRows, controls, null));
+    const testRead = V.heldBackRead(testRows, controls, null);
+    out.rule.test = readOf(testRead);
+    // each survivor's own test clears, for its lines below (3.247.0)
+    for (const x of ((testRead.own || {}).rows || [])) testClears.set(x.label, x.known ? x.clears : null);
   } else out.rule.test = { why: out.why };
   // HELD and RESERVE, off the sets' own blocks
   out.rule.held = blockRead(heldSet) || { why: doc.kind === 'reserve' ? 'the held set this reserve set stands on is gone' : 'this set carries no read' };
@@ -9790,13 +9815,51 @@ async function pictureOf(doc) {
   const { NOTIONAL } = require('./paper');
   let tuned = {};
   try { tuned = await tunedOfRule({ ...rule, stopChoices: frozen }, labels); } catch (err) { out.tunedWhy = String((err && err.message) || err); }
+  // EACH SURVIVOR'S MONEY STEP BY STEP (3.247.0, owner order 2026-09-24: "give
+  // clear columns such as before (or after) history tune, before stop tune,
+  // before conviction sizing -- if data isn't available put in dashes"): the
+  // forecasts as stage 3 priced them; the forecasts History retrained for the
+  // row, off the capture; with the stop on record; and with the conviction
+  // sizing too. null where there is no figure, or where that step was not taken.
+  const S4 = require('./funnelset');
+  const ruleSurvivor = new Map((rule.survivors || []).map((sv) => [sv.label, sv]));
+  const capOf = (label, w) => {
+    if (w === 'reserve' && !(cap && cap.reserve && cap.reserve.captured)) return null;
+    const sv = cap ? (cap.survivors || []).find((x) => x.label === label) : null;
+    const list = sv && sv.entries ? sv.entries[w] : null;
+    return Array.isArray(list) ? { money: list.reduce((a, e) => a + (Number(e.usd) || 0), 0), trades: list.length } : null;
+  };
+  const stepsOf = (L, rr, t) => {
+    const history = !!rule.derived && (ruleSurvivor.get(L) || {}).halfLife != null;   // History retrained this row's forecasts
+    const got = {};
+    for (const [k, w] of [['train', 'train'], ['test', 'test'], ['held', 'hold'], ['reserve', 'reserve']]) {
+      const captured = capOf(L, w);
+      let before;
+      if (k === 'test') before = rr ? { money: rr.avgTest ?? null, trades: rr.testTrades ?? null } : null;
+      else if (k === 'held') before = rr && rr.avgHold != null ? { money: rr.avgHold, trades: rr.avgTrades ?? null } : null;
+      else before = history ? null : captured;
+      const tw = t && t.windows ? t.windows[k] : null;
+      got[k] = {
+        beforeHistory: before,
+        afterHistory: history ? captured : null,
+        afterStop: t && t.stop != null && tw ? { money: tw.stopUsd, trades: tw.priced } : null,
+        afterSizing: t && t.sizing && tw ? { money: tw.tunedUsd, trades: tw.priced, clips: tw.clipsPerTrade } : null,
+      };
+    }
+    return got;
+  };
   out.survivors = labels.map((L) => {
     const rr = rows.find((x) => x.label === L) || null;
     const c = frozen[L] || null;
+    const d = rr ? S4.depthOf(rr, rule.rule) : null;
     return {
-      label: L, train: trainOf(L), test: rr ? { money: rr.avgTest, trades: rr.testTrades ?? null } : null, held: rowOf(heldSet, L), reserve: rowOf(reserveSet, L),
+      label: L, train: trainOf(L), test: rr ? { money: rr.avgTest, trades: rr.testTrades ?? null, clears: testClears.has(L) ? testClears.get(L) : null } : null, held: rowOf(heldSet, L), reserve: rowOf(reserveSet, L),
       tunings: c ? { stop: c.stopPct != null ? Number(c.stopPct) : null, stopSaid: Object.prototype.hasOwnProperty.call(c, 'stopPct'), sizing: !!(c.sizing && c.sizing.on) } : null,
       tuned: tuned[L] || null,
+      // how far from the middle of the rule it sits (3.247.0): 0 in the middle of every range, 1 on an edge
+      depth: d ? { worst: d.worst, mean: d.mean } : null,
+      halfLife: (ruleSurvivor.get(L) || {}).halfLife ?? null,
+      steps: stepsOf(L, rr, tuned[L] || null),
     };
   });
   out.rule.tunings = { survivorsWithATuning: out.survivors.filter((x) => x.tuned).length, of: labels.length, capture: !!cap, clipUsd: NOTIONAL };
@@ -10507,6 +10570,66 @@ function setStopChoice(setId, asked = {}) {
   fresh.stopChoices = choices;
   saveSet(fresh);
   return { setId: fresh.id, set: fresh.name, survivor: label, ...choices[label] };
+}
+// ---- A STAGE 4 RECORD SET SAVED UNDER A NEW NAME (3.247.0) ----------------------
+//
+// Owner order 2026-09-24: "on the Tune tab we need to be able to save stage 4
+// record sets with a new name so that the original can be tested too without
+// going back and removing stops and conviction size tuning", then "save under a
+// new name (populate with the current S4 name that selected) with one or two
+// of the current settings on the tab ... tick boxes ... then other set-ups can
+// be tested and saved also". The copy is the rule as it stands -- its survivors,
+// its numbers and its captured trades -- under the name typed, with the stop
+// tuning and the conviction sizing on record carried only where ticked. The
+// original is not touched. History's tables stay with the set they were run
+// on, whose retrained members sit beside it; the looks the data has had travel.
+function copyStage4Set(setId, asked = {}) {
+  const src = getSet(String(setId || ''));
+  if (!src || src.stage !== 4) { const e = new Error(`unknown Stage 4 record set '${setId}'`); e.status = 404; throw e; }
+  if (isJudgeSet(src)) { const e = new Error(`${src.name} is a ${src.kind} set, a reading frozen at its press — save the rule it was read from under a new name`); e.status = 400; throw e; }
+  const name = String(asked.name ?? '').trim().slice(0, 80);
+  if (!name) { const e = new Error('name the copy — something you will recognise on Tune, Held and Greenlight'); e.status = 400; throw e; }
+  const taken = nameTaken(name);
+  if (taken) { const e = new Error(`a record set called "${name}" already exists (${taken.id}) — pick another name`); e.status = 400; throw e; }
+  const stops = asked.stops === true;
+  const sizing = asked.sizing === true;
+  const seq = seqFor(4);
+  const id = `s4-${Date.now().toString(36)}-${seq}`;
+  const at = new Date().toISOString();
+  const doc = JSON.parse(JSON.stringify(src));
+  doc.id = id;
+  doc.seq = seq;
+  doc.name = name;
+  doc.createdAt = at;
+  // the tunings on record, carried only where ticked
+  const choices = {};
+  for (const [L, c] of Object.entries(src.stopChoices || {})) {
+    const mine = {};
+    if (stops && c && Object.prototype.hasOwnProperty.call(c, 'stopPct')) for (const f of ['stopPct', 'why', 'at', 'by']) if (f in c) mine[f] = c[f];
+    if (sizing && c && c.sizing) mine.sizing = JSON.parse(JSON.stringify(c.sizing));
+    if (Object.keys(mine).length) choices[L] = mine;
+  }
+  doc.stopChoices = choices;
+  // History's tables stay beside the set they were run on
+  doc.halflife = [];
+  // the reads the data has had: the held and reserve sets of the original, its held-priced History runs, and what it carried itself
+  const had = src.copiedFrom && src.copiedFrom.looks ? src.copiedFrom.looks : {};
+  const looks = {
+    held: judgeSetsOf(src.id, 'held').length + (src.halflife || []).filter((r) => r && r.judge === 'hold').length + (Number(had.held) || 0),
+    reserve: judgeSetsOf(src.id, 'reserve').length + (Number(had.reserve) || 0),
+  };
+  doc.copiedFrom = { id: src.id, name: src.name, at, stops, sizing, looks };
+  // the captured trades, under the copy's own name, with the scans that read them
+  const cap = readCapture(src.id);
+  if (cap && doc.capture) {
+    writeCapture(id, { ...cap, id });
+    doc.capture.id = `${id}-c${Number(doc.capture.times) || 1}`;
+  } else doc.capture = null;
+  saveSet(doc);
+  return {
+    id, name, from: src.id, fromName: src.name, survivors: (doc.survivors || []).length, captured: !!doc.capture,
+    stops: Object.values(choices).filter((c) => 'stopPct' in c).length, sizing: Object.values(choices).filter((c) => c.sizing && c.sizing.on).length, looks,
+  };
 }
 // ---- THE SIZING APPLIED TO A SURVIVOR (3.151.0, owner order 2026-09-15) ----
 //
@@ -12138,7 +12261,7 @@ module.exports = {
   tuneCaptureDry, tuneCaptureStart, tuneCaptureStatus, tuneOnCapture, captureCandidates, captureTargetOf, readCapture, captureFile,
   tuneScanAimOf, saveTuneScan, readTuneScans, tuneScanFor, tuneScansFile,
   halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet, buildHalfLifeSet, gateOfSet,
-  stopChoiceOf, setStopChoice, fieldFillOf, fieldPairOfSet, fieldWindowDaysOf, ownedFilesOf,
+  stopChoiceOf, setStopChoice, fieldFillOf, fieldPairOfSet, fieldWindowDaysOf, ownedFilesOf, copyStage4Set,
   CAPTURE_V, CAPTURE_WINDOWS, CAPTURE_NOT_YET, STOP_NOT_ON_BREAKOUT, scanRefusalOf, ladderAsked, rebuildOf, rebuildStart, rebuildStatus, rebuildWait, recutInPlace, rebuildChainOf,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,

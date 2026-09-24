@@ -3532,6 +3532,7 @@ async function drawTune() {
     <div class="row"><button id="convRun" class="pri" ${busy ? 'disabled' : ''}>Run conviction sweep</button></div>
     <div id="convOut">${conv.status === 'done' ? renderConvResult(conv) : conv.status === 'running' ? '<p class="note">running…</p>' : conv.status === 'error' ? `<p class="warn">last sweep failed: ${esc(conv.error || '')}</p>` : conv.status === 'unread' ? '<p class="warn">the result kept for this could not be read from the box</p>' : isSet ? tnNotRunHtml(conv, 'Run conviction sweep') : ''}</div>
   </div>
+  ${isSet ? tnCopyPanelHtml(chosen, busy) : ''}
 `;
   // THE SIZING ON RECORD, AS A GREEN LINE at the top of the conviction panel (3.154.0,
 // owner order): the same green as the stop tuner's "your choice" row, drawn only
@@ -3546,6 +3547,34 @@ function tnNotRunHtml(x, press) {
     ? ` The last one kept on this set read ${last.survivor === 'all' ? 'all survivors' : `<b>${esc(last.survivor)}</b>`} on the ${esc(tnWindowWords(TN_WINDOWS.map(([k]) => k).filter((k) => (last.windows || []).includes(k))))} window(s)${last.finishedUtc ? ` (${esc(String(last.finishedUtc).slice(0, 10))})` : ''} - choose those under Tuning targets to see it.`
     : '';
   return `<p class="note">Not run yet on what is chosen under Tuning targets - press <b>${esc(press)}</b> to run it.${lastWords}</p>`;
+}
+// THE SET UNDER TUNING TARGETS SAVED UNDER A NEW NAME (3.247.0, owner order
+// 2026-09-24: "save stage 4 record sets with a new name so that the original
+// can be tested too without going back and removing stops and conviction size
+// tuning", then "populate with the current S4 name ... with one or two of the
+// current settings on the tab ... tick boxes"). What each tick would carry is
+// read off the set and said above the ticks, so nothing about it is a guess.
+function tnCopyPanelHtml(cand, busy) {
+  const rows = cand.rows || [];
+  const stops = rows.filter((r) => r.stop && Object.prototype.hasOwnProperty.call(r.stop, 'stopPct')).length;
+  const sized = rows.filter((r) => r.stop && r.stop.sizing && r.stop.sizing.on).length;
+  return `<div class="panel">
+    <h3 style="margin-top:0">Save under a new name</h3>
+    <p class="note">Saves <b>${esc(cand.name)}</b>, the Stage 4 record set under Tuning targets, as a new set under the name typed:
+      the same survivors, the same numbers and the same captured trades, with the protective stops and the conviction sizing on
+      record carried only where ticked. ${esc(cand.name)} itself is not touched, so both can be read on Held, Reserve and
+      Greenlight, and either can be tuned again and saved again. History's tables stay with the set they were run on. The reads
+      the held-back and reserve windows have had go with the copy and are counted on it.</p>
+    <div class="note" style="margin-bottom:.4rem">on record on <b>${esc(cand.name)}</b>: a protective stop, or no stop chosen on purpose, for <b>${stops} of ${rows.length}</b> captured survivors; the conviction sizing on <b>${sized} of ${rows.length}</b></div>
+    <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
+      <label class="f" title="the name the copy is saved under: filled with the name of the set under Tuning targets, to change. Names are unique across every set on this box.">new name<input id="tnCopyName" type="text" maxlength="80" value="${esc(cand.name)}" style="width:32rem"></label>
+      <label class="c" title="ticked, the copy carries the protective stop on record for each survivor, or the no stop chosen on purpose, with its reason; unticked, the copy carries no choice about the stop"><input type="checkbox" id="tnCopyStops" checked> with its protective stops</label>
+      <label class="c" title="ticked, the copy carries the conviction sizing on record for each survivor, at its numbers, with its reason; unticked, every trade of the copy is taken at its own size alone"><input type="checkbox" id="tnCopySizing" checked> with its conviction sizing</label>
+    </div>
+    <div class="row">
+      <button id="tnCopy" ${busy ? 'disabled title="a heavy scan is running"' : 'title="saves the set under Tuning targets under the name typed, with what is ticked. The set it is saved from is not touched; nothing is applied to any trading machine."'}>Save under a new name</button><span id="tnCopyMsg" class="note"></span>
+    </div>
+  </div>`;
 }
 function tnSizingChoiceHtml(onRecord) {
   const sz = onRecord && onRecord.sizing ? onRecord.sizing : null;
@@ -3678,6 +3707,23 @@ function renderStopResult(s) {
   if (szOn) szOn.onclick = () => sizing(true);
   const szOff = $('#sizingOff');
   if (szOff) szOff.onclick = () => sizing(false);
+  // saved under a new name (3.247.0): the set under Tuning targets stays chosen, and the line under the press names the copy
+  const cpy = $('#tnCopy');
+  if (cpy) cpy.onclick = async () => {
+    const name = ($('#tnCopyName').value || '').trim();
+    const stops = !!$('#tnCopyStops').checked;
+    const sizing = !!$('#tnCopySizing').checked;
+    if (!name) { $('#tnCopyMsg').textContent = 'type a name for the copy'; return; }
+    const carried = [stops ? 'its protective stops' : '', sizing ? 'its conviction sizing' : ''].filter(Boolean);
+    if (!confirm(`Save ${chosen.name} under the name ${name}?\n\nThe copy carries ${carried.length ? carried.join(' and ') : 'neither the protective stops nor the conviction sizing'}. ${chosen.name} itself is not touched. Nothing is applied to any trading machine.`)) return;
+    cpy.disabled = true;
+    const out = await tryPost(`api/funnel/set/${encodeURIComponent(chosen.id)}/copy`, { name, stops, sizing }, 'The scan target box on Tune lists the sets whose trades are captured.');
+    if (!out) { cpy.disabled = false; return; }
+    const s = out.set || {};
+    await drawTune();
+    const msg = $('#tnCopyMsg');
+    if (msg) msg.textContent = `saved as ${s.name}: ${s.stops || 0} protective stop choice(s) and the conviction sizing on ${s.sizing || 0} survivor(s) carried. It is in the scan target box, and on Held, Reserve and Greenlight.`;
+  };
   const clr = $('#stopClear');
   if (clr) clr.onclick = () => {
     if (!confirm(`Clear the protective stop from the survivor ${stopLabel} of ${chosen.name}?\n\n`
@@ -3923,10 +3969,13 @@ function glPictureHtml(d) {
   const line = (k) => {
     const x = (p.rule || {})[k] || {};
     if (x.why) return `<tr><td>${glStretchWord(k)}</td><td colspan="8" class="muted">${esc(x.why)}</td></tr>`;
-    return `<tr><td>${glStretchWord(k)}</td><td class="${(x.money || 0) >= 0 ? 'pos' : 'neg'}">${money(x.money)}</td><td>${x.trades == null ? '—' : Number(x.trades).toFixed(1)}</td><td>${Number(x.of || 0).toLocaleString()}${x.missing ? ` <span class="muted">(${x.missing} no figure)</span>` : ''}</td>${glFourCells(x.comparisons)}<td>${x.clearing == null ? '—' : `${x.clearing} of ${x.survivors}`}</td></tr>`;
+    return `<tr><td>${glStretchWord(k)}</td><td class="${(x.money || 0) >= 0 ? 'pos' : 'neg'}">${money(x.money)}</td><td>${x.trades == null ? '—' : Number(x.trades).toFixed(1)}</td><td>${Number(x.of || 0).toLocaleString()}${x.missing ? ` <span class="muted">(${x.missing} no figure)</span>` : ''}</td>${glFourCells(x.comparisons)}<td>${x.clearing == null ? '—' : `${x.clearing} of ${x.survivors}`}</td><td>${x.fourShare == null ? '—' : `${Math.round(Number(x.fourShare))}%`}</td></tr>`;
   };
   return `<div class="panel" style="margin-top:.5rem">
     <h4 style="margin:0 0 .3rem"><span>The picture through every period</span></h4>
+    <p class="note"><b>The test stretch is without the History and Tune settings:</b> it is the forecasts as stage 3 priced them,
+      with no retraining, no stop and no sizing. Train and held are with History's retraining where the set has it, and held is
+      with a stop when one is on record; the conviction sizing is on no row here.</p>
     <p class="note">The rule's money on each stretch of history, read off the sets this one is built on and the records they stand on:
       train off the capture on Tune, test off the stage 3 records, held off the held set, reserve off the reserve set. Nothing here
       is priced and nothing counts as a look. Each stretch is held against the four simpler things at the survivors' own hold lengths.</p>
@@ -3941,9 +3990,67 @@ function glPictureHtml(d) {
       <th title="buying the coin at the start of that stretch and going away">buy and hold</th>
       <th title="shorting the coin at the start of that stretch and going away">short and hold</th>
       <th title="how many survivors are in the money and ahead of all four at their own hold length on that stretch">clear all four</th>
+      <th title="each survivor's share of the four it is ahead of at its own hold length on that stretch, 0 to 100%, averaged over the survivors whose four are known">average % of the four cleared</th>
     </tr></thead><tbody>${(p.stretches || []).map(line).join('')}</tbody></table></div>
+    <div class="gl-rows"></div>
     <div class="gl-one"></div>
   </div>`;
+}
+// EVERY SURVIVOR, SORTABLE, AND THE ONE PICKED (3.247.0, owner order 2026-09-24:
+// "there should be a row set to look at and it should be sortable with the user
+// able to make the selection -- EACH ROW MUST INDICATE ITS DEVIANCE FROM THE
+// RULE'S CENTER"). Drawn whatever the standing, refused or not. Pressing a row
+// picks it: its lines below, and the one survivor box when the set can be
+// greenlighted. A header sorts by it; pressed again, the other way.
+const GL_SORT_KEY = 'cx-gl-survivor-sort';
+const GL_SORTS = {
+  label: (x) => x.label,
+  worst: (x) => (x.depth ? x.depth.worst : null),
+  mean: (x) => (x.depth ? x.depth.mean : null),
+  train: (x) => (x.train ? x.train.money : null),
+  test: (x) => (x.test ? x.test.money : null),
+  held: (x) => (x.held ? x.held.money : null),
+  reserve: (x) => (x.reserve ? x.reserve.money : null),
+  clears: (x) => (x.held && x.held.clears != null ? (x.held.clears ? 1 : 0) : null),
+  halfLife: (x) => x.halfLife,
+};
+function glSortKept() {
+  try { const v = JSON.parse(localStorage.getItem(GL_SORT_KEY) || 'null'); if (v && GL_SORTS[v.key]) return v; } catch (_) { /* private window */ }
+  return { key: 'worst', dir: 1 };
+}
+function glRowsHtml(d, pick) {
+  const p = d.picture;
+  const list = (p && p.survivors) || [];
+  if (!list.length) return '';
+  const sort = glSortKept();
+  const by = GL_SORTS[sort.key];
+  const depthLabel = d.depthPick ? d.depthPick.label : null;
+  const picked = pick === 'depth' || !pick ? depthLabel : pick;
+  // nulls sort last whichever way; ties fall back to the worst deviance, then the average, then the name
+  const cmp = (a, b) => {
+    const va = by(a); const vb = by(b);
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    return (typeof va === 'string' ? va.localeCompare(vb) : va - vb) * sort.dir;
+  };
+  const tie = (a, b) => (GL_SORTS.worst(a) ?? 9) - (GL_SORTS.worst(b) ?? 9) || (GL_SORTS.mean(a) ?? 9) - (GL_SORTS.mean(b) ?? 9) || a.label.localeCompare(b.label);
+  const rows = list.slice().sort((a, b) => cmp(a, b) || tie(a, b));
+  const th = (key, words, title) => `<th data-glsort="${key}" style="cursor:pointer" title="${title} Press to sort by it; press again for the other way.">${words}${sort.key === key ? (sort.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`;
+  const m = (x) => (x && x.money != null ? `<td class="${x.money >= 0 ? 'pos' : 'neg'}">${money(x.money)}</td>` : '<td class="muted">—</td>');
+  return `<p class="note" style="margin-top:.5rem"><b>Every survivor:</b> press a row to pick it; its own lines are drawn below${d.refused ? ', and the set is refused, so nothing is greenlighted from here until that is cleared' : ', and it becomes the one survivor to greenlight'}.
+    Deviance from the rule's centre is 0 in the middle of every range of the rule and 1 on an edge, for its worst dial and on average over them.</p>
+    <div class="scrollx" style="max-height:24rem;overflow-y:auto"><table><thead><tr>
+      ${th('label', 'survivor', 'the setting, by the name the board gives it.')}
+      ${th('worst', 'deviance from centre, worst', 'how far its furthest dial sits from the middle of that dial\'s range in the rule: 0 in the middle, 1 on an edge.')}
+      ${th('mean', 'deviance from centre, average', 'the same, averaged over every dial the rule ranges.')}
+      ${th('train', 'train $', 'its money on the training stretch, off the capture on Tune.')}
+      ${th('test', 'test $', 'its money on the test stretch, off the stage 3 records.')}
+      ${th('held', 'held $', 'its money on the held-back stretch, off the held set.')}
+      ${th('reserve', 'reserve $', 'its money on the reserve stretch, off the reserve set, when there is one.')}
+      ${th('clears', 'clears all four', 'whether it is in the money and ahead of all four comparisons at its own hold length on the held-back stretch.')}
+      ${th('halfLife', 'half-life', 'the half-life History retrained its forecasts at, in months; a dash where none.')}
+    </tr></thead><tbody>${rows.map((x) => `<tr data-glpick="${esc(x.label)}" style="cursor:pointer${x.label === picked ? ';background:rgba(40,170,80,.18)' : ''}"${x.label === depthLabel ? ' title="the survivor by depth: nearest the middle of every range"' : ''}><td style="text-align:left">${esc(x.label)}${x.label === depthLabel ? ' <span class="muted">(by depth)</span>' : ''}</td><td>${x.depth ? Number(x.depth.worst).toFixed(2) : '—'}</td><td>${x.depth ? Number(x.depth.mean).toFixed(2) : '—'}</td>${m(x.train)}${m(x.test)}${m(x.held)}${m(x.reserve)}<td>${x.held && x.held.clears != null ? (x.held.clears ? '<b class="pos">yes</b>' : '<b class="neg">no</b>') : '—'}</td><td>${x.halfLife == null ? '—' : `${x.halfLife} months`}</td></tr>`).join('')}</tbody></table></div>`;
 }
 // one survivor's own lines, by the name the board gives it: the pick above chooses it
 function glOneHtml(d, pick) {
@@ -3952,15 +4059,22 @@ function glOneHtml(d, pick) {
   const label = pick === 'depth' || !pick ? (d.depthPick ? d.depthPick.label : null) : pick;
   const sv = p.survivors.find((x) => x.label === label) || null;
   if (!sv) return '';
-  const cell = (x) => (x ? `<td class="${(x.money || 0) >= 0 ? 'pos' : 'neg'}">${money(x.money)}</td><td>${x.trades == null ? '—' : x.trades}</td><td>${x.clears == null ? '—' : (x.clears ? '<b class="pos">yes</b>' : '<b class="neg">no</b>')}</td>` : '<td colspan="3" class="muted">no figure</td>');
-  // the tunings applied on Tune (3.151.0): the survivor's money with and without them, off its captured trades, in the scans' dollars
+  // THE MONEY STEP BY STEP (3.247.0, owner order 2026-09-24): each change in the
+  // order it is applied, one column each, a dash where there is no figure or
+  // the step was not taken; every cell with the trades it is over
+  const step = (x) => (x && x.money != null ? `<td class="${x.money >= 0 ? 'pos' : 'neg'}">${money(x.money)}${x.trades == null ? '' : ` <span class="muted">(${x.trades})</span>`}</td>` : '<td class="muted">—</td>');
+  const clears = (x) => (x && x.clears != null ? (x.clears ? '<b class="pos">yes</b>' : '<b class="neg">no</b>') : '—');
   const t = sv.tuned || null;
-  const tcell = (k) => { const w = t && t.windows ? t.windows[k] : null; return w ? `<td>${money(w.flatUsd)}</td><td class="${(w.tunedUsd || 0) >= 0 ? 'pos' : 'neg'}">${money(w.tunedUsd)}</td><td>${w.stopped ? `${w.stopped} of ${w.priced}` : '—'}</td>` : '<td colspan="3" class="muted">no tuning</td>'; };
   const tn = sv.tunings || null;
-  return `<p class="note" style="margin-top:.5rem"><b>One survivor, ${esc(sv.label)}:</b> the same lines for it alone${tn ? ` · <b>tunings frozen on this set:</b> ${tn.stop != null ? `protective stop ${(100 * tn.stop).toFixed(2)}%` : (tn.stopSaid ? 'no stop' : 'no stop chosen')}, ${tn.sizing ? 'sized by conviction' : 'every trade at one clip'}` : ' · no tuning on record'}</p>
-    <div class="scrollx"><table><thead><tr><th title="one stretch of history">stretch</th><th title="this survivor's money on that stretch as the set read it: on held and reserve under the tunings the set froze, when it froze one">$</th><th title="its trades on that stretch">trades</th><th title="whether it is in the money and ahead of all four comparisons at its own hold length on that stretch">clears all four</th>
-      <th title="its captured trades on that stretch with no tuning, priced again by the scans' own arithmetic in the record's own dollars, $${Number(((p.rule || {}).tunings || {}).clipUsd) || 0} a trade, the same on every screen">no tuning $</th><th title="the same trades with the frozen stop and sizing applied, in the same dollars">tuned $</th><th title="trades the frozen stop closed early, of those priced">stopped</th></tr></thead>
-    <tbody>${(p.stretches || []).map((k) => `<tr><td>${glStretchWord(k)}</td>${cell(sv[k])}${tcell(k)}</tr>`).join('')}</tbody></table></div>`;
+  return `<p class="note" style="margin-top:.5rem"><b>One survivor, ${esc(sv.label)}:</b> its money on each stretch step by step, each change in the order it is applied, with the trades each figure is over in brackets${tn ? ` · <b>tunings frozen on this set:</b> ${tn.stop != null ? `protective stop ${(100 * tn.stop).toFixed(2)}%` : (tn.stopSaid ? 'no stop' : 'no stop chosen')}, ${tn.sizing ? 'sized by conviction' : 'every trade at its own size'}` : ' · no tuning on record'}${sv.halfLife == null ? '' : ` · History retrained it at ${sv.halfLife} months`}</p>
+    <div class="scrollx"><table><thead><tr><th title="one stretch of history">stretch</th>
+      <th title="the forecasts as stage 3 priced them, before any retraining on History: test and held off the stage 3 records; train and reserve off the capture on Tune when History did not retrain this survivor">before History $</th>
+      <th title="the forecasts History retrained for this survivor, off its captured trades on Tune, with no stop and no sizing; a dash where History did not retrain it">after History $</th>
+      <th title="the same trades with the protective stop on record, in the record's own dollars, $${Number(((p.rule || {}).tunings || {}).clipUsd) || 0} a trade, the same on every screen; a dash where no stop is on record">after stop $</th>
+      <th title="the same trades with the conviction sizing on record too, the multiples times each trade's own size; a dash where no sizing is on record">after conviction sizing $</th>
+      <th title="whether it is in the money and ahead of all four comparisons at its own hold length on that stretch, as that stretch was read">clears all four</th>
+      <th title="trades the stop on record closed early, of those priced">stopped</th></tr></thead>
+    <tbody>${(p.stretches || []).map((k) => { const st = (sv.steps || {})[k] || {}; const w = t && t.windows ? t.windows[k] : null; return `<tr><td>${glStretchWord(k)}</td>${step(st.beforeHistory)}${step(st.afterHistory)}${step(st.afterStop)}${step(st.afterSizing)}<td>${clears(sv[k])}</td><td>${w && w.stopped ? `${w.stopped} of ${w.priced}` : '—'}</td></tr>`; }).join('')}</tbody></table></div>`;
 }
 function glStage4PanelHtml(list, chosen, d) {
   const depth = d && d.depthPick ? d.depthPick : null;
@@ -4025,12 +4139,32 @@ async function drawGreenlight() {
     try { localStorage.setItem(GL_SET_KEY, gl4Sel.value); } catch (_) { /* private window */ }
     drawGreenlight();
   };
-  // the drill-down: the survivor the pick names, its own lines under the picture
+  // the drill-down: the survivor the pick names, its own lines under the picture;
+  // the table of every survivor picks it too, and sorts (3.247.0)
   const pk = $('#gl4Pick');
   const one = document.querySelector('.gl-one');
+  const rowsBox = document.querySelector('.gl-rows');
   if (one && gl4 && gl4.picture) {
-    const drawOne = () => { one.innerHTML = glOneHtml(gl4, pk ? pk.value : 'depth'); };
-    if (pk) pk.addEventListener('change', drawOne);
+    let picked = pk ? pk.value : 'depth';
+    const drawRows = () => {
+      if (!rowsBox) return;
+      rowsBox.innerHTML = glRowsHtml(gl4, picked);
+      rowsBox.querySelectorAll('[data-glsort]').forEach((h) => { h.onclick = () => {
+        const was = glSortKept();
+        const key = h.dataset.glsort;
+        try { localStorage.setItem(GL_SORT_KEY, JSON.stringify({ key, dir: was.key === key ? -was.dir : 1 })); } catch (_) { /* private window */ }
+        drawRows();
+      }; });
+      rowsBox.querySelectorAll('[data-glpick]').forEach((r) => { r.onclick = () => {
+        picked = r.dataset.glpick;
+        if (pk && [...pk.options].some((o) => o.value === picked)) pk.value = picked;
+        drawRows();
+        drawOne();
+      }; });
+    };
+    const drawOne = () => { one.innerHTML = glOneHtml(gl4, picked); };
+    if (pk) pk.addEventListener('change', () => { picked = pk.value; drawRows(); drawOne(); });
+    drawRows();
     drawOne();
   }
   const go4 = $('#gl4Go');

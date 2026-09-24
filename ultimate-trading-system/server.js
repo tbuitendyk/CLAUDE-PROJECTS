@@ -1125,6 +1125,10 @@ app.post('/api/funnel/set/:id/halflife', (req, res) => {
   try { return res.json(stages.halfLifeStart(req.params.id, req.body || {})); } catch (err) { return res.status(409).json({ error: err.message }); }
 });
 app.get('/api/funnel/set/:id/halflife/status', (req, res) => res.json(stages.halfLifeStatus(req.params.id)));
+// A STAGE 4 RECORD SET SAVED UNDER A NEW NAME on Tune (3.247.0): the stop tuning and the conviction sizing carried where ticked
+app.post('/api/funnel/set/:id/copy', (req, res) => {
+  try { return res.json({ ok: true, set: stages.copyStage4Set(req.params.id, req.body || {}) }); } catch (err) { return res.status(err.status || 400).json({ error: err.message }); }
+});
 // the 4.h set built from a half-life table (3.95.0): the rows a half-life won, each carrying its half-life
 app.post('/api/funnel/set/:id/halflife/build', (req, res) => {
   try { return res.json({ ok: true, set: stages.buildHalfLifeSet(req.params.id, req.body || {}) }); } catch (err) { return res.status(400).json({ error: err.message }); }

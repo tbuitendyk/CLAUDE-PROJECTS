@@ -1078,6 +1078,17 @@ window.HELP = {
       },
       stopWhy: { what: 'Why you chose this stop, or no stop, for the survivor picked under Tuning targets. Kept with the choice on that survivor.' },
       stopWhySave: { what: 'Saves the reason on its own, leaving the stop on record exactly as it is. No scan runs.' },
+      tnCopyName: { what: 'The name the Stage 4 record set under Tuning targets is saved under. Filled with its own name, to change: names are unique across every set on this box.' },
+      tnCopyStops: {
+        what: 'Ticked, the copy carries the protective stop on record for each survivor, or the no stop chosen on purpose, with its reason. Unticked, the copy carries no choice about the stop.',
+      },
+      tnCopySizing: {
+        what: 'Ticked, the copy carries the conviction sizing on record for each survivor, at its numbers, with its reason. Unticked, every trade of the copy is taken at its own size alone.',
+      },
+      tnCopy: {
+        what: 'Saves the Stage 4 record set under Tuning targets as a new set under the name typed: the same survivors, the same numbers and the same captured trades, with the protective stops and the conviction sizing carried only where ticked.',
+        more: 'The set it is saved from is not touched, so the two can be read side by side on Held, Reserve and Greenlight, and either can be tuned again and saved again. History\'s tables stay with the set they were run on; a set History built keeps finding its members through the set it was built from. The reads the held-back and reserve windows have had go with the copy and are counted on it, so a copy is never a fresh look. A held set or a reserve set is a reading frozen at its press and is not saved this way: save the rule it was read from.',
+      },
       stopRun: {
         what: 'Tries every protective stop across the whole history and reports which ones would have cost you nothing. Held, with the reason beside it, when the trades chosen under Tuning targets include breakout trades: protective stops are not tuned currently on breakout trades.',
         more: 'Takes minutes and cannot be stopped part-way. When a stop is on record for the survivor picked, the table carries it as its first row, priced on the same entries by the same arithmetic. Each answer is kept with the set, survivor and windows it read, and the table shows only the one read on what is chosen under Tuning targets - anything else says it has not been run on that choice yet.',

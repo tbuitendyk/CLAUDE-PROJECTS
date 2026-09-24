@@ -1331,7 +1331,8 @@ module.exports.thePictureIsReadOffTheSetsAndPricesNothing = async function () {
     assert.ok(/^function glPictureHtml\(/m.test(ui) && /^function glOneHtml\(/m.test(ui), 'top-level helpers');
     assert.ok(ui.includes('${glPictureHtml(d)}'), 'drawn under the chosen set');
     for (const w of ['<span>train</span>', '<span>test</span>', '<span>held</span>', '<span>reserve</span>', '<span>The picture through every period</span>']) assert.ok(ui.includes(w), `${w} is on the page`);
-    assert.ok(/pk\.addEventListener\('change', drawOne\)/.test(ui), 'the pick draws the one survivor');
+    // the pick draws the one survivor, and marks it in the table of every survivor (3.247.0)
+    assert.ok(/pk\.addEventListener\('change', \(\) => \{ picked = pk\.value; drawRows\(\); drawOne\(\); \}\)/.test(ui), 'the pick draws the one survivor');
   } finally { f.cleanup(); }
 };
 
