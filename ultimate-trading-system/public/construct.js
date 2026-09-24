@@ -252,6 +252,13 @@ const DIAL_ON_SWEEP = {
   agreeBar: 'quorum bar',
   agreeBoth: 'both kinds',
   confirm: 'confirm',
+  // the field's six boxes (3.243.0)
+  fieldAgreeMin: 'agreement minimum',
+  fieldCertMin: 'certainty minimum',
+  fieldRule: 'must pass',
+  fieldSignOnly: 'sign only',
+  fieldSizeBy: 'read',
+  fieldRungs: 'size rungs',
 };
 // A DIAL IS NAMED WITH ITS SWEEP LABEL EVERYWHERE THE FUNNEL SHOWS IT (owner
 // order, 2026-09-04: "give me the actual FULL NAMES OF THESE DIALS IN ALL OF
@@ -7880,6 +7887,8 @@ function fStep2(r, st) {
   const onlyNone = hasNone && alsoNone && lo === '' && hi === '';
   const inRange = (val) => {
     const n = Number(val);
+    // a field minimum left blank (3.243.0) is lower than any bar
+    if (String(val) === 'no bar') return !onlyNone && lo === '';
     if (!Number.isFinite(n)) return String(val) === 'none' && alsoNone;
     return !onlyNone && (lo === '' || n >= Number(lo)) && (hi === '' || n <= Number(hi));
   };
@@ -10117,7 +10126,9 @@ function fWire(st, d) {
     for (const [val, n] of ((st.read || {}).groups || [])) {
       const v = Number(val);
       total += n;
-      if (Number.isFinite(v) ? (!onlyNone && (lo === '' || v >= Number(lo)) && (hi === '' || v <= Number(hi))) : (String(val) === 'none' && none)) kept += n;
+      // a field minimum left blank (3.243.0) is lower than any bar
+      if (String(val) === 'no bar' ? (!onlyNone && lo === '')
+        : Number.isFinite(v) ? (!onlyNone && (lo === '' || v >= Number(lo)) && (hi === '' || v <= Number(hi))) : (String(val) === 'none' && none)) kept += n;
     }
     const kc = $('#fKeepCount');
     if (kc) kc.textContent = `keeps ${kept.toLocaleString()} of ${total.toLocaleString()}${st.target ? ` - target ${Number(st.target).toLocaleString()}` : ''}`;

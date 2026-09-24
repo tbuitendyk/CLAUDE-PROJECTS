@@ -27,8 +27,13 @@
 // every dial on the record is here -- but a statement of which ones have a
 // "next value along" and can therefore have a SHAPE. Reading a hill off entry
 // or gate would be meaningless: 'market' is not next to 'breakout'.
-const ORDERED_DIALS = ['dMult', 'tHours', 'trailMult', 'armMult', 'bandMode', 'agreePct', 'agreeCopy', 'agreePersist', 'plateauPct'];
-const CATEGORICAL_DIALS = ['decision', 'weekdaysOnly', 'entry', 'gate', 'agreeRule', 'agreeBar', 'agreeBoth', 'confirm'];
+// The field's six (3.243.0): its two minimums have an order; must pass, sign
+// only, read and size rungs are plain choices -- a ladder is not "next to"
+// another ladder.
+const ORDERED_DIALS = ['dMult', 'tHours', 'trailMult', 'armMult', 'bandMode', 'agreePct', 'agreeCopy', 'agreePersist', 'plateauPct',
+  'fieldAgreeMin', 'fieldCertMin'];
+const CATEGORICAL_DIALS = ['decision', 'weekdaysOnly', 'entry', 'gate', 'agreeRule', 'agreeBar', 'agreeBoth', 'confirm',
+  'fieldRule', 'fieldSignOnly', 'fieldSizeBy', 'fieldRungs'];
 const ALL_DIALS = [...ORDERED_DIALS, ...CATEGORICAL_DIALS];
 
 // The money every step reads. Named once so there is exactly one place that
@@ -59,11 +64,14 @@ const keyOf = (v) => (v == null ? 'none' : String(v));
 
 // Ordered dials sort numerically. bandMode is 'auto' or a percentage, and auto
 // sits last whichever way the axis points -- the same rule the saved sort uses.
+// A field minimum left blank is `no bar` (3.243.0) and sits FIRST: no bar is
+// lower than any bar.
+const sortNumberOf = (v) => (v === 'no bar' ? -Infinity : v === 'auto' || v === 'none' ? Infinity : Number(v));
 function sortedValues(dial, keys) {
   if (!ORDERED_DIALS.includes(dial)) return keys.slice().sort();
   return keys.slice().sort((a, b) => {
-    const na = a === 'auto' || a === 'none' ? Infinity : Number(a);
-    const nb = b === 'auto' || b === 'none' ? Infinity : Number(b);
+    const na = sortNumberOf(a);
+    const nb = sortNumberOf(b);
     if (Number.isNaN(na) || Number.isNaN(nb)) return String(a).localeCompare(String(b));
     if (na === nb) return String(a).localeCompare(String(b));
     return na - nb;

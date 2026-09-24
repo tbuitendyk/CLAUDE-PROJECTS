@@ -6233,7 +6233,20 @@ function boardRowOf(r, unitKey) {
     // the blocked calls at size 1 and the four counts -- so Table 3.C can say
     // what a coin and shape made with and without the gate. null with no gate.
     field: r.field && r.field.test ? r.field.test : null,
+    // the gate's six boxes as Funnel dials (3.243.0), read off the gate the
+    // record was priced under
+    ...fieldGate.funnelDialsOf(r.field),
   };
+}
+// THE SAME SIX ON A BLEND ROW (3.243.0): its `field` is the gate itself. Laid
+// on in place, once per list of rows -- a copy of half a million rows is what
+// took the service down out of memory the first time the Funnel was opened
+const fieldDialsLaid = new WeakSet();
+function withFieldDials(rows) {
+  if (!rows || fieldDialsLaid.has(rows)) return rows;
+  for (const r of rows) Object.assign(r, fieldGate.funnelDialsOf(r.field));
+  fieldDialsLaid.add(rows);
+  return rows;
 }
 let unitBoardInHand = { id: null, builtAt: null, key: null, rows: null };
 async function loadUnitBoard(id, t, unitKey) {
@@ -6262,7 +6275,7 @@ async function loadUnitBoard(id, t, unitKey) {
 // chosen is the set's FIRST unit (§17.2) -- the blend is walked only when it
 // is asked for by name, 'all'. The read and the cut both resolve here, so the
 // board that was walked and the board that is cut cannot be two boards.
-const blendBoard = (t) => ({ unit: null, name: null, all: t.ranked || [] });
+const blendBoard = (t) => ({ unit: null, name: null, all: withFieldDials(t.ranked || []) });
 // THE BLEND OF THE COINS AND SHAPES THE FILTER ON TABLE 3.C KEEPS (3.230.0):
 // the same fold the tables are totalled by, over the kept coins and shapes
 // alone, held in memory for the filter it was read for. Worked out in the
@@ -6354,7 +6367,7 @@ async function funnelBoard(id, t, unitKey, kept = null) {
   if (key === 'all') {
     if (!kept || kept.size === units.length) return blendBoard(t);
     const b = ensureBlend(id, t, kept);
-    if (b.ready) return { unit: null, name: null, all: b.rows, richBlend: b.rich };
+    if (b.ready) return { unit: null, name: null, all: withFieldDials(b.rows), richBlend: b.rich };
     return { unit: null, name: null, all: [], pending: b };
   }
   const first = kept ? units.find((u) => kept.has(u.key)) : units[0];

@@ -121,6 +121,22 @@ function gateRecord(g) {
     rule: String(g.rule || 'both'), signOnly: !!g.signOnly, rungs: String(g.rungs), silent: Number(g.silent),
   };
 }
+// THE GATE AS SIX FUNNEL DIALS (3.243.0, owner order 2026-09-24): one column
+// per box on Sweep, so a Funnel rule can keep a range of minimums or a list of
+// ladders the way it keeps one of d. A blank minimum is `no bar`, which sorts
+// below every number. A box that changes nothing on this setting reads none
+// (null): both minimums and must pass under sign only, which ignores the
+// minimums; must pass without two bars to combine; all six with no field.
+// silent × is not a dial here: the owner left it off.
+function funnelDialsOf(g) {
+  if (!g || g.read == null) return { fieldAgreeMin: null, fieldCertMin: null, fieldRule: null, fieldSignOnly: null, fieldSizeBy: null, fieldRungs: null };
+  const bar = (v) => (g.signOnly ? null : v == null ? 'no bar' : Number(v));
+  return {
+    fieldAgreeMin: bar(g.agreeMin), fieldCertMin: bar(g.certMin),
+    fieldRule: !g.signOnly && g.agreeMin != null && g.certMin != null ? String(g.rule || 'both') : null,
+    fieldSignOnly: !!g.signOnly, fieldSizeBy: String(g.read), fieldRungs: String(g.rungs),
+  };
+}
 // the bars a gate sets, each named by its own number
 function barsOf(g) {
   const bars = [];
@@ -291,6 +307,6 @@ function blockedShare(t) {
 
 module.exports = {
   READS, RULES, VERDICTS, parseRungs, rungsText, rungFor, parseMinimums, minimumsOf, minimumOrNull, parseRungLists,
-  checkGate, gateRecord, gateLabel, clearsMinimums, minimumWords, blockWords,
+  checkGate, gateRecord, funnelDialsOf, gateLabel, clearsMinimums, minimumWords, blockWords,
   sizesFor, priceGated, verdictOf, verdictWhy, daysFromColumns, addTotals, mergeTotals, totalsCents, blockedShare,
 };

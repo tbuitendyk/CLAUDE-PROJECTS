@@ -75,6 +75,9 @@ function inRange(value, spec) {
   const hi = spec && spec.max != null ? Number(spec.max) : null;
   const keep = spec && Array.isArray(spec.also) ? spec.also.map(String) : [];
   if (value == null) return keep.includes('none');
+  // a field minimum left blank (3.243.0) is lower than any bar: inside a range
+  // with no lower end, outside one that has one
+  if (value === 'no bar') return lo == null || keep.includes('no bar');
   const n = Number(value);
   if (!Number.isFinite(n)) return keep.includes(String(value));
   if (lo != null && n < lo) return false;
@@ -316,7 +319,7 @@ function regionRule(region, dials) {
   const categorical = new Set((dials && dials.categorical) || funnel.CATEGORICAL_DIALS);
   for (const [dial, b] of Object.entries(region.bounds || {})) {
     if (!ordered.has(dial) || !b || b.min == null) continue;
-    R.ranges[dial] = { min: b.min, max: b.max };
+    R.ranges[dial] = { min: b.min, max: b.max, ...(Array.isArray(b.also) ? { also: b.also.slice() } : {}) };
   }
   for (const [dial, v] of Object.entries(region.values || {})) {
     if (!categorical.has(dial) || v === undefined) continue;

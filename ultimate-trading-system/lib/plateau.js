@@ -44,8 +44,10 @@ function clears(row, minTrades, atLeast = 0) {
 function axisIndex(rows, ordered = ORDERED_AXES) {
   const idx = {};
   for (const axis of ordered) {
+    // a field minimum left blank, `no bar` (3.243.0), is the first notch
+    const at = (v) => (v === 'no bar' ? -Infinity : v);
     const vals = [...new Set(rows.map((r) => r[axis]).filter((v) => v != null))]
-      .sort((a, b) => a - b);
+      .sort((a, b) => at(a) - at(b));
     idx[axis] = new Map(vals.map((v, i) => [v, i]));
   }
   return idx;
@@ -282,14 +284,18 @@ function widestRegion(rows, opts = {}) {
   for (const a of ordered) {
     let lo = null;
     let hi = null;
+    // a member with a field minimum left blank (3.243.0) is kept beside the
+    // numbers, or the region's own rule would drop it
+    let noBar = false;
     for (const n of bestComp) {
       const v = nodes[n].row[a];
+      if (v === 'no bar') { noBar = true; continue; }
       const x = Number(v);
       if (v == null || !Number.isFinite(x)) continue;
       if (lo == null || x < lo) lo = x;
       if (hi == null || x > hi) hi = x;
     }
-    if (lo != null) bounds[a] = { min: lo, max: hi };
+    if (lo != null) bounds[a] = { min: lo, max: hi, ...(noBar ? { also: ['no bar'] } : {}) };
   }
   // A dial the region was allowed to cross may hold several values inside one
   // region, so it hands back every one of them rather than the centre's (3.65.0).
