@@ -1125,6 +1125,10 @@ app.post('/api/funnel/set/:id/halflife', (req, res) => {
   try { return res.json(stages.halfLifeStart(req.params.id, req.body || {})); } catch (err) { return res.status(409).json({ error: err.message }); }
 });
 app.get('/api/funnel/set/:id/halflife/status', (req, res) => res.json(stages.halfLifeStatus(req.params.id)));
+// REPAIR (3.248.0, lib/stages.js pickBehind): a capture's survivor by depth chosen again by its neighbouring settings, as the set is opened
+app.post('/api/funnel/set/:id/repick', async (req, res) => {
+  try { return res.json(await stages.repickCapture(req.params.id)); } catch (err) { return res.status(400).json({ error: err.message }); }
+});
 // A STAGE 4 RECORD SET SAVED UNDER A NEW NAME on Tune (3.247.0): the stop tuning and the conviction sizing carried where ticked
 app.post('/api/funnel/set/:id/copy', (req, res) => {
   try { return res.json({ ok: true, set: stages.copyStage4Set(req.params.id, req.body || {}) }); } catch (err) { return res.status(err.status || 400).json({ error: err.message }); }

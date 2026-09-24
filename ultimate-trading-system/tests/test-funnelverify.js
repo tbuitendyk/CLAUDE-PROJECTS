@@ -1023,8 +1023,10 @@ module.exports = {
     // 3.203.0: and which extras belong together, empty on a unit whose extras stand alone
     assert.deepStrictEqual(src.unit, { trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-1d', extras: [], plateaus: [] });
       assert.strictEqual(src.survivors.length, 2, 'every survivor, with its depth');
-      assert.ok(src.survivors.every((x) => x.worst === 0), 'a rule of word dials puts every survivor at the middle');
-      assert.deepStrictEqual({ by: src.pick.by, index: src.pick.index, label: src.pick.label, of: src.pick.of }, { by: 'depth', index: 0, label: src.survivors[0].label, of: 2 }, 'equal in depth: the first in the set\'s own order');
+      // HOW SURROUNDED EACH IS (3.248.0): its neighbouring settings and how many survived, and the pick is the most surrounded
+      assert.ok(src.survivors.every((x) => x.nearby && x.nearby.survived <= x.nearby.of && (x.deviance === null ? x.nearby.of === 0 : x.deviance === (x.nearby.of - x.nearby.survived) / x.nearby.of)), 'every survivor says how many of its neighbouring settings survived');
+      const most = src.survivors.slice().sort((a, b) => ((a.deviance ?? 2) - (b.deviance ?? 2)) || (b.nearby.of - a.nearby.of) || (a.index - b.index))[0];
+      assert.deepStrictEqual({ by: src.pick.by, measure: src.pick.measure, index: src.pick.index, label: src.pick.label, of: src.pick.of }, { by: 'depth', measure: stages.DEPTH_MEASURE, index: most.index, label: most.label, of: 2 }, 'the most surrounded, then the one with more neighbouring settings, then the first in the set\'s own order');
       assert.strictEqual(src.survivor.label, src.pick.label);
       assert.deepStrictEqual({ entry: src.survivor.entry, gate: src.survivor.gate, tHours: src.survivor.tHours, rule: src.survivor.agreeRule, pct: src.survivor.agreePct }, { entry: 'market', gate: 'active', tHours: 41, rule: 'share', pct: null });
       assert.strictEqual(src.survivor.bandPct, 2, 'an auto band resolves to the band the unit was priced at');
@@ -1331,9 +1333,10 @@ module.exports.thePictureIsReadOffTheSetsAndPricesNothing = async function () {
     assert.ok(p.rule.test.fourShare === null || (p.rule.test.fourShare >= 0 && p.rule.test.fourShare <= 100), 'a share, or none when the four were not read');
     assert.deepStrictEqual(p.survivors.map((x) => [x.steps.test.beforeHistory && x.steps.test.beforeHistory.money, x.steps.test.afterHistory, x.steps.test.afterStop, x.steps.test.afterSizing, x.steps.train.beforeHistory, x.steps.held.afterHistory, x.halfLife]),
       doc.survivors.map(() => [10, null, null, null, null, null, null]), 'no History, no capture, no tuning: only the test and held figures as stage 3 priced them');
-    assert.ok(p.survivors.every((x) => x.depth && x.depth.worst >= 0 && x.depth.worst <= 1 && x.depth.mean <= x.depth.worst + 1e-12), 'every survivor says how far it sits from the middle of the rule');
+    assert.ok(p.survivors.every((x) => x.depth && x.depth.survived <= x.depth.of && (x.depth.deviance === null ? x.depth.of === 0 : x.depth.deviance >= 0 && x.depth.deviance <= 1)), 'every survivor says how many of its neighbouring settings survived');
     const byDepth = p.survivors.find((x) => x.label === dry.depthPick.label);
-    assert.deepStrictEqual([byDepth.depth.worst, byDepth.depth.mean], [dry.depthPick.worst, dry.depthPick.mean], 'the deviance shown is the depth the pick is made by');
+    assert.deepStrictEqual([byDepth.depth.deviance, byDepth.depth.survived, byDepth.depth.of], [dry.depthPick.deviance, dry.depthPick.nearby.survived, dry.depthPick.nearby.of], 'the deviance shown is the depth the pick is made by');
+    assert.ok(p.survivors.every((x) => x.depth.deviance >= byDepth.depth.deviance), 'and no survivor is more surrounded than the survivor by depth');
     assert.ok(p.survivors.every((x) => x.test.clears === null || typeof x.test.clears === 'boolean'), 'each survivor\'s own test clears, or none');
     // a held set's picture says the reserve is read on Reserve
     const hd = await stages.stage4GreenlightDry(held.id);
@@ -1355,7 +1358,8 @@ module.exports.thePictureIsReadOffTheSetsAndPricesNothing = async function () {
     assert.ok(pic.indexOf('<div class="gl-rows"></div>') >= 0 && pic.indexOf('<div class="gl-rows"></div>') < pic.indexOf('gl-one'), 'the table sits above the one survivor\'s lines, inside the picture');
     assert.ok(ui.indexOf('${glPictureHtml(d)}') < ui.indexOf("${d.refused ? '' : `<div class=\"row\" style=\"align-items:flex-end\">"), 'the picture is drawn before the refusal hides the pick box');
     const rowsFn = ui.slice(ui.indexOf('function glRowsHtml('), ui.indexOf('function glOneHtml('));
-    for (const w of ["'deviance from centre, worst'", "'deviance from centre, average'", 'data-glpick=', 'data-glsort=']) assert.ok(rowsFn.includes(w), `${w} is in the table of every survivor`);
+    // (3.248.0) the deviance is the share of its neighbouring settings that did not survive, beside how many did
+    for (const w of ["'deviance from centre'", "'neighbouring settings that survived'", 'data-glpick=', 'data-glsort=']) assert.ok(rowsFn.includes(w), `${w} is in the table of every survivor`);
     const oneFn = ui.slice(ui.indexOf('function glOneHtml('), ui.indexOf('function glOneHtml(') + 6000);
     const cols = ['before History $', 'after History $', 'after stop $', 'after conviction sizing $'].map((w) => oneFn.indexOf(w));
     assert.ok(cols.every((i) => i > 0) && cols.every((i, k) => !k || i > cols[k - 1]), 'the one survivor\'s money in four columns, in the order each change is applied');

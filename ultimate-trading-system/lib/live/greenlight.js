@@ -167,7 +167,8 @@ function greenlightFromStage4(src, { by = 'owner', why, name } = {}) {
     // kept under the name every reader of a greenlight already looks for
     sourceRun: { id: (src.set.parent || {}).id || null, kind: 'stage3', startedAt: null, finishedAt: null, dataManifest: null, feePerLeg: Number.isFinite(src.fee) ? src.fee : null },
     // WHICH SURVIVOR, AND HOW IT WAS CHOSEN: by depth, or named -- both recorded
-    pick: { by: src.pick.by, label: src.pick.label, si: src.pick.si ?? null, worst: src.pick.worst, mean: src.pick.mean, per: src.pick.per || null, of: src.pick.of },
+    // how surrounded it is by its neighbouring settings, and by what measure (3.248.0)
+    pick: { by: src.pick.by, measure: src.pick.measure || null, label: src.pick.label, si: src.pick.si ?? null, deviance: src.pick.deviance ?? null, nearby: src.pick.nearby || null, tied: src.pick.tied ?? null, of: src.pick.of },
     rowSummary: {
       pnl: src.survivor.avgTest ?? null, trades: null,
       holdout: rd.held ? { pnl: rd.held.money ?? null, trades: rd.held.trades ?? null } : null,

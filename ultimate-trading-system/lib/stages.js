@@ -9658,14 +9658,16 @@ async function stage4GreenlightSource(setId, asked = {}) {
   const rows = join.rows;
   if (!rows.length) throw new Error('this set wrote down no settings, so there is no survivor to greenlight');
   const rule = join.rule;
+  // HOW SURROUNDED EACH SURVIVOR IS (3.248.0): its neighbouring settings on the
+  // board the rule was cut from, and how many survived too
+  const near = S4.nearbyOf(rows, join.mine);
   let pick;
   if (asked.pick == null || asked.pick === '' || asked.pick === 'depth') {
-    pick = { by: 'depth', ...S4.pickByDepth(rows, rule), of: rows.length };
+    pick = { by: 'depth', measure: DEPTH_MEASURE, ...S4.pickByDepth(rows, join.mine), of: rows.length };
   } else {
     const i = rows.findIndex((r) => r.label === String(asked.pick));
     if (i < 0) throw new Error(`'${asked.pick}' is not one of this set's ${rows.length} survivors`);
-    const d = S4.depthOf(rows[i], rule);
-    pick = { by: 'named', index: i, si: rows[i].si, label: rows[i].label, worst: d.worst, mean: d.mean, per: d.per, of: rows.length };
+    pick = { by: 'named', measure: DEPTH_MEASURE, index: i, si: rows[i].si, label: rows[i].label, deviance: near[i].deviance, nearby: { survived: near[i].survived, of: near[i].of }, of: rows.length };
   }
   const survivor = rows[pick.index];
   // each survivor's own figures: on the held-back window from the held set (this
@@ -9723,7 +9725,7 @@ async function stage4GreenlightSource(setId, asked = {}) {
     // THE STOP AND THE LADDER AS THE SET FROZE THEM AT ITS PRESS (3.149.0): the survivor's own choice on record, or none
     stop: ((doc.stopChoices || {})[survivor.label]) ? JSON.parse(JSON.stringify(doc.stopChoices[survivor.label])) : null,
     pick,
-    survivors: rows.map((r, i) => { const d = S4.depthOf(r, rule); const h = heldOf(r.label); const x = reserveRowOf(r.label); const y = hlOf(r.label); return { index: i, label: r.label, worst: d.worst, mean: d.mean, held: h ? h.money : null, trades: h ? h.trades : null, reserve: x ? x.money : null, halfLife: y ? y.halfLife : null, retrained: y && y.money ? y.money.judge : null }; }),
+    survivors: rows.map((r, i) => { const h = heldOf(r.label); const x = reserveRowOf(r.label); const y = hlOf(r.label); return { index: i, label: r.label, deviance: near[i].deviance, nearby: { survived: near[i].survived, of: near[i].of }, held: h ? h.money : null, trades: h ? h.trades : null, reserve: x ? x.money : null, halfLife: y ? y.halfLife : null, retrained: y && y.money ? y.money.judge : null }; }),
     // `at` says WHICH extra a member reads, so the live path marks it against
     // that extra's band and not against the unit's own (3.188.0)
     members: (rec.specs || []).map((sp) => ({ model: sp.model, view: sp.view, at: sp.at ?? null })),
@@ -9856,16 +9858,19 @@ async function pictureOf(doc) {
     }
     return got;
   };
+  // how surrounded each survivor is (3.248.0): its neighbouring settings on the board the rule was cut from
+  const nearOf = new Map();
+  if (join) S4.nearbyOf(rows, join.mine).forEach((n, i) => nearOf.set(rows[i].label, n));
   out.survivors = labels.map((L) => {
     const rr = rows.find((x) => x.label === L) || null;
     const c = frozen[L] || null;
-    const d = rr ? S4.depthOf(rr, rule.rule) : null;
+    const d = nearOf.get(L) || null;
     return {
       label: L, train: trainOf(L), test: rr ? { money: rr.avgTest, trades: rr.testTrades ?? null, clears: testClears.has(L) ? testClears.get(L) : null } : null, held: rowOf(heldSet, L), reserve: rowOf(reserveSet, L),
       tunings: c ? { stop: c.stopPct != null ? Number(c.stopPct) : null, stopSaid: Object.prototype.hasOwnProperty.call(c, 'stopPct'), sizing: !!(c.sizing && c.sizing.on) } : null,
       tuned: tuned[L] || null,
-      // how far from the middle of the rule it sits (3.247.0): 0 in the middle of every range, 1 on an edge
-      depth: d ? { worst: d.worst, mean: d.mean } : null,
+      // how surrounded it is (3.248.0): the share of its neighbouring settings that did not survive, 0 surrounded on every side
+      depth: d ? { deviance: d.deviance, survived: d.survived, of: d.of } : null,
       halfLife: (ruleSurvivor.get(L) || {}).halfLife ?? null,
       steps: stepsOf(L, rr, tuned[L] || null),
     };
@@ -9890,7 +9895,7 @@ async function stage4GreenlightDry(setId) {
     block: b ? { id: b.id, pass: !!(b.verdict && b.verdict.pass), at: b.at, release: b.release || null, look: b.look ?? null } : null,
     heldAlone: r.keeps ? null : HELD_ALONE, derived: doc.derived || null,
     unitSize: src ? src.unit.size : null, members: src ? src.members.length : null,
-    depthPick: src ? { label: src.pick.label, worst: src.pick.worst, mean: src.pick.mean } : null,
+    depthPick: src ? { label: src.pick.label, deviance: src.pick.deviance, nearby: src.pick.nearby, tied: src.pick.tied } : null,
     survivors: src ? src.survivors : [],
     refused,
     // the picture through every period (3.149.0): read, never priced, and drawn whatever the standing
@@ -9919,6 +9924,10 @@ async function stage4GreenlightDry(setId) {
 // REBUILD REQUIRED and the capture is taken again when the set is opened on
 // Tune (RULE NINE: derived, never migrated).
 const CAPTURE_V = 2;
+// WHAT A PICK BY DEPTH MEASURES (3.248.0): how surrounded a survivor is by its
+// neighbouring settings on the board the rule was cut from (lib/funnelset.js
+// nearbyOf). Written on every pick, so a record says what it is (RULE NINE).
+const DEPTH_MEASURE = 'neighbours';
 // 3.150.0: the capture gains the reserve window for a set whose layout keeps one (H3.2)
 const CAPTURE_WINDOWS = ['train', 'test', 'hold', 'reserve'];
 const CAPTURE_WINDOW_WORDS = { train: 'training', test: 'test', hold: 'held-back', reserve: 'reserve' };
@@ -10052,7 +10061,7 @@ async function tuneCaptureRun(doc, note = null, fill = null) {
   // one survivor without shopping: by depth inside the rule, among the CAPTURED survivors
   const capturedLabels = new Set(settings.map((st) => st.label));
   const pickRows = join.rows.filter((r) => capturedLabels.has(r.label));
-  const pick = S4.pickByDepth(pickRows, join.rule);
+  const pick = S4.pickByDepth(pickRows, join.mine);
   const survivors = (res.rows || []).map((r) => ({
     label: r.label, si: r.si, tHours: r.tHours, weekdaysOnly: !!r.weekdaysOnly, entry: r.entry, gate: r.gate, decision: r.decision, bandPct: r.bandPct,
     members: r.members, rung: r.rung ?? null, halfLife: doc.derived ? (hlOf.get(r.label) ?? null) : null,
@@ -10080,7 +10089,7 @@ async function tuneCaptureRun(doc, note = null, fill = null) {
     combo: { trade: rec.trade, ctx1: rec.ctx1 || null, ctx2: rec.ctx2 || null, size: rec.size || (rec.ctx1 ? (rec.ctx2 ? 3 : 2) : 1) }, geometry: rec.geometry,
     members: (rec.specs || []).length, fee: { feePerLeg: fee, feeUnits: 'fraction' }, windows: res.windows || null,
     reserve: reserveWhy ? { captured: false, why: reserveWhy } : { captured: true, window: reserveWindow },
-    pick: pick ? { by: 'depth', among: 'the captured survivors', label: pick.label, worst: pick.worst, mean: pick.mean } : null,
+    pick: pick ? { by: 'depth', measure: DEPTH_MEASURE, among: 'the captured survivors', label: pick.label, deviance: pick.deviance, nearby: pick.nearby, tied: pick.tied } : null,
     fieldFill, survivors, missing,
   };
   writeCapture(doc.id, file);
@@ -10155,6 +10164,8 @@ function rebuildOf(doc) {
       // (3.237.0) taken before a train trade had to wait for the field to be complete enough
       reasons.push({ key: 'capture', why: 'its capture counted train trades however little of the field was built, and its trades are captured again when it is chosen on Tune, at the field completion in the box above the press' });
     }
+    // REPAIR (3.248.0): see pickBehind below
+    if (pickBehind(doc)) reasons.push({ key: 'pick', why: 'its survivor by depth on Tune was chosen by the middle of the rule\'s ranges, and is chosen again by its neighbouring settings as the set is opened' });
   }
   if (!reasons.length) return null;
   const out = { words: 'REBUILD REQUIRED', reasons };
@@ -10164,6 +10175,40 @@ function rebuildOf(doc) {
     else if (!rebuildRun.done && !rebuildRun.error) out.running = rebuildRun.words;
   } else if (rebuildQueue.includes(doc.id)) out.running = `waiting: ${rebuildRun ? rebuildRun.name : 'another set'} is being rebuilt first — one at a time`;
   return out;
+}
+
+// ---- REPAIR (3.248.0): THE SURVIVOR BY DEPTH CHOSEN BY THE MIDDLE OF THE RANGES ----
+//
+// RULE TEN: deleted, whole, the day no capture on the box still needs it --
+// counted on the box (pickBehind true for no set, nothing running), never
+// assumed. A capture taken before 3.248.0 chose its survivor by depth by the
+// middle of the rule's ranges; RULE NINE moves the record with the measure.
+// Opening the set chooses it again by its neighbouring settings, in place: one
+// read of the board, nothing priced, the capture's trades, its looks and the
+// scans kept on it untouched. What goes with it: this block, the 'pick' reason
+// in rebuildOf, the /repick route, repickOnOpen on the page, and their test
+// and guard.
+const pickBehind = (doc) => !!(doc && captureOnSet(doc) && !(doc.capture.pick && doc.capture.pick.measure === DEPTH_MEASURE));
+const repicking = new Set();
+async function repickCapture(id) {
+  const doc = getSet(String(id || ''));
+  if (!doc || !pickBehind(doc)) return { none: true };
+  if (repicking.has(doc.id)) return { running: true };
+  repicking.add(doc.id);
+  try {
+    const S4 = require('./funnelset');
+    const join = await funnelVerifyJoin(doc);
+    const cap = readCapture(doc.id);
+    const captured = new Set(((cap && cap.survivors) || []).map((sv) => sv.label));
+    const got = S4.pickByDepth(join.rows.filter((r) => captured.has(r.label)), join.mine);
+    const pick = got ? { by: 'depth', measure: DEPTH_MEASURE, among: 'the captured survivors', label: got.label, deviance: got.deviance, nearby: got.nearby, tied: got.tied } : null;
+    const fresh = getSet(doc.id);
+    if (!fresh || !pickBehind(fresh)) return { none: true };
+    if (cap) writeCapture(doc.id, { ...cap, pick });
+    fresh.capture.pick = pick;
+    saveSet(fresh);
+    return { done: true, label: pick ? pick.label : null };
+  } finally { repicking.delete(doc.id); }
 }
 
 // THE REBUILD OF A STAGE 4 SET WHOSE SURVIVORS WERE CHOSEN ON FIGURES WORKED OUT
@@ -12272,7 +12317,7 @@ module.exports = {
   tuneCaptureDry, tuneCaptureStart, tuneCaptureStatus, tuneOnCapture, captureCandidates, captureTargetOf, readCapture, captureFile,
   tuneScanAimOf, saveTuneScan, readTuneScans, tuneScanFor, tuneScansFile,
   halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet, buildHalfLifeSet, gateOfSet,
-  stopChoiceOf, setStopChoice, fieldFillOf, fieldPairOfSet, fieldWindowDaysOf, ownedFilesOf, copyStage4Set,
+  stopChoiceOf, setStopChoice, fieldFillOf, fieldPairOfSet, fieldWindowDaysOf, ownedFilesOf, copyStage4Set, DEPTH_MEASURE, pickBehind, repickCapture,
   CAPTURE_V, CAPTURE_WINDOWS, CAPTURE_NOT_YET, STOP_NOT_ON_BREAKOUT, scanRefusalOf, ladderAsked, rebuildOf, rebuildStart, rebuildStatus, rebuildWait, recutInPlace, rebuildChainOf,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,

@@ -524,43 +524,66 @@ function newFunnelSet({ id, seq, name, parent, release, target, seed, boardNull,
 
 // ---- ONE SURVIVOR WITHOUT SHOPPING: by DEPTH inside the rule (3.90.0) ----------------
 //
-// For each dial the rule holds a range on, a survivor's distance from the
-// middle of that range over the range's width: 0 at the middle, 1 at either
-// edge. A dial the rule holds a list of words on puts every survivor at the
-// middle. The pick is the survivor with the smallest worst distance across the
-// ranged dials; among equals the smallest mean; among those the first in the
-// set's own order. Never by money -- the same idea as the widest region's
-// centre, chosen by how surrounded it is. A function of the rule and the
-// survivors alone, so two presses give one answer.
-function depthOf(row, rule) {
-  const R = rule || {};
-  const per = {};
-  let worst = 0;
-  let sum = 0;
-  let n = 0;
-  for (const [dial, range] of Object.entries(R.ranges || {})) {
-    const lo = Number(range.min);
-    const hi = Number(range.max);
-    const v = Number(row[dial]);
-    let d;
-    if (!Number.isFinite(v)) d = Array.isArray(range.also) && range.also.includes(row[dial]) ? 0 : 1;   // a word kept beside the range sits at the middle; a value that is neither is at the edge
-    else if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi === lo) d = 0;
-    else d = Math.min(1, Math.abs(v - (lo + hi) / 2) / ((hi - lo) / 2));
-    per[dial] = d;
-    if (d > worst) worst = d;
-    sum += d; n++;
-  }
-  for (const dial of Object.keys(R.allowed || {})) if (!(dial in per)) per[dial] = 0;
-  return { worst, mean: n ? sum / n : 0, per };
-}
-function pickByDepth(rows, rule) {
-  let best = null;
-  (rows || []).forEach((r, i) => {
-    const d = depthOf(r, rule);
-    const cand = { index: i, si: r.si, label: r.label, worst: d.worst, mean: d.mean, per: d.per };
-    if (!best || cand.worst < best.worst || (cand.worst === best.worst && cand.mean < best.mean)) best = cand;
+// HOW SURROUNDED A SURVIVOR IS (3.248.0, owner order 2026-09-24, on the two
+// deviance columns on Greenlight: "1.00 and 0.50 in all of the DEVIANCE FROM
+// CENTRE, WORST and DEVIANCE FROM CENTRE, AVERAGE is not useful", then "do the
+// neighbouring settings deviance"). Depth was a survivor's distance from the
+// middle of each range the rule keeps. A range the sweep tried at two values
+// has no middle -- both are its ends -- so on a rule of such ranges every
+// survivor read 1 and the pick fell to the first row.
+//
+// Now: its NEIGHBOURING SETTINGS, the ones the Funnel's widest region walks --
+// one notch up or down on one dial that has an order, with every other dial
+// -- the word-valued ones too -- the same, on the board the rule was cut from -- and
+// how many of them survived too. A notch off the end of what the sweep tried
+// counts as one that did not: a survivor at the end of the menu is not known
+// to be surrounded there (lib/plateau.js says the same of its edge). A dial the
+// board holds at one value has no notch to step to and is not counted. The
+// deviance is the share that did not survive: 0 surrounded on every side, 1 on
+// none. Money never enters it.
+function nearbyOf(rows, board) {
+  const P = require('./plateau');
+  const all = (board && board.length ? board : rows) || [];
+  const ordered = funnel.ORDERED_DIALS.filter((d) => all.some((r) => r[d] != null));
+  const categorical = funnel.CATEGORICAL_DIALS;
+  const idx = P.axisIndex(all, ordered);
+  const len = ordered.map((a) => idx[a].size);
+  const at = (slice, pos) => `${slice}#${pos.join(',')}`;
+  const survived = new Set((rows || []).map((r) => { const c = P.coordsOf(r, idx, ordered, categorical); return at(c.slice, c.pos); }));
+  return (rows || []).map((r) => {
+    const c = P.coordsOf(r, idx, ordered, categorical);
+    let of = 0;
+    let alive = 0;
+    for (let ax = 0; ax < ordered.length; ax++) {
+      if (len[ax] <= 1 || c.pos[ax] < 0) continue;
+      for (const step of [-1, 1]) {
+        of += 1;
+        const q = c.pos[ax] + step;
+        if (q < 0 || q >= len[ax]) continue;
+        const probe = c.pos.slice();
+        probe[ax] = q;
+        if (survived.has(at(c.slice, probe))) alive += 1;
+      }
+    }
+    return { survived: alive, of, deviance: of ? (of - alive) / of : null };
   });
-  return best;
+}
+// The pick is the survivor with the smallest deviance; among equals the one
+// with more neighbouring settings to be surrounded by; among those the first
+// in the set's own order. `tied` says how many shared the best, so a screen
+// can say when the first-in-order rule decided it.
+function pickByDepth(rows, board) {
+  const near = nearbyOf(rows, board);
+  let best = null;
+  let tied = 0;
+  (rows || []).forEach((r, i) => {
+    const n = near[i];
+    const cand = { index: i, si: r.si, label: r.label, deviance: n.deviance, nearby: { survived: n.survived, of: n.of } };
+    const by = (x) => (x.deviance == null ? 2 : x.deviance);
+    const cmp = best ? (by(cand) - by(best)) || (best.nearby.of - cand.nearby.of) : -1;
+    if (cmp < 0) { best = cand; tied = 1; } else if (cmp === 0) tied += 1;
+  });
+  return best ? { ...best, tied } : null;
 }
 
 function recordStep(doc, step) {
@@ -659,7 +682,7 @@ async function applyRuleSlowly(rows, rule, note = null) {
 }
 
 module.exports = {
-  depthOf, pickByDepth,
+  nearbyOf, pickByDepth,
   tightenRule, ruleWithClosing, nullCopy, swapMoney, topColumnNames, TOP_COLUMNS,
   regionRule, MARKS, recordMark,
   EMPTY_RULE, CLOSINGS,

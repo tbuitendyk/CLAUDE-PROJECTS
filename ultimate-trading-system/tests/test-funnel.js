@@ -356,33 +356,40 @@ module.exports = {
     assert.ok(!doc.steps.some((x) => x.survivors === 0) && !doc.backSteps.some((x) => x.survivors === 0), 'unknown is never written as zero');
   },
 
-  // ONE SURVIVOR BY DEPTH, NEVER BY MONEY (3.90.0). The pick is the survivor
-  // nearest the middle of every range of the rule; a word dial puts everyone at
-  // the middle; ties go to the smallest mean and then to the set's own order;
-  // and the money on the rows never enters it.
-  theDepthPickIsTheSurvivorNearestTheMiddleOfEveryRangeAndNeverReadsMoney() {
-    const rule = { ranges: { tHours: { min: 41, max: 89 }, dMult: { min: 1, max: 2 } }, allowed: { gate: ['active'] }, floors: { maxDrawdown: { max: 50 } } };
-    const rows = [
-      { si: 0, label: 'edge', tHours: 41, dMult: 1, gate: 'active', avgHold: 999, avgTest: 999 },
-      { si: 1, label: 'middle', tHours: 65, dMult: 1.5, gate: 'active', avgHold: -50, avgTest: -50 },
-      { si: 2, label: 'half', tHours: 77, dMult: 1.5, gate: 'active', avgHold: 5, avgTest: 5 },
-    ];
-    const d0 = FS4.depthOf(rows[0], rule);
-    assert.deepStrictEqual({ worst: d0.worst, per: d0.per }, { worst: 1, per: { tHours: 1, dMult: 1, gate: 0 } }, 'the edge is 1 away; the word dial is at the middle; the floor is not a choice');
-    assert.deepStrictEqual(FS4.depthOf(rows[2], rule).per, { tHours: 0.5, dMult: 0, gate: 0 });
-    const pick = FS4.pickByDepth(rows, rule);
-    assert.strictEqual(pick.label, 'middle', 'the poorest survivor is the pick, because money never enters it');
-    assert.deepStrictEqual({ index: pick.index, si: pick.si, worst: pick.worst, mean: pick.mean }, { index: 1, si: 1, worst: 0, mean: 0 });
-    // ties: the smallest mean, then the set's own order
-    const tie = [{ si: 0, label: 'a', tHours: 53, dMult: 1.5 }, { si: 1, label: 'b', tHours: 53, dMult: 1.25 }, { si: 2, label: 'c', tHours: 77, dMult: 1.5 }];
-    assert.strictEqual(FS4.pickByDepth(tie, rule).label, 'a', 'a and c tie on the worst distance and a is first; b is worse');
-    const same = [{ si: 0, label: 'p', tHours: 65, dMult: 1.5 }, { si: 1, label: 'q', tHours: 65, dMult: 1.5 }];
-    assert.strictEqual(FS4.pickByDepth(same, rule).label, 'p', 'equal in every way: the first in the set\'s own order');
-    // a range of no width, and a word kept beside a range, sit at the middle; a value that is neither is at the edge
-    const flat = { ranges: { tHours: { min: 65, max: 65 }, bandMode: { min: 1, max: 3, also: ['auto'] } } };
-    assert.strictEqual(FS4.depthOf({ tHours: 65, bandMode: 'auto' }, flat).worst, 0);
-    assert.strictEqual(FS4.depthOf({ tHours: 65, bandMode: 'weird' }, flat).worst, 1);
-    assert.strictEqual(FS4.pickByDepth([], rule), null, 'no survivors, no pick');
+  // ONE SURVIVOR BY DEPTH, NEVER BY MONEY (3.90.0), BY ITS NEIGHBOURING SETTINGS
+  // (3.248.0, owner order 2026-09-24: "do the neighbouring settings deviance").
+  // A survivor's neighbouring settings are one notch up or down on one ordered
+  // dial of the board, every other dial -- the word-valued ones too -- the
+  // same; its deviance is the share of them that did not survive, a notch off
+  // the end of the menu counting as one that did not; the pick is the smallest
+  // deviance, then more neighbouring settings, then the set's own order; and
+  // the money on the rows never enters it.
+  theDepthPickIsTheSurvivorMostSurroundedByNeighbouringSettingsAndNeverReadsMoney() {
+    // a board of 3 x 3 on tHours and dMult in one slice, and one setting in another slice on gate
+    const board = [];
+    for (const tHours of [41, 65, 89]) for (const dMult of [1, 1.5, 2]) board.push({ label: `t${tHours}d${dMult}`, tHours, dMult, gate: 'active', avgHold: 0, avgTest: 0 });
+    board.push({ label: 'other slice', tHours: 65, dMult: 1.5, gate: 'directional', avgHold: 0, avgTest: 0 });
+    const of = (labels, on = board) => labels.map((L, si) => ({ ...on.find((r) => r.label === L), si }));
+    // a plus around the middle; the middle is the poorest, the first arm the richest
+    const rows = of(['t65d1', 't41d1.5', 't65d1.5', 't89d1.5', 't65d2']);
+    Object.assign(rows[0], { avgHold: 999, avgTest: 999 });
+    Object.assign(rows[2], { avgHold: -50, avgTest: -50 });
+    const near = FS4.nearbyOf(rows, board);
+    assert.deepStrictEqual(near.map((n) => [n.survived, n.of, n.deviance]), [[1, 4, 0.75], [1, 4, 0.75], [4, 4, 0], [1, 4, 0.75], [1, 4, 0.75]], 'the middle has all four of its neighbouring settings surviving, each arm one');
+    const pick = FS4.pickByDepth(rows, board);
+    assert.deepStrictEqual({ label: pick.label, index: pick.index, si: pick.si, deviance: pick.deviance, nearby: pick.nearby, tied: pick.tied }, { label: 't65d1.5', index: 2, si: 2, deviance: 0, nearby: { survived: 4, of: 4 }, tied: 1 }, 'the poorest survivor is the pick, because money never enters it');
+    // a notch off the end of the menu counts as one that did not survive
+    assert.deepStrictEqual(FS4.nearbyOf(of(['t41d1', 't65d1', 't41d1.5']), board).map((n) => [n.survived, n.of]), [[2, 4], [1, 4], [1, 4]], 'the corner has two notches off the menu and two survivors beside it');
+    // a word-valued dial is never stepped across: the other slice is no neighbour
+    assert.deepStrictEqual(FS4.nearbyOf(of(['t65d1.5', 'other slice']), board).map((n) => n.survived), [0, 0]);
+    // a dial the board holds at one value has no notch and is not counted
+    const line = board.filter((r) => r.dMult === 1.5 && r.gate === 'active');
+    assert.deepStrictEqual(FS4.nearbyOf(of(['t65d1.5'], line), line)[0], { survived: 0, of: 2, deviance: 1 }, 'dMult held at one value on this board adds no notch');
+    // ties: more neighbouring settings first -- a setting with no dMult steps on tHours alone -- then the set's own order
+    const withNone = [...board, ...[41, 65, 89].map((tHours) => ({ label: `m${tHours}`, tHours, dMult: null, gate: 'active', avgHold: 0, avgTest: 0 }))];
+    const tie = FS4.pickByDepth(of(['m41', 'm65', 't41d1', 't65d1', 't41d1.5', 't65d1.5'], withNone), withNone);
+    assert.deepStrictEqual({ label: tie.label, deviance: tie.deviance, nearby: tie.nearby, tied: tie.tied }, { label: 't41d1', deviance: 0.5, nearby: { survived: 2, of: 4 }, tied: 4 }, 'm41 and m65 are as surrounded, on two neighbouring settings; the four of the square have four, and the first of them is taken');
+    assert.strictEqual(FS4.pickByDepth([], board), null, 'no survivors, no pick');
   },
 
   // All three ways of closing the gap are offered and the shopping one says so

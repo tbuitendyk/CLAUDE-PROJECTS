@@ -57,7 +57,7 @@ function stage4Src(over = {}) {
     gate: { id: 's4-test-1-v1', at: '2026-09-08T00:00:00.000Z', release: '3.90.0', look: 1 },
     unit: { trade: 'LTCUSDT', ctx1: 'XRPUSDT', ctx2: 'BCHUSDT', size: 3, geometry: 'daily-4d' },
     survivor: { si: 4, label: 'count 50% market t65h · argmax auto 24/7', decision: 'argmax', bandMode: 'auto', bandPct: 1.69, weekdaysOnly: false, entry: 'market', gate: 'directional', dMult: null, tHours: 65, trailMult: null, armMult: null, agreeRule: 'count', agreeBar: 'all', agreePct: 50, agreeCopy: 98, agreeBoth: false, agreePersist: 0, members: 8, avgRung: 4, avgVoices: 5, avgTest: 12.5, avgHold: 4.2 },
-    pick: { by: 'depth', index: 1, si: 4, label: 'count 50% market t65h · argmax auto 24/7', worst: 0, mean: 0, per: { tHours: 0 }, of: 3 },
+    pick: { by: 'depth', measure: 'neighbours', index: 1, si: 4, label: 'count 50% market t65h · argmax auto 24/7', deviance: 0.25, nearby: { survived: 3, of: 4 }, tied: 1, of: 3 },
     survivors: [],
     members: [{ model: 'logreg', view: 'full' }, { model: 'logreg', view: 'prices' }, { model: 'logreg', view: 'volume' }, { model: 'logreg', view: 'pricevol' }, { model: 'boost', view: 'full' }, { model: 'boost', view: 'prices' }, { model: 'boost', view: 'volume' }, { model: 'boost', view: 'pricevol' }],
     training: { trainOn: 'direction', weightCap: null, windowLayout: 'reserve61', startMonth: '2023-01', endMonth: '2026-06', allLoaded: false, nullN: 9 },
@@ -84,7 +84,8 @@ module.exports.aStage4GreenlightFreezesTheSurvivorsAgreementNotAQuorum = functio
   assert.deepStrictEqual(cfg.agreement, { rule: 'count', bar: 'all', pct: 50, copy: 98, both: false, persist: 0, plateau: null, rung: 4, members: 8, voices: 5 });
   assert.strictEqual(cfg.training.trainOn, 'direction');
   assert.strictEqual(rec.target, 'stage4');
-  assert.deepStrictEqual(rec.pick, { by: 'depth', label: 'count 50% market t65h · argmax auto 24/7', si: 4, worst: 0, mean: 0, per: { tHours: 0 }, of: 3 });
+  // how surrounded it is, and by what measure (3.248.0)
+  assert.deepStrictEqual(rec.pick, { by: 'depth', measure: 'neighbours', label: 'count 50% market t65h · argmax auto 24/7', si: 4, deviance: 0.25, nearby: { survived: 3, of: 4 }, tied: 1, of: 3 });
   assert.deepStrictEqual({ set: rec.sourceSet.id, block: rec.sourceSet.block.id, parent: rec.sourceSet.parent.id, stage2: rec.sourceSet.stage2.id }, { set: 's4-test-1', block: 's4-test-1-v1', parent: 's3-test-1', stage2: 's2-test-1' });
   assert.strictEqual(rec.sourceRun.feePerLeg, 0.00125, 'the fee rides under the name every reader looks for');
   assert.deepStrictEqual(rec.rowSummary.holdout, { pnl: 4.2, trades: 12 });
@@ -94,9 +95,9 @@ module.exports.aStage4GreenlightFreezesTheSurvivorsAgreementNotAQuorum = functio
   const { validateConfig } = require('../lib/live/configschema');
   assert.strictEqual(validateConfig(cfg).ok, true, validateConfig(cfg).errors.join('; '));
   // a named pick is recorded as named
-  const named = gl.greenlightFromStage4(stage4Src({ pick: { by: 'named', index: 0, si: 2, label: 'count 50% market t41h · argmax auto 24/7', worst: 1, mean: 1, per: { tHours: 1 }, of: 3 } }), { name: 'LTC named', why: 'my pick' });
+  const named = gl.greenlightFromStage4(stage4Src({ pick: { by: 'named', measure: 'neighbours', index: 0, si: 2, label: 'count 50% market t41h · argmax auto 24/7', deviance: 1, nearby: { survived: 0, of: 2 }, of: 3 } }), { name: 'LTC named', why: 'my pick' });
   assert.strictEqual(named.pick.by, 'named');
-  assert.strictEqual(named.pick.worst, 1);
+  assert.deepStrictEqual([named.pick.deviance, named.pick.nearby, named.pick.tied], [1, { survived: 0, of: 2 }, null], 'a named pick records how surrounded it is, and no tie');
 };
 
 // REFUSED IN WORDS: no verdict, a single coin, a trade shape the executor

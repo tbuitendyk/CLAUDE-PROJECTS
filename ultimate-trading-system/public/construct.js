@@ -2407,6 +2407,8 @@ function rebuildLineHtml(x) {
   // rebuilt the first time it is opened (3.236.0), once a visit: the press is
   // made after this line is on the screen, and its answer is said in it
   if (stage4 && x.id) setTimeout(() => rebuildOnOpen(x.id), 0);
+  // REPAIR (3.248.0): a survivor by depth chosen the old way is chosen again as the set is opened
+  if ((rb.reasons || []).some((r) => r.key === 'pick') && x.id) setTimeout(() => repickOnOpen(x.id), 0);
   const now = rb.failed ? ` · <b class="neg">the rebuild stopped: ${esc(rb.failed)}</b>` : (rb.running ? ` · rebuilding now: ${esc(rb.running)}` : '');
   return `<p class="note"><b class="warn">REBUILD REQUIRED</b> - ${(rb.reasons || []).map((r) => esc(r.why)).join(' · ')}<span data-rebuild-say="${esc(x.id || '')}">${now}</span></p>`;
 }
@@ -2428,6 +2430,18 @@ function rebuildOnOpen(id) {
     say(sayOf(r));
     if (r.running || r.waiting) setTimeout(follow, 20000);
   }).catch((e) => say(`the rebuild could not be started: ${e.message}`));
+}
+// ---- REPAIR (3.248.0), deleted with pickBehind in lib/stages.js (RULE TEN) ----
+// The survivor by depth of a capture taken before 3.248.0 is chosen again by its
+// neighbouring settings, once a visit, and the line says when it is done.
+function repickOnOpen(id) {
+  if (rebuiltThisVisit.has(`pick|${id}`)) return;
+  rebuiltThisVisit.add(`pick|${id}`);
+  const say = (words) => document.querySelectorAll(`[data-rebuild-say="${CSS.escape(id)}"]`).forEach((el) => { el.textContent = words ? ` · ${words}` : ''; });
+  say('choosing its survivor by depth again');
+  post(`api/funnel/set/${encodeURIComponent(id)}/repick`, {})
+    .then((r) => say(r.done ? `its survivor by depth is now ${r.label || 'none'} - choose it again to see it` : ''))
+    .catch((e) => say(`its survivor by depth could not be chosen again: ${e.message}`));
 }
 // THE RULES A TAB LISTS (VERIFY-DESIGN.md Part 9): Held lists every rule, plain
 // or half-life; Reserve lists only rules whose layout keeps a reserve and whose
@@ -3325,8 +3339,8 @@ function tnTargetRowHtml(cand, pick, wins) {
   const depth = cand.pick || {};
   const rows = cand.rows || [];
   return `<div class="row" style="margin-bottom:.4rem;align-items:flex-end">
-    <label class="f" style="flex:1 1 auto;min-width:0" title="which captured survivor the scans read, or all of them. By depth is the setting nearest the middle of every range of the rule, among the captured survivors, chosen without looking at money; all survivors pools every captured survivor's trades into one list, each at its own hold length; naming one records it as your pick.">survivor<select id="tnPick">
-      <option value="depth" ${pick === 'depth' ? 'selected' : ''}>by depth - ${esc(depth.label || '?')} (worst distance ${glFix(depth.worst)})</option>
+    <label class="f" style="flex:1 1 auto;min-width:0" title="which captured survivor the scans read, or all of them. By depth is the survivor most surrounded by neighbouring settings that survived too, among the captured survivors, chosen without looking at money; all survivors pools every captured survivor's trades into one list, each at its own hold length; naming one records it as your pick.">survivor<select id="tnPick">
+      <option value="depth" ${pick === 'depth' ? 'selected' : ''}>by depth - ${esc(depth.label || '?')}${depth.nearby ? ` (${depth.nearby.survived} of ${depth.nearby.of} neighbouring settings survived)` : ''}</option>
       <option value="all" ${pick === 'all' ? 'selected' : ''}>all survivors - ${rows.length} captured - ${rows.reduce((a, r) => a + ((r.entries || {}).train ?? 0) + ((r.entries || {}).test ?? 0) + ((r.entries || {}).hold ?? 0), 0)} entries</option>
       ${rows.map((r) => `<option value="${esc(r.label)}" ${pick === r.label ? 'selected' : ''}>${esc(r.label)} - ${r.tHours}h${r.halfLife == null ? '' : ` - half-life ${r.halfLife} months`} - ${(r.entries || {}).train ?? 0} + ${(r.entries || {}).test ?? 0} + ${(r.entries || {}).hold ?? 0} entries${r.held == null ? '' : ` - held-back ${money(r.held)}`}</option>`).join('')}</select></label>
   </div>
@@ -3952,7 +3966,6 @@ function glRememberedSet(list) {
   if (want && list.some((x) => x.id === want)) return want;
   return list.length ? list[0].id : null;
 }
-function glFix(v, n = 2) { return v == null || !Number.isFinite(Number(v)) ? 'none' : Number(v).toFixed(n); }
 // THE PICTURE THROUGH EVERY PERIOD (3.149.0, VERIFY-DESIGN.md Part 9 release
 // 4): the rule's money on train, test, held and reserve beside the four
 // comparisons at the survivors' own hold lengths, read off the sets and the
@@ -4005,8 +4018,9 @@ function glPictureHtml(d) {
 const GL_SORT_KEY = 'cx-gl-survivor-sort';
 const GL_SORTS = {
   label: (x) => x.label,
-  worst: (x) => (x.depth ? x.depth.worst : null),
-  mean: (x) => (x.depth ? x.depth.mean : null),
+  // how surrounded it is (3.248.0): the share of its neighbouring settings that did not survive, and how many did
+  deviance: (x) => (x.depth ? x.depth.deviance : null),
+  survived: (x) => (x.depth ? x.depth.survived : null),
   train: (x) => (x.train ? x.train.money : null),
   test: (x) => (x.test ? x.test.money : null),
   held: (x) => (x.held ? x.held.money : null),
@@ -4016,7 +4030,7 @@ const GL_SORTS = {
 };
 function glSortKept() {
   try { const v = JSON.parse(localStorage.getItem(GL_SORT_KEY) || 'null'); if (v && GL_SORTS[v.key]) return v; } catch (_) { /* private window */ }
-  return { key: 'worst', dir: 1 };
+  return { key: 'deviance', dir: 1 };
 }
 function glRowsHtml(d, pick) {
   const p = d.picture;
@@ -4026,7 +4040,9 @@ function glRowsHtml(d, pick) {
   const by = GL_SORTS[sort.key];
   const depthLabel = d.depthPick ? d.depthPick.label : null;
   const picked = pick === 'depth' || !pick ? depthLabel : pick;
-  // nulls sort last whichever way; ties fall back to the worst deviance, then the average, then the name
+  // nulls sort last whichever way; ties fall back to the order the survivor by depth is chosen in:
+  // the smaller deviance, then more neighbouring settings, then the set's own order
+  const at = new Map(list.map((x, i) => [x.label, i]));
   const cmp = (a, b) => {
     const va = by(a); const vb = by(b);
     if (va == null && vb == null) return 0;
@@ -4034,23 +4050,24 @@ function glRowsHtml(d, pick) {
     if (vb == null) return -1;
     return (typeof va === 'string' ? va.localeCompare(vb) : va - vb) * sort.dir;
   };
-  const tie = (a, b) => (GL_SORTS.worst(a) ?? 9) - (GL_SORTS.worst(b) ?? 9) || (GL_SORTS.mean(a) ?? 9) - (GL_SORTS.mean(b) ?? 9) || a.label.localeCompare(b.label);
+  const tie = (a, b) => (GL_SORTS.deviance(a) ?? 9) - (GL_SORTS.deviance(b) ?? 9) || ((b.depth ? b.depth.of : 0) - (a.depth ? a.depth.of : 0)) || at.get(a.label) - at.get(b.label);
   const rows = list.slice().sort((a, b) => cmp(a, b) || tie(a, b));
   const th = (key, words, title) => `<th data-glsort="${key}" style="cursor:pointer" title="${title} Press to sort by it; press again for the other way.">${words}${sort.key === key ? (sort.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`;
   const m = (x) => (x && x.money != null ? `<td class="${x.money >= 0 ? 'pos' : 'neg'}">${money(x.money)}</td>` : '<td class="muted">—</td>');
   return `<p class="note" style="margin-top:.5rem"><b>Every survivor:</b> press a row to pick it; its own lines are drawn below${d.refused ? ', and the set is refused, so nothing is greenlighted from here until that is cleared' : ', and it becomes the one survivor to greenlight'}.
-    Deviance from the rule's centre is 0 in the middle of every range of the rule and 1 on an edge, for its worst dial and on average over them.</p>
+    Deviance from the rule's centre is the share of its neighbouring settings that did not survive: the settings one notch up or down on one dial, every other dial the same.
+    0 is surrounded on every side, 1 on none.${d.depthPick && d.depthPick.tied > 1 ? ` ${d.depthPick.tied} survivors are equally surrounded at the top; the survivor by depth is the first of them in the set's own order.` : ''}</p>
     <div class="scrollx" style="max-height:24rem;overflow-y:auto"><table><thead><tr>
       ${th('label', 'survivor', 'the setting, by the name the board gives it.')}
-      ${th('worst', 'deviance from centre, worst', 'how far its furthest dial sits from the middle of that dial\'s range in the rule: 0 in the middle, 1 on an edge.')}
-      ${th('mean', 'deviance from centre, average', 'the same, averaged over every dial the rule ranges.')}
+      ${th('deviance', 'deviance from centre', 'the share of its neighbouring settings that did not survive: 0 when every one survived, 1 when none did.')}
+      ${th('survived', 'neighbouring settings that survived', 'the settings one notch up or down on one dial that has an order, every other dial the same, on the board the rule was cut from. A notch off the end of what the sweep tried counts as one that did not survive; a dial the board holds at one value has no notch and is not counted.')}
       ${th('train', 'train $', 'its money on the training stretch, off the capture on Tune.')}
       ${th('test', 'test $', 'its money on the test stretch, off the stage 3 records.')}
       ${th('held', 'held $', 'its money on the held-back stretch, off the held set.')}
       ${th('reserve', 'reserve $', 'its money on the reserve stretch, off the reserve set, when there is one.')}
       ${th('clears', 'clears all four', 'whether it is in the money and ahead of all four comparisons at its own hold length on the held-back stretch.')}
       ${th('halfLife', 'half-life', 'the half-life History retrained its forecasts at, in months; a dash where none.')}
-    </tr></thead><tbody>${rows.map((x) => `<tr data-glpick="${esc(x.label)}" style="cursor:pointer${x.label === picked ? ';background:rgba(40,170,80,.18)' : ''}"${x.label === depthLabel ? ' title="the survivor by depth: nearest the middle of every range"' : ''}><td style="text-align:left">${esc(x.label)}${x.label === depthLabel ? ' <span class="muted">(by depth)</span>' : ''}</td><td>${x.depth ? Number(x.depth.worst).toFixed(2) : '—'}</td><td>${x.depth ? Number(x.depth.mean).toFixed(2) : '—'}</td>${m(x.train)}${m(x.test)}${m(x.held)}${m(x.reserve)}<td>${x.held && x.held.clears != null ? (x.held.clears ? '<b class="pos">yes</b>' : '<b class="neg">no</b>') : '—'}</td><td>${x.halfLife == null ? '—' : `${x.halfLife} months`}</td></tr>`).join('')}</tbody></table></div>`;
+    </tr></thead><tbody>${rows.map((x) => `<tr data-glpick="${esc(x.label)}" style="cursor:pointer${x.label === picked ? ';background:rgba(40,170,80,.18)' : ''}"${x.label === depthLabel ? ' title="the survivor by depth: the most surrounded by neighbouring settings that survived"' : ''}><td style="text-align:left">${esc(x.label)}${x.label === depthLabel ? ' <span class="muted">(by depth)</span>' : ''}</td><td>${x.depth && x.depth.deviance != null ? Number(x.depth.deviance).toFixed(2) : '—'}</td><td>${x.depth ? `${x.depth.survived} of ${x.depth.of}` : '—'}</td>${m(x.train)}${m(x.test)}${m(x.held)}${m(x.reserve)}<td>${x.held && x.held.clears != null ? (x.held.clears ? '<b class="pos">yes</b>' : '<b class="neg">no</b>') : '—'}</td><td>${x.halfLife == null ? '—' : `${x.halfLife} months`}</td></tr>`).join('')}</tbody></table></div>`;
 }
 // one survivor's own lines, by the name the board gives it: the pick above chooses it
 function glOneHtml(d, pick) {
@@ -4082,8 +4099,8 @@ function glStage4PanelHtml(list, chosen, d) {
     <h3 style="margin-top:0">Greenlight a Stage 4 record set</h3>
     <p class="note">The other way to write the decision down: from a reserve set that passed on Reserve, or from a held set that
       passed on Held on a layout that keeps no reserve, held alone. One of its
-      survivors is taken forward, chosen by how surrounded it is inside the rule (the setting nearest the middle of every
-      range, never the one with the most money) or named by you, and both are recorded. The frozen settings carry the
+      survivors is taken forward, chosen by how surrounded it is (the survivor with the most of its neighbouring settings
+      surviving too, never the one with the most money) or named by you, and both are recorded. The frozen settings carry the
       way its members agree exactly as the survivor does. Nothing here trades, and nothing built from it can be put to
       work until the live path speaks that agreement.</p>
     <div class="row" style="align-items:flex-end">
@@ -4094,9 +4111,9 @@ function glStage4PanelHtml(list, chosen, d) {
       · verdict ${d.gate ? `<b class="pos">stood (PASS, release ${esc(d.gate.release || '?')})</b>` : `<b class="neg">does not stand</b> - ${esc(d.standing || '')}`}${d.heldAlone && d.kind === 'held' ? ` · ${esc(d.heldAlone)}` : ''}${d.members ? ` · ${d.members} members as the stage 2 set trained them` : ''}${d.refused ? ` · <b class="warn">refused:</b> ${esc(d.refused)}` : ''}</p>
       ${glPictureHtml(d)}
       ${d.refused ? '' : `<div class="row" style="align-items:flex-end">
-        <label class="f" style="flex:1 1 auto;min-width:0" title="which survivor is taken forward. By depth is the setting nearest the middle of every range of the rule, chosen without looking at money; naming one records it as your pick.">one survivor<select id="gl4Pick">
-          <option value="depth">by depth - ${esc(depth ? depth.label : '?')} (worst distance ${glFix(depth ? depth.worst : null)})</option>
-          ${(d.survivors || []).map((x) => `<option value="${esc(x.label)}">${esc(x.label)} - distance ${glFix(x.worst)}${x.halfLife == null ? '' : ` - half-life ${x.halfLife} months${x.retrained == null ? '' : ` - retrained ${money(x.retrained)}`}`}${x.held == null ? '' : ` - held-back ${money(x.held)}`}${x.reserve == null ? '' : ` - reserve ${money(x.reserve)}`}</option>`).join('')}</select></label>
+        <label class="f" style="flex:1 1 auto;min-width:0" title="which survivor is taken forward. By depth is the survivor most surrounded by neighbouring settings that survived too, chosen without looking at money; naming one records it as your pick.">one survivor<select id="gl4Pick">
+          <option value="depth">by depth - ${esc(depth ? depth.label : '?')}${depth && depth.nearby ? ` (${depth.nearby.survived} of ${depth.nearby.of} neighbouring settings survived)` : ''}</option>
+          ${(d.survivors || []).map((x) => `<option value="${esc(x.label)}">${esc(x.label)}${x.nearby ? ` - ${x.nearby.survived} of ${x.nearby.of} neighbouring settings survived` : ''}${x.halfLife == null ? '' : ` - half-life ${x.halfLife} months${x.retrained == null ? '' : ` - retrained ${money(x.retrained)}`}`}${x.held == null ? '' : ` - held-back ${money(x.held)}`}${x.reserve == null ? '' : ` - reserve ${money(x.reserve)}`}</option>`).join('')}</select></label>
       </div>
       <div class="row" style="margin-top:.4rem;align-items:flex-end">
         <label class="f" style="flex:1" title="what you want to see on screen for this configuration">name<input id="gl4Name" style="width:100%" placeholder="e.g. XRP weekly, depth pick"></label>
