@@ -418,6 +418,10 @@ module.exports = {
       const keptRow = blendRows.find((r) => r.label === 'q1 active t41 · argmax auto 24/7');
       assert.strictEqual(keptRow.avgTest, 3, `the blend of the kept coins and shapes averages the hidden one in: ${keptRow.avgTest}`);
       assert.strictEqual(keptRow.coins, 2);
+      // and it carries the field's six boxes as Funnel dials (3.243.0): none
+      // on all six, since these settings were priced with no field
+      assert.deepStrictEqual(['fieldAgreeMin', 'fieldCertMin', 'fieldRule', 'fieldSignOnly', 'fieldSizeBy', 'fieldRungs'].map((d) => keptRow[d]),
+        [null, null, null, null, null, null], 'the blend of the kept coins and shapes does not carry the field\'s six boxes');
 
       // A FILTER THAT KEEPS NOTHING keeps nothing, and says so
       stages.setUnitFilter(id, { minAvgTest: '1000' });

@@ -2054,8 +2054,12 @@ module.exports = {
     assert.ok(wire.includes("const alsoNone = !!($('#fAlsoNone') && $('#fAlsoNone').checked);"), 'pressing add this range does not read the tick');
     assert.ok(wire.includes("...(alsoNone ? { also: ['none'] } : {}) };"), 'the tick is not written into the rule as "or none"');
     assert.ok(wire.includes("chose: `${lo} to ${hi}${alsoNone ? ' or none' : ''}`"), 'the walk\'s note does not say none was kept');
-    assert.ok(wire.includes("if (Number.isFinite(v) ? (!onlyNone && (lo === '' || v >= Number(lo)) && (hi === '' || v <= Number(hi))) : (String(val) === 'none' && none)) kept += n;"),
+    assert.ok(wire.includes(": Number.isFinite(v) ? (!onlyNone && (lo === '' || v >= Number(lo)) && (hi === '' || v <= Number(hi))) : (String(val) === 'none' && none)) kept += n;"),
       'the live count does not follow the tick, or it still counts every number when both boxes are clear (3.62.0)');
+    // a field minimum left blank is lower than any bar (3.243.0): counted only
+    // while the lower box is empty, on the count line and the preview alike
+    assert.ok(wire.includes("if (String(val) === 'no bar' ? (!onlyNone && lo === '')"), 'the live count does not keep no bar only while the lower box is empty (3.243.0)');
+    assert.ok(step.includes("if (String(val) === 'no bar') return !onlyNone && lo === '';"), 'the count under the boxes does not keep no bar only while the lower box is empty (3.243.0)');
     assert.ok(wire.includes("const an = $('#fAlsoNone');\n  if (an) an.onchange = countRange;"), 'ticking the box does not move the count');
     // and the rule underneath really keeps them
     const S4 = require('../lib/funnelset');
@@ -4975,4 +4979,46 @@ module.exports.theWorthWalkingBoxesApplyOnThePressAndRepaintInPlace = function (
   assert.ok(start.includes('auto: false'), 'auto-apply settings does not start unticked');
   const help = src('public/help-content.js');
   assert.ok(help.includes('      fHoldApply: {') && help.includes('      fHoldAuto: {'), 'the two new controls have no help');
+};
+
+// THE FIELD'S TWO MINIMUMS ARE ORDERED DIALS AND NO BAR SITS BELOW EVERY
+// NUMBER (3.243.0): first on the axis, inside a range with no lower end,
+// outside one that has one, and a region that reaches it keeps it in its rule
+module.exports.theFieldsSixBoxesAreFunnelDialsAndNoBarSitsBelowEveryNumber = function () {
+  const F = require('../lib/funnel');
+  const P = require('../lib/plateau');
+  assert.ok(F.ORDERED_DIALS.includes('fieldAgreeMin') && F.ORDERED_DIALS.includes('fieldCertMin'), 'the two minimums are not ordered dials');
+  for (const d of ['fieldRule', 'fieldSignOnly', 'fieldSizeBy', 'fieldRungs']) assert.ok(F.CATEGORICAL_DIALS.includes(d), `${d} is not a plain choice`);
+  assert.deepStrictEqual(F.sortedValues('fieldAgreeMin', ['50', 'none', 'no bar', '0', '20']), ['no bar', '0', '20', '50', 'none'],
+    'no bar is not first on the axis, or none is not last');
+  assert.strictEqual(FS4.inRange('no bar', { min: null, max: 50 }), true, 'a range with no lower end drops no bar');
+  assert.strictEqual(FS4.inRange('no bar', { min: 20, max: 50 }), false, 'a range with a lower end keeps no bar');
+  assert.strictEqual(FS4.inRange('no bar', { min: 20, max: 50, also: ['no bar'] }), true, 'no bar kept beside a range is dropped');
+  assert.strictEqual(P.axisIndex([40, 20, 'no bar', 60].map((a) => ({ fieldAgreeMin: a })), ['fieldAgreeMin']).fieldAgreeMin.get('no bar'), 0,
+    'no bar is not the first notch on the axis a region walks');
+  const rows = [];
+  for (const a of ['no bar', 20, 40, 60]) rows.push({ label: `a${a}`, fieldAgreeMin: a, gate: 'active', pnl: a === 60 ? -1 : 5, trades: 3 });
+  const r = P.widestRegion(rows, { minTrades: 0, orderedAxes: ['fieldAgreeMin'], categoricalAxes: ['gate'] });
+  assert.strictEqual(r.size, 3, 'no bar is not the notch next to the lowest number');
+  assert.deepStrictEqual(r.bounds, { fieldAgreeMin: { min: 20, max: 40, also: ['no bar'] } });
+  const rule = FS4.regionRule(r, { ordered: ['fieldAgreeMin'], categorical: ['gate'] });
+  assert.deepStrictEqual(rule.ranges, { fieldAgreeMin: { min: 20, max: 40, also: ['no bar'] } });
+  assert.strictEqual(FS4.applyRule(rows, rule).length, 3, 'the region\'s rule does not keep every one of its members, no bar included');
+};
+
+// EVERY FUNNEL ROW CARRIES THE SIX (3.243.0): a unit row from the gate its
+// record was priced under, a blend row from its own gate, laid on in place
+module.exports.aUnitRowAndABlendRowCarryTheFieldsSixBoxes = async function () {
+  const six = ['fieldAgreeMin', 'fieldCertMin', 'fieldRule', 'fieldSignOnly', 'fieldSizeBy', 'fieldRungs'];
+  const gate = { read: 'certainty', agreeMin: 20, certMin: null, rule: 'both', signOnly: false, rungs: '100:1', silent: 1 };
+  const row = stages.boardRowOf({ si: 1, label: 'x', pnl: 1, trades: 2, field: { ...gate, test: { n: 1 } } }, 'u');
+  assert.deepStrictEqual(six.map((d) => row[d]), [20, 'no bar', null, false, 'certainty', '100:1'], 'a unit row does not carry the gate as six dials');
+  assert.deepStrictEqual(row.field, { n: 1 }, 'the test totals moved off the row Table 3.C reads them from');
+  const bare = stages.boardRowOf({ si: 2, label: 'y', pnl: 1 }, 'u');
+  assert.deepStrictEqual(six.map((d) => bare[d]), [null, null, null, null, null, null], 'a row with no field does not read none on all six');
+  const t = { coins: [], ranked: [{ si: 1, label: 'a', field: { ...gate, signOnly: true } }, { si: 2, label: 'b', field: null }] };
+  const b = await stages.funnelBoard('no-such-set-for-the-six', t, 'all');
+  assert.strictEqual(b.all, t.ranked, 'the blend rows were copied, which is what took the service down out of memory');
+  assert.deepStrictEqual(six.map((d) => b.all[0][d]), [null, null, null, true, 'certainty', '100:1'], 'a blend row does not carry its gate as six dials');
+  assert.deepStrictEqual(six.map((d) => b.all[1][d]), [null, null, null, null, null, null]);
 };

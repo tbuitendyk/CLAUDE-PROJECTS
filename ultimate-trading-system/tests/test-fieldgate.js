@@ -227,8 +227,30 @@ function theRichFiguresUnderTheGateAreTheTradesAtTheirSizes() {
   assert.strictEqual(got.field.at1, G.priceGated(calls, size, sim).at1, 'the placed trades at size 1 stay what they were');
 }
 
+// THE GATE AS SIX FUNNEL DIALS (3.243.0, owner order 2026-09-24): a blank
+// minimum is no bar; a box that changes nothing on the setting reads none
+function theGateIsSixFunnelDialsAndABoxThatChangesNothingReadsNone() {
+  const none = { fieldAgreeMin: null, fieldCertMin: null, fieldRule: null, fieldSignOnly: null, fieldSizeBy: null, fieldRungs: null };
+  assert.deepStrictEqual(G.funnelDialsOf(null), none, 'a setting with no field reads none on all six');
+  const gate = (o) => G.gateRecord(G.checkGate({ read: 'agreement', agreeMin: '', certMin: '', rule: 'both', rungs: '20:0.5,100:2', silent: 1, ...o }));
+  assert.deepStrictEqual(G.funnelDialsOf(gate({ agreeMin: '20' })),
+    { fieldAgreeMin: 20, fieldCertMin: 'no bar', fieldRule: null, fieldSignOnly: false, fieldSizeBy: 'agreement', fieldRungs: '20:0.5,100:2' },
+    'one bar: the blank minimum is no bar, and must pass has nothing to combine');
+  assert.deepStrictEqual(G.funnelDialsOf(gate({ read: 'certainty', agreeMin: '20', certMin: '40', rule: 'either' })),
+    { fieldAgreeMin: 20, fieldCertMin: 40, fieldRule: 'either', fieldSignOnly: false, fieldSizeBy: 'certainty', fieldRungs: '20:0.5,100:2' },
+    'two bars: must pass is read');
+  assert.deepStrictEqual(G.funnelDialsOf(gate({ agreeMin: '20', certMin: '40', rule: 'either', signOnly: true })),
+    { fieldAgreeMin: null, fieldCertMin: null, fieldRule: null, fieldSignOnly: true, fieldSizeBy: 'agreement', fieldRungs: '20:0.5,100:2' },
+    'sign only ignores both minimums, so they and must pass read none; read and size rungs still size the trade');
+  assert.deepStrictEqual(G.funnelDialsOf(gate({})),
+    { fieldAgreeMin: 'no bar', fieldCertMin: 'no bar', fieldRule: null, fieldSignOnly: false, fieldSizeBy: 'agreement', fieldRungs: '20:0.5,100:2' },
+    'no bar on either');
+  assert.strictEqual(G.funnelDialsOf(gate({ agreeMin: '0' })).fieldAgreeMin, 0, 'a bar of 0 is its own value, not no bar');
+}
+
 module.exports = {
   theRungsAreReadInWordsAndClimbTo100,
+  theGateIsSixFunnelDialsAndABoxThatChangesNothingReadsNone,
   theGateBlocksSizesAndLetsSilenceThrough,
   theTwoMinimumsCombineByBothOrEither,
   theMoneyIsTheSumOfEachMultipleTimesItsGroup,
