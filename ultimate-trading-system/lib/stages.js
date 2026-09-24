@@ -9823,12 +9823,18 @@ async function pictureOf(doc) {
   // sizing too. null where there is no figure, or where that step was not taken.
   const S4 = require('./funnelset');
   const ruleSurvivor = new Map((rule.survivors || []).map((sv) => [sv.label, sv]));
-  const capOf = (label, w) => {
-    if (w === 'reserve' && !(cap && cap.reserve && cap.reserve.captured)) return null;
-    const sv = cap ? (cap.survivors || []).find((x) => x.label === label) : null;
+  const capOf = (label, w, c = cap) => {
+    if (w === 'reserve' && !(c && c.reserve && c.reserve.captured)) return null;
+    const sv = c ? (c.survivors || []).find((x) => x.label === label) : null;
     const list = sv && sv.entries ? sv.entries[w] : null;
     return Array.isArray(list) ? { money: list.reduce((a, e) => a + (Number(e.usd) || 0), 0), trades: list.length } : null;
   };
+  // BEFORE HISTORY OFF THE SET HISTORY STARTED FROM (3.247.2, owner order
+  // 2026-09-24: "give the ACTUAL $ and trades ... same for all the columns"):
+  // a set History built captures the retrained forecasts' trades; the same
+  // survivor's trades before the retraining are in the capture of the set it
+  // was built from, when that set has one of today's shape
+  const unretrained = rule.derived ? readCapture(rule.derived.from) : null;
   const stepsOf = (L, rr, t) => {
     const history = !!rule.derived && (ruleSurvivor.get(L) || {}).halfLife != null;   // History retrained this row's forecasts
     const got = {};
@@ -9837,13 +9843,14 @@ async function pictureOf(doc) {
       let before;
       if (k === 'test') before = rr ? { money: rr.avgTest ?? null, trades: rr.testTrades ?? null } : null;
       else if (k === 'held') before = rr && rr.avgHold != null ? { money: rr.avgHold, trades: rr.avgTrades ?? null } : null;
-      else before = history ? null : captured;
+      else before = history ? capOf(L, w, unretrained) : captured;
       const tw = t && t.windows ? t.windows[k] : null;
       got[k] = {
         beforeHistory: before,
         afterHistory: history ? captured : null,
         afterStop: t && t.stop != null && tw ? { money: tw.stopUsd, trades: tw.priced } : null,
-        afterSizing: t && t.sizing && tw ? { money: tw.tunedUsd, trades: tw.priced, clips: tw.clipsPerTrade } : null,
+        // the trades the sizing takes: a multiplier of 0 leaves a trade out (3.247.2, owner: "the conviction sizing reduced the number of trades")
+        afterSizing: t && t.sizing && tw ? { money: tw.tunedUsd, trades: tw.taken, clips: tw.clipsPerTrade } : null,
       };
     }
     return got;
@@ -10721,7 +10728,7 @@ async function tunedOfRule(rule, labels) {
     const breakout = (sv.entry || 'breakout') !== 'market';
     for (const [w, key] of [['train', 'train'], ['test', 'test'], ['held', 'hold'], ['reserve', 'reserve']]) {
       const entries = sv.entries[key] || [];
-      let flat = 0; let stop = 0; let tuned = 0; let clips = 0; let priced = 0; let stopped = 0;
+      let flat = 0; let stop = 0; let tuned = 0; let clips = 0; let priced = 0; let stopped = 0; let taken = 0;
       for (const e of entries) {
         const size = Number(e.size);
         let netStandard;
@@ -10737,13 +10744,15 @@ async function tunedOfRule(rule, labels) {
         if (hit) stopped++;
         const net = hit ? -S - 2 * fee : netStandard;
         const mult = sz ? multFor(sz.ladder, e.agree) : 1;
+        // a multiplier of 0 leaves the trade out: it is not taken under the sizing (3.247.2)
+        if (mult > 0) taken++;
         clips += size * mult;
         flat += netStandard * clip * size;             // no tuning at all: each trade at its own size
         stop += net * clip * size;                     // the stop applied, each trade still at its own size
         tuned += net * clip * size * mult;             // and the sizing multiplying that
       }
       windows[w] = {
-        trades: entries.length, priced, unpriced: entries.length - priced, stopped,
+        trades: entries.length, priced, unpriced: entries.length - priced, stopped, taken,
         flatUsd: Math.round(flat * 100) / 100,
         stopUsd: Math.round(stop * 100) / 100,
         tunedUsd: Math.round(tuned * 100) / 100,
