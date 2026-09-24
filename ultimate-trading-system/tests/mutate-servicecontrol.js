@@ -250,7 +250,7 @@ const GUARDS = [
   // of a choice prints, and a search pattern with a quote in it
   [path.join(ROOT, 'lib', 'screencontrols.js'), "  if (arrow && S[start + arrow[0].length] !== '{') {", '  if (false) {',
     'everyHelperAScreenCallsReachesItsReader', 'an arrow helper written as one expression is cut at the { of its first ${...} again, and the Open / Put away button goes back to being on no list'],
-  [path.join(ROOT, 'tests', 'sweep-words.js'), '      if (!inTag) for (const w of choiceWords(code)) out += `\n${w}\n`;', '',
+  [path.join(ROOT, 'tests', 'sweep-words.js'), '      if (!inTag) for (const w of choiceWords(code)) out += `\\n${w}\\n`;', '',
     'theWordListSeesEveryVisibleLabel', 'a plain word one side of a choice prints is dropped again, so Open, Put away, Pause and Stop are on the screen and on no list'],
   [path.join(ROOT, 'tests', 'sweep-words.js'), '    { const j = endOfRegex(src, i); if (j > 0) { i = j; continue; } }', '',
     'theListIsNotStale', 'a search pattern with a quote in it is read as a string again, and everything after the table header helper is read as page text'],
