@@ -2420,6 +2420,15 @@ const GUARDS = [
     'thePictureIsReadOffTheSetsAndPricesNothing', 'no survivor says how far it sits from the middle of the rule'],
   [path.join(ROOT, 'public', 'construct.js'), '    <div class="gl-rows"></div>\n    <div class="gl-one"></div>', '    <div class="gl-one"></div>',
     'thePictureIsReadOffTheSetsAndPricesNothing', 'the table of every survivor has nowhere to be drawn'],
+  // 3.247.2/3.247.3: each step of the one survivor over its own trades
+  [path.join(ROOT, 'lib', 'stages.js'), '        if (mult > 0) taken++;', '        taken++;',
+    'theOneSurvivorsStepsAreEachOverTheirOwnTrades', 'a trade the sizing leaves out is counted as taken'],
+  [path.join(ROOT, 'lib', 'stages.js'), '        afterSizing: t && t.sizing && tw ? { money: tw.tunedUsd, trades: tw.taken, clips: tw.clipsPerTrade } : null,', '        afterSizing: t && t.sizing && tw ? { money: tw.tunedUsd, trades: tw.priced, clips: tw.clipsPerTrade } : null,',
+    'theOneSurvivorsStepsAreEachOverTheirOwnTrades', 'after the sizing, the brackets count every priced trade whatever its multiplier'],
+  [path.join(ROOT, 'lib', 'stages.js'), '      else before = history ? capOf(L, w, unretrained) : captured;', '      else before = history ? null : captured;',
+    'theOneSurvivorsStepsAreEachOverTheirOwnTrades', 'train before History is a dash though the set History started from has a capture'],
+  [path.join(ROOT, 'lib', 'stages.js'), "      const tw = t && t.windows && (w !== 'reserve' || (cap && cap.reserve && cap.reserve.captured)) ? t.windows[k] : null;", '      const tw = t && t.windows ? t.windows[k] : null;',
+    'theOneSurvivorsStepsAreEachOverTheirOwnTrades', 'a window the capture does not hold reads $0.00 after a tuning'],
 ];
 
 const only = process.argv[2] || '';

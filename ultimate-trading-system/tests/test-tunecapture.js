@@ -1336,6 +1336,80 @@ module.exports = {
     }
   },
 
+  // THE ONE SURVIVOR'S STEPS, EACH OVER ITS OWN TRADES (3.247.2 and 3.247.3,
+  // owner 2026-09-24: "the numbers in parenthesis match between AFTER HISTORY
+  // and AFTER CONVICTION SIZING which doesn't make sense as the conviction
+  // sizing reduced the number of trades", and "give the ACTUAL $ and trades ...
+  // same for all the columns"). After the sizing, the trades a multiplier above
+  // zero keeps; before History, for a survivor History retrained, its trades in
+  // the capture of the set History started from; and a window the capture does
+  // not hold is a dash after a tuning too, never $0.00.
+  async theOneSurvivorsStepsAreEachOverTheirOwnTrades() {
+    const HLmod = require('../lib/halflife');
+    const zlib = require('zlib');
+    const { multFor } = require('../lib/convictionsweep');
+    const realRead = HLmod.readTable;
+    // the first row of the table is won by the 12-month column, so History retrains one survivor
+    HLmod.readTable = (rows, columns) => { const out = realRead(rows, columns); if (out.rows.length) out.rows[0].best = 'h12'; return out; };
+    let c = null;
+    try {
+      c = await chain('tune steps test');
+      await captured(c);
+      const rule = c.cut;
+      const members = stages.getSet(rule.id).capture.members;
+      const depth = stages.getSet(rule.id).capture.pick.label;
+      // sized only when every member agrees: every other trade is left out
+      const top = Array.from({ length: members }, (_, i) => (i === members - 1 ? 1 : 0));
+      stages.setSizingChoice(rule.id, { pick: 'depth', on: true, why: 'only when every member agrees', ladder: top });
+      const cap = stages.readCapture(rule.id);
+      const sv = cap.survivors.find((x) => x.label === depth);
+      assert.ok(sv.entries.train.some((e) => multFor(top, e.agree) === 0), 'the fixture holds a trade the sizing leaves out, or the count below proves nothing');
+      const tw = (await stages.tunedOfRule(stages.getSet(rule.id), [depth]))[depth].windows;
+      const st = (await stages.pictureOf(stages.getSet(rule.id))).survivors.find((x) => x.label === depth).steps;
+      for (const [w, k] of [['train', 'train'], ['test', 'test'], ['held', 'hold'], ['reserve', 'reserve']]) {
+        const keeps = sv.entries[k].filter((e) => multFor(top, e.agree) > 0).length;
+        assert.strictEqual(tw[w].taken, keeps, `${w}: the trades a multiplier above zero keeps`);
+        assert.strictEqual(st[w].afterSizing.trades, keeps, `${w}: the one survivor shows the trades the sizing takes`);
+        assert.strictEqual(st[w].afterStop, null, `${w}: no stop on record, no figure after a stop`);
+      }
+      const sum = (es) => ({ money: es.reduce((a, e) => a + e.usd, 0), trades: es.length });
+      assert.deepStrictEqual(st.train.beforeHistory, sum(sv.entries.train), 'no History on this set: train before History is its own capture');
+      // a window the capture does not hold is a dash after a tuning too
+      const file = stages.captureFile(rule.id);
+      const bytes = fs.readFileSync(file);
+      try {
+        fs.writeFileSync(file, zlib.gzipSync(Buffer.from(JSON.stringify({ ...cap, reserve: null }))));
+        const r2 = (await stages.pictureOf(stages.getSet(rule.id))).survivors.find((x) => x.label === depth).steps.reserve;
+        assert.deepStrictEqual([r2.beforeHistory, r2.afterHistory, r2.afterStop, r2.afterSizing], [null, null, null, null], 'no reserve captured: a dash in every column of the reserve row');
+      } finally { fs.writeFileSync(file, bytes); }
+      // before History, for a survivor History retrained: its trades in the capture of the set History started from
+      stages.halfLifeStart(rule.id, { months: [12] });
+      await settle(() => stages.halfLifeStatus(rule.id), 'the half-life run');
+      const run = stages.getSet(rule.id).halflife[0];
+      const hl = stages.buildHalfLifeSet(rule.id, { runId: run.id, name: 'tune steps test half-life', keep: 'cut' });
+      c.made.push(hl.id);
+      stages.tuneCaptureStart(hl.id);
+      await settle(() => stages.tuneCaptureStatus(hl.id), 'the half-life set\'s capture');
+      const hlDoc = stages.getSet(hl.id);
+      const retrained = hlDoc.survivors.find((x) => x.halfLife != null);
+      assert.ok(retrained, 'a survivor History retrained');
+      const unretrained = cap.survivors.find((x) => x.label === retrained.label);
+      const again = stages.readCapture(hl.id).survivors.find((x) => x.label === retrained.label);
+      const hst = (await stages.pictureOf(hlDoc)).survivors.find((x) => x.label === retrained.label).steps;
+      assert.deepStrictEqual(hst.train.beforeHistory, sum(unretrained.entries.train), 'train before History: the set History started from, off its own capture');
+      assert.deepStrictEqual(hst.train.afterHistory, sum(again.entries.train), 'train after History: the retrained forecasts, off the half-life set\'s own capture');
+      // and a dash when the set History started from has no capture
+      fs.renameSync(file, `${file}.aside`);
+      try {
+        const hst2 = (await stages.pictureOf(stages.getSet(hl.id))).survivors.find((x) => x.label === retrained.label).steps;
+        assert.strictEqual(hst2.train.beforeHistory, null, 'no capture on the set History started from: a dash');
+      } finally { fs.renameSync(`${file}.aside`, file); }
+    } finally {
+      HLmod.readTable = realRead;
+      if (c) c.cleanup();
+    }
+  },
+
   // THE SAVE ON TUNE (3.247.0): its own panel after the conviction sizing; the
   // name box and its two ticks one control, bottom-aligned (RULE FOUR-A); the
   // press in a row of its own; every control with a help entry; the route served
