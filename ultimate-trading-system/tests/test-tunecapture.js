@@ -1129,6 +1129,66 @@ module.exports = {
       HLmod.readTable = realRead;
     }
   },
+  // A COMPLETE HALF-LIFE SET IS BUILT AGAIN AS THE COMPLETE (3.245.0): opened
+  // when flagged, its run is done again and it keeps every row with a best,
+  // the rows the unweighted column won carrying no half-life -- never the
+  // cut's rows under the complete's name
+  async aCompleteHalfLifeSetIsRebuiltAsTheComplete() {
+    const fset = require('../lib/fieldset');
+    const HLmod = require('../lib/halflife');
+    // a sized stage 3 set, as the family test's: sets cut from it under the
+    // release before every trade was sized are flagged for their survivors
+    const field = fabricatedField();
+    let c = null;
+    const aside = [];
+    // on every table read here the first row is won by the 12-month column and
+    // the second by the unweighted one, so the cut and the complete differ
+    const realRead = HLmod.readTable;
+    HLmod.readTable = (rows, columns) => {
+      const out = realRead(rows, columns);
+      if (out.rows.length > 1) { out.rows[0].best = 'h12'; out.rows[1].best = HLmod.NONE; }
+      return out;
+    };
+    try {
+      c = await chain('tune rebuild complete test', { fieldId: field.id, fieldRead: 'agreement', fieldAgreeMin: '30', fieldRungs: '50:1,100:2', fieldSilent: '0.5' });
+      const rule = c.cut;
+      stages.halfLifeStart(rule.id, { months: [12] });
+      await settle(() => stages.halfLifeStatus(rule.id), 'the half-life run');
+      const run1 = stages.getSet(rule.id).halflife[0];
+      assert.ok(run1.rows.length > 1, 'the fabricated table needs two rows');
+      const all = stages.buildHalfLifeSet(rule.id, { runId: run1.id, name: 'tune rebuild complete test half-life', keep: 'complete' });
+      c.made.push(all.id);
+      const family = [rule.id, all.id];
+      aside.push(...family);
+      for (const id of family) {
+        const file = path.join(SETS_DIR, `${id}.json`);
+        const d = JSON.parse(fs.readFileSync(file, 'utf8'));
+        d.release = '3.234.6';
+        fs.writeFileSync(file, JSON.stringify(d));
+        assert.ok(((stages.rebuildOf(d) || {}).reasons || []).some((r) => r.key === 'stage4'), `${d.name} is flagged for its survivors`);
+      }
+      assert.deepStrictEqual(stages.rebuildChainOf(stages.getSet(all.id)).map((d) => d.id), family, 'opening the complete takes in the rule it was saved from');
+      assert.ok(stages.rebuildStart(all.id).running, 'the rebuild does not start');
+      await stages.rebuildWait();
+      assert.strictEqual((stages.rebuildOf(stages.getSet(all.id)) || {}).failed || null, null, 'the complete was not built again');
+      const x = stages.getSet(all.id);
+      const table = stages.getSet(rule.id).halflife[0];
+      // the run done again is the rule's first and so takes the first run's name; it is newer
+      assert.ok(x.derived.run === table.id && table.at > run1.at && x.derived.at > run1.at, 'the complete is not built from the run done again');
+      assert.strictEqual(x.derived.complete, true, 'the complete was rebuilt as the cut');
+      assert.deepStrictEqual(x.survivors.map((sv) => sv.label), table.rows.filter((r) => r.best).map((r) => r.label), 'the complete rebuilt keeps other rows than every row with a best');
+      const second = x.survivors.find((sv) => sv.label === table.rows[1].label);
+      assert.deepStrictEqual({ halfLife: second.halfLife, unweighted: second.unweighted }, { halfLife: null, unweighted: true }, 'the row the unweighted column won carries a half-life after the rebuild');
+      assert.ok(/each record at its best/.test(x.ruleSentence), x.ruleSentence);
+    } finally {
+      for (const f of (() => { try { return fs.readdirSync(SETS_DIR); } catch (_) { return []; } })()) {
+        if (f.endsWith('.before-rebuild') && aside.some((id) => f.startsWith(id))) { try { fs.rmSync(path.join(SETS_DIR, f), { force: true }); } catch (_) { /* none */ } }
+      }
+      if (c) c.cleanup();
+      try { fset.deleteField(field.id, field.id); } catch (_) { /* never written */ }
+      HLmod.readTable = realRead;
+    }
+  },
   // BREAKOUT TRADES TAKE NO PROTECTIVE STOP YET, AND THE CONVICTION ROWS TAKE
   // YOUR NUMBERS (3.235.0, owner orders 2026-09-23: "when the tuning target is
   // selected, for a record set that has breakout trades ... disables the tune

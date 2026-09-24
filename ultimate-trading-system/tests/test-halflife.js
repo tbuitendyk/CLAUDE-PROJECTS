@@ -436,6 +436,90 @@ module.exports = {
     } finally { c.cleanup(); }
   },
 
+  // THE COMPLETE (3.245.0, owner order 2026-09-24): every row at its best. A
+  // row the unweighted column won is kept, carrying no half-life, and is
+  // priced and captured from the members' saved models -- to the cent of the
+  // table's own unweighted column -- while the cut from the same table leaves
+  // it out. The held press prices it with the rest and says so.
+  async theCompleteKeepsEveryRowAtItsBestAndPricesTheUnweightedOnesFromTheSavedModels() {
+    const c = await chain('half-life complete test');
+    try {
+      await gated(c);
+      const { block } = await ran(c, [12, 48]);
+      // one row made the unweighted column's in the stored table, so the
+      // complete and the cut must differ by exactly that row
+      const sourceDoc = stages.getSet(c.cut.id);
+      const storedRows = sourceDoc.halflife.find((r) => r.id === block.id).rows;
+      const victim = storedRows.find((r) => r.best && r.best !== 'none') || storedRows.find((r) => r.best);
+      assert.ok(victim, 'the fabricated table has no row with a best');
+      victim.best = 'none';
+      fs.writeFileSync(path.join(ROOT, 'data', 'stagesets', `${c.cut.id}.json`), JSON.stringify(sourceDoc));
+      const withBest = storedRows.filter((r) => r.best);
+      let threw = null;
+      try { stages.buildHalfLifeSet(c.cut.id, { runId: block.id, name: 'half-life complete test, odd', keep: 'most' }); } catch (e) { threw = e.message; }
+      assert.ok(/is not a half-life save — the cut or the complete/.test(threw), threw);
+      const all = stages.buildHalfLifeSet(c.cut.id, { runId: block.id, name: 'half-life complete test, complete', keep: 'complete' });
+      c.made.push(all.id);
+      assert.deepStrictEqual({ keep: all.keep, survivors: all.survivors, of: all.of, unweighted: all.unweighted }, { keep: 'complete', survivors: withBest.length, of: storedRows.length, unweighted: withBest.filter((r) => r.best === 'none').length });
+      const d = stages.getSet(all.id);
+      assert.deepStrictEqual(d.survivors.map((sv) => sv.label), withBest.map((r) => r.label), 'every row with a best, in the table\'s order');
+      const mine = d.survivors.find((sv) => sv.label === victim.label);
+      assert.deepStrictEqual({ halfLife: mine.halfLife, unweighted: mine.unweighted, judge: mine.money.judge }, { halfLife: null, unweighted: true, judge: victim.money.none }, 'the row the unweighted column won carries no half-life, and its best is the unweighted money');
+      assert.ok(d.survivors.filter((sv) => sv.label !== victim.label && withBest.find((r) => r.label === sv.label).best !== 'none').every((sv) => Number.isFinite(sv.halfLife) && !sv.unweighted), 'a row a half-life won carries it, as on the cut');
+      assert.deepStrictEqual({ kind: d.derived.kind, complete: d.derived.complete }, { kind: 'halflife', complete: true });
+      assert.ok(/each record at its best/.test(d.ruleSentence), d.ruleSentence);
+      const cut = stages.buildHalfLifeSet(c.cut.id, { runId: block.id, name: 'half-life complete test, cut' });
+      c.made.push(cut.id);
+      assert.deepStrictEqual({ keep: cut.keep, complete: stages.getSet(cut.id).derived.complete }, { keep: 'cut', complete: false }, 'the cut is the default, and says so');
+      assert.ok(!stages.getSet(cut.id).survivors.some((sv) => sv.label === victim.label), 'the cut from the same table keeps the unweighted row');
+      const dry = await stages.halfLifeDry(c.cut.id);
+      assert.deepStrictEqual([dry.built.find((b) => b.id === all.id).complete, dry.built.find((b) => b.id === cut.id).complete], [true, false], 'the source does not say which save each set is');
+      // THE HELD PRESS prices every record, the unweighted one from the saved models
+      stages.judgeStart(all.id, 'held', { barPct: 100 });
+      await settle(() => stages.judgeStatus(all.id, 'held'), 'the held read of the complete set');
+      const hs = stages.judgeSetsOf(all.id, 'held')[0];
+      assert.ok(hs, 'a held set of the complete set was written');
+      c.made.push(hs.id);
+      assert.strictEqual(hs.block.priced.length, d.survivors.length, 'every record priced, the unweighted one with the rest');
+      assert.ok(/and the members' saved models for the records no half-life improved/.test(hs.block.forecasts), hs.block.forecasts);
+      // THE CAPTURE reads the saved models for the unweighted row: its test
+      // entries reprice the table's own unweighted money to the cent
+      stages.tuneCaptureStart(all.id);
+      await settle(() => stages.tuneCaptureStatus(all.id), 'the capture of the complete set');
+      const cap = stages.readCapture(all.id);
+      assert.strictEqual(cap.survivors.length, d.survivors.length, 'every record captured');
+      const got = cap.survivors.find((sv) => sv.label === victim.label);
+      assert.strictEqual(got.halfLife, null, 'the capture carries no half-life for the unweighted row');
+      assert.strictEqual(cents(got.entries.test.reduce((a, e) => a + e.usd, 0)), cents(victim.money.none), 'the unweighted row\'s captured test entries do not reprice the table\'s unweighted money');
+      for (const sv of cap.survivors.filter((x) => x.label !== victim.label)) {
+        const r = storedRows.find((x) => x.label === sv.label);
+        assert.strictEqual(cents(sv.entries.test.reduce((a, e) => a + e.usd, 0)), cents(r.money[r.best]), `${sv.label}: the captured test entries reprice the table's own money at its best`);
+      }
+    } finally { c.cleanup(); }
+  },
+
+  // THE TWO SAVES ON HISTORY (3.245.0): a name box and a button each, the
+  // buttons in rows of their own, each press sending its own kind; and a row
+  // with no half-life never reaches the live path as a half-life of 0 days
+  theHistoryScreenOffersTheCutAndTheCompleteEachWithItsOwnName() {
+    const page = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const row = page.slice(page.indexOf('function hHlBuildRowHtml(run, built) {'), page.indexOf('function hHalfLifePanelHtml('));
+    for (const [id, label] of [['hHlName', 'name of the cut'], ['hHlNameAll', 'name of the complete']]) {
+      assert.ok(new RegExp(`>${label}<input id="${id}"`).test(row), `the box ${id} is not labelled ${label}`);
+    }
+    for (const [id, label] of [['hHlBuild', 'Save the cut'], ['hHlBuildAll', 'Save the complete']]) {
+      assert.ok(new RegExp(`</div><div class="row"><button id="${id}" class="pri"[^>]*>${label}</button>`).test(row), `${label} is not a button in a row of its own`);
+    }
+    const wire = page.slice(page.indexOf('const hlSave = (btnId, nameId, keep) => {'), page.indexOf('// ---- THE PER-TRADE CAPTURE OF A STAGE 4 RECORD SET'));
+    assert.ok(wire.includes("{ runId: run.id, name, keep }"), 'the press does not say which save it is');
+    assert.ok(wire.includes("hlSave('hHlBuild', 'hHlName', 'cut');") && wire.includes("hlSave('hHlBuildAll', 'hHlNameAll', 'complete');"), 'the two buttons are not wired to their own boxes and kinds');
+    const help = fs.readFileSync(path.join(ROOT, 'public', 'help-content.js'), 'utf8');
+    assert.ok(help.includes('      hHlNameAll: {') && help.includes('      hHlBuildAll: {'), 'the complete\'s box and button have no help');
+    const lib = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    assert.ok(lib.includes('halfLife: hl && hl.halfLife != null ? HL.daysOfMonths(hl.halfLife) : null, halfLifeMonths: hl && hl.halfLife != null ? hl.halfLife : null },'),
+      'a row with no half-life reaches the live path as a half-life of 0 days');
+  },
+
   // THE HALF-LIFE TRAVELS: the shared vocabulary accepts it on a stage-engine
   // configuration and refuses it elsewhere; the live path's training weights
   // carry the same age factor the History run multiplied in; the anatomy and

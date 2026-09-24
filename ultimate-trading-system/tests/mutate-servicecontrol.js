@@ -2360,6 +2360,23 @@ const GUARDS = [
     'theCoinBoxIsDrawnWhenAReadFailsOrWaits', 'the page keeps asking for all units together on one coin and shape and draws an empty reply'],
   [path.join(ROOT, 'public', 'construct.js'), '${units.length > 1 ? `<option value="all"', '${true ? `<option value="all"',
     'theScreenSendsTheUnitItIsWalkingOnToTheReadTheAcrossAndTheCut', 'all units together is offered on one coin and shape again'],
+  // 3.245.0: History saves the half-life table two ways, the cut and the complete
+  [path.join(ROOT, 'lib', 'stages.js'), '  return (rows || []).filter((r) => r.best && (complete || r.best !== HL.NONE)).map((r) => {', '  return (rows || []).filter((r) => r.best && r.best !== HL.NONE).map((r) => {',
+    'theCompleteKeepsEveryRowAtItsBestAndPricesTheUnweightedOnesFromTheSavedModels', 'the complete keeps only the rows a half-life improved, the cut under another name'],
+  [path.join(ROOT, 'lib', 'stages.js'), '      si: r.si, label: r.label, halfLife: none ? null : Number(String(r.best).slice(1)), ...(none ? { unweighted: true } : {}),', '      si: r.si, label: r.label, halfLife: none ? null : Number(String(r.best).slice(1)),',
+    'theCompleteKeepsEveryRowAtItsBestAndPricesTheUnweightedOnesFromTheSavedModels', 'an unweighted row is not marked, so Held and Tune refuse the complete set'],
+  [path.join(ROOT, 'lib', 'stages.js'), '  if (![\'cut\', \'complete\'].includes(keep)) throw new Error(', '  if (false) throw new Error(',
+    'theCompleteKeepsEveryRowAtItsBestAndPricesTheUnweightedOnesFromTheSavedModels', 'a save of no known kind is quietly made as the cut'],
+  [path.join(ROOT, 'lib', 'stages.js'), 'groups.has(HL_UNWEIGHTED) ? \', and the members\\\' saved models for the records no half-life improved\' : \'\'', '\'\'',
+    'theCompleteKeepsEveryRowAtItsBestAndPricesTheUnweightedOnesFromTheSavedModels', 'the held set of a complete set does not say its unweighted rows were priced from the saved models'],
+  [path.join(ROOT, 'lib', 'stages.js'), '    // the rows the unweighted column won on a complete set (3.245.0) from the members\' saved models\n    const plain = unweightedOf(doc);', '    // the rows the unweighted column won on a complete set (3.245.0) from the members\' saved models\n    const plain = new Set();',
+    'theCompleteKeepsEveryRowAtItsBestAndPricesTheUnweightedOnesFromTheSavedModels', 'the capture of a complete set refuses its unweighted rows'],
+  [path.join(ROOT, 'lib', 'stages.js'), '  const complete = !!(was.derived || {}).complete;', '  const complete = false;',
+    'aCompleteHalfLifeSetIsRebuiltAsTheComplete', 'a flagged complete set is rebuilt as the cut and loses its unweighted rows'],
+  [path.join(ROOT, 'lib', 'stages.js'), 'halfLife: hl && hl.halfLife != null ? HL.daysOfMonths(hl.halfLife) : null, halfLifeMonths: hl && hl.halfLife != null ? hl.halfLife : null },', 'halfLife: hl ? HL.daysOfMonths(hl.halfLife) : null, halfLifeMonths: hl ? hl.halfLife : null },',
+    'theHistoryScreenOffersTheCutAndTheCompleteEachWithItsOwnName', 'an unweighted row reaches the live path as a half-life of 0 days'],
+  [path.join(ROOT, 'public', 'construct.js'), '  hlSave(\'hHlBuildAll\', \'hHlNameAll\', \'complete\');\n', '',
+    'theHistoryScreenOffersTheCutAndTheCompleteEachWithItsOwnName', 'Save the complete does nothing when pressed'],
 ];
 
 const only = process.argv[2] || '';
