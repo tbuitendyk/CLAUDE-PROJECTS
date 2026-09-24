@@ -10188,7 +10188,8 @@ function rebuildOf(doc) {
 // scans kept on it untouched. What goes with it: this block, the 'pick' reason
 // in rebuildOf, the /repick route, repickOnOpen on the page, and their test
 // and guard.
-const pickBehind = (doc) => !!(doc && captureOnSet(doc) && !(doc.capture.pick && doc.capture.pick.measure === DEPTH_MEASURE));
+// a capture with no survivor by depth has nothing to choose again, so it is never flagged (3.248.1)
+const pickBehind = (doc) => !!(doc && captureOnSet(doc) && doc.capture.pick && doc.capture.pick.measure !== DEPTH_MEASURE);
 const repicking = new Set();
 async function repickCapture(id) {
   const doc = getSet(String(id || ''));

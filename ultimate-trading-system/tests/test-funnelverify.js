@@ -1627,6 +1627,8 @@ module.exports.aCaptureWhosePickWasMadeTheOldWayIsChosenAgainAsTheSetIsOpened = 
     rewrite(doc.id, (on) => { on.capture = { v: stages.CAPTURE_V, id: `${doc.id}-c1`, times: 1, captured: labels.length, reads: [{ tool: 'stop', look: 1 }], pick: old, rows: labels.map((label) => ({ label })) }; });
     const before = stages.getSet(doc.id);
     assert.ok(stages.pickBehind(before) && ((stages.rebuildOf(before) || {}).reasons || []).some((r) => r.key === 'pick'), 'a pick made the old way is flagged, with its reason');
+    // (3.248.1) a capture with no survivor by depth has nothing to choose again: flagged, it would stay flagged for ever
+    assert.ok(!stages.pickBehind({ ...before, capture: { ...before.capture, pick: null } }), 'a capture with no pick is never flagged');
     const got = await stages.repickCapture(doc.id);
     const join = await stages.funnelVerifyJoin(stages.getSet(doc.id));
     const want = require('../lib/funnelset').pickByDepth(join.rows, join.mine);
