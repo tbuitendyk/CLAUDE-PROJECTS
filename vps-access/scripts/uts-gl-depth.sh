@@ -65,6 +65,12 @@ console.log('word lists:', JSON.stringify(R.allowed || {}).slice(0, 600));
     const agrees = new Map(); for (const e of es) agrees.set(e.agree, (agrees.get(e.agree) || 0) + 1);
     console.log(`  ${w}: entries ${es.length} | kept by the sizing ${kept} | agreement counts ${[...agrees].sort((a, b) => a[0] - b[0]).map(([a, n]) => `${a}:${n}`).join(' ')}`);
   }
+  // what Greenlight's one survivor draws for it: each step's money and trades
+  const g = await S.stage4GreenlightDry(doc.id);
+  const one = ((g.picture || {}).survivors || []).find((x) => x.label === L);
+  const f = (x) => (x && x.money != null ? `${x.money.toFixed(2)} (${x.trades})` : '-');
+  console.log(`set History started from: ${rule.derived ? rule.derived.from : '-'} | its capture ${rule.derived && S.readCapture(rule.derived.from) ? 'present' : 'none'}`);
+  if (one) for (const w of ['train', 'test', 'held', 'reserve']) { const st = (one.steps || {})[w] || {}; console.log(`  ${w}: before History ${f(st.beforeHistory)} | after History ${f(st.afterHistory)} | after stop ${f(st.afterStop)} | after conviction sizing ${f(st.afterSizing)}`); }
   process.exit(0);
 })().catch((e) => { console.log('FAILED', e.message); process.exit(0); });
 JS
