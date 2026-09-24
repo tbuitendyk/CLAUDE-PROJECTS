@@ -1002,11 +1002,6 @@ function missingUnitsOf(doc) {
   // held in hand between reads, and this is the one question asked BEFORE and
   // AFTER rows are appended -- so a cache that did not notice the append would
   // report the same gaps for ever and the set would never be stamped finished.
-  // The row count is metadata, so asking costs nothing.
-  if (recordsInHand.id === doc.id && recordsInHand.rows
-    && recordsInHand.rows.length !== rowstore.count(doc.id, 'records')) {
-    recordsInHand.id = null; recordsInHand.rows = null;
-  }
   const have = new Set(allRecords(doc.id).map((r) => r.u));
   const missing = [];
   for (let i = 0; i < list.length; i++) if (!have.has(i)) missing.push({ i, unit: list[i] });
@@ -1247,9 +1242,18 @@ function parentOrRefuse(fromId, wantStage) {
   return parent;
 }
 
+// THE COPY IN HAND IS CHECKED AGAINST WHAT IS ON DISK, FOR EVERY READER
+// (3.242.3, owner: "roll the cache fix ... into the next release"). It kept the
+// records it had read while a set was still being written and went on handing
+// them out after the set finished -- a new stage 1 set's members panel on
+// Boards answered that its one unit did not exist, and a stage 2 started from
+// it would have read its parent empty. One reader already dropped the copy
+// when the number of records on disk had moved; that check now lives here, so
+// all of them do. The count is metadata, so asking costs nothing.
 const recordsInHand = { id: null, rows: null };
 function allRecords(id) {
-  if (recordsInHand.id === id && recordsInHand.rows) return recordsInHand.rows;
+  if (recordsInHand.id === id && recordsInHand.rows
+    && recordsInHand.rows.length === rowstore.count(id, 'records')) return recordsInHand.rows;
   const rows = rowstore.readAll(id, 'records');
   recordsInHand.id = id; recordsInHand.rows = rows;
   return rows;
@@ -10771,7 +10775,13 @@ function tuneScanFor(query, tool, running = null) {
   const all = readTuneScans(aim.setId).scans[tool] || {};
   const current = (r) => !!(r && r.aim && r.aim.captureAt === aim.captureAt);
   const mine = all[tuneScanKeyOf(aim)];
-  if (current(mine)) return mine;
+  // WHAT THE PANEL DRAWS, NOT THE WHOLE KEPT RESULT (3.242.3, owner: "roll ...
+  // the Tune refusal into the next release"). The stop scan keeps its full
+  // per-trade table beside its answer, and on every survivor of a big set that
+  // came to 8.9 MB: over the service's 8 MB ceiling, so every ask was refused
+  // and the panel showed the scan as not run. Nothing on the screen draws that
+  // table; it stays kept on disk, and the panel is handed the rest.
+  if (current(mine)) return Object.fromEntries(Object.entries(mine).filter(([k]) => k !== 'perEntry'));
   const newest = Object.values(all).filter(current)
     .sort((a, b) => String(b.finishedUtc || '').localeCompare(String(a.finishedUtc || '')))[0] || null;
   return {

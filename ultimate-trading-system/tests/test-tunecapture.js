@@ -780,9 +780,13 @@ module.exports = {
       assert.deepStrictEqual([got.status, got.last], ['idle', null], 'a set with nothing kept is handed something');
       const aim = stages.tuneScanAimOf(stages.captureTargetOf(q('depth', ['test', 'train'])));
       assert.deepStrictEqual(aim, { setId: id, survivor: 'A', windows: ['test', 'train'], captureAt: cap.at }, 'the target is not the survivor by depth resolves to, its windows and the capture it read');
-      stages.saveTuneScan(aim, 'stop', { status: 'done', finishedUtc: '2026-09-23T01:00:00.000Z', curve: [1] });
+      stages.saveTuneScan(aim, 'stop', { status: 'done', finishedUtc: '2026-09-23T01:00:00.000Z', curve: [1], perEntry: [{ entryTs: 1 }, { entryTs: 2 }] });
       got = stages.tuneScanFor(q('depth', ['train', 'test']), 'stop');
       assert.deepStrictEqual([got.status, got.curve], ['done', [1]], 'the result kept for what is chosen is not handed back');
+      // WHAT THE PANEL DRAWS, NOT THE WHOLE KEPT RESULT (3.242.3): the per-trade
+      // table stays on disk and is not handed out, or one scan on every survivor
+      // of a big set is over the 8 MB ceiling and the panel reads as never run
+      assert.strictEqual(got.perEntry, undefined, 'the per-trade table is handed to the panel, which never draws it');
       assert.strictEqual(stages.tuneScanFor(q('A', ['train', 'test']), 'stop').status, 'done', 'naming the survivor by depth resolves to is read as another target');
       // ANOTHER SURVIVOR, OTHER WINDOWS, THE OTHER SCAN: never handed this one
       got = stages.tuneScanFor(q('B', ['train', 'test']), 'stop');

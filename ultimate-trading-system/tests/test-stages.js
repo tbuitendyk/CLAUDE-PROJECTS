@@ -5609,6 +5609,44 @@ module.exports = {
   // It also reads the line the screen now prints under a red heading, because
   // a colour with no way to act on it cost three sittings: the reason lived in
   // the heading's hover and nowhere else.
+  // THE LINE UNDER EACH START SAYS WHEN THE RUN ENDS (3.242.3, owner 2026-09-24:
+  // "progress message persists on a new sweep after completion ... fix that to be
+  // a completion message"). Run, not grepped: the poll's own function is lifted
+  // out of the page and handed each way a run can end.
+  theLineUnderEachStartSaysWhenTheRunEnds() {
+    const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const from = UI.indexOf('const swStartedFor = {};');
+    const to = UI.indexOf('async function swProgress() {');
+    assert.ok(from > 0 && to > from, 'the ended line is gone');
+    assert.ok(UI.slice(to, to + 400).includes('swSayEnded(st.sets || []);'), 'the poll that watches the run never rewrites the line');
+    for (const n of [1, 2, 3]) assert.ok(UI.includes(`swStartedFor[${n}] = { id: got.id, name: got.name, what:`), `stage ${n}'s start does not say what its line was written for`);
+    assert.ok(UI.includes('swStartedFor[3] = { id: cont, name: again.name, what: null, seen: false };'), 'a paused run started again does not say what its line was written for');
+    const el = {};
+    // eslint-disable-next-line no-unused-vars
+    const $ = (sel) => { el[sel] = el[sel] || { innerHTML: '' }; return el[sel]; };
+    // eslint-disable-next-line no-unused-vars
+    const esc = (x) => String(x);
+    // eslint-disable-next-line no-eval
+    const api = eval(`(() => { ${UI.slice(from, to)}\nreturn { swStartedFor, swSayEnded }; })()`);
+    const line = (n) => (el[`#swOut${n}`] ? el[`#swOut${n}`].innerHTML : '');
+    api.swStartedFor[1] = { id: 'a', name: 'S1-LTC', what: '1 units', seen: false };
+    api.swSayEnded([{ id: 'a', status: 'running' }]);
+    assert.strictEqual(line(1), '', 'the line is rewritten while the run is still going');
+    api.swSayEnded([{ id: 'a', status: 'done' }]);
+    assert.ok(line(1).includes('finished <b>S1-LTC</b> — 1 units. It is on Boards.'), `a finished run does not say so: ${line(1)}`);
+    assert.ok(!api.swStartedFor[1], 'a line already rewritten is rewritten again on every tick');
+    api.swStartedFor[3] = { id: 'p', name: 'S3 #9', what: null, seen: false };
+    api.swSayEnded([{ id: 'p', status: 'paused', checkpoint: true }]);
+    assert.strictEqual(line(3), '', 'a paused run started again reads as paused before the box has it running');
+    api.swSayEnded([{ id: 'p', status: 'running' }]);
+    api.swSayEnded([{ id: 'p', status: 'interrupted', checkpoint: true }]);
+    assert.ok(line(3).includes('<b>S3 #9</b> was paused by a restart.') && line(3).includes('press Open, and Start stage 3 starts it again'), `a restart does not say so, or where to start it again: ${line(3)}`);
+    // a run over between two ticks still says it finished
+    api.swStartedFor[2] = { id: 'b', name: 'S2 #4', what: '3 carried units', seen: false };
+    api.swSayEnded([{ id: 'b', status: 'done' }]);
+    assert.ok(line(2).includes('finished <b>S2 #4</b> — 3 carried units.'), 'a run over before the first tick saw it is never said to have finished');
+  },
+
 theStageHeadingsFollowTheOwnersTruthTableRowForRow() {
     // THE OWNER'S TRUTH TABLE SINCE 3.241.0 ("Nothing is selected on stage 1,
     // it should be black ... Put away was used on the campaign ... so there

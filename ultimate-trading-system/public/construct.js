@@ -1033,11 +1033,41 @@ function swRefillParents(sets) {
   return moved;
 }
 
+// THE LINE UNDER EACH START SAYS WHEN THE RUN ENDS (3.242.3, owner 2026-09-24:
+// "progress message persists on a new sweep after completion ... fix that to be
+// a completion message"). The started line was written once and never again,
+// so it went on saying started after the set had finished. What each stage's
+// line was written for is kept here, and the poll that watches the run
+// rewrites the line from the set's own status once it is no longer running.
+const swStartedFor = {};           // stage -> { id, name, what, seen }
+function swLine(n, msg, bad) {
+  const el = $(`#swOut${n}`);
+  if (el) el.innerHTML = `<p class="note${bad ? ' warn' : ''}" style="margin:.4rem 0 0">${msg}</p>`;
+}
+function swSayEnded(sets) {
+  for (const n of [1, 2, 3]) {
+    const s = swStartedFor[n];
+    if (!s) continue;
+    const row = sets.find((x) => x.id === s.id);
+    if (!row) continue;
+    if (row.status === 'running' || row.status === 'filling') { s.seen = true; continue; }
+    // a paused run started again reads paused until the box has it running
+    if (row.status !== 'done' && !s.seen) continue;
+    delete swStartedFor[n];
+    const size = s.what ? ` — ${s.what}` : '';
+    if (row.status === 'done') { swLine(n, `finished <b>${esc(s.name)}</b>${size}. It is on Boards.`); continue; }
+    const how = row.status === 'paused' ? 'paused' : row.status === 'interrupted' ? 'was paused by a restart'
+      : row.checkpoint ? 'was paused by a failure' : `ended ${esc(row.status)}`;
+    const again = n === 3 && row.checkpoint ? ' Choose it in stage 3 record set, press Open, and Start stage 3 starts it again where it stopped.' : '';
+    swLine(n, `<b>${esc(s.name)}</b> ${how}${size}.${again}`, true);
+  }
+}
 async function swProgress() {
   const el = $('#swProg');
   if (!el) return;
   const st = await apiOr('api/stagesets', null);
   if (!st) { el.innerHTML = '<span class="warn">the record-set list could not be read</span>'; return; }
+  swSayEnded(st.sets || []);
   // the greyed suggestion in each name box is the next free name, and it
   // moves the moment a launch takes one
   for (const n of [1, 2, 3]) { const b = $(`#swName${n}`); if (b && st.nextNames) b.placeholder = st.nextNames[n] || ''; }
@@ -3315,8 +3345,10 @@ async function drawTune() {
   // and answers for the ones named here -- or says none was run on them.
   const scanQ = isSet ? `setId=${encodeURIComponent(chosen.id)}&pick=${encodeURIComponent(tnPickVal)}&windows=${encodeURIComponent(tnWins.join(','))}` : '';
   const [stop, conv] = isSet ? await Promise.all([
-    apiOr(`api/pilot/stopsweep?${scanQ}`, ({ status: 'idle' })),
-    apiOr(`api/pilot/convictionsweep?${scanQ}`, ({ status: 'idle' })),
+    // A RESULT THAT CANNOT BE READ SAYS SO (3.242.3): it used to fall back to
+    // idle, so a kept result refused for its size read as a scan never run
+    apiOr(`api/pilot/stopsweep?${scanQ}`, ({ status: 'unread' })),
+    apiOr(`api/pilot/convictionsweep?${scanQ}`, ({ status: 'unread' })),
   ]) : [{ status: 'idle' }, { status: 'idle' }];
   // The prose and the dropdown are computed from the SAME resolved value, so
   // the sentence above the control can no longer describe a different target
@@ -3403,7 +3435,7 @@ async function drawTune() {
 </div>
     ${stopLabel ? (onRecord ? `<div class="note" style="margin-bottom:.4rem">on record for <b>${esc(stopLabel)}</b>: ${onRecord.stopPct != null ? pct(onRecord.stopPct) : (Object.prototype.hasOwnProperty.call(onRecord, 'stopPct') ? 'no stop' : 'no stop chosen yet')}${onRecord.why ? ` — ${esc(onRecord.why)}` : ' — no reason recorded'}${onRecord.at ? ` (${esc(String(onRecord.at).slice(0, 10))}${onRecord.by ? ', ' + esc(onRecord.by) : ''})` : ''}</div>` : `<div class="note warn" style="margin-bottom:.4rem">no choice about the stop has been recorded for <b>${esc(stopLabel)}</b> yet</div>`) : ''}
     <div class="row"><button id="stopRun" class="pri" ${busy || stopBreakout ? 'disabled' : ''}>Tune protective stop</button>${stopBreakout ? `<span class="note warn">${esc(stopBreakoutWords)}</span>` : ''}</div>
-    <div id="stopOut">${stop.status === 'done' ? renderStopResult(stop) : stop.status === 'running' ? '<p class="note">running…</p>' : stop.status === 'error' ? `<p class="warn">last scan failed: ${esc(stop.error || '')}</p>` : isSet ? tnNotRunHtml(stop, 'Tune protective stop') : ''}</div>
+    <div id="stopOut">${stop.status === 'done' ? renderStopResult(stop) : stop.status === 'running' ? '<p class="note">running…</p>' : stop.status === 'error' ? `<p class="warn">last scan failed: ${esc(stop.error || '')}</p>` : stop.status === 'unread' ? '<p class="warn">the result kept for this could not be read from the box</p>' : isSet ? tnNotRunHtml(stop, 'Tune protective stop') : ''}</div>
   </div>
   <div class="panel">
     <h3 style="margin-top:0">Conviction sizing — bet more when more members agree?</h3>
@@ -3427,7 +3459,7 @@ async function drawTune() {
     ${stopLabel ? `<div class="note" style="margin-bottom:.4rem">sizing on record for <b>${esc(stopLabel)}</b>: ${onRecord && onRecord.sizing ? `<b>by conviction</b> at the $${Number(onRecord.sizing.clipUsd) || 0} clip, ${esc(ladderWords(onRecord.sizing.ladder))}${onRecord.sizing.why ? ` — ${esc(onRecord.sizing.why)}` : ''} (${esc(String(onRecord.sizing.at || '').slice(0, 10))})` : 'none — each trade at its own size alone'}</div>`
     : (isSet && tnPickVal === 'all' ? `<div class="note" style="margin-bottom:.4rem">sizing on record: <b>${sizedOnRecord.length} of ${rowsSized.length}</b> captured survivors by conviction${ladderOnRecord ? `, all at ${esc(ladderWords(ladderOnRecord))}` : (sizedOnRecord.length ? ', not all at the same numbers' : '')}</div>` : '')}
     <div class="row"><button id="convRun" class="pri" ${busy ? 'disabled' : ''}>Run conviction sweep</button></div>
-    <div id="convOut">${conv.status === 'done' ? renderConvResult(conv) : conv.status === 'running' ? '<p class="note">running…</p>' : conv.status === 'error' ? `<p class="warn">last sweep failed: ${esc(conv.error || '')}</p>` : isSet ? tnNotRunHtml(conv, 'Run conviction sweep') : ''}</div>
+    <div id="convOut">${conv.status === 'done' ? renderConvResult(conv) : conv.status === 'running' ? '<p class="note">running…</p>' : conv.status === 'error' ? `<p class="warn">last sweep failed: ${esc(conv.error || '')}</p>` : conv.status === 'unread' ? '<p class="warn">the result kept for this could not be read from the box</p>' : isSet ? tnNotRunHtml(conv, 'Run conviction sweep') : ''}</div>
   </div>
 `;
   // THE SIZING ON RECORD, AS A GREEN LINE at the top of the conviction panel (3.154.0,
@@ -4334,7 +4366,10 @@ async function drawSweep() {
     if (!body.compare.length) delete body.compare;
     const got = await startPost('api/stage1', body);
     if (got && !got.pending) swLandOn(1, got);
-    if (got && !got.pending) { rememberSweepForm(); say('#swOut1', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} units. Progress above; the set lands on Boards.`); }
+    if (got && !got.pending) {
+      rememberSweepForm(); say('#swOut1', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} units. Progress above; the set lands on Boards.`);
+      swStartedFor[1] = { id: got.id, name: got.name, what: `${got.units.toLocaleString()} units`, seen: false };
+    }
     swAfterStart(got);
   };
   $('#swGo2').onclick = async () => {
@@ -4345,7 +4380,10 @@ async function drawSweep() {
       name: $('#swName2').value,
     });
     if (got && !got.pending) swLandOn(2, got);
-    if (got && !got.pending) { rememberSweepForm(); say('#swOut2', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} carried units.`); }
+    if (got && !got.pending) {
+      rememberSweepForm(); say('#swOut2', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} carried units.`);
+      swStartedFor[2] = { id: got.id, name: got.name, what: `${got.units.toLocaleString()} carried units`, seen: false };
+    }
     swAfterStart(got);
   };
   // DELETE A PAUSED RUN FROM WHERE IT IS CHOSEN (3.133.0, owner order: "there
@@ -4378,7 +4416,10 @@ async function drawSweep() {
     // ...and stage 3 lands on the set it made the same way (3.242.1: "make sure
     // you're not doing that on stage 3")
     if (got && !got.pending) swLandOn(3, got);
-    if (got && !got.pending) { rememberSweepForm(); say('#swOut3', `started <b>${esc(got.name)}</b> — ${got.settings.toLocaleString()} settings × ${got.units.toLocaleString()} units.`); }
+    if (got && !got.pending) {
+      rememberSweepForm(); say('#swOut3', `started <b>${esc(got.name)}</b> — ${got.settings.toLocaleString()} settings × ${got.units.toLocaleString()} units.`);
+      swStartedFor[3] = { id: got.id, name: got.name, what: `${got.settings.toLocaleString()} settings × ${got.units.toLocaleString()} units`, seen: false };
+    }
     if (cont) {
       // the box answers before it has read what is on disk; the line above
       // says how far that reading has got, then how far the pricing has
@@ -4386,6 +4427,7 @@ async function drawSweep() {
       if (again && !again.pending) {
         rememberSweepForm();
         say('#swOut3', `started again <b>${esc(again.name)}</b> — progress above; the set lands on Boards.`);
+        swStartedFor[3] = { id: cont, name: again.name, what: null, seen: false };
       }
       swAfterStart(again);
       return;
