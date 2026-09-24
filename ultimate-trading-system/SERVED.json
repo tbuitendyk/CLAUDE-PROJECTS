@@ -1,16 +1,16 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html — so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "cce9c6185259f585df86c4c216165fb1b5669497",
-  "subject": "3.241.7: a pick opens nothing; a picked set's section stays live with Start awake; a stage 2 pick stays picked",
-  "capturedAt": "2026-09-24T01:14:55Z",
+  "commit": "20b966f20a47c50393179a73cf7897080c355d5a",
+  "subject": "3.242.0: Open does the opening -- a pick only chooses, on the Campaign box, the three stages and Boards; the campaign box offers new campaign",
+  "capturedAt": "2026-09-24T01:32:50Z",
   "files": {
     "public/construct.js": {
-      "sha256": "8dea921386890162340a6ee1bb5a020858714b9d9a7c002021149c34997f4f9f",
-      "bytes": 1000766
+      "sha256": "759e2d192c676ab2ee275786e62b6deb8b3c792db8ee0ec2918a426d23d1f3b1",
+      "bytes": 1005263
     },
     "public/help-content.js": {
-      "sha256": "4bc5b06eed4f66234287dccb47a6e8305d0c02f6a6c491438ddca0ec71ad7512",
-      "bytes": 186207
+      "sha256": "c5bdf9e55b40d56c208461418dfe0b562155986902490bcfe7345930e83e911f",
+      "bytes": 186392
     }
   },
   "htmlNotVerified": "public/construct.html, public/trade.html and public/setup.html are served with the release stamped into the head (3.137.0) and, for construct.html, the cache markers rewritten to the content hash of each script, so their served bytes never equal their stored bytes. Nothing is generated from them."

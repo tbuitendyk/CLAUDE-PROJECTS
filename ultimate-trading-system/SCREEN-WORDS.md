@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **cce9c6185259 — what the box is serving**, not from the working tree.
+Generated from **20b966f20a47 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -564,6 +564,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 ## What the controls are called (127)
 
 - `— each says why:`
+- `— new campaign —`
 - `— new stage`
 - `— none —`
 - `— starting`
@@ -636,7 +637,6 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `of`
 - `of its`
 - `of the`
-- `on this box —`
 - `one voice at`
 - `or a new name`
 - `permute`
