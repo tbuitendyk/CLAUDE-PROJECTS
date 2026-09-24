@@ -7426,9 +7426,16 @@ async function fDrawView() {
   // under this section's heading -- or, on a first load, nothing at all. Both
   // read as "there is nothing here", and one of them is a lie.
   if (!d) {
+    // THE COIN BOX STAYS (3.244.0, owner order 2026-09-24): a read that failed
+    // or ran out of time left no way to another coin and shape, so a walk left
+    // on a board too slow to read was stuck on it. Its choices come from a
+    // request that reads no board.
+    const cb = await fCoinBoxAlone(st);
     $('#view').innerHTML = `<div class="panel"><h3 style="margin-top:0">Funnel</h3>
-      <p class="note neg">This section could not read <b>${esc(st.set)}</b>. Nothing below is from it, because there
-        is nothing below. The reason came back in the message box; pick another under source above.</p></div>`;
+      ${cb.html}
+      <p class="note neg">This section could not read <b>${esc(st.set)}</b>. Nothing here is from it. The reason came
+        back in the message box; ${cb.html ? 'pick another coin in the boxes above, or another' : 'pick another'} under source above.</p></div>`;
+    cb.wire();
     return;
   }
   if (d.totalling || d.waiting || d.building || d.blending || d.failed) {
@@ -7448,10 +7455,22 @@ async function fDrawView() {
               : d.failed ? `could not be worked out: ${d.failed}`
                 : String(d.totalling || d.waiting);
     const failed = !!(d.failed || (bl && bl.failed));
+    // and here too (3.244.0): a blend being worked out is a wait the owner may
+    // rather walk one coin and shape than sit through
+    const cb = await fCoinBoxAlone(st);
     $('#view').innerHTML = `<div class="panel"><h3 style="margin-top:0">Funnel</h3>
+      ${cb.html}
       <p class="note">${d.totalling ? 'the tables for this set are being worked out - ' : ''}<b${failed ? ' class="warn"' : ''}>${esc(said)}</b>${failed ? '' : ' - this page asks again in a few seconds'}</p></div>`;
+    cb.wire();
     if (!failed) setTimeout(() => { if (tab === 'funnel') drawFunnel(); }, 4000);
     return;
+  }
+  // `all units together` asked of one coin and shape (3.244.0) is answered
+  // with that coin and shape: the choice follows, and its own walk is read
+  if (d.onlyOne && st.unit === 'all' && d.unit) {
+    fUnitChoose(st.set, d.unit);
+    fState = null;
+    return drawFunnel();
   }
   // THE FIRST VISIT TO A SET IS ON ITS FIRST UNIT, named by the reply. The
   // choice is kept and the walk is read again under it, so what is drawn and
@@ -7558,6 +7577,16 @@ function fUnitResolve(d, want) {
   return rows[0] ? rows[0].key : null;
 }
 const F_UNIT_NONE = '— none —';
+// THE COIN BOX WHEN NO READ CAME BACK (3.244.0): the four boxes in the row the
+// walk draws them in, from the request that reads no board, wired the same
+// way. Nothing to offer draws nothing.
+async function fCoinBoxAlone(st) {
+  const got = await apiOr(`api/funnel/${encodeURIComponent(st.set)}/units`, null);
+  const units = (got && got.units) || [];
+  if (!units.length) return { html: '', wire: () => {} };
+  const d = { units, unit: st.unit && st.unit !== 'all' ? st.unit : null };
+  return { html: `<div class="row" style="align-items:flex-end">${fUnitPicker(d)}</div>`, wire: () => fWireUnit(st, d) };
+}
 function fUnitPicker(d) {
   const units = d.units || [];
   const cur = fUnitOf(d, d.unit);
@@ -7585,7 +7614,9 @@ function fUnitPicker(d) {
   // file as text -- the Help tab's "nothing is described that does not exist",
   // and the closed word list, which is the only vocabulary allowed about a
   // screen. A control no source scan can see is a control outside RULE ONE-A.
-  return `<label class="f" title="which board the steps below are walked on. all units together blends every coin and shape in the set into one board; anything else is one coin at one chunk shape, read alongside the coins named beside it.">coin<select id="fUnit"><option value="all"${cur ? '' : ' selected'}>all units together</option>${
+  // ONE COIN AND SHAPE HAS NO all units together (3.244.0, owner order
+  // 2026-09-24): the blend of one is the same settings read twice
+  return `<label class="f" title="which board the steps below are walked on. all units together, offered when there is more than one coin and shape to blend, blends every coin and shape in the set into one board; anything else is one coin at one chunk shape, read alongside the coins named beside it.">coin<select id="fUnit">${units.length > 1 ? `<option value="all"${cur ? '' : ' selected'}>all units together</option>` : ''}${
     only(units, 'trade').map((c) => `<option value="${esc(c)}"${cur && c === cur.trade ? ' selected' : ''}>${esc(c)}</option>`).join('')
   }</select></label>
     <label class="f" title="the first coin this one is read against — context only, never bought or sold. — none — is the coin judged on its own. Only what the set holds beside the coin chosen is offered.">alongside 1<select id="fUnitA1"${dead(a1)}>${opts(a1, cur ? (cur.ctx1 || '') : '')}</select></label>

@@ -875,6 +875,13 @@ app.get('/api/stageset/:id/ranked', (req, res) => {
 // ONE READ RETURNS THE WHOLE STATE OF THE WALK. A route per step would apply the
 // rule in several places, and the survivor count on step 2 and the one the cut
 // writes would be free to become two different numbers.
+// THE COIN BOX'S CHOICES ALONE (3.244.0): no board is read, so a read that
+// failed or ran out of time still leaves a way to another coin and shape
+app.get('/api/funnel/:id/units', (req, res) => {
+  try {
+    return res.json(stages.funnelUnitsOf(req.params.id));
+  } catch (err) { return res.status(400).json({ error: err.message }); }
+});
 app.post('/api/funnel/:id/read', async (req, res) => {
   let out;
   try {

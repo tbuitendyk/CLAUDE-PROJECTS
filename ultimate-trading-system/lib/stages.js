@@ -6400,9 +6400,42 @@ async function funnelBoardKept(id, t, unitWant, opts = {}) {
     }
     want = cut.first || 'all';
   }
+  // ONE COIN AND SHAPE HAS NO `all units together` (3.244.0, owner order
+  // 2026-09-24). The blend of one is the same settings read a second time, and
+  // on a set of 75,024 settings that second read ran past the web server's
+  // minute on every draw. The walk's own read (`oneForAll`) is answered with
+  // the one coin and shape, before any board is read, for the page to take the
+  // choice from; the cut and the rebuild of a set already cut read the board
+  // they were always read on.
+  if (opts.oneForAll && String(want) === 'all') {
+    const seen = funnelUnitList(id, t, cut);
+    if (seen.length === 1) return { onlyOne: seen[0], cut };
+  }
   const board = await funnelBoard(id, t, want, cut.kept);
   if (board.pending) return { pending: board.pending, blending: true, cut, hidden };
   return { board, cut, hidden };
+}
+// THE COIN AND SHAPES A WALK MAY BE ON: the set's own, in the stage 2 table's
+// order, less any the filter on Table 3.C puts out of the walk. The one list
+// the read offers, the resolver counts and the coin box draws from.
+function funnelUnitList(id, t, cut) {
+  return unitsOfSet(t, id).filter((u) => !cut.kept || cut.kept.has(u.key)).map((u) => ({
+    key: u.key, name: u.name, trade: u.trade, ctx1: u.ctx1 || null, ctx2: u.ctx2 || null, geometry: u.geometry,
+  }));
+}
+// THE COIN BOX'S CHOICES ALONE (3.244.0, owner order 2026-09-24): what a read
+// offers under `units`, worked out without reading any board -- so a read that
+// fails or runs out of the web server's minute still leaves the coin box on
+// screen to walk another coin and shape from
+function funnelUnitsOf(id) {
+  const doc = getSet(id);
+  if (!doc) throw new Error(`unknown record set '${id}'`);
+  if (doc.stage !== 3) throw new Error(`${doc.name || id} is a stage ${doc.stage} set — the Funnel reads stage 3`);
+  const t = readTally(id);
+  if (!t) return { units: [] };
+  const cut = keptUnitKeys(id, t);
+  if (cut.pending) return { units: [] };
+  return { units: funnelUnitList(id, t, cut) };
 }
 // A STAGE 4 SET'S OWN RECORD OF WHAT THE FILTER KEPT WHEN IT WAS CUT (3.233.0):
 // its board and its other coins and shapes are read under that, not under
@@ -6613,9 +6646,13 @@ async function funnelRead(id, state = {}) {
   // `all units together` is chosen, resolved through the filter by the one
   // function every Funnel read resolves it through (3.233.0). Nothing below
   // cares which.
-  const got = await funnelBoardKept(id, t, state.unit);
+  const got = await funnelBoardKept(id, t, state.unit, { oneForAll: true });
   if (got.pending && got.unitTable) return { ...got.pending, unitTable: got.pending };
   if (got.pending) return { blending: got.pending };
+  // `all units together` asked of one coin and shape (3.244.0): the page takes
+  // the choice from this and reads again under that coin and shape's own
+  // walk, so no board is read here -- a read of a big board thrown away
+  if (got.onlyOne) return { unit: got.onlyOne.key, unitName: got.onlyOne.name, onlyOne: true, units: funnelUnitList(id, t, got.cut) };
   const { board, cut, hidden } = got;
   // THE REBUILT NUMBERS ARE LAID ON FIRST, so a limit on the worst losing
   // streak has something to read (§16, step 6). Rows keep what they carry; a
@@ -6678,9 +6715,7 @@ async function funnelRead(id, state = {}) {
   // list, an alongside list or a shape list out of a joined-up name without
   // taking the name apart again -- and a screen that re-derives what the
   // service already knows is a second place for the two to disagree.
-  const units = unitsOfSet(t, id).filter((u) => !cut.kept || cut.kept.has(u.key)).map((u) => ({
-    key: u.key, name: u.name, trade: u.trade, ctx1: u.ctx1 || null, ctx2: u.ctx2 || null, geometry: u.geometry,
-  }));
+  const units = funnelUnitList(id, t, cut);
   // ON A UNIT'S BOARD, "elsewhere" IS THE OTHER UNITS (§17.3), read by a
   // pressed action; the axis logic below is for the blended board only.
   const holdsAxis = board.unit
@@ -6796,6 +6831,22 @@ async function funnelRead(id, state = {}) {
   // still wants the check, the units and the cut sets; the grid, the region and
   // the rest are minutes of work for a screen that is not drawn.
   if (state.view === 'cut') return out;
+  // THE CHECK IS WORKED OUT ONCE AND KEPT (3.244.0, owner order 2026-09-24).
+  // A step's reading -- every dial read on the real money and on each kept
+  // scrambled copy -- was worked out again on every draw, and on 75,024
+  // settings with 100 copies each that was most of a minute held on one
+  // request. Kept per board, per numbers on it and per everything the page
+  // sent; the heading above is always read fresh, being cheap and live.
+  const readKey = JSON.stringify([String(id), t.builtAt || null, (rich && rich.savedAt) || null, board.unit || null,
+    cut.kept ? [...cut.kept].sort() : null, step, rule, { ...state, unit: null, rule: null, view: null }]);
+  const keptReading = funnelReadingsKept.get(readKey);
+  if (keptReading) {
+    funnelReadingsKept.delete(readKey);
+    funnelReadingsKept.set(readKey, keptReading);          // the newest-used goes to the back
+    out.reading = keptReading.reading;
+    Object.assign(out.conditions, keptReading.conditions);
+    return out;
+  }
   const [ha, hb] = kind === 'halves' ? F.splitHalf(rows, seed) : [null, null];
 
   if (step === 1) {
@@ -6995,8 +7046,13 @@ async function funnelRead(id, state = {}) {
       },
     };
   }
+  funnelReadingsKept.set(readKey, { reading: out.reading, conditions: { ...out.conditions } });
+  while (funnelReadingsKept.size > FUNNEL_READINGS_KEPT) funnelReadingsKept.delete(funnelReadingsKept.keys().next().value);
   return out;
 }
+// the readings kept, oldest-used first; a few dozen is every draw of a walk
+const FUNNEL_READINGS_KEPT = 32;
+const funnelReadingsKept = new Map();
 
 // HOW MANY THE RULE ON SCREEN WOULD KEEP, WHILE IT IS BEING TYPED (3.81.0,
 // owner order 2026-09-07: "when putting numbers in the worst losing streak
@@ -12047,7 +12103,7 @@ module.exports = {
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,
   listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichDir, richUnitFile, funnelRichStop,
-  unitKeyOf, unitNameOf, unitsOfSet, boardRowOf, loadUnitBoard, funnelBoard, funnelAcross, FUNNEL_RICH_V,
+  unitKeyOf, unitNameOf, unitsOfSet, boardRowOf, loadUnitBoard, funnelBoard, funnelAcross, funnelUnitsOf, FUNNEL_RICH_V,
   testWindowOfUnit, exposureOf,
   funnelAcrossStart, funnelAcrossStatus, funnelCrossesStart, funnelCrossesStatus, funnelCrosses,
   sealedWindowOf, sealedFromUnits, noiseTwinOf,
