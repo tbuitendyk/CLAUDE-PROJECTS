@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **f49c4d59fcf1 — what the box is serving**, not from the working tree.
+Generated from **e8637b4720bd — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -1807,11 +1807,11 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 
 # History
 
-## What the controls are called (35)
+## What the controls are called (41)
 
 - `- the first`
 - `: retrains on its`
-- `· built from this table:`
+- `· saved from this table:`
 - `% is not read here`
 - `%, judged on the`
 - `%); the held-back`
@@ -1825,10 +1825,12 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `half-lives`
 - `judged on the`
 - `members, both kinds`
-- `name`
+- `name of the complete`
+- `name of the cut`
 - `not run yet`
 - `of`
 - `REBUILD REQUIRED`
+- `records at their best:`
 - `records improved with a half-life`
 - `records)`
 - `refused`
@@ -1836,20 +1838,24 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `Retrain at the ticked half-lives`
 - `rows won`
 - `run`
+- `Save the complete`
+- `Save the cut`
 - `setting`
 - `Stage 4 record set`
 - `survivors`
 - `taken`
 - `the rebuild stopped:`
 - `under release`
+- `unweighted`
 - `window (`
 - `window layout`
+- `with the half-life that won,`
 
 ## What the dropdowns offer (0)
 
 _none_
 
-## Sentences the page prints (15)
+## Sentences the page prints (14)
 
 - Retrain with recent history weighted
 - The same records, retrained: every setting of the chosen set is kept exactly as it is, and only the
@@ -1865,12 +1871,11 @@ _none_
 - whole chunks · retrained on the set's own
 - survivor(s) are not in the stage 3 set's block on this unit
 - records, in the set's own order. Green is the best of the row: a half-life wins only by at least a cent over the unweighted column; a tie goes to the unweighted side.
-- Build the half-life set from this table
 
-## Every word, flat (139)
+## Every word, flat (144)
 
 ```
-again and appends are as at average behind beside best block both box Build built by cent choice chosen chunks column every Every exactly exam figures. first forecasts from goes Green half-life half-lives Held held-back here history improved in is it it. its judged keeping kept kinds last layout least made members months more name never No no none not Nothing of on once one only or order. other over overwritten. own pass per press priced read read. reads rebuild REBUILD recent record records refused release REQUIRED Retrain retrained retraining retrains row rows run same scan screen sealed secret set setting side. Stage stage stays stopped stretch survivor survivors table taken Test test The the Then this ticked tie to told touched trained training Tune under unit until unweighted was weighted whole window wins with with. won yet yet.
+again and appends are as at average behind beside best block both box built by cent choice chosen chunks column complete cut every Every exactly exam figures. first forecasts from goes Green half-life half-lives Held held-back here history improved in is it it. its judged keeping kept kinds last layout least made members months more name never No no none not Nothing of on once one only or order. other over overwritten. own pass per press priced read read. reads rebuild REBUILD recent record records refused release REQUIRED Retrain retrained retraining retrains row rows run same Save saved scan screen sealed secret set setting side. Stage stage stays stopped stretch survivor survivors table taken Test test that The the their Then this ticked tie to told touched trained training Tune under unit until unweighted was weighted whole window wins with with. won yet yet.
 ```
 
 ---
