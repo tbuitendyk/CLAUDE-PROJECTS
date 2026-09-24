@@ -5022,3 +5022,42 @@ module.exports.aUnitRowAndABlendRowCarryTheFieldsSixBoxes = async function () {
   assert.deepStrictEqual(six.map((d) => b.all[0][d]), [null, null, null, true, 'certainty', '100:1'], 'a blend row does not carry its gate as six dials');
   assert.deepStrictEqual(six.map((d) => b.all[1][d]), [null, null, null, null, null, null]);
 };
+
+// THE CHECK IS WORKED OUT ONCE AND KEPT (3.244.0, owner order 2026-09-24): the
+// same read again hands back the reading already worked out, not a fresh one;
+// anything the page sends that changes the reading works it out again
+module.exports.aStepReadingIsWorkedOutOnceAndKept = async function () {
+  const fx = await unitFixture();
+  try {
+    const { id, keys } = fx;
+    const ask = (more = {}) => stages.funnelRead(id, { step: 1, rule: {}, unit: keys[0], ...more });
+    const a = await ask();
+    const b = await ask();
+    assert.ok(a.reading && a.reading === b.reading, 'the same read worked the check out a second time');
+    assert.notStrictEqual(a, b, 'the heading was kept too, and it has to be read fresh');
+    const c = await ask({ barPct: 50 });
+    assert.ok(c.reading && c.reading !== a.reading, 'a different bar was answered with the reading of the old one');
+    const d = await ask({ rule: { allowed: { gate: ['active'] } } });
+    assert.ok(d.reading && d.reading !== a.reading && d.survivors < a.survivors, 'a different rule was answered with the reading of the old one');
+    const e = await ask({ unit: keys[1] });
+    assert.ok(e.reading && e.reading !== a.reading && e.unit === keys[1], 'another coin and shape was answered with this one\'s reading');
+  } finally { fx.cleanup(); }
+};
+
+// THE COIN BOX IS DRAWN WHEN A READ FAILS OR WAITS (3.244.0): from the request
+// that reads no board, in the row the walk draws it in, wired the same way,
+// and the message no longer says there is nothing below it
+module.exports.theCoinBoxIsDrawnWhenAReadFailsOrWaits = function () {
+  const page = src('public/construct.js');
+  const view = page.slice(page.indexOf('async function fDrawView() {'), page.indexOf('// THE FIRST VISIT TO A SET IS ON ITS FIRST UNIT'));
+  const failed = view.slice(view.indexOf('if (!d) {'), view.indexOf('if (d.totalling || d.waiting'));
+  assert.ok(failed.includes('const cb = await fCoinBoxAlone(st);') && failed.includes('${cb.html}') && failed.includes('cb.wire();'), 'a failed read does not draw and wire the coin box');
+  assert.ok(!failed.includes('because there') && failed.includes('pick another coin in the boxes above, or another'), 'the failed read still says there is nothing below it');
+  const waits = view.slice(view.indexOf('if (d.totalling || d.waiting'));
+  assert.ok(waits.includes('const cb = await fCoinBoxAlone(st);') && waits.includes('${cb.html}') && waits.includes('cb.wire();'), 'a wait does not draw and wire the coin box');
+  assert.ok(view.includes("if (d.onlyOne && st.unit === 'all' && d.unit) {\n    fUnitChoose(st.set, d.unit);"), 'the page does not take the one coin and shape the read answered with');
+  const alone = page.slice(page.indexOf('async function fCoinBoxAlone(st) {'), page.indexOf('function fUnitPicker(d) {'));
+  assert.ok(alone.includes('api/funnel/${encodeURIComponent(st.set)}/units'), 'the coin box is not drawn from the request that reads no board');
+  assert.ok(alone.includes('<div class="row" style="align-items:flex-end">${fUnitPicker(d)}</div>') && alone.includes('fWireUnit(st, d)'), 'the coin box is not drawn and wired the way the walk draws it');
+  assert.ok(src('server.js').includes("app.get('/api/funnel/:id/units', (req, res) => {\n  try {\n    return res.json(stages.funnelUnitsOf(req.params.id));"), 'the request the coin box is drawn from is not served');
+};

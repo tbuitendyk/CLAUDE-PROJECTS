@@ -2341,6 +2341,23 @@ const GUARDS = [
     'aRangeCanKeepTheSettingsThatHaveNoValueForTheDial', 'the count line never counts no bar'],
   [path.join(ROOT, 'public', 'construct.js'), '  fieldRungs: \'size rungs\',\n', '',
     'theDialNamesCarryTheirSweepLabel', 'size rungs is named by its key alone on the Funnel'],
+  // 3.244.0: the Funnel cannot be trapped on a board too slow to read
+  [path.join(ROOT, 'lib', 'stages.js'), '    if (seen.length === 1) return { onlyOne: seen[0], cut };\n', '',
+    'theUnitTableIsBuiltBesideTheSetAndTheFunnelReadsItsFilter', 'all units together on one coin and shape reads the same settings twice again, past the web server\'s minute'],
+  [path.join(ROOT, 'lib', 'stages.js'), '  if (cut.pending) return { units: [] };\n  return { units: funnelUnitList(id, t, cut) };', '  if (cut.pending) return { units: [] };\n  return { units: funnelUnitList(id, t, { kept: null }) };',
+    'theUnitTableIsBuiltBesideTheSetAndTheFunnelReadsItsFilter', 'the coin box drawn after a failed read offers coins and shapes the filter on Table 3.C put out of the walk'],
+  [path.join(ROOT, 'lib', 'stages.js'), '  if (keptReading) {', '  if (false) {',
+    'aStepReadingIsWorkedOutOnceAndKept', 'every draw works the check out again, most of a minute on a big board'],
+  [path.join(ROOT, 'lib', 'stages.js'), 'cut.kept ? [...cut.kept].sort() : null, step, rule, { ...state, unit: null, rule: null, view: null }]);', 'cut.kept ? [...cut.kept].sort() : null, step, { ...state, unit: null, rule: null, view: null }]);',
+    'aStepReadingIsWorkedOutOnceAndKept', 'a new rule is answered with the reading kept for the old one'],
+  [path.join(ROOT, 'server.js'), 'app.get(\'/api/funnel/:id/units\', (req, res) => {', 'app.get(\'/api/funnel/:id/units-gone\', (req, res) => {',
+    'theCoinBoxIsDrawnWhenAReadFailsOrWaits', 'the coin box after a failed read asks for something nothing serves, and draws nothing'],
+  [path.join(ROOT, 'public', 'construct.js'), '${cb.html ? \'pick another coin in the boxes above, or another\' : \'pick another\'} under source above.', 'pick another under source above.',
+    'theCoinBoxIsDrawnWhenAReadFailsOrWaits', 'the failed read points only at source while the coin box sits above it'],
+  [path.join(ROOT, 'public', 'construct.js'), '  if (d.onlyOne && st.unit === \'all\' && d.unit) {', '  if (false) {',
+    'theCoinBoxIsDrawnWhenAReadFailsOrWaits', 'the page keeps asking for all units together on one coin and shape and draws an empty reply'],
+  [path.join(ROOT, 'public', 'construct.js'), '${units.length > 1 ? `<option value="all"', '${true ? `<option value="all"',
+    'theScreenSendsTheUnitItIsWalkingOnToTheReadTheAcrossAndTheCut', 'all units together is offered on one coin and shape again'],
 ];
 
 const only = process.argv[2] || '';

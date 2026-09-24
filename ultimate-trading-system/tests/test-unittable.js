@@ -424,6 +424,19 @@ module.exports = {
       assert.deepStrictEqual(['fieldAgreeMin', 'fieldCertMin', 'fieldRule', 'fieldSignOnly', 'fieldSizeBy', 'fieldRungs'].map((d) => keptRow[d]),
         [40, 70, 'both', false, 'certainty', '70:0.75,80:1'], 'the blend of the kept coins and shapes does not carry the field\'s six boxes');
 
+      // ONE COIN AND SHAPE KEPT HAS NO all units together (3.244.0): the walk's
+      // own read asked for it answers with that coin and shape and reads no
+      // board, and the coin box's own request offers that one alone
+      stages.setUnitFilter(id, { minAvgTest: '3' });
+      const one = await stages.funnelRead(id, { unit: 'all', step: 1, rule: { ranges: {}, allowed: {}, floors: {} } });
+      assert.deepStrictEqual([one.onlyOne, one.unit, one.unitName, one.reading], [true, keys[0], 'AAA daily-1d', undefined],
+        'all units together on the one coin and shape the filter keeps is not answered with that coin and shape, before any board is read');
+      assert.deepStrictEqual(one.units.map((u) => u.key), [keys[0]]);
+      assert.deepStrictEqual(stages.funnelUnitsOf(id).units.map((u) => u.key), [keys[0]], 'the coin box request does not offer the one kept coin and shape alone');
+      // and with two kept, all units together is the blend again
+      stages.setUnitFilter(id, { minAvgTest: '1' });
+      assert.deepStrictEqual(stages.funnelUnitsOf(id).units.map((u) => u.key), [keys[0], keys[2]], 'the coin box request does not follow the filter');
+
       // A FILTER THAT KEEPS NOTHING keeps nothing, and says so
       stages.setUnitFilter(id, { minAvgTest: '1000' });
       const none = stages.keptUnitKeys(id, t);
