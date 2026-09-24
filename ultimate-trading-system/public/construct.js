@@ -938,7 +938,7 @@ function swApplyAway() {
     if (sec) sec.hidden = shut;
     const b = document.querySelector(`[data-swfold="${k}"]`);
     if (b) { b.textContent = shut ? 'Open' : 'Put away'; b.disabled = above; b.classList.toggle('ctl-off', above); }
-    const box = k === 'c' ? null : $(SW_PICK[Number(k)]);
+    const box = $(k === 'c' ? '#cxCampPick' : SW_PICK[Number(k)]);
     if (box) { box.disabled = above; const lab = box.closest('label'); if (lab) lab.classList.toggle('ctl-off', above); }
     if (!swLevelSet(k) || all[k] === true) above = true;
   }
@@ -1803,15 +1803,13 @@ let fHeldBack = false;
 // and called by name, so the word list and the control reader follow it onto
 // BOTH screens (lib/screencontrols.js reads one level of helpers).
 function campaignPanelHtml(camp, names) {
+  // ITS BOX SITS BESIDE ITS OPEN, OUTSIDE WHAT PUT AWAY HIDES (3.241.6, owner
+  // order 2026-09-24: "the campaign drop down selector is not active when the
+  // open button is. that's not right"). It was inside the part Put away hides,
+  // so with the Campaign box put away its Open was live and its box was gone.
+  // The same shape as each stage's heading, Open and record set box.
   return `<div class="panel">
-    <div class="row" style="align-items:flex-end">
-      ${putAwayBtn('swfold', 'c', !swAway('c'), 'the Campaign box, and the three stages under it')}
-      <h3 id="swHC" style="margin:0">Campaign — the parent chain name</h3>
-    </div>
-    <p class="note">Currently set: <b>${esc(camp.name || 'none')}</b>${(names.names || []).length ? ` · ${(names.names || []).length} campaign(s) on this box` : ''}</p>
-    <div id="swSecC"${swAway('c') ? ' hidden' : ''}>
-    <p class="note">Every stage 1 record set launched while a campaign is set belongs to it, and every stage 2 and
-      stage 3 set built from one belongs to the same campaign. The campaign's whole chain travels with any greenlight minted from it.</p>
+    <h3 id="swHC" style="margin-top:0">Campaign — the parent chain name</h3>
     <!-- A <datalist> FILTERS ITS SUGGESTIONS BY WHAT IS ALREADY IN THE BOX, and
          the box is pre-filled with the current campaign — so opening it showed
          exactly the one entry that matched, and every other campaign on the box
@@ -1819,10 +1817,17 @@ function campaignPanelHtml(camp, names) {
          short: the service was offering three (owner, 2026-08-18). Two plain
          controls now: pick an existing campaign, or type a new name. -->
     <div class="row" style="align-items:flex-end">
+      ${putAwayBtn('swfold', 'c', !swAway('c'), 'the Campaign box, and the three stages under it')}
       <label class="f" title="every campaign this box has ever stamped on a run, a record set or a greenlight, newest activity first. Picking one switches to it immediately.">existing campaigns<select id="cxCampPick" style="min-width:26rem">
         <option value="">— ${(names.names || []).length} on this box —</option>
         ${(names.names || []).map((n) => `<option value="${esc(n)}" ${n === camp.name ? 'selected' : ''}>${esc(n)}</option>`).join('')}
       </select></label>
+    </div>
+    <p class="note">Currently set: <b>${esc(camp.name || 'none')}</b>${(names.names || []).length ? ` · ${(names.names || []).length} campaign(s) on this box` : ''}</p>
+    <div id="swSecC"${swAway('c') ? ' hidden' : ''}>
+    <p class="note">Every stage 1 record set launched while a campaign is set belongs to it, and every stage 2 and
+      stage 3 set built from one belongs to the same campaign. The campaign's whole chain travels with any greenlight minted from it.</p>
+    <div class="row" style="align-items:flex-end">
       <label class="f" title="name a NEW campaign. Runs launched from now on attach to whatever is set here.">or a new name<input id="cxCamp" value="${esc(camp.name || '')}" maxlength="60" style="width:26rem"></label>
     </div>
     <div class="row">
@@ -1858,7 +1863,9 @@ function wireCampaignPanel(redraw) {
     const tree = $('#campTree'); const set = $('#campSet');
     if (tree) tree.disabled = true; if (set) set.disabled = true;
     const out = await tryPost('api/campaign', { name: campPick.value });
-    if (out) redraw();
+    // a pick with the Campaign box put away opens it, as a stage's pick opens
+    // that stage (3.241.6); the stages under it stay as they are
+    if (out) { if (swAway('c')) swSetAway('c', false); redraw(); }
     else { if (tree) tree.disabled = false; if (set) set.disabled = false; }
   };
   // A TOGGLE (owner, 2026-08-22): the same button that shows a campaign's runs

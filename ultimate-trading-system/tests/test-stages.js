@@ -1745,6 +1745,16 @@ module.exports = {
       'a stage\'s record set box is greyed while its Open is live, or live while its Open is greyed');
     assert.ok(UI.includes("  if (swAway(String(n))) swSetAway(String(n), false);\n  if (n < 3) swRefillPicks(false);"),
       'a pick in the box of a stage that is put away leaves the stage shut, so the set picked is not shown');
+    // AND THE CAMPAIGN'S BOX THE SAME (3.241.6, owner order 2026-09-24: "the
+    // campaign drop down selector is not active when the open button is"): it
+    // sits beside its Open, outside what Put away hides, follows its Open, and
+    // a pick with the Campaign box put away opens it
+    const panel = UI.slice(UI.indexOf('function campaignPanelHtml('), UI.indexOf('function wireCampaignPanel('));
+    assert.ok(panel.indexOf('<select id="cxCampPick"') > panel.indexOf("putAwayBtn('swfold', 'c'")
+      && panel.indexOf('<select id="cxCampPick"') < panel.indexOf('<div id="swSecC"'),
+      'the campaign box is inside what Put away hides, so it is gone while its Open is live');
+    assert.ok(UI.includes("    const box = $(k === 'c' ? '#cxCampPick' : SW_PICK[Number(k)]);"), 'the campaign box does not follow its Open');
+    assert.ok(UI.includes("    if (out) { if (swAway('c')) swSetAway('c', false); redraw(); }"), 'a campaign picked with the Campaign box put away leaves it shut');
   },
 
   // THE SPLIT FOR EXTRA MEMBERS STARTS GHOSTED AFTER A LOAD (3.209.1, owner:
