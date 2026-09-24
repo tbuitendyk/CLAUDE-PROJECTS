@@ -1732,8 +1732,12 @@ module.exports = {
     assert.ok(fill.includes('if (got && got.set && swPicked(n) === v) fillStageForm(got.set);'), 'a remembered pick does not fill its section from its set');
     assert.ok(UI.includes('  swApplyAway();\n  swFillPicked();'), 'the draw does not fill the picked sections');
     assert.ok(UI.includes("    setV('#swName1', doc.name || '');"), 'a stage 1 set picked or copied does not fill its name, so its section shows another name than its box');
-    // AND OPEN BRINGS BACK WHAT WENT AWAY WITH IT
-    assert.ok(UI.includes('  for (const x of SW_LEVELS.slice(SW_LEVELS.indexOf(String(k)))) all[x] = !!away;'), 'Open on Sweep does not reopen the levels under it');
+    // PUT AWAY TAKES THE LEVELS UNDER IT; OPEN OPENS ITS OWN LEVEL ALONE (3.241.4),
+    // and a level under an empty one is put away so it stays shut when the level above fills
+    assert.ok(UI.includes("  if (away) for (const x of SW_LEVELS.slice(SW_LEVELS.indexOf(String(k)))) all[x] = true;\n  else all[String(k)] = false;"),
+      'Put away on Sweep does not take the levels under it, or Open opens more than its own level');
+    assert.ok(UI.includes("    if (above && all[k] !== true) { all[k] = true; moved = true; }") && UI.includes("    if (box) { box.disabled = shut;"),
+      'a level under an empty one opens itself when the level above is filled, or its box is live while it is put away');
   },
 
   // THE SPLIT FOR EXTRA MEMBERS STARTS GHOSTED AFTER A LOAD (3.209.1, owner:

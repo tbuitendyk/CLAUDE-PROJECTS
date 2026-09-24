@@ -894,16 +894,19 @@ function swLockSections() {
 // PUT AWAY ON SWEEP (3.240.0, owner order: "Put away buttons near the selectors
 // in each section including in the Campaign box ... putting away at a higher
 // level also closes all lower levels"). Remembered in this browser; it only
-// hides -- the campaign in force and every pick stay as they are. OPEN REOPENS
-// WHAT CLOSED WITH IT (3.240.1): it opened its own level alone, so bringing the
-// screen back after one press of the Campaign box's Put away took four presses.
+// hides -- the campaign in force and every pick stay as they are. OPEN OPENS ITS
+// OWN LEVEL ALONE (3.241.4, owner order 2026-09-23: "opening a campaign should
+// not open the stage 1 beneath it. it should merely activate the open button
+// which allows a new stage 1 to be made or an existing one to be selected for
+// open"). 3.240.1 had it bring back every level under it as well.
 const SW_AWAY_KEY = 'cx-sweep-away';
 const SW_LEVELS = ['c', '1', '2', '3'];
 function swAwayAll() { try { return JSON.parse(localStorage.getItem(SW_AWAY_KEY) || '{}') || {}; } catch (_) { return {}; } }
 const swAway = (k) => swAwayAll()[String(k)] === true;
 function swSetAway(k, away) {
   const all = swAwayAll();
-  for (const x of SW_LEVELS.slice(SW_LEVELS.indexOf(String(k)))) all[x] = !!away;
+  if (away) for (const x of SW_LEVELS.slice(SW_LEVELS.indexOf(String(k)))) all[x] = true;
+  else all[String(k)] = false;
   try { localStorage.setItem(SW_AWAY_KEY, JSON.stringify(all)); } catch (_) { /* private window */ }
 }
 // SOMETHING IS SET AT THIS LEVEL: a campaign in force, or a record set picked
@@ -913,18 +916,27 @@ const swLevelSet = (k) => (k === 'c' ? !!($('#campOut') && $('#campOut').dataset
 // levels below should be ghosted ... In fact the selectors should all be
 // ghosted below as well when upper level is put away"). Its section is shut,
 // its Open and its box are greyed, whatever was last remembered for it.
+//
+// AND IT IS PUT AWAY, SO IT STAYS SHUT WHEN THE LEVEL ABOVE GETS SOMETHING SET
+// (3.241.4): setting a campaign wakes Stage 1's Open and opens nothing; picking
+// a stage 1 set wakes Stage 2's. A level that is put away shows its heading and
+// its Open and nothing else: its box too is greyed until Open is pressed.
 function swApplyAway() {
+  const all = swAwayAll();
+  let moved = false;
   let above = false;                   // a level above has nothing set, or is put away
   for (const k of SW_LEVELS) {
-    const shut = above || swAway(k);
+    if (above && all[k] !== true) { all[k] = true; moved = true; }
+    const shut = above || all[k] === true;
     const sec = $(`#swSec${k === 'c' ? 'C' : k}`);
     if (sec) sec.hidden = shut;
     const b = document.querySelector(`[data-swfold="${k}"]`);
     if (b) { b.textContent = shut ? 'Open' : 'Put away'; b.disabled = above; b.classList.toggle('ctl-off', above); }
     const box = k === 'c' ? null : $(SW_PICK[Number(k)]);
-    if (box) { box.disabled = above; const lab = box.closest('label'); if (lab) lab.classList.toggle('ctl-off', above); }
-    if (!swLevelSet(k) || swAway(k)) above = true;
+    if (box) { box.disabled = shut; const lab = box.closest('label'); if (lab) lab.classList.toggle('ctl-off', shut); }
+    if (!swLevelSet(k) || all[k] === true) above = true;
   }
+  if (moved) { try { localStorage.setItem(SW_AWAY_KEY, JSON.stringify(all)); } catch (_) { /* private window */ } }
 }
 // EVERYTHING BELOW THE BOX IS GHOSTED WHILE A PAUSED RUN IS CHOSEN: the run
 // keeps the settings it was launched with, and a live box that is not read is
@@ -4713,6 +4725,11 @@ async function drawBoards() {
   // picked, or under one put away, has its record set box and its Put away /
   // Open greyed -- pick from the top down.
   const upEmpty = { 1: false, 2: !s1sel || !fold[1], 3: !s1sel || !s2sel || !fold[1] || !fold[2] };
+  // ...and it is put away, so picking the set above wakes its Open and opens
+  // nothing (3.241.4, the same rule as Sweep)
+  for (const k of [2, 3]) if (upEmpty[k] && fold[k]) { fold[k] = false; bSaveView({ [`fold${k}`]: false }); }
+  // a stage put away shows its heading and its Open: its box waits for Open
+  const pickOff = (n) => upEmpty[n] || !fold[n];
   const foldBtn = (stage) => putAwayBtn('bfold', stage, fold[stage], "this stage's table", upEmpty[stage] ? 'disabled class="ctl-off"' : '');
   // ONE STAGE AT A TIME, ON ITS OWN SUB TAB (3.238.0, owner order 2026-09-23:
   // "Boards gets 3 sub tabs: Stage 1, Stage 2, Stage 3"). The provenance is
@@ -4755,7 +4772,7 @@ async function drawBoards() {
     <div class="row" style="align-items:flex-end">
       ${foldBtn(1)}
       <h3 style="margin:0">Stage 1</h3>
-      <label class="f${upEmpty[1] ? ' ctl-off' : ''}">record set<select id="bPick1" style="min-width:26rem"${upEmpty[1] ? ' disabled' : ''}>${bOptions(1, s1sel)}</select></label>
+      <label class="f${pickOff(1) ? ' ctl-off' : ''}">record set<select id="bPick1" style="min-width:26rem"${pickOff(1) ? ' disabled' : ''}>${bOptions(1, s1sel)}</select></label>
     </div>
     <div class="row">
       <button id="bDelete1" class="danger" ${s1sel ? '' : 'disabled'}>Delete record set…</button>
@@ -4768,7 +4785,7 @@ async function drawBoards() {
     <div class="row" style="align-items:flex-end">
       ${foldBtn(2)}
       <h3 style="margin:0">Stage 2</h3>
-      <label class="f${upEmpty[2] ? ' ctl-off' : ''}">record set<select id="bPick2" style="min-width:26rem"${upEmpty[2] ? ' disabled' : ''}>${bOptions(2, s2sel, s1sel)}</select></label>
+      <label class="f${pickOff(2) ? ' ctl-off' : ''}">record set<select id="bPick2" style="min-width:26rem"${pickOff(2) ? ' disabled' : ''}>${bOptions(2, s2sel, s1sel)}</select></label>
     </div>
     <div class="row">
       <button id="bDelete2" class="danger" ${s2sel ? '' : 'disabled'}>Delete record set…</button>
@@ -4781,7 +4798,7 @@ async function drawBoards() {
     <div class="row" style="align-items:flex-end">
       ${foldBtn(3)}
       <h3 style="margin:0">Stage 3</h3>
-      <label class="f${upEmpty[3] ? ' ctl-off' : ''}">record set<select id="bPick3" style="min-width:26rem"${upEmpty[3] ? ' disabled' : ''}>${bOptions(3, s3sel, s2sel)}</select></label>
+      <label class="f${pickOff(3) ? ' ctl-off' : ''}">record set<select id="bPick3" style="min-width:26rem"${pickOff(3) ? ' disabled' : ''}>${bOptions(3, s3sel, s2sel)}</select></label>
     </div>
     <div class="row">
       <button id="bDelete3" class="danger" ${s3sel ? '' : 'disabled'}>Delete record set…</button>
@@ -4848,8 +4865,9 @@ async function drawBoards() {
       // stage n record...--' and lower levels all put away too"). This stage's
       // box goes back to its empty entry and so does every box under it; the
       // stages above keep exactly what they show, written down so it survives
-      // the set below it that they were read from going. Open opens the stage
-      // and the ones under it (3.240.1).
+      // the set below it that they were read from going. Open opens this stage
+      // alone (3.241.4); Put away with nothing picked puts it and the ones under
+      // it away.
       if (fold[sN] && selOf[sN]) {
         const patch = { openS3: [] };
         for (const k of [1, 2, 3]) {
@@ -4858,7 +4876,7 @@ async function drawBoards() {
         }
         bSaveView(patch);
       } else {
-        bSaveView(Object.fromEntries([1, 2, 3].filter((k) => k >= sN).map((k) => [`fold${k}`, !fold[sN]])));
+        bSaveView(fold[sN] ? Object.fromEntries([1, 2, 3].filter((k) => k >= sN).map((k) => [`fold${k}`, false])) : { [`fold${sN}`]: true });
       }
       bRedrawPeggedTo(`[data-bfold="${sN}"]`);
     };

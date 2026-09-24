@@ -170,11 +170,15 @@ module.exports = {
     // THE SAME RULES AS SWEEP (3.241.3): a stage under one with nothing picked or put away is greyed
     assert.ok(draw.includes('const upEmpty = { 1: false, 2: !s1sel || !fold[1], 3: !s1sel || !s2sel || !fold[1] || !fold[2] };'),
       'a Boards stage under one with nothing picked is not greyed');
-    for (const n of [2, 3]) assert.ok(draw.includes(`<select id="bPick${n}" style="min-width:26rem"\${upEmpty[${n}] ? ' disabled' : ''}>`), `the stage ${n} record set box is not greyed with nothing picked above it`);
+    for (const n of [1, 2, 3]) assert.ok(draw.includes(`<select id="bPick${n}" style="min-width:26rem"\${pickOff(${n}) ? ' disabled' : ''}>`), `the stage ${n} record set box is not greyed while it is put away or with nothing picked above it`);
+    assert.ok(draw.includes('const pickOff = (n) => upEmpty[n] || !fold[n];'), 'a put-away stage\'s box is live');
+    // a stage under an empty one is put away, so filling the one above opens nothing (3.241.4)
+    assert.ok(draw.includes("for (const k of [2, 3]) if (upEmpty[k] && fold[k]) { fold[k] = false; bSaveView({ [`fold${k}`]: false }); }"),
+      'picking a set above opens the stage under it');
     assert.ok(draw.includes("if (!s1sel && !s2sel && !s3sel && view.s1 === undefined && view.s2 === undefined && view.s3 === undefined) {"),
       'boxes emptied by Put away are filled again with the newest set on the next draw');
-    assert.ok(draw.includes("bSaveView(Object.fromEntries([1, 2, 3].filter((k) => k >= sN).map((k) => [`fold${k}`, !fold[sN]])));"),
-      'putting a stage away leaves the stages under it open, or Open does not bring them back');
+    assert.ok(draw.includes("bSaveView(fold[sN] ? Object.fromEntries([1, 2, 3].filter((k) => k >= sN).map((k) => [`fold${k}`, false])) : { [`fold${sN}`]: true });"),
+      'putting a stage away leaves the stages under it open, or Open opens more than its own stage');
     assert.ok(draw.includes("${!onS3 ? '' : `<div class=\"tab tab-gap${t3On('3A')}\" data-bt3tab=\"3A\">Table 3.A</div>"),
       'the table tabs are not on the Stage strip, or they show under Stage 1 and Stage 2, or Table 3.A is not set apart from Stage 3');
     assert.ok(draw.includes("${B_T3.includes(stab) ? '<div id=\"bT3\"></div>' : ''}"), 'a table tab draws the Stage 3 section above its table');
