@@ -1261,4 +1261,101 @@ module.exports = {
     const options = [...html.matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)].map((m) => [m[1], m[2]]);
     assert.deepStrictEqual(options, [['s4-a', 'HALF LIFE TABLE: my own name'], ['s4-b', 'a rule on BTC'], ['s4-c', 'REBUILD REQUIRED - an older rule']], `a set in the box carries something after its name, or a set that needs a rebuild does not say so in front of it: ${JSON.stringify(options)}`);
   },
+
+  // SAVED UNDER A NEW NAME (3.247.0, owner order 2026-09-24: "save stage 4
+  // record sets with a new name so that the original can be tested too without
+  // going back and removing stops and conviction size tuning"). The copy carries
+  // the stop and the sizing only where ticked, its captured trades under its own
+  // name, and the reads the data has had; the original is not touched; a held
+  // set is refused, and so are a blank name and a taken one.
+  async aSetSavedUnderANewNameCarriesWhatIsTickedAndTheLooksTheDataHasHad() {
+    const c = await chain('tune copy test');
+    const copies = [];
+    try {
+      await gated(c);
+      await captured(c);
+      const depth = stages.getSet(c.cut.id).capture.pick.label;
+      stages.setStopChoice(c.cut.id, { pick: 'depth', stopPct: 0.25, why: 'a wide stop' });
+      stages.setSizingChoice(c.cut.id, { pick: 'depth', on: true, why: 'size by conviction' });
+      const file = path.join(SETS_DIR, `${c.cut.id}.json`);
+      const before = fs.readFileSync(file, 'utf8');
+      const src0 = stages.getSet(c.cut.id);
+      const heldReads = stages.judgeSetsOf(c.cut.id, 'held').length;
+      assert.ok(heldReads >= 1, 'the rule has been read on the held-back window');
+      // refused in words
+      const refusal = (id, asked) => { try { stages.copyStage4Set(id, asked); } catch (e) { return e.message; } return null; };
+      assert.ok(/name the copy/.test(refusal(c.cut.id, { name: '  ' })), 'a blank name');
+      assert.ok(/already exists/.test(refusal(c.cut.id, { name: src0.name.toUpperCase() })), 'a name already taken, whatever its case');
+      assert.ok(/a reading frozen at its press/.test(refusal(stages.judgeSetsOf(c.cut.id, 'held')[0].id, { name: `${src0.name} from held` })), 'a held set');
+      assert.ok(/unknown Stage 4 record set/.test(refusal('s4-no-such-set', { name: `${src0.name} from nothing` })), 'no such set');
+      const save = (tag, stops, sizing) => { const out = stages.copyStage4Set(c.cut.id, { name: `${src0.name} ${tag}`, stops, sizing }); copies.push(out.id); return { out, doc: stages.getSet(out.id) }; };
+      const both = save('both', true, true);
+      const stopsOnly = save('stop only', true, false);
+      const sizingOnly = save('sizing only', false, true);
+      const neither = save('neither', false, false);
+      const picked = (d) => (d.stopChoices || {})[depth] || null;
+      assert.deepStrictEqual([picked(both.doc).stopPct, picked(both.doc).why, picked(both.doc).sizing.on], [0.25, 'a wide stop', true], 'both ticked: the stop and the sizing');
+      assert.deepStrictEqual([picked(stopsOnly.doc).stopPct, 'sizing' in picked(stopsOnly.doc)], [0.25, false], 'the stop alone');
+      assert.deepStrictEqual(['stopPct' in picked(sizingOnly.doc), picked(sizingOnly.doc).sizing.on], [false, true], 'the sizing alone');
+      assert.deepStrictEqual(neither.doc.stopChoices, {}, 'neither: no choice on record at all');
+      assert.deepStrictEqual([both.out.stops, both.out.sizing, neither.out.stops, neither.out.sizing], [1, 1, 0, 0], 'the reply counts what was carried');
+      // the same rule, survivors and numbers, under its own id and the name typed
+      for (const { out, doc } of [both, neither]) {
+        assert.ok(out.id !== c.cut.id && /^s4-/.test(out.id) && doc.name === out.name, 'its own id and the name typed');
+        assert.deepStrictEqual([doc.rule, doc.survivors, doc.parent, doc.unit], [src0.rule, src0.survivors, src0.parent, src0.unit], 'the same rule and survivors on the same unit');
+        assert.deepStrictEqual(doc.halflife, [], 'History\'s tables stay with the set they were run on');
+        assert.deepStrictEqual({ id: doc.copiedFrom.id, name: doc.copiedFrom.name, held: doc.copiedFrom.looks.held }, { id: c.cut.id, name: src0.name, held: heldReads }, 'where it came from, and the held-back reads it carries');
+        // its captured trades, under its own name
+        const capC = stages.readCapture(out.id);
+        assert.deepStrictEqual({ ...capC, id: null }, { ...stages.readCapture(c.cut.id), id: null }, 'the captured trades are the original\'s');
+        assert.strictEqual(capC.id, out.id);
+        assert.strictEqual(doc.capture.id, `${out.id}-c${Number(doc.capture.times) || 1}`);
+      }
+      // the original is not touched
+      assert.strictEqual(fs.readFileSync(file, 'utf8'), before, 'the set it was saved from is byte for byte as it was');
+      // the reads the data has had are counted on the copy: on its looks line, and in the look a press on it stamps
+      const vdry = await stages.judgeDry(neither.out.id, 'held');
+      assert.ok(vdry.looks.what.some((w) => w.includes(`${heldReads} held-back read(s) of ${src0.name}, the set this was saved from`)), vdry.looks.what.join(' | '));
+      stages.judgeStart(neither.out.id, 'held', { barPct: 100 });
+      await settle(() => stages.judgeStatus(neither.out.id, 'held'), 'the held read of the copy');
+      const hs = stages.judgeSetsOf(neither.out.id, 'held')[0];
+      assert.strictEqual(hs.block.look, 1 + heldReads, 'the copy\'s first held-back read is stamped after the reads of the set it was saved from');
+      // a copy of a copy carries both
+      const again = stages.copyStage4Set(neither.out.id, { name: `${src0.name} again`, stops: false, sizing: false });
+      copies.push(again.id);
+      assert.strictEqual(again.looks.held, heldReads + 1, 'the reads of the copy, and of the set it was saved from');
+      // deleting a copy deletes its captured trades and leaves the original's
+      stages.deleteSet(both.out.id, both.out.id);
+      assert.ok(!fs.existsSync(stages.captureFile(both.out.id)) && fs.existsSync(stages.captureFile(c.cut.id)), 'the copy\'s capture goes with it');
+    } finally {
+      for (const id of copies.slice().reverse()) {
+        for (const j of [...stages.judgeSetsOf(id, 'held'), ...stages.judgeSetsOf(id, 'reserve')]) { try { stages.deleteSet(j.id, j.id); } catch (_) { /* gone */ } }
+        try { stages.deleteSet(id, id); } catch (_) { /* gone already */ }
+      }
+      c.cleanup();
+    }
+  },
+
+  // THE SAVE ON TUNE (3.247.0): its own panel after the conviction sizing; the
+  // name box and its two ticks one control, bottom-aligned (RULE FOUR-A); the
+  // press in a row of its own; every control with a help entry; the route served
+  theSaveUnderANewNameIsItsOwnPanelLaidOutTheHouseWay() {
+    const ui = src('public/construct.js');
+    const fn = ui.slice(ui.indexOf('function tnCopyPanelHtml('), ui.indexOf('function tnSizingChoiceHtml('));
+    assert.ok(fn.length > 0, 'a top-level helper draws it');
+    assert.ok(ui.indexOf("${isSet ? tnCopyPanelHtml(chosen, busy) : ''}") > ui.indexOf('Conviction sizing — bet more when more members agree?'), 'after the conviction sizing panel');
+    const rows = [...fn.matchAll(/<div class="row"([^>]*)>([\s\S]*?)<\/div>/g)].map((m) => ({ attrs: m[1], body: m[2] }));
+    const tickRow = rows.find((r) => r.body.includes('id="tnCopyName"'));
+    assert.ok(tickRow && /align-items:flex-end/.test(tickRow.attrs), 'the name and the ticks bottom-align');
+    assert.ok(tickRow.body.includes('id="tnCopyStops"') && tickRow.body.includes('id="tnCopySizing"') && !tickRow.body.includes('<button'), 'the two ticks beside the name, and no button with them');
+    assert.ok(/<label class="c"[^>]*><input type="checkbox" id="tnCopyStops" checked>/.test(fn) && /<label class="c"[^>]*><input type="checkbox" id="tnCopySizing" checked>/.test(fn), 'the house tick, ticked to start: the set as it stands');
+    assert.ok(/value="\$\{esc\(cand\.name\)\}"/.test(tickRow.body) && !/maxlength/.test(tickRow.body), 'filled with the name of the set, and nothing cut');
+    const btnRow = rows.find((r) => r.body.includes('id="tnCopy"'));
+    assert.ok(btnRow && !btnRow.body.includes('<input'), 'the press in a row of its own');
+    const help = src('public/help-content.js');
+    for (const id of ['tnCopyName', 'tnCopyStops', 'tnCopySizing', 'tnCopy']) assert.ok(new RegExp(`\\n\\s+${id}: \\{`).test(help), `${id} has a help entry`);
+    assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(chosen\.id\)\}\/copy`, \{ name, stops, sizing \}/.test(ui), 'the press sends the name and the two ticks');
+    const srv = src('server.js');
+    assert.ok(srv.includes("app.post('/api/funnel/set/:id/copy'") && /stages\.copyStage4Set\(req\.params\.id, req\.body \|\| \{\}\)/.test(srv), 'the route is served');
+  },
 };

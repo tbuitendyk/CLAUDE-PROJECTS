@@ -1319,6 +1319,22 @@ module.exports.thePictureIsReadOffTheSetsAndPricesNothing = async function () {
       { priced: false, test: 10, held: 5, heldSet: held.name, reserve: 7, reserveOf: 2, train: 'no capture on Tune yet — the training window is read off the capture' });
     assert.deepStrictEqual(p.survivors.map((x) => [x.label, x.test.money, x.held.money, x.reserve.money, x.train]), doc.survivors.map((x) => [x.label, 10, 5, 7, null]));
     assert.ok(p.rule.test.comparisons && 'known' in p.rule.test.comparisons, 'the four on the test window are read, or said to be unknown');
+    // THE SHARE OF THE FOUR, THE STEPS AND THE DEVIANCE (3.247.0): the average share
+    // of the four each survivor clears is the mean of its own shares, off the held
+    // set's own read; every stage of a survivor's money that was not taken is null
+    // (a dash on the page), never a copy of the stage before; and its deviance is
+    // the depth the pick is made by
+    const heldRows = (((held.block || {}).read || {}).own || {}).rows || [];
+    const known = heldRows.filter((x) => x && x.known && x.beats);
+    const share = known.length ? (100 * known.reduce((a, x) => a + V.GATED.filter((k) => x.beats[k] === true).length / V.GATED.length, 0)) / known.length : null;
+    assert.strictEqual(p.rule.held.fourShare, share, 'the average share of the four on the held row');
+    assert.ok(p.rule.test.fourShare === null || (p.rule.test.fourShare >= 0 && p.rule.test.fourShare <= 100), 'a share, or none when the four were not read');
+    assert.deepStrictEqual(p.survivors.map((x) => [x.steps.test.beforeHistory && x.steps.test.beforeHistory.money, x.steps.test.afterHistory, x.steps.test.afterStop, x.steps.test.afterSizing, x.steps.train.beforeHistory, x.steps.held.afterHistory, x.halfLife]),
+      doc.survivors.map(() => [10, null, null, null, null, null, null]), 'no History, no capture, no tuning: only the test and held figures as stage 3 priced them');
+    assert.ok(p.survivors.every((x) => x.depth && x.depth.worst >= 0 && x.depth.worst <= 1 && x.depth.mean <= x.depth.worst + 1e-12), 'every survivor says how far it sits from the middle of the rule');
+    const byDepth = p.survivors.find((x) => x.label === dry.depthPick.label);
+    assert.deepStrictEqual([byDepth.depth.worst, byDepth.depth.mean], [dry.depthPick.worst, dry.depthPick.mean], 'the deviance shown is the depth the pick is made by');
+    assert.ok(p.survivors.every((x) => x.test.clears === null || typeof x.test.clears === 'boolean'), 'each survivor\'s own test clears, or none');
     // a held set's picture says the reserve is read on Reserve
     const hd = await stages.stage4GreenlightDry(held.id);
     assert.ok(/read on Reserve/.test(hd.picture.rule.reserve.why), hd.picture.rule.reserve.why);
@@ -1333,6 +1349,17 @@ module.exports.thePictureIsReadOffTheSetsAndPricesNothing = async function () {
     for (const w of ['<span>train</span>', '<span>test</span>', '<span>held</span>', '<span>reserve</span>', '<span>The picture through every period</span>']) assert.ok(ui.includes(w), `${w} is on the page`);
     // the pick draws the one survivor, and marks it in the table of every survivor (3.247.0)
     assert.ok(/pk\.addEventListener\('change', \(\) => \{ picked = pk\.value; drawRows\(\); drawOne\(\); \}\)/.test(ui), 'the pick draws the one survivor');
+    // THE TABLE OF EVERY SURVIVOR (3.247.0) is drawn inside the picture, which is
+    // drawn whether or not the set is refused; each row picks, each heading sorts
+    const pic = ui.slice(ui.indexOf('function glPictureHtml('), ui.indexOf('function glRowsHtml('));
+    assert.ok(pic.indexOf('<div class="gl-rows"></div>') >= 0 && pic.indexOf('<div class="gl-rows"></div>') < pic.indexOf('gl-one'), 'the table sits above the one survivor\'s lines, inside the picture');
+    assert.ok(ui.indexOf('${glPictureHtml(d)}') < ui.indexOf("${d.refused ? '' : `<div class=\"row\" style=\"align-items:flex-end\">"), 'the picture is drawn before the refusal hides the pick box');
+    const rowsFn = ui.slice(ui.indexOf('function glRowsHtml('), ui.indexOf('function glOneHtml('));
+    for (const w of ["'deviance from centre, worst'", "'deviance from centre, average'", 'data-glpick=', 'data-glsort=']) assert.ok(rowsFn.includes(w), `${w} is in the table of every survivor`);
+    const oneFn = ui.slice(ui.indexOf('function glOneHtml('), ui.indexOf('function glOneHtml(') + 6000);
+    const cols = ['before History $', 'after History $', 'after stop $', 'after conviction sizing $'].map((w) => oneFn.indexOf(w));
+    assert.ok(cols.every((i) => i > 0) && cols.every((i, k) => !k || i > cols[k - 1]), 'the one survivor\'s money in four columns, in the order each change is applied');
+    assert.ok(pic.includes('average % of the four cleared') && pic.includes('The test stretch is without the History and Tune settings'), 'the picture carries the share column and says what the test row is without');
   } finally { f.cleanup(); }
 };
 
