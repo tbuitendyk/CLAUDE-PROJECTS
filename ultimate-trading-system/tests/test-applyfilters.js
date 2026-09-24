@@ -170,8 +170,11 @@ module.exports = {
     // THE SAME RULES AS SWEEP (3.241.3): a stage under one with nothing picked or put away is greyed
     assert.ok(draw.includes('const upEmpty = { 1: false, 2: !s1sel || !fold[1], 3: !s1sel || !s2sel || !fold[1] || !fold[2] };'),
       'a Boards stage under one with nothing picked is not greyed');
-    for (const n of [1, 2, 3]) assert.ok(draw.includes(`<select id="bPick${n}" style="min-width:26rem"\${pickOff(${n}) ? ' disabled' : ''}>`), `the stage ${n} record set box is not greyed while it is put away or with nothing picked above it`);
-    assert.ok(draw.includes('const pickOff = (n) => upEmpty[n] || !fold[n];'), 'a put-away stage\'s box is live');
+    for (const n of [1, 2, 3]) assert.ok(draw.includes(`<select id="bPick${n}" style="min-width:26rem"\${pickOff(${n}) ? ' disabled' : ''}>`), `the stage ${n} record set box is not greyed with nothing picked above it`);
+    // ...and it is greyed and live WITH ITS OPEN (3.241.5, owner order 2026-09-24:
+    // "the same goes for the open button on boards"), not until Open is pressed
+    assert.ok(draw.includes('const pickOff = (n) => upEmpty[n];'), 'a stage\'s record set box is greyed while its Open is live');
+    assert.ok(draw.includes("upEmpty[stage] ? 'disabled class=\"ctl-off\"' : ''"), 'the Open and the box no longer share one rule');
     // a stage under an empty one is put away, so filling the one above opens nothing (3.241.4)
     assert.ok(draw.includes("for (const k of [2, 3]) if (upEmpty[k] && fold[k]) { fold[k] = false; bSaveView({ [`fold${k}`]: false }); }"),
       'picking a set above opens the stage under it');

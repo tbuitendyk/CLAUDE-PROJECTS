@@ -1736,8 +1736,15 @@ module.exports = {
     // and a level under an empty one is put away so it stays shut when the level above fills
     assert.ok(UI.includes("  if (away) for (const x of SW_LEVELS.slice(SW_LEVELS.indexOf(String(k)))) all[x] = true;\n  else all[String(k)] = false;"),
       'Put away on Sweep does not take the levels under it, or Open opens more than its own level');
-    assert.ok(UI.includes("    if (above && all[k] !== true) { all[k] = true; moved = true; }") && UI.includes("    if (box) { box.disabled = shut;"),
-      'a level under an empty one opens itself when the level above is filled, or its box is live while it is put away');
+    assert.ok(UI.includes("    if (above && all[k] !== true) { all[k] = true; moved = true; }"),
+      'a level under an empty one opens itself when the level above is filled');
+    // ITS BOX WAKES WITH ITS OPEN (3.241.5, owner order 2026-09-24: "anytime that
+    // a stage 1/2/3 open button becomes available the drop down selector needs to
+    // become available at the same time"), and a pick in a put-away stage opens it
+    assert.ok(UI.includes("b.disabled = above;") && UI.includes("    if (box) { box.disabled = above; const lab = box.closest('label'); if (lab) lab.classList.toggle('ctl-off', above); }"),
+      'a stage\'s record set box is greyed while its Open is live, or live while its Open is greyed');
+    assert.ok(UI.includes("  if (swAway(String(n))) swSetAway(String(n), false);\n  if (n < 3) swRefillPicks(false);"),
+      'a pick in the box of a stage that is put away leaves the stage shut, so the set picked is not shown');
   },
 
   // THE SPLIT FOR EXTRA MEMBERS STARTS GHOSTED AFTER A LOAD (3.209.1, owner:

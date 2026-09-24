@@ -919,8 +919,14 @@ const swLevelSet = (k) => (k === 'c' ? !!($('#campOut') && $('#campOut').dataset
 //
 // AND IT IS PUT AWAY, SO IT STAYS SHUT WHEN THE LEVEL ABOVE GETS SOMETHING SET
 // (3.241.4): setting a campaign wakes Stage 1's Open and opens nothing; picking
-// a stage 1 set wakes Stage 2's. A level that is put away shows its heading and
-// its Open and nothing else: its box too is greyed until Open is pressed.
+// a stage 1 set wakes Stage 2's. A level that is put away shows its heading,
+// its Open and its box.
+//
+// ITS BOX WAKES WITH ITS OPEN (3.241.5, owner order 2026-09-24: "anytime that a
+// stage 1/2/3 open button becomes available the drop down selector needs to
+// become available at the same time"). 3.241.4 kept the box greyed until Open
+// was pressed; now the two are greyed and live together, and a pick in the box
+// of a stage that is put away opens it (swPick).
 function swApplyAway() {
   const all = swAwayAll();
   let moved = false;
@@ -933,7 +939,7 @@ function swApplyAway() {
     const b = document.querySelector(`[data-swfold="${k}"]`);
     if (b) { b.textContent = shut ? 'Open' : 'Put away'; b.disabled = above; b.classList.toggle('ctl-off', above); }
     const box = k === 'c' ? null : $(SW_PICK[Number(k)]);
-    if (box) { box.disabled = shut; const lab = box.closest('label'); if (lab) lab.classList.toggle('ctl-off', shut); }
+    if (box) { box.disabled = above; const lab = box.closest('label'); if (lab) lab.classList.toggle('ctl-off', above); }
     if (!swLevelSet(k) || all[k] === true) above = true;
   }
   if (moved) { try { localStorage.setItem(SW_AWAY_KEY, JSON.stringify(all)); } catch (_) { /* private window */ } }
@@ -4512,6 +4518,9 @@ function swForget(n) { for (const f of [`#swName${n}`, `#swDesc${n}`]) { const e
 // picked), then the section shows the set it names, filled from it, or stands
 // free for a new one with its name and description emptied.
 async function swPick(n) {
+  // a pick in a stage that is put away opens that stage alone, the way its
+  // Open does, to show the set picked or the form for a new one (3.241.5)
+  if (swAway(String(n))) swSetAway(String(n), false);
   if (n < 3) swRefillPicks(false);
   for (const m of [1, 2, 3]) {
     if (m < n) continue;
@@ -4728,8 +4737,10 @@ async function drawBoards() {
   // ...and it is put away, so picking the set above wakes its Open and opens
   // nothing (3.241.4, the same rule as Sweep)
   for (const k of [2, 3]) if (upEmpty[k] && fold[k]) { fold[k] = false; bSaveView({ [`fold${k}`]: false }); }
-  // a stage put away shows its heading and its Open: its box waits for Open
-  const pickOff = (n) => upEmpty[n] || !fold[n];
+  // a stage put away shows its heading, its Open and its box, and the box is
+  // greyed and live with its Open (3.241.5, owner order 2026-09-24: "the same
+  // goes for the open button on boards"); a pick in it opens the stage
+  const pickOff = (n) => upEmpty[n];
   const foldBtn = (stage) => putAwayBtn('bfold', stage, fold[stage], "this stage's table", upEmpty[stage] ? 'disabled class="ctl-off"' : '');
   // ONE STAGE AT A TIME, ON ITS OWN SUB TAB (3.238.0, owner order 2026-09-23:
   // "Boards gets 3 sub tabs: Stage 1, Stage 2, Stage 3"). The provenance is
