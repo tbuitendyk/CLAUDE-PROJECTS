@@ -1267,8 +1267,10 @@ const GUARDS = [
     'theThirdStepShowsTheAverageScrambledAverageBesideTheHighest',
     'the second check grid repeats the highest copy under the word average'],
   // ---- A RANGE CAN KEEP THE SETTINGS WITH NO VALUE FOR THE DIAL (3.53.0) ----
-  [path.join(ROOT, 'public', 'construct.js'), "    else st.rule.ranges[st.dial] = { min: lo === '' ? null : Number(lo), max: hi === '' ? null : Number(hi), ...(alsoNone ? { also: ['none'] } : {}) };",
-    "    else st.rule.ranges[st.dial] = { min: lo === '' ? null : Number(lo), max: hi === '' ? null : Number(hi) };",
+  // re-aimed 3.243.0: the handler became an if / else-if / else at 3.62.0 and
+  // this line moved inside the last branch, so the guard found nothing
+  [path.join(ROOT, 'public', 'construct.js'), "      st.rule.ranges[st.dial] = { min: lo === '' ? null : Number(lo), max: hi === '' ? null : Number(hi), ...(alsoNone ? { also: ['none'] } : {}) };",
+    "      st.rule.ranges[st.dial] = { min: lo === '' ? null : Number(lo), max: hi === '' ? null : Number(hi) };",
     'aRangeCanKeepTheSettingsThatHaveNoValueForTheDial',
     'the tick is drawn and counted and never written into the rule, so the cut drops every market setting anyway'],
   // ---- THE TICK BOXES MOVE THE COUNT (3.52.0) ----
