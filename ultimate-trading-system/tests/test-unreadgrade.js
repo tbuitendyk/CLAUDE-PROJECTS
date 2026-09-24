@@ -245,7 +245,8 @@ module.exports = {
       assert.ok(/the reserve window from \d{4}-\d{2}-\d{2} holds \d+ whole chunks/.test(g1.verdict.sentence), g1.verdict.sentence);
       assert.ok(/it stands on reserve set of|it stands on held set of/.test(g1.verdict.sentence) && g1.verdict.sentence.includes(`it stands on ${heldSet.name}, which passed on the held-back window`), g1.verdict.sentence);
       assert.strictEqual(g1.verdict.pass, !!(g1.footing.ok && g1.read.pass && g1.copies.pass && g1.sanity.ok), 'PASS is exactly the four rules');
-      assert.deepStrictEqual(g1.rules.tags, { footing: 'DERIVED', comparisons: 'DERIVED', bar: 'DERIVED', sanity: 'GUESSED' });
+      // the automatic pass carries no tag unless it is ticked (3.246.0)
+      assert.deepStrictEqual(g1.rules.tags, { footing: 'DERIVED', comparisons: 'DERIVED', bar: 'DERIVED', sanity: 'GUESSED', autoPass: null });
       // the unread money is not the held-back money wearing another name
       const held = heldSet.block.survivors.rows.map((x) => x.money);
       const unreadMoney = g1.priced.map((x) => x.money);

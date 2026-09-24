@@ -316,6 +316,9 @@ module.exports = {
       // tests/test-stages.js (theSavedSortOrdersTheTablesAndTheFirstColumnFollows)
       // holds them to it.
       { id: 'swAgreeRule', allowed: require('../lib/agreement').AGREE_RULES, why: 'lib/agreement.js AGREE_RULES' },
+      // Held and Reserve's comparisons to beat (3.246.0): the backend honours a
+      // value only when declareRules keeps it as asked -- anything else it reads as 4
+      { id: 'vOfFour', allowed: ['2', '3', '4'].filter((v) => require('../lib/funnelverify').declareRules({ k: 10 }, { ofFour: v }).ofFour === Number(v)), why: 'lib/funnelverify.js declareRules ofFour' },
     ];
     for (const c of CHECKED) {
       const offered = optionValues(SWEEP, c.id);
