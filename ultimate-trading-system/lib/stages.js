@@ -9844,7 +9844,8 @@ async function pictureOf(doc) {
       if (k === 'test') before = rr ? { money: rr.avgTest ?? null, trades: rr.testTrades ?? null } : null;
       else if (k === 'held') before = rr && rr.avgHold != null ? { money: rr.avgHold, trades: rr.avgTrades ?? null } : null;
       else before = history ? capOf(L, w, unretrained) : captured;
-      const tw = t && t.windows ? t.windows[k] : null;
+      // a window the capture holds no trades for has no figure after a tuning either: a dash, never $0.00 (3.247.3)
+      const tw = t && t.windows && (w !== 'reserve' || (cap && cap.reserve && cap.reserve.captured)) ? t.windows[k] : null;
       got[k] = {
         beforeHistory: before,
         afterHistory: history ? captured : null,
