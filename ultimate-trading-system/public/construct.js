@@ -843,9 +843,8 @@ function swPausedOptions(sets, selected) {
   const list = sets.filter((x) => x.stage === 3 && x.checkpoint && ['paused', 'interrupted', 'error'].includes(x.status));
   return list.map((x) => {
     const v = `continue:${x.id}`;
-    const pf = x.perf || {};
-    const how = x.status === 'paused' ? 'paused' : x.status === 'interrupted' ? 'paused by a restart' : 'paused by a failure';
-    return `<option value="${esc(v)}"${v === selected ? ' selected' : ''}>${how} — ${esc(x.name)} — ${esc((x.createdAt || '').slice(0, 10))} — ${Number(pf.unitsDone || 0).toLocaleString()} of ${Number(pf.unitsTotal || 0).toLocaleString()} units priced</option>`;
+    // the name alone (3.242.1); that it is paused is on its heading once it is open
+    return `<option value="${esc(v)}"${v === selected ? ' selected' : ''}>${rebuildPrefix(x)}${esc(x.name)}</option>`;
   }).join('');
 }
 // EACH SECTION PICKS ITS OWN SET, OR A NEW ONE (3.240.0, owner order
@@ -872,7 +871,11 @@ function swSetOptions(sets, stage, selected, parentId) {
   const on = selected ? '' : ' selected';
   const head = `<option value=""${on}>— new stage ${stage} sweep —</option>`;
   const paused = stage === 3 ? swPausedOptions(mine, selected) : '';
-  return head + paused + mine.filter((x) => !swPausedRow(x)).map((x) => `<option value="${esc(x.id)}"${x.id === selected ? ' selected' : ''}>${rebuildPrefix(x)}${esc(x.name)} — ${esc(x.status)} — ${esc((x.createdAt || '').slice(0, 10))} — ${Number((x.plan || {}).units || 0).toLocaleString()} units</option>`).join('');
+  // THE NAME IS THE NAME (3.242.1, owner order 2026-09-24: "fix the crazy long
+  // name that you end up making for the record set. the NAME THAT THE USER
+  // ENTERED SHOULD BE THE NAME!"): a set is offered by the name typed for it and
+  // nothing else. Whether it has finished is on its heading once it is open.
+  return head + paused + mine.filter((x) => !swPausedRow(x)).map((x) => `<option value="${esc(x.id)}"${x.id === selected ? ' selected' : ''}>${rebuildPrefix(x)}${esc(x.name)}</option>`).join('');
 }
 // WHAT A PICK DOES TO ITS SECTION: its boxes are filled from the set picked,
 // and new frees them. EVERY BOX STAYS LIVE AND START STAYS AWAKE (3.241.7,
@@ -4330,7 +4333,7 @@ async function drawSweep() {
     if (!body.universe.length) delete body.universe;
     if (!body.compare.length) delete body.compare;
     const got = await startPost('api/stage1', body);
-    if (got && !got.pending) swLandOn(1, got.id);
+    if (got && !got.pending) swLandOn(1, got);
     if (got && !got.pending) { rememberSweepForm(); say('#swOut1', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} units. Progress above; the set lands on Boards.`); }
     swAfterStart(got);
   };
@@ -4341,7 +4344,7 @@ async function drawSweep() {
       carry: Number($('#swCarry').value) || 0, desc: $('#swDesc2').value,
       name: $('#swName2').value,
     });
-    if (got && !got.pending) swLandOn(2, got.id);
+    if (got && !got.pending) swLandOn(2, got);
     if (got && !got.pending) { rememberSweepForm(); say('#swOut2', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} carried units.`); }
     swAfterStart(got);
   };
@@ -4372,6 +4375,9 @@ async function drawSweep() {
       name: $('#swName3').value,
       ...swBlockParams(),
     });
+    // ...and stage 3 lands on the set it made the same way (3.242.1: "make sure
+    // you're not doing that on stage 3")
+    if (got && !got.pending) swLandOn(3, got);
     if (got && !got.pending) { rememberSweepForm(); say('#swOut3', `started <b>${esc(got.name)}</b> — ${got.settings.toLocaleString()} settings × ${got.units.toLocaleString()} units.`); }
     if (cont) {
       // the box answers before it has read what is on disk; the line above
@@ -4629,17 +4635,32 @@ async function swFillPicked() {
   swSayCut2();
   swCountsSoon();
 }
-// A START LANDS ON THE SET IT MADE: the section's box names it, so the section
-// shows the set that now exists rather than a form that already made it.
-function swLandOn(n, id) {
+// A START LANDS ON THE SET IT MADE: the section's box names it, open, and the
+// name and description stay exactly as typed.
+//
+// THE SET JUST STARTED IS ON THE LIST AT ONCE (3.242.1, owner order 2026-09-24:
+// "when the start stage 2 button is used it wipes-out the name and description
+// fields. what it should do is put the NEW NAME in the selector and have it
+// selected and leave the name and description alone"). The list this screen
+// holds is the one the poll last read, which does not have the new set yet, so
+// the set just opened read as gone and was let go -- its name and description
+// with it -- on every stage. It is written into that list here, from what the
+// start answered, until the next poll brings the box's own row for it.
+function swLandOn(n, got) {
+  const id = got && got.id;
   if (!id) return;
   const box = $(SW_PICK[n]);
   if (!box) return;
-  const sets = swSetsCache || [];
   const parentId = n === 1 ? null : swOpened(n - 1);
-  const opts = swSetOptions(sets, n, id, parentId);
-  if (!opts.includes(`value="${id}"`)) box.insertAdjacentHTML('beforeend', `<option value="${esc(id)}" selected>${esc(($(`#swName${n}`) || {}).value || id)} — starting</option>`);
-  else box.innerHTML = opts;
+  const sets = swSetsCache || [];
+  if (!sets.some((x) => x.id === id)) {
+    swSetsCache = [{
+      id, stage: n, name: got.name || ($(`#swName${n}`) || {}).value || id, status: 'starting',
+      createdAt: new Date().toISOString(), params: { campaign: swCampNow || null },
+      parent: parentId ? { id: parentId } : null, plan: { units: Number(got.units) || 0 },
+    }, ...sets];
+  }
+  box.innerHTML = swSetOptions(swSetsCache, n, id, parentId);
   box.value = id;
   swSetOpened(n, id);
   if (n < 3) swRefillPicks(false, n);
@@ -4806,23 +4827,31 @@ async function drawBoards() {
     const head = above && !list.length
       ? `<option value="">— nothing came out of ${esc(above.name)} yet —</option>`
       : `<option value="">— pick a stage ${stage} record set${above ? ` out of ${esc(above.name)}` : ''} —</option>`;
-    return head + list.map((x) => `<option value="${esc(x.id)}"${x.id === sel ? ' selected' : ''}>${rebuildPrefix(x)}${esc(x.name)} — ${esc(x.status)} — ${esc((x.createdAt || '').slice(0, 10))}${x.desc ? ` — ${esc(x.desc.slice(0, 40))}` : ''}</option>`).join('');
+    // the name alone, as on Sweep (3.242.1, owner order 2026-09-24: "the NAME
+    // THAT THE USER ENTERED SHOULD BE THE NAME!")
+    return head + list.map((x) => `<option value="${esc(x.id)}"${x.id === sel ? ' selected' : ''}>${rebuildPrefix(x)}${esc(x.name)}</option>`).join('');
   };
   // THE SAME RULES AS SWEEP (3.241.3, owner order 2026-09-23: "Same rules for
   // selectors and record sets on Boards"): a stage under one with nothing
   // picked, or under one put away, has its record set box and its Put away /
   // Open greyed -- pick from the top down.
   const upEmpty = { 1: false, 2: !s1sel || !fold[1], 3: !s1sel || !s2sel || !fold[1] || !fold[2] };
+  // A STAGE THAT NOTHING HAS COME OUT OF HAS NOTHING TO OPEN (3.242.1, owner
+  // order 2026-09-24: "in cases of 'nothing came out of ....' on the boards
+  // record set selectors the Open button should be ghosted"): its Open and its
+  // box are greyed together, and it is put away.
+  const cameOut = (stage, aboveId) => sets.some((x) => x.stage === stage && descendsFrom(x, aboveId));
+  const nothingOut = { 1: false, 2: !!s1sel && !cameOut(2, s1sel), 3: !!s2sel && !cameOut(3, s2sel) };
   // ...and it is put away, so picking the set above wakes its Open and opens
   // nothing (3.241.4, the same rule as Sweep)
-  for (const k of [2, 3]) if (upEmpty[k] && fold[k]) { fold[k] = false; bSaveView({ [`fold${k}`]: false }); }
+  for (const k of [2, 3]) if ((upEmpty[k] || nothingOut[k]) && fold[k]) { fold[k] = false; bSaveView({ [`fold${k}`]: false }); }
   // a stage put away shows its heading, its Open and its box, and the box is
   // greyed and live with its Open (3.241.5, owner order 2026-09-24: "the same
   // goes for the open button on boards"); a pick in it opens nothing (3.241.7)
-  const pickOff = (n) => upEmpty[n];
+  const pickOff = (n) => upEmpty[n] || nothingOut[n];
   // while its box names something other than what is open, its button reads
   // Open, put away or not (3.242.0)
-  const foldBtn = (stage) => putAwayBtn('bfold', stage, fold[stage] && !differs(stage), "this stage's table", upEmpty[stage] ? 'disabled class="ctl-off"' : '');
+  const foldBtn = (stage) => putAwayBtn('bfold', stage, fold[stage] && !differs(stage), "this stage's table", pickOff(stage) ? 'disabled class="ctl-off"' : '');
   // ONE STAGE AT A TIME, ON ITS OWN SUB TAB (3.238.0, owner order 2026-09-23:
   // "Boards gets 3 sub tabs: Stage 1, Stage 2, Stage 3"). The provenance is
   // unchanged: picking a stage 3 record set still fills the other two with its

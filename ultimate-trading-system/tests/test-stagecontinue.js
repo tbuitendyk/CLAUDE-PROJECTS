@@ -870,9 +870,11 @@ module.exports = {
       { id: 'd1', stage: 1, status: 'done', checkpoint: false, name: 'S1 #2', createdAt: '2026-09-01T01:02:03Z', perf: {}, plan: { units: 9, settings: 0 } },
     ];
     const paused = swPausedOptions(sets, '');
-    assert.ok(paused.includes('<option value="continue:p1">paused — S3 #9 — 2026-09-07 — 3 of 8 units priced</option>'), `a paused run, by name, date and how far it got: ${paused}`);
-    assert.ok(paused.includes('<option value="continue:p2">paused by a restart — S3 #10 — 2026-09-06 — 0 of 2 units priced</option>'), 'an interrupted run says a restart paused it');
-    assert.ok(paused.includes('<option value="continue:p3">paused by a failure — S3 #11 — 2026-09-05 — 1 of 2 units priced</option>'), 'a failed run says a failure paused it');
+    // BY ITS NAME ALONE (3.242.1, owner order 2026-09-24: "the NAME THAT THE USER
+    // ENTERED SHOULD BE THE NAME!"); that it is paused is on its heading once open
+    assert.ok(paused.includes('<option value="continue:p1">S3 #9</option>'), `a paused run is not offered by its name alone: ${paused}`);
+    assert.ok(paused.includes('<option value="continue:p2">S3 #10</option>'), 'an interrupted run is not offered by its name alone');
+    assert.ok(paused.includes('<option value="continue:p3">S3 #11</option>'), 'a failed run is not offered by its name alone');
     assert.ok(!paused.includes('p4'), 'a paused run with no checkpoint cannot be started again, so it is not offered');
     assert.ok(!paused.includes('d3'), 'a finished stage 3 set is not offered');
     assert.ok(swPausedOptions(sets, 'continue:p2').includes('<option value="continue:p2" selected>'), 'the chosen one stays chosen');
@@ -882,7 +884,7 @@ module.exports = {
     const kids = sets.map((x) => (x.stage === 3 ? { ...x, parent: { id: 'd2' } } : x));
     const box3 = swSetOptions(kids, 3, '', 'd2');
     assert.ok(box3.startsWith('<option value="" selected>— new stage 3 sweep —</option><option value="continue:p1">'), `the stage 3 section's box lists the paused runs right after new: ${box3.slice(0, 120)}`);
-    assert.ok(box3.includes('<option value="d3">S3 #8 — done — 2026-09-03 — 2 units</option>'), 'and the other stage 3 sets after them, each with its status');
+    assert.ok(box3.includes('<option value="d3">S3 #8</option>'), 'and the other stage 3 sets after them, each by its name alone (3.242.1)');
     assert.ok(!box3.includes('value="p1"'), 'a paused run is offered twice');
     assert.ok(!swSetOptions(kids, 3, '', 'someone-else').includes('continue:'), 'a paused run of another stage 2 set is offered');
     assert.ok(!swSetOptions(sets, 2, '', 'd1').includes('continue:'), 'the stage 2 section\'s box offers a paused stage 3 run');

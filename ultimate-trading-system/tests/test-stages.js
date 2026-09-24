@@ -1757,6 +1757,16 @@ module.exports = {
       'Open does not make the set or campaign chosen the one open');
     assert.ok(UI.includes("    const was = keep || n <= upTo ? box.value : '';"), 'a refill lets go of the level it is for');
     assert.ok(UI.includes("  box.value = id;\n  swSetOpened(n, id);\n  if (n < 3) swRefillPicks(false, n);"), 'a start lets go of the set it just made, or does not open it');
+    // THE SET JUST STARTED IS ON THE LIST AT ONCE (3.242.1, owner order 2026-09-24:
+    // "put the NEW NAME in the selector and have it selected and leave the name and
+    // description alone"): the list the screen holds is the poll's, which does not
+    // have it yet, and a set open that is not on it is let go with its name and
+    // description -- so the start writes it in, on all three stages
+    assert.ok(UI.includes("  if (!sets.some((x) => x.id === id)) {\n    swSetsCache = [{"), 'a start leaves the set it made off the list, so it reads as gone and is let go');
+    for (const n of [1, 2, 3]) assert.ok(UI.includes(`if (got && !got.pending) swLandOn(${n}, got);`), `stage ${n}'s start does not land on the set it made`);
+    // THE NAME IS THE NAME (3.242.1): a set is offered by the name typed for it and nothing else
+    assert.ok(UI.includes("${x.id === selected ? ' selected' : ''}>${rebuildPrefix(x)}${esc(x.name)}</option>`).join('');"), 'a Sweep stage box offers a set by more than its name');
+    assert.ok(UI.includes("${x.id === sel ? ' selected' : ''}>${rebuildPrefix(x)}${esc(x.name)}</option>`).join('');"), 'a Boards record set box offers a set by more than its name');
     assert.ok(UI.includes("      swRefillPicks(false, from - 1);"), 'Put away lets go of the picks above the stage put away');
     // AND THE CAMPAIGN'S BOX THE SAME (3.241.6, owner order 2026-09-24: "the
     // campaign drop down selector is not active when the open button is"): it

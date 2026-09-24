@@ -173,10 +173,13 @@ module.exports = {
     for (const n of [1, 2, 3]) assert.ok(draw.includes(`<select id="bPick${n}" style="min-width:26rem"\${pickOff(${n}) ? ' disabled' : ''}>`), `the stage ${n} record set box is not greyed with nothing picked above it`);
     // ...and it is greyed and live WITH ITS OPEN (3.241.5, owner order 2026-09-24:
     // "the same goes for the open button on boards"), not until Open is pressed
-    assert.ok(draw.includes('const pickOff = (n) => upEmpty[n];'), 'a stage\'s record set box is greyed while its Open is live');
-    assert.ok(draw.includes("upEmpty[stage] ? 'disabled class=\"ctl-off\"' : ''"), 'the Open and the box no longer share one rule');
+    assert.ok(draw.includes('const pickOff = (n) => upEmpty[n] || nothingOut[n];'), 'a stage\'s record set box is greyed while its Open is live');
+    // nothing came out of the set open above: nothing to open (3.242.1)
+    assert.ok(draw.includes("const nothingOut = { 1: false, 2: !!s1sel && !cameOut(2, s1sel), 3: !!s2sel && !cameOut(3, s2sel) };"),
+      'a stage nothing has come out of keeps its Open live');
+    assert.ok(draw.includes("pickOff(stage) ? 'disabled class=\"ctl-off\"' : ''"), 'the Open and the box no longer share one rule');
     // a stage under an empty one is put away, so filling the one above opens nothing (3.241.4)
-    assert.ok(draw.includes("for (const k of [2, 3]) if (upEmpty[k] && fold[k]) { fold[k] = false; bSaveView({ [`fold${k}`]: false }); }"),
+    assert.ok(draw.includes("for (const k of [2, 3]) if ((upEmpty[k] || nothingOut[k]) && fold[k]) { fold[k] = false; bSaveView({ [`fold${k}`]: false }); }"),
       'picking a set above opens the stage under it');
     assert.ok(draw.includes("if (!s1sel && !s2sel && !s3sel && view.s1 === undefined && view.s2 === undefined && view.s3 === undefined) {"),
       'boxes emptied by Put away are filled again with the newest set on the next draw');
