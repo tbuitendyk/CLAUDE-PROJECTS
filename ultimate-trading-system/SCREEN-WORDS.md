@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **740535499805 — what the box is serving**, not from the working tree.
+Generated from **3ab8023061b0 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -578,7 +578,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 
 # Sweep
 
-## What the controls are called (129)
+## What the controls are called (130)
 
 - `— each says why:`
 - `— new campaign —`
@@ -630,6 +630,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `fee % each way`
 - `field`
 - `field alone`
+- `finished`
 - `gate`
 - `greenlight(s),`
 - `greenlights:`
@@ -779,7 +780,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `voices`
 - `Weekly 8-day`
 
-## Sentences the page prints (54)
+## Sentences the page prints (55)
 
 - Each stage writes a record set the next one reads, and every set names its parent. What is
 - running, and everything finished, is on Boards.
@@ -833,6 +834,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - units; on the rest its values are one setting)
 - gate value(s); on the rest the gate is one setting)
 - of them hold fewer than the block: a setting that places the same orders on a unit as another is priced there once)
+- . It is on Boards.
 - , and the number differs from unit to unit
 - . The boxes below decide when enough of them agree to act,
 
@@ -2009,7 +2011,7 @@ again and appends are as at average behind beside best block both box Build buil
 
 _none_
 
-## Sentences the page prints (48)
+## Sentences the page prints (49)
 
 - ) — one at a time; both launchers are disabled until it lands (scans run minutes and cannot be aborted mid-flight).
 - What the two scans below read: a Stage 4 record set whose trades are captured above, one survivor of it
@@ -2021,6 +2023,7 @@ _none_
 - tighter stop → NET $). A stop you force onto the survivor yourself, or clear from it, is recorded on that survivor
 - and scanned the same way, as one row of the same table. Nothing here is applied to any trading machine. Target:
 - no choice about the stop has been recorded for
+- the result kept for this could not be read from the box
 - Conviction sizing — bet more when more members agree?
 - Prices a multiplier for each count of members agreeing, on top of each trade's own size, as a pure $
 - overlay on the same captured trades, against a shuffled-assignment chance check and exposure-honest metrics. The
@@ -2060,10 +2063,10 @@ _none_
 - train trades counted only on days the field was at least
 - survivor(s) are not in the stage 3 set's block on this unit
 
-## Every word, flat (309)
+## Every word, flat (311)
 
 ```
-aborted about above again against agree agreed agreeing aimed all alone among amount an and any anywhere. appears applied apply Apply are as asks at At baseline be been before below bet block both box boxes building by called cannot capture Capture captured chance Chance changes check choice choose Choosing chosen clear clip clip. clipped comes complete completion concurrent Conviction conviction count counted counts curve custom day days deals declared depth disabled distance down drawdown each entries entries. estimate every evidence Exposure exposure-honest failed field finds first fixed flat floor for force from full give given green half-life has have heavy Held held held-back helps. here history holds how in is it it. its kept ladder lands last launchers least left list longer look losers loses loss-side machine. made many mean means measured member members metrics. mid-flight minutes money more multiplier named NET never newest no No no-stop no-winner-lost none not Not nothing Nothing nothing. numbers of off off. on Once one one. only onto or out over overlay own partial peak per per- Per-trade plus positive press price priced Prices prices Protective protective pure read Read reading reads Reads reason rebuild REBUILD Recompute record recorded refused release REQUIRED reserve return row rows run Run running runs. sacrifice same Save says scan scanned scans see set setting shuffled shuffled-assignment shuffles. side simulator since single size size. sizing spent Stage stage stop stopped survivor survivors sweep table table. Take take taken takes target Target targets test than that the The their them themselves there this This those ticked ticked. tighter tightest time to took top trade traded traded. trades trades. trading Train train training Tune tuner Tuning turns two type under unit until up uplift Verdict vs was way weight were What what when whose will window window. windows winner winners with worst would writes yet yet. you your yourself
+aborted about above again against agree agreed agreeing aimed all alone among amount an and any anywhere. appears applied apply Apply are as asks at At baseline be been before below bet block both box boxes building by called cannot capture Capture captured chance Chance changes check choice choose Choosing chosen clear clip clip. clipped comes complete completion concurrent Conviction conviction could count counted counts curve custom day days deals declared depth disabled distance down drawdown each entries entries. estimate every evidence Exposure exposure-honest failed field finds first fixed flat floor for force from full give given green half-life has have heavy Held held held-back helps. here history holds how in is it it. its kept ladder lands last launchers least left list longer look losers loses loss-side machine. made many mean means measured member members metrics. mid-flight minutes money more multiplier named NET never newest no No no-stop no-winner-lost none not Not nothing Nothing nothing. numbers of off off. on Once one one. only onto or out over overlay own partial peak per per- Per-trade plus positive press price priced Prices prices Protective protective pure read Read reading reads Reads reason rebuild REBUILD Recompute record recorded refused release REQUIRED reserve result return row rows run Run running runs. sacrifice same Save says scan scanned scans see set setting shuffled shuffled-assignment shuffles. side simulator since single size size. sizing spent Stage stage stop stopped survivor survivors sweep table table. Take take taken takes target Target targets test than that the The their them themselves there this This those ticked ticked. tighter tightest time to took top trade traded traded. trades trades. trading Train train training Tune tuner Tuning turns two type under unit until up uplift Verdict vs was way weight were What what when whose will window window. windows winner winners with worst would writes yet yet. you your yourself
 ```
 
 ---
