@@ -2249,7 +2249,9 @@ const GUARDS = [
   // coins and shapes leaves the hidden ones out of the fold
   [path.join(ROOT, 'lib', 'unittable.js'), '  max: (v, want) => v != null && Number.isFinite(Number(v)) && Number(v) <= Number(want),', '  max: (v, want) => v == null || (Number.isFinite(Number(v)) && Number(v) <= Number(want)),',
     'theFilterHidesARowWithNoFigureAndRefusesABoxTheTableDoesNotOffer', 'a coin and shape the pass never reached clears every floor and is walked as if it had cleared them'],
-  [path.join(ROOT, 'lib', 'stages.js'), '  const units = unitsOfSet(t, id).filter((u) => !cut.kept || cut.kept.has(u.key)).map((u) => ({', '  const units = unitsOfSet(t, id).map((u) => ({',
+  // re-aimed 3.244.0: the list moved into funnelUnitList, which the read, the
+  // resolver and the coin box's own request all draw from
+  [path.join(ROOT, 'lib', 'stages.js'), '  return unitsOfSet(t, id).filter((u) => !cut.kept || cut.kept.has(u.key)).map((u) => ({', '  return unitsOfSet(t, id).map((u) => ({',
     'theUnitTableIsBuiltBesideTheSetAndTheFunnelReadsItsFilter', 'the coin and shape box on the Funnel offers coins and shapes the filter on Table 3.C hides'],
   [path.join(ROOT, 'lib', 'stages.js'), '        if (keep && !keep.has(unitKeyOf(x.row))) continue;', '        if (false) continue;',
     'theUnitTableIsBuiltBesideTheSetAndTheFunnelReadsItsFilter', 'all units together under a filter blends the hidden coins and shapes in as if nothing were filtered'],
