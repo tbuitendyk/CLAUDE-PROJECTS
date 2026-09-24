@@ -1729,7 +1729,7 @@ module.exports = {
     assert.ok(body.includes("paint('#swHC', campOn ? true : null, campOn ? '' : 'no campaign is set');"), 'the Campaign heading does not say whether a campaign is set');
     // A PICK WRITTEN BACK ON A DRAW FILLS ITS SECTION, so box and section agree
     const fill = UI.slice(UI.indexOf('async function swFillPicked() {'), UI.indexOf('\n}\n', UI.indexOf('async function swFillPicked() {')));
-    assert.ok(fill.includes('if (got && got.set && swPicked(n) === v) fillStageForm(got.set);'), 'a remembered pick does not fill its section from its set');
+    assert.ok(fill.includes('if (got && got.set && swOpened(n) === v) fillStageForm(got.set);'), 'a set open at a stage is not filled into its section on a draw');
     assert.ok(UI.includes('  swApplyAway();\n  swFillPicked();'), 'the draw does not fill the picked sections');
     assert.ok(UI.includes("    setV('#swName1', doc.name || '');"), 'a stage 1 set picked or copied does not fill its name, so its section shows another name than its box');
     // PUT AWAY TAKES THE LEVELS UNDER IT; OPEN OPENS ITS OWN LEVEL ALONE (3.241.4),
@@ -1746,10 +1746,17 @@ module.exports = {
     // A PICK NEVER OPENS (3.241.7, owner order 2026-09-24: "that's why we have
     // open buttons"), and it lets go of the boxes under it only -- a stage 2
     // pick wiped itself back to new when the refill took its own box too
-    assert.ok(UI.includes("async function swPick(n) {\n  if (n < 3) swRefillPicks(false, n);"),
-      'a pick opens its stage, or lets go of its own box');
+    assert.ok(UI.includes("async function swPick(n) {\n  void n;\n  rememberSweepForm();\n  swApplyAway();\n}"),
+      'a pick does more than choose');
+    // OPEN DOES THE OPENING (3.242.0, owner order 2026-09-24: "make the OPEN
+    // button actually do an OPEN"): a box naming something other than what is
+    // open turns its button to Open, and pressing it opens what the box names
+    assert.ok(UI.includes("    if (b) { b.textContent = shut || swDiffers(k) ? 'Open' : 'Put away';"), 'a box naming something other than what is open leaves its button reading Put away');
+    assert.ok(UI.includes("      if (swAway(k) || swDiffers(k)) { await swOpenLevel(k); return; }"), 'Open does not open what the box names');
+    assert.ok(UI.includes("    swSetOpened(n, chosen);") && UI.includes("      if (!(await tryPost('api/campaign', { name: chosen }))) return;"),
+      'Open does not make the set or campaign chosen the one open');
     assert.ok(UI.includes("    const was = keep || n <= upTo ? box.value : '';"), 'a refill lets go of the level it is for');
-    assert.ok(UI.includes("  box.value = id;\n  if (n < 3) swRefillPicks(false, n);"), 'a start lets go of the set it just made');
+    assert.ok(UI.includes("  box.value = id;\n  swSetOpened(n, id);\n  if (n < 3) swRefillPicks(false, n);"), 'a start lets go of the set it just made, or does not open it');
     assert.ok(UI.includes("      swRefillPicks(false, from - 1);"), 'Put away lets go of the picks above the stage put away');
     // AND THE CAMPAIGN'S BOX THE SAME (3.241.6, owner order 2026-09-24: "the
     // campaign drop down selector is not active when the open button is"): it
@@ -2821,15 +2828,19 @@ module.exports = {
     // parent putting its children away, folds remembered
     {
       const body = screens.drawBody('drawBoards');
-      for (const pin of ['bOptions(1, s1sel)', 'bOptions(2, s2sel, s1sel)', 'bOptions(3, s3sel, s2sel)']) {
+      for (const pin of ['bOptions(1, chosenOf[1])', 'bOptions(2, chosenOf[2], s1sel)', 'bOptions(3, chosenOf[3], s2sel)']) {
         assert.ok(body.includes(pin), `each section's picker offers only its own stage's sets, narrowed to what came out of the pick above (${pin})`);
       }
       assert.ok(body.includes('if (s3sel) { s2sel = parentOf(s3sel); s1sel = s2sel ? parentOf(s2sel) : null; }'),
         'a stage 3 selection must put its whole chain on screen');
       assert.ok(body.includes('else if (s2sel) { s1sel = parentOf(s2sel); }'),
         'a stage 2 selection must put its stage 1 parent on screen');
-      assert.ok(body.includes("bSaveView({ s1: idv, s2: null, s3: null, openS3: [] })"),
-        'picking a stage 1 parent must put the child selections away');
+      // a pick only chooses; opening another set lets go of what was open under it (3.242.0)
+      assert.ok(body.includes("bSaveView({ [`p${stage}`]: idv || '' });"), 'a pick on Boards does more than choose');
+      assert.ok(body.includes("else if (k === sN) { patch[`s${k}`] = chosenOf[k] || null; patch[`p${k}`] = undefined; patch[`fold${k}`] = true; }"),
+        'opening a stage does not open the set its box names');
+      assert.ok(body.includes("else { patch[`s${k}`] = null; patch[`p${k}`] = undefined; patch[`fold${k}`] = false; }"),
+        'opening a stage 1 parent must put the child selections away');
       // a pick opens no stage: Open does (3.241.7, owner order 2026-09-24)
       assert.ok(body.includes('data-bfold') && !body.includes('fold1: true, fold2: true, fold3: true'),
         'the sections fold, and a pick opens nothing');
@@ -2846,8 +2857,9 @@ module.exports = {
     {
       const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
       const draw = src.slice(src.indexOf('async function drawBoards('), src.indexOf('const btd = '));
-      assert.ok(draw.includes('${bOptions(2, s2sel, s1sel)}'), 'the stage 2 box is narrowed to what came out of the picked stage 1 set');
-      assert.ok(draw.includes('${bOptions(3, s3sel, s2sel)}'), 'the stage 3 box is narrowed to what came out of the picked stage 2 set');
+      // narrowed by the set OPEN above, showing what the box has chosen (3.242.0)
+      assert.ok(draw.includes('${bOptions(2, chosenOf[2], s1sel)}'), 'the stage 2 box is narrowed to what came out of the stage 1 set open above');
+      assert.ok(draw.includes('${bOptions(3, chosenOf[3], s2sel)}'), 'the stage 3 box is narrowed to what came out of the stage 2 set open above');
       assert.ok(draw.includes('const descendsFrom = (x, ancestorId) =>') && draw.includes('(!above || descendsFrom(x, above.id))'),
         'descent is walked through the parent links, and a box with nothing picked above it lists every set of its stage');
       assert.ok(draw.includes('nothing came out of ${esc(above.name)} yet'), 'an empty box says so rather than offering unrelated sets');
@@ -5616,6 +5628,9 @@ theStageHeadingsFollowTheOwnersTruthTableRowForRow() {
       const esc = (x) => String(x);
       // eslint-disable-next-line no-unused-vars
       const swSetsCache = SETS;
+      // what is OPEN at each stage (3.242.0), keyed here by the box it came from
+      // eslint-disable-next-line no-unused-vars
+      const swOpened = (n) => picks[{ 1: '#swFrom2', 2: '#swFrom3', 3: '#swSet3' }[n]] || '';
       // eslint-disable-next-line no-eval
       eval(`${body}\nswProvenance();`);
       const colour = (k) => {

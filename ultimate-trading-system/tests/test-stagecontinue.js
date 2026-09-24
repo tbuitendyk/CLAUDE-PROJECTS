@@ -888,7 +888,8 @@ module.exports = {
     assert.ok(!swSetOptions(sets, 2, '', 'd1').includes('continue:'), 'the stage 2 section\'s box offers a paused stage 3 run');
     // the section reads that value: ghosted boxes, the count line, the start
     // button, and the provenance colours through the paused run's own parent
-    assert.ok(src.includes("const swContinueOf = () => { const v = ($('#swSet3') && $('#swSet3').value) || ''; return v.startsWith('continue:') ? v.slice('continue:'.length) : null; };"));
+    // a paused run is started again once it is OPEN at stage 3 (3.242.0)
+    assert.ok(src.includes("const swContinueOf = () => { const v = swOpened(3); return v.startsWith('continue:') ? v.slice('continue:'.length) : null; };"));
     assert.ok(src.includes('<fieldset id="swBody3" class="swbody">'), 'the stage 3 section\'s boxes are not ghosted as one while a set or a paused run is picked');
     assert.ok(src.includes('starts again where it was paused:') && src.includes('the boxes below are this run\'s own and cannot be changed here'), 'the count line says what a start-again does');
     assert.ok(src.includes('await startPost(`api/stageset/${encodeURIComponent(cont)}/continue`, {});'), 'start stage 3 posts the start-again for the chosen run, through the post that does not put up a dialog when the gateway gives up');
@@ -917,7 +918,7 @@ module.exports = {
     // eslint-disable-next-line no-new-func
     new Function('window', fs.readFileSync(path.join(ROOT, 'public', 'help-content.js'), 'utf8'))(sandbox);
     const h = sandbox.HELP.sweep.controls;
-    assert.ok(h.swSet3.what.includes('A paused stage 3 run is offered here too, and Start stage 3 then starts it again where it stopped.'));
+    assert.ok(h.swSet3.what.includes('A paused stage 3 run is offered here too; opened, Start stage 3 starts it again where it stopped.'));
     assert.ok(h.swSet3.more.includes('While a paused run is chosen the boxes below are ghosted'));
     assert.ok(h.swGo3.what.includes('With a paused run chosen in the box above, starts that run again where it stopped.'));
     assert.ok(h.swStop.what.startsWith('Pauses a stage 3 run, or stops a stage 1 or 2 run.'));

@@ -385,27 +385,19 @@ function theCustomStopBoxOffersNothingTheEngineFloorRefuses() {
 module.exports.theCustomStopBoxOffersNothingTheEngineFloorRefuses
   = theCustomStopBoxOffersNothingTheEngineFloorRefuses;
 
-// "View tree" must read the campaign the user JUST picked (owner, 2026-08-18).
-//
-// The dropdown's onchange POSTed, awaited, then re-rendered — and only the
-// re-render put the new name into #cxCamp, which is the box View tree reads.
-// A click inside that window fetched the PREVIOUS campaign's tree: a wrong
-// answer wearing the clothes of a right one, because the tree renders fine and
-// nothing says it is the wrong campaign's. The pick is now reflected into the
-// box synchronously, before the await, and the buttons are disabled while the
-// switch is in flight so the panel cannot be acted on mid-change.
+// A CAMPAIGN PICK ONLY CHOOSES; OPEN MAKES IT THE ONE IN FORCE (3.242.0, owner
+// order 2026-09-24: "when a campaign is selected it should not become the
+// 'Currently set:' campaign UNTIL AFTER THE OPEN BUTTON IS USED"). This test
+// used to hold the pick's own switch to a race-free order (2026-08-18); the
+// pick no longer switches anything, and View tree reads the campaign in force
+// (3.240.0), so there is no window left for a click to fall into.
 function theCampaignPickReachesViewTreeBeforeTheRoundTripFinishes() {
-  const h = CX.match(/campPick\.onchange\s*=\s*async[\s\S]{0,1400}?\n  \};/);
+  const h = CX.match(/campPick\.onchange\s*=\s*\(\)\s*=>\s*\{[^}]*\};/);
   assert(h, 'the campaign picker lost its change handler');
-  const body = h[0];
-  const assignAt = body.indexOf("$('#cxCamp').value = campPick.value");
-  const awaitAt = body.indexOf('await tryPost');
-  assert(assignAt !== -1,
-    'the pick is not copied into #cxCamp, so View tree still reads the old campaign');
-  assert(awaitAt !== -1 && assignAt < awaitAt,
-    'the pick is copied into #cxCamp only AFTER the await — that is the race, not a fix');
-  assert(/tree\.disabled = true/.test(body),
-    'View tree is not disabled while the campaign switch is in flight');
+  assert(!/tryPost/.test(h[0]), 'picking a campaign makes it the one in force, which only its Open may do');
+  assert(/<option value="">— new campaign —<\/option>/.test(CX), 'the campaign box offers no new campaign, as each stage box offers new');
+  assert(/if \(!\(await tryPost\('api\/campaign', \{ name: chosen \}\)\)\) return;/.test(CX),
+    'the Campaign box\'s Open does not make the campaign chosen the one in force');
 }
 
 // THE SCANS AIM AT A STAGE 4 RECORD SET (3.97.0): the older engine's targets —

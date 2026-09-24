@@ -25,7 +25,7 @@
 // their markup can.
 const CAMPAIGN_PANEL_CONTROLS = {
   cxCampPick: {
-    what: 'Pick a campaign that already exists. Choosing one switches to it straight away.',
+    what: 'Pick a campaign that already exists, or new campaign. Choosing only chooses: the Open beside it makes the campaign chosen the one in force, the one Currently set: names. On new campaign it clears the one in force, and a name typed under or a new name, then Set, starts one.',
     more: 'A campaign is a name you give a line of work. Every run and record set started while it is set carries that name, so months later you can see which belonged together.',
   },
   cxCamp: { what: 'Type a name here to start a new campaign, then press Set.' },
@@ -292,7 +292,7 @@ window.HELP = {
 
       swGo1: { what: 'Starts stage 1. Progress shows at the top of this screen, and the finished set lands on Boards.' },
       swFrom2: {
-        what: 'At the top of the stage 1 section: a stage 1 record set of the campaign that is set, or new. A set picked here fills the boxes below from it; they stay live, Start stage 1 runs a new set from what they hold, and it is the set stage 2 comes out of. Picking opens nothing: Open shows the section. New frees the boxes to set up a stage 1 and start it.',
+        what: 'At the top of the stage 1 section: a stage 1 record set of the campaign that is set, or new. Picking only chooses. Open opens the set chosen: the boxes below are filled from it and stay live, Start stage 1 runs a new set from what they hold, and it becomes the set stage 2 comes out of. New, opened, frees the boxes to set up a stage 1 and start it.',
         more: 'Only the stage 1 sets of the campaign that is set are offered, every status, each saying which. Picking another set here lets go of whatever was picked in the stage 2 and stage 3 sections, because those came out of this one. A stage 2 set names its parent forever, and the launch refuses when the price files no longer fingerprint identically to the ones the parent read. Start stage 1 refuses while no campaign is set: every stage 1 record set belongs to one.',
       },
       swCarry: {
@@ -306,11 +306,11 @@ window.HELP = {
       swDesc2: { what: 'Why this stage 2 exists. Kept on the record set.' },
       swGo2: { what: 'Starts stage 2 on the stage 1 record set picked in the stage 1 section. Only the BOOST members train.' },
       swFrom3: {
-        what: 'At the top of the stage 2 section: a stage 2 record set that came out of the stage 1 set picked above, or new. A set picked here fills the boxes below from it; they stay live, Start stage 2 runs a new set from what they hold, and it is the set stage 3 prices from. Picking opens nothing: Open shows the section. New frees the boxes to build a stage 2 from the stage 1 set above.',
+        what: 'At the top of the stage 2 section: a stage 2 record set that came out of the stage 1 set picked above, or new. Picking only chooses. Open opens the set chosen: the boxes below are filled from it and stay live, Start stage 2 runs a new set from what they hold, and it becomes the set stage 3 prices from. New, opened, frees the boxes to build a stage 2 from the stage 1 set open above.',
         more: 'Only the stage 2 sets of the stage 1 set picked above are offered, every status, each saying which; with new picked above there is nothing to offer and nothing to build from. Picking another set here lets go of whatever was picked in the stage 3 section. A stage 2 set belongs to the same campaign as the stage 1 set it came out of.',
       },
       swSet3: {
-        what: 'At the top of the stage 3 section: a stage 3 record set that came out of the stage 2 set picked above, or new. A set picked here fills the boxes below from it; they stay live and Start stage 3 prices a new set from what they hold. Picking opens nothing: Open shows the section. A paused stage 3 run is offered here too, and Start stage 3 then starts it again where it stopped.',
+        what: 'At the top of the stage 3 section: a stage 3 record set that came out of the stage 2 set picked above, or new. Picking only chooses. Open opens the set chosen: the boxes below are filled from it, stay live, and Start stage 3 prices a new set from what they hold. A paused stage 3 run is offered here too; opened, Start stage 3 starts it again where it stopped.',
         more: 'A paused run keeps every record it had already priced and the state it held in memory when it was paused, so starting it again prices only what is left. While a paused run is chosen the boxes below are ghosted: it keeps the settings it was launched with, and none of them can be changed here. A run that was interrupted by a service restart, or that failed, is offered the same way when it kept that state.',
       },
       swPick3: {

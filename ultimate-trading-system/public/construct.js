@@ -838,7 +838,7 @@ function swAfterStart(got) {
 // its own, and start stage 3 starts it again instead of launching.
 // Since 3.240.0 the paused runs are offered in the stage 3 section's own box,
 // stage 3 record set, among the stage 3 sets of the stage 2 picked above.
-const swContinueOf = () => { const v = ($('#swSet3') && $('#swSet3').value) || ''; return v.startsWith('continue:') ? v.slice('continue:'.length) : null; };
+const swContinueOf = () => { const v = swOpened(3); return v.startsWith('continue:') ? v.slice('continue:'.length) : null; };
 function swPausedOptions(sets, selected) {
   const list = sets.filter((x) => x.stage === 3 && x.checkpoint && ['paused', 'interrupted', 'error'].includes(x.status));
   return list.map((x) => {
@@ -884,7 +884,33 @@ function swSetOptions(sets, stage, selected, parentId) {
 // is read. The greying is a disabled fieldset around the section's boxes, so
 // nothing else that wakes or sleeps a single box can wake one inside it.
 const SW_PICK = { 1: '#swFrom2', 2: '#swFrom3', 3: '#swSet3' };
-const swPicked = (n) => { const b = $(SW_PICK[n]); return (b && b.value) || ''; };
+// WHAT IS OPEN AT A STAGE, APART FROM WHAT ITS BOX HAS CHOSEN (3.242.0, owner
+// order 2026-09-24: "can't you see that i'm trying to get you to make the OPEN
+// button actually do an OPEN"). A pick in a box only chooses. Open opens the
+// set the box names: it fills the section from it, and it becomes the set the
+// stage below comes out of and the one that stage's Start builds from.
+// Remembered in this browser, as what is put away is.
+const SW_OPEN_KEY = 'cx-sweep-opened';
+function swOpenedAll() { try { return JSON.parse(localStorage.getItem(SW_OPEN_KEY) || '{}') || {}; } catch (_) { return {}; } }
+const swOpened = (n) => String(swOpenedAll()[String(n)] || '');
+// opening another set at a stage lets go of whatever was open under it
+function swSetOpened(n, v) {
+  const all = swOpenedAll();
+  if (String(all[String(n)] || '') !== String(v || '')) for (let m = n + 1; m <= 3; m++) all[String(m)] = '';
+  all[String(n)] = String(v || '');
+  try { localStorage.setItem(SW_OPEN_KEY, JSON.stringify(all)); } catch (_) { /* private window */ }
+}
+function swLetGoFrom(n) {
+  const all = swOpenedAll();
+  for (let m = n; m <= 3; m++) all[String(m)] = '';
+  try { localStorage.setItem(SW_OPEN_KEY, JSON.stringify(all)); } catch (_) { /* private window */ }
+}
+const swChosen = (n) => { const b = $(SW_PICK[n]); return (b && b.value) || ''; };
+// the box names something other than what is open at its level, so its Open
+// opens that; the Campaign box's "open" is the campaign in force
+const swCampChosen = () => (($('#cxCampPick') || {}).value || '');
+const swCampInForce = () => (($('#campOut') && $('#campOut').dataset.current) || '');
+const swDiffers = (k) => (k === 'c' ? swCampChosen() !== swCampInForce() : swChosen(Number(k)) !== swOpened(Number(k)));
 let swHeldNow = null;              // what holds the box, as the poll last read it
 function swLockSections() {
   for (const n of [1, 2, 3]) {
@@ -914,7 +940,7 @@ function swSetAway(k, away) {
   try { localStorage.setItem(SW_AWAY_KEY, JSON.stringify(all)); } catch (_) { /* private window */ }
 }
 // SOMETHING IS SET AT THIS LEVEL: a campaign in force, or a record set picked
-const swLevelSet = (k) => (k === 'c' ? !!($('#campOut') && $('#campOut').dataset.current) : !!swPicked(Number(k)));
+const swLevelSet = (k) => (k === 'c' ? !!($('#campOut') && $('#campOut').dataset.current) : !!swOpened(Number(k)));
 // A LEVEL UNDER ONE WITH NOTHING SET IS CLOSED AND GREYED (3.241.0, owner order
 // 2026-09-23: "With nothing currently set on one level all open buttons on
 // levels below should be ghosted ... In fact the selectors should all be
@@ -932,7 +958,10 @@ const swLevelSet = (k) => (k === 'c' ? !!($('#campOut') && $('#campOut').dataset
 // was pressed; now the two are greyed and live together. A PICK NEVER OPENS
 // (3.241.7, owner order 2026-09-24: "when record sets or campaigns are selected
 // you have the code ASSuming that the record set should be opened. no. that's
-// why we have open buttons"): only Open opens.
+// why we have open buttons"): only Open opens. AND OPEN DOES THE OPENING
+// (3.242.0): while a box names something other than what is open at its level
+// its button reads Open, whether the level is put away or not, and pressing it
+// opens what the box names (swOpenLevel).
 function swApplyAway() {
   const all = swAwayAll();
   let moved = false;
@@ -943,7 +972,7 @@ function swApplyAway() {
     const sec = $(`#swSec${k === 'c' ? 'C' : k}`);
     if (sec) sec.hidden = shut;
     const b = document.querySelector(`[data-swfold="${k}"]`);
-    if (b) { b.textContent = shut ? 'Open' : 'Put away'; b.disabled = above; b.classList.toggle('ctl-off', above); }
+    if (b) { b.textContent = shut || swDiffers(k) ? 'Open' : 'Put away'; b.disabled = above; b.classList.toggle('ctl-off', above); }
     const box = $(k === 'c' ? '#cxCampPick' : SW_PICK[Number(k)]);
     if (box) { box.disabled = above; const lab = box.closest('label'); if (lab) lab.classList.toggle('ctl-off', above); }
     if (!swLevelSet(k) || all[k] === true) above = true;
@@ -989,7 +1018,7 @@ function swRefillParents(sets) {
   for (const [sel, stage] of [['#swFrom2', 1], ['#swFrom3', 2], ['#swSet3', 3]]) {
     const box = $(sel);
     if (!box) continue;
-    const parentId = stage === 1 ? null : swPicked(stage - 1);
+    const parentId = stage === 1 ? null : swOpened(stage - 1);
     const shape = swSetOptions(sets, stage, null, parentId);
     if (swParentShown.get(sel) === shape) continue;
     swParentShown.set(sel, shape);
@@ -1204,11 +1233,12 @@ function swProvenance() {
   paint('#swHC', campOn ? true : null, campOn ? '' : 'no campaign is set');
   for (const [n, sel, why] of [[1, '#swFrom2', '#swWhy1'], [2, '#swFrom3', '#swWhy2'], [3, '#swSet3', '#swWhy3']]) {
     sayWhy(why, null);
-    const raw = v(sel);
+    void sel;
+    const raw = swOpened(n);
     const id = raw.startsWith('continue:') ? raw.slice('continue:'.length) : raw;
     const row = id ? rowOf(id) : null;
-    if (!raw) paint(`#swH${n}`, null, `no stage ${n} record set is picked here`);
-    else if (!row) paint(`#swH${n}`, false, `the stage ${n} record set picked here is not on this box any more`, 'Pick another, or new.');
+    if (!raw) paint(`#swH${n}`, null, `no stage ${n} record set is open here`);
+    else if (!row) paint(`#swH${n}`, false, `the stage ${n} record set open here is not on this box any more`, 'Pick another, or new, and press Open.');
     else if (row.status !== 'done') {
       paint(`#swH${n}`, false, `${row.name} is ${row.status}`, 'It turns green when it has finished.');
       sayWhy(why, { what: `stage ${n} record set`, say: `${row.name} is ${row.status}${n < 3 ? ' — nothing can be built from it until it has finished' : ''}.` });
@@ -1258,7 +1288,7 @@ let swCut2Asked = '';
 async function swSayCut2() {
   const e = $('#swCut2');
   if (!e) return;
-  const from = $('#swFrom2') ? $('#swFrom2').value : '';
+  const from = swOpened(1);
   const carry = $('#swCarry') ? $('#swCarry').value : '0';
   const key = `${from}|${carry}`;
   if (key === swCut2Asked) return;
@@ -1443,7 +1473,7 @@ async function swCounts() {
   swContinueMode(false);
   if (c3) {
     const sets = swSetsCache || [];
-    const parent = sets.find((x) => x.id === $('#swFrom3').value);
+    const parent = sets.find((x) => x.id === swOpened(2));
     const pick = ($('#swPick3') && $('#swPick3').value) || 'count';
     const carry = Number($('#swCarry3') && $('#swCarry3').value) || 0;
     const pickedN = parent ? Number(parent.picked) || 0 : 0;
@@ -1460,7 +1490,7 @@ async function swCounts() {
     // a bar the run cannot use is neither counted nor named (owner order,
     // 2026-08-27: on singles there is no with contexts at all)
     const r = await swAsk('api/stage3-count', {
-      ...swBlockParams(), from: $('#swFrom3').value || '', carry, pick, units: units || 0, coins: coins || 1,
+      ...swBlockParams(), from: swOpened(2) || '', carry, pick, units: units || 0, coins: coins || 1,
     });
     if (!current()) return;
     // PRICINGS PER SETTING PER UNIT: the real one, the null set, and each kept
@@ -1824,8 +1854,8 @@ function campaignPanelHtml(camp, names) {
          controls now: pick an existing campaign, or type a new name. -->
     <div class="row" style="align-items:flex-end">
       ${putAwayBtn('swfold', 'c', !swAway('c'), 'the Campaign box, and the three stages under it')}
-      <label class="f" title="every campaign this box has ever stamped on a run, a record set or a greenlight, newest activity first. Picking one switches to it immediately.">existing campaigns<select id="cxCampPick" style="min-width:26rem">
-        <option value="">— ${(names.names || []).length} on this box —</option>
+      <label class="f" title="every campaign this box has ever stamped on a run, a record set or a greenlight, newest activity first, or new. Picking only chooses: the Open beside it makes the campaign chosen the one in force, or on new clears it so one can be named below.">existing campaigns<select id="cxCampPick" style="min-width:26rem">
+        <option value="">— new campaign —</option>
         ${(names.names || []).map((n) => `<option value="${esc(n)}" ${n === camp.name ? 'selected' : ''}>${esc(n)}</option>`).join('')}
       </select></label>
     </div>
@@ -1852,26 +1882,11 @@ function campaignPanelHtml(camp, names) {
 function wireCampaignPanel(redraw) {
   $('#campSet').onclick = async () => { const out = await tryPost('api/campaign', { name: $('#cxCamp').value }); if (out) redraw(); };
   const campPick = $('#cxCampPick');
-  if (campPick) campPick.onchange = async () => {
-    if (!campPick.value) return;
-    // WHAT THE USER JUST PICKED WINS, IMMEDIATELY (owner, 2026-08-18).
-    // "View tree" reads #cxCamp, and that box only caught up after the POST
-    // returned and the page re-rendered. Click View tree inside that window
-    // and it fetched the tree of the PREVIOUS campaign — a wrong answer that
-    // looks like a right one, because the tree renders fine, it is just the
-    // wrong campaign's. Reflecting the pick into the box synchronously, BEFORE
-    // the await, closes the window: the control the button reads is correct
-    // from the instant of the click.
-    $('#cxCamp').value = campPick.value;
-    // ...and belt-and-braces: no campaign action at all while the switch is in
-    // flight, so the panel can never be acted on while "Currently set" still
-    // disagrees with the dropdown. The redraw re-renders and re-enables.
-    const tree = $('#campTree'); const set = $('#campSet');
-    if (tree) tree.disabled = true; if (set) set.disabled = true;
-    const out = await tryPost('api/campaign', { name: campPick.value });
-    if (out) redraw();
-    else { if (tree) tree.disabled = false; if (set) set.disabled = false; }
-  };
+  // A PICK ONLY CHOOSES (3.242.0, owner order 2026-09-24: "when a campaign is
+  // selected it should not become the 'Currently set:' campaign UNTIL AFTER THE
+  // OPEN BUTTON IS USED"). The Campaign box's button then reads Open, and
+  // pressing it makes the campaign chosen the one in force (swOpenLevel).
+  if (campPick) campPick.onchange = () => { swApplyAway(); };
   // A TOGGLE (owner, 2026-08-22): the same button that shows a campaign's runs
   // and greenlights puts them away again.
   //
@@ -4019,7 +4034,7 @@ async function drawSweep() {
     <p class="note warn" id="swWhy1" style="margin:.2rem 0 .5rem;display:none"></p>
     <div class="row" style="align-items:flex-end">
       ${putAwayBtn('swfold', '1', !swAway('1'), 'this stage, and the stages under it')}
-      <label class="f" title="a stage 1 record set of the campaign that is set, to fill the boxes below from it — they stay live, and Start stage 1 runs a new set from what they hold; Open shows them — or new, to set one up and start it. Stage 2 comes out of the set picked here.">stage 1 record set<select id="swFrom2" style="min-width:24rem">${swOpt1}</select></label>
+      <label class="f" title="a stage 1 record set of the campaign that is set, to open with Open: the boxes below are filled from it and stay live, and Start stage 1 runs a new set from what they hold. Picking alone only chooses — or new, to set one up and start it. Stage 2 comes out of the set picked here.">stage 1 record set<select id="swFrom2" style="min-width:24rem">${swOpt1}</select></label>
     </div>
     <div id="swSec1"${swAway('1') ? ' hidden' : ''}>
     <fieldset id="swBody1" class="swbody">
@@ -4087,7 +4102,7 @@ async function drawSweep() {
     <p class="note warn" id="swWhy2" style="margin:.2rem 0 .5rem;display:none"></p>
     <div class="row" style="align-items:flex-end">
       ${putAwayBtn('swfold', '2', !swAway('2'), 'this stage, and the stage under it')}
-      <label class="f" title="a stage 2 record set that came out of the stage 1 set picked above, to fill the boxes below from it — they stay live, and Start stage 2 runs a new set from what they hold; Open shows them — or new, to build one from that stage 1 set. Stage 3 comes out of the set picked here.">stage 2 record set<select id="swFrom3" style="min-width:24rem">${swOpt2}</select></label>
+      <label class="f" title="a stage 2 record set that came out of the stage 1 set picked above, to open with Open: the boxes below are filled from it and stay live, and Start stage 2 runs a new set from what they hold. Picking alone only chooses — or new, to build one from that stage 1 set. Stage 3 comes out of the set picked here.">stage 2 record set<select id="swFrom3" style="min-width:24rem">${swOpt2}</select></label>
     </div>
     <div id="swSec2"${swAway('2') ? ' hidden' : ''}>
     <fieldset id="swBody2" class="swbody">
@@ -4115,7 +4130,7 @@ async function drawSweep() {
     <p class="note warn" id="swWhy3" style="margin:.2rem 0 .5rem;display:none"></p>
     <div class="row" style="align-items:flex-end">
       ${putAwayBtn('swfold', '3', !swAway('3'), 'this stage')}
-      <label class="f" title="a stage 3 record set that came out of the stage 2 set picked above, to fill the boxes below from it — they stay live, and Start stage 3 prices a new set from what they hold; Open shows them — or new, to price one from that stage 2 set. A paused run is offered here too, and Start stage 3 then starts it again where it stopped.">stage 3 record set<select id="swSet3" style="min-width:24rem">${swOpt3}</select></label>
+      <label class="f" title="a stage 3 record set that came out of the stage 2 set picked above, to open with Open: the boxes below are filled from it and stay live, and Start stage 3 prices a new set from what they hold. Picking alone only chooses — or new, to price one from that stage 2 set. A paused run is offered here too, and Start stage 3 then starts it again where it stopped.">stage 3 record set<select id="swSet3" style="min-width:24rem">${swOpt3}</select></label>
     </div>
     <div id="swSec3"${swAway('3') ? ' hidden' : ''}>
     <fieldset id="swBody3" class="swbody">
@@ -4259,10 +4274,11 @@ async function drawSweep() {
     b.onclick = async () => {
       if (b.disabled) return;
       const k = b.dataset.swfold;
-      if (swAway(k)) { swSetAway(k, false); swApplyAway(); return; }
+      if (swAway(k) || swDiffers(k)) { await swOpenLevel(k); return; }
       if (k === 'c' && swLevelSet('c') && !(await tryPost('api/campaign', { name: '' }))) return;
       swSetAway(k, true);
       const from = k === 'c' ? 1 : Number(k);
+      swLetGoFrom(from);
       for (const n of [1, 2, 3]) {
         if (n < from) continue;
         const box = $(SW_PICK[n]);
@@ -4321,7 +4337,7 @@ async function drawSweep() {
   $('#swGo2').onclick = async () => {
     swStarting(2);
     const got = await startPost('api/stage2', {
-      from: swPicked(1),
+      from: swOpened(1),
       carry: Number($('#swCarry').value) || 0, desc: $('#swDesc2').value,
       name: $('#swName2').value,
     });
@@ -4349,7 +4365,7 @@ async function drawSweep() {
     const cont = swContinueOf();
     swStarting(cont ? 'again' : 3);
     const got = cont ? null : await startPost('api/stage3', {
-      from: swPicked(2), fee: Number($('#swFee').value) / 100,
+      from: swOpened(2), fee: Number($('#swFee').value) / 100,
       carry: Number($('#swCarry3').value) || 0,
       pick: $('#swPick3').value,
       nullN: Number($('#swNull3').value) || 0, keepN: Number($('#swKeep3').value) || 0, desc: $('#swDesc3').value,
@@ -4517,6 +4533,17 @@ async function drawSweep() {
 // go of stage 2's pick. `upTo` is the deepest level whose pick stays.
 function swRefillPicks(keep, upTo = 0) {
   const sets = swSetsCache || [];
+  // what was open and is no longer offered -- another campaign is in force, or
+  // the set is gone -- is let go, with the section it filled
+  for (const n of [1, 2, 3]) {
+    const v = swOpened(n);
+    if (!v || !sets.length) continue;
+    const id = v.startsWith('continue:') ? v.slice('continue:'.length) : v;
+    const parent = n === 1 ? null : swOpened(n - 1);
+    const there = sets.some((x) => x.id === id && x.stage === n && swCampOf(x) === (swCampNow || null)
+      && (n === 1 || (!!x.parent && x.parent.id === parent)));
+    if (!there) { swSetOpened(n, ''); swForget(n); }
+  }
   // a remembered pick that is no longer offered (another campaign is set, or
   // the set is gone) falls back to new, and its section's name goes with it
   const top = $('#swFrom2');
@@ -4525,7 +4552,7 @@ function swRefillPicks(keep, upTo = 0) {
     const box = $(sel);
     if (!box) continue;
     const was = keep || n <= upTo ? box.value : '';
-    const parentId = swPicked(n - 1);
+    const parentId = swOpened(n - 1);
     box.innerHTML = swSetOptions(sets, n, was || null, parentId);
     swParentShown.set(sel, swSetOptions(sets, n, null, parentId));
     if (was && box.value !== was) { box.value = ''; swForget(n); }
@@ -4536,20 +4563,39 @@ function swForget(n) { for (const f of [`#swName${n}`, `#swDesc${n}`]) { const e
 // A PICK: the boxes below it let go (they came out of the set that was
 // picked), then the section shows the set it names, filled from it, or stands
 // free for a new one with its name and description emptied.
-async function swPick(n) {
-  if (n < 3) swRefillPicks(false, n);
-  for (const m of [1, 2, 3]) {
-    if (m < n) continue;
-    const v = swPicked(m);
-    if (v) {
-      if (m !== n) continue;
-      const id = v.startsWith('continue:') ? v.slice('continue:'.length) : v;
-      const got = await apiOr(`api/stageset/${encodeURIComponent(id)}`, null);
-      if (got && got.set) fillStageForm(got.set);
-    } else {
-      swForget(m);
+// OPEN DOES THE OPENING (3.242.0, owner order 2026-09-24: "when a campaign is
+// selected it should not become the 'Currently set:' campaign UNTIL AFTER THE
+// OPEN BUTTON IS USED ... make the OPEN button actually do an OPEN"). On the
+// Campaign box it makes the campaign its box names the one in force -- or, on
+// new campaign, clears it so a name can be typed -- and opens the box. On a
+// stage it opens the set its box names, or a fresh form for new: the section
+// is filled from it and whatever was open under it is let go. The same thing
+// already open is simply shown again.
+async function swOpenLevel(k) {
+  if (k === 'c') {
+    const chosen = swCampChosen();
+    const moved = chosen !== swCampInForce();
+    if (moved) {
+      if (!(await tryPost('api/campaign', { name: chosen }))) return;
+      swLetGoFrom(1);                 // what was open belonged to the campaign before
     }
+    swSetAway('c', false);
+    if (moved) drawSweep(); else swApplyAway();
+    return;
   }
+  const n = Number(k);
+  const chosen = swChosen(n);
+  if (chosen !== swOpened(n)) {
+    swSetOpened(n, chosen);
+    for (let m = n + 1; m <= 3; m++) { const box = $(SW_PICK[m]); if (box) box.value = ''; swForget(m); }
+    if (chosen) {
+      const id = chosen.startsWith('continue:') ? chosen.slice('continue:'.length) : chosen;
+      const got = await apiOr(`api/stageset/${encodeURIComponent(id)}`, null);
+      if (got && got.set && swOpened(n) === chosen) fillStageForm(got.set);
+    } else swForget(n);
+    if (n < 3) swRefillPicks(false, n);
+  }
+  swSetAway(String(n), false);
   swLockSections();
   rememberSweepForm();
   swProvenance();
@@ -4557,18 +4603,24 @@ async function swPick(n) {
   swSayCut2();
   swCountsSoon();
 }
-// A PICK WRITTEN BACK ON A DRAW SHOWS ITS SET (3.240.1). The picks are
-// remembered with the rest of this screen's boxes, and written back they
-// named one set while the section below them still held whatever was typed
-// there last -- the box said S1 #7 and its section described another run. Each
-// picked section is filled from its set exactly as a pick by hand fills it.
+// A PICK ONLY CHOOSES (3.242.0): its stage's button then reads Open, and
+// nothing is filled and nothing under it lets go until Open is pressed.
+async function swPick(n) {
+  void n;
+  rememberSweepForm();
+  swApplyAway();
+}
+// WHAT IS OPEN IS SHOWN ON A DRAW (3.240.1; since 3.242.0 it is what is OPEN,
+// not what a box has chosen). Each section that has a set open is filled from
+// it exactly as pressing Open fills it, so a section never describes another
+// run than the one open at its stage.
 async function swFillPicked() {
   for (const n of [1, 2, 3]) {
-    const v = swPicked(n);
+    const v = swOpened(n);
     if (!v) continue;
     const id = v.startsWith('continue:') ? v.slice('continue:'.length) : v;
     const got = await apiOr(`api/stageset/${encodeURIComponent(id)}`, null);
-    if (got && got.set && swPicked(n) === v) fillStageForm(got.set);
+    if (got && got.set && swOpened(n) === v) fillStageForm(got.set);
   }
   swLockSections();
   rememberSweepForm();
@@ -4584,11 +4636,12 @@ function swLandOn(n, id) {
   const box = $(SW_PICK[n]);
   if (!box) return;
   const sets = swSetsCache || [];
-  const parentId = n === 1 ? null : swPicked(n - 1);
+  const parentId = n === 1 ? null : swOpened(n - 1);
   const opts = swSetOptions(sets, n, id, parentId);
   if (!opts.includes(`value="${id}"`)) box.insertAdjacentHTML('beforeend', `<option value="${esc(id)}" selected>${esc(($(`#swName${n}`) || {}).value || id)} — starting</option>`);
   else box.innerHTML = opts;
   box.value = id;
+  swSetOpened(n, id);
   if (n < 3) swRefillPicks(false, n);
   swLockSections();
   rememberSweepForm();
@@ -4719,6 +4772,16 @@ async function drawBoards() {
   }
   const selOf = { 1: s1sel, 2: s2sel, 3: s3sel };
   const fold = { 1: view.fold1 !== false, 2: view.fold2 !== false, 3: view.fold3 !== false };
+  // WHAT EACH BOX HAS CHOSEN, APART FROM WHAT IS OPEN (3.242.0, owner order
+  // 2026-09-24: "make the OPEN button actually do an OPEN"). A pick only
+  // chooses; a stage's Open opens the set its box names. With nothing chosen
+  // since the last opening, a box shows what is open.
+  const chosenOf = {
+    1: view.p1 !== undefined ? view.p1 || null : s1sel,
+    2: view.p2 !== undefined ? view.p2 || null : s2sel,
+    3: view.p3 !== undefined ? view.p3 || null : s3sel,
+  };
+  const differs = (n) => (chosenOf[n] || null) !== (selOf[n] || null);
   const deepest = s3sel ? 3 : (s2sel ? 2 : 1);
   const running = st.running ? rowOf(st.running) : null;
 
@@ -4757,7 +4820,9 @@ async function drawBoards() {
   // greyed and live with its Open (3.241.5, owner order 2026-09-24: "the same
   // goes for the open button on boards"); a pick in it opens nothing (3.241.7)
   const pickOff = (n) => upEmpty[n];
-  const foldBtn = (stage) => putAwayBtn('bfold', stage, fold[stage], "this stage's table", upEmpty[stage] ? 'disabled class="ctl-off"' : '');
+  // while its box names something other than what is open, its button reads
+  // Open, put away or not (3.242.0)
+  const foldBtn = (stage) => putAwayBtn('bfold', stage, fold[stage] && !differs(stage), "this stage's table", upEmpty[stage] ? 'disabled class="ctl-off"' : '');
   // ONE STAGE AT A TIME, ON ITS OWN SUB TAB (3.238.0, owner order 2026-09-23:
   // "Boards gets 3 sub tabs: Stage 1, Stage 2, Stage 3"). The provenance is
   // unchanged: picking a stage 3 record set still fills the other two with its
@@ -4799,7 +4864,7 @@ async function drawBoards() {
     <div class="row" style="align-items:flex-end">
       ${foldBtn(1)}
       <h3 style="margin:0">Stage 1</h3>
-      <label class="f${pickOff(1) ? ' ctl-off' : ''}">record set<select id="bPick1" style="min-width:26rem"${pickOff(1) ? ' disabled' : ''}>${bOptions(1, s1sel)}</select></label>
+      <label class="f${pickOff(1) ? ' ctl-off' : ''}">record set<select id="bPick1" style="min-width:26rem"${pickOff(1) ? ' disabled' : ''}>${bOptions(1, chosenOf[1])}</select></label>
     </div>
     <div class="row">
       <button id="bDelete1" class="danger" ${s1sel ? '' : 'disabled'}>Delete record set…</button>
@@ -4812,7 +4877,7 @@ async function drawBoards() {
     <div class="row" style="align-items:flex-end">
       ${foldBtn(2)}
       <h3 style="margin:0">Stage 2</h3>
-      <label class="f${pickOff(2) ? ' ctl-off' : ''}">record set<select id="bPick2" style="min-width:26rem"${pickOff(2) ? ' disabled' : ''}>${bOptions(2, s2sel, s1sel)}</select></label>
+      <label class="f${pickOff(2) ? ' ctl-off' : ''}">record set<select id="bPick2" style="min-width:26rem"${pickOff(2) ? ' disabled' : ''}>${bOptions(2, chosenOf[2], s1sel)}</select></label>
     </div>
     <div class="row">
       <button id="bDelete2" class="danger" ${s2sel ? '' : 'disabled'}>Delete record set…</button>
@@ -4825,7 +4890,7 @@ async function drawBoards() {
     <div class="row" style="align-items:flex-end">
       ${foldBtn(3)}
       <h3 style="margin:0">Stage 3</h3>
-      <label class="f${pickOff(3) ? ' ctl-off' : ''}">record set<select id="bPick3" style="min-width:26rem"${pickOff(3) ? ' disabled' : ''}>${bOptions(3, s3sel, s2sel)}</select></label>
+      <label class="f${pickOff(3) ? ' ctl-off' : ''}">record set<select id="bPick3" style="min-width:26rem"${pickOff(3) ? ' disabled' : ''}>${bOptions(3, chosenOf[3], s2sel)}</select></label>
     </div>
     <div class="row">
       <button id="bDelete3" class="danger" ${s3sel ? '' : 'disabled'}>Delete record set…</button>
@@ -4861,11 +4926,10 @@ async function drawBoards() {
     if (pick) {
       pick.onchange = () => {
         const idv = pick.value || null;
-        // a pick never opens a stage: Open does (3.241.7, owner order
-        // 2026-09-24: "that's why we have open buttons")
-        if (stage === 1) bSaveView({ s1: idv, s2: null, s3: null, openS3: [] });
-        if (stage === 2) bSaveView({ s1: idv ? parentOf(idv) : null, s2: idv, s3: null, openS3: [] });
-        if (stage === 3) bSaveView({ s1: idv ? parentOf(parentOf(idv)) || null : null, s2: idv ? parentOf(idv) : null, s3: idv, openS3: [] });
+        // a pick only chooses: the stage's Open opens it (3.241.7 and 3.242.0,
+        // owner orders 2026-09-24: "that's why we have open buttons ... make the
+        // OPEN button actually do an OPEN")
+        bSaveView({ [`p${stage}`]: idv || '' });
         bRedrawPeggedTo(`#bPick${stage}`);
       };
     }
@@ -4879,6 +4943,8 @@ async function drawBoards() {
         const patch = { [`s${stage}`]: null, openS3: [] };
         if (stage <= 2) patch.s3 = null;
         if (stage === 1) patch.s2 = null;
+        // and what the boxes had chosen there and under it goes with it (3.242.0)
+        for (const k of [1, 2, 3]) if (k >= stage) patch[`p${k}`] = undefined;
         bSaveView(patch);
         bRedrawPeggedTo(`#bPick${stage}`);
       };
@@ -4897,11 +4963,24 @@ async function drawBoards() {
       // the set below it that they were read from going. Open opens this stage
       // alone (3.241.4); Put away with nothing picked puts it and the ones under
       // it away.
-      if (fold[sN] && selOf[sN]) {
+      // OPEN OPENS WHAT THE BOX NAMES (3.242.0): the set chosen becomes the one
+      // open here, what was open under it is let go, and the stages above keep
+      // exactly what they show. The same set already open is shown again.
+      if (!fold[sN] || differs(sN)) {
+        if (differs(sN)) {
+          const patch = { openS3: [] };
+          for (const k of [1, 2, 3]) {
+            if (k < sN) patch[`s${k}`] = selOf[k];
+            else if (k === sN) { patch[`s${k}`] = chosenOf[k] || null; patch[`p${k}`] = undefined; patch[`fold${k}`] = true; }
+            else { patch[`s${k}`] = null; patch[`p${k}`] = undefined; patch[`fold${k}`] = false; }
+          }
+          bSaveView(patch);
+        } else bSaveView({ [`fold${sN}`]: true });
+      } else if (selOf[sN]) {
         const patch = { openS3: [] };
         for (const k of [1, 2, 3]) {
           if (k < sN) patch[`s${k}`] = selOf[k];
-          else { patch[`s${k}`] = null; patch[`fold${k}`] = false; }
+          else { patch[`s${k}`] = null; patch[`p${k}`] = undefined; patch[`fold${k}`] = false; }
         }
         bSaveView(patch);
       } else {

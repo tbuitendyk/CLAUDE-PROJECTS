@@ -165,7 +165,7 @@ module.exports = {
     assert.ok(draw.includes('const onS3 = (stab === 3 || B_T3.includes(stab)) && fold[3] && !!s3sel;'), 'the table tabs do not know when Stage 3 or a table is picked, or stay while Stage 3 is put away');
     // PUTTING A STAGE AWAY PUTS EVERY STAGE UNDER IT AWAY (3.240.0); Open opens its own
     // PUT AWAY LETS GO OF THE RECORD SET AND OF EVERY ONE UNDER IT (3.241.2); the stages above are written down as shown
-    assert.ok(draw.includes("if (fold[sN] && selOf[sN]) {") && draw.includes("if (k < sN) patch[`s${k}`] = selOf[k];\n          else { patch[`s${k}`] = null; patch[`fold${k}`] = false; }"),
+    assert.ok(draw.includes("} else if (selOf[sN]) {") && draw.includes("if (k < sN) patch[`s${k}`] = selOf[k];\n          else { patch[`s${k}`] = null; patch[`p${k}`] = undefined; patch[`fold${k}`] = false; }"),
       'Put away on a Boards stage does not empty its record set box and the boxes under it');
     // THE SAME RULES AS SWEEP (3.241.3): a stage under one with nothing picked or put away is greyed
     assert.ok(draw.includes('const upEmpty = { 1: false, 2: !s1sel || !fold[1], 3: !s1sel || !s2sel || !fold[1] || !fold[2] };'),
