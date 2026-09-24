@@ -1743,8 +1743,14 @@ module.exports = {
     // become available at the same time"), and a pick in a put-away stage opens it
     assert.ok(UI.includes("b.disabled = above;") && UI.includes("    if (box) { box.disabled = above; const lab = box.closest('label'); if (lab) lab.classList.toggle('ctl-off', above); }"),
       'a stage\'s record set box is greyed while its Open is live, or live while its Open is greyed');
-    assert.ok(UI.includes("  if (swAway(String(n))) swSetAway(String(n), false);\n  if (n < 3) swRefillPicks(false);"),
-      'a pick in the box of a stage that is put away leaves the stage shut, so the set picked is not shown');
+    // A PICK NEVER OPENS (3.241.7, owner order 2026-09-24: "that's why we have
+    // open buttons"), and it lets go of the boxes under it only -- a stage 2
+    // pick wiped itself back to new when the refill took its own box too
+    assert.ok(UI.includes("async function swPick(n) {\n  if (n < 3) swRefillPicks(false, n);"),
+      'a pick opens its stage, or lets go of its own box');
+    assert.ok(UI.includes("    const was = keep || n <= upTo ? box.value : '';"), 'a refill lets go of the level it is for');
+    assert.ok(UI.includes("  box.value = id;\n  if (n < 3) swRefillPicks(false, n);"), 'a start lets go of the set it just made');
+    assert.ok(UI.includes("      swRefillPicks(false, from - 1);"), 'Put away lets go of the picks above the stage put away');
     // AND THE CAMPAIGN'S BOX THE SAME (3.241.6, owner order 2026-09-24: "the
     // campaign drop down selector is not active when the open button is"): it
     // sits beside its Open, outside what Put away hides, follows its Open, and
@@ -1754,7 +1760,7 @@ module.exports = {
       && panel.indexOf('<select id="cxCampPick"') < panel.indexOf('<div id="swSecC"'),
       'the campaign box is inside what Put away hides, so it is gone while its Open is live');
     assert.ok(UI.includes("    const box = $(k === 'c' ? '#cxCampPick' : SW_PICK[Number(k)]);"), 'the campaign box does not follow its Open');
-    assert.ok(UI.includes("    if (out) { if (swAway('c')) swSetAway('c', false); redraw(); }"), 'a campaign picked with the Campaign box put away leaves it shut');
+    assert.ok(!UI.includes("if (swAway('c')) swSetAway('c', false);"), 'a campaign picked opens the Campaign box, and only Open may');
   },
 
   // THE SPLIT FOR EXTRA MEMBERS STARTS GHOSTED AFTER A LOAD (3.209.1, owner:
@@ -2822,10 +2828,11 @@ module.exports = {
         'a stage 3 selection must put its whole chain on screen');
       assert.ok(body.includes('else if (s2sel) { s1sel = parentOf(s2sel); }'),
         'a stage 2 selection must put its stage 1 parent on screen');
-      assert.ok(body.includes("bSaveView({ s1: idv, s2: null, s3: null, fold1: true, openS3: [] })"),
+      assert.ok(body.includes("bSaveView({ s1: idv, s2: null, s3: null, openS3: [] })"),
         'picking a stage 1 parent must put the child selections away');
-      assert.ok(body.includes('data-bfold') && body.includes('fold1: true, fold2: true, fold3: true'),
-        'the sections fold, and a fresh stage 3 pick opens its whole chain');
+      // a pick opens no stage: Open does (3.241.7, owner order 2026-09-24)
+      assert.ok(body.includes('data-bfold') && !body.includes('fold1: true, fold2: true, fold3: true'),
+        'the sections fold, and a pick opens nothing');
       // 3.107.0: the sentence moved into one constant, shared with the
       // Funnel's own put away press, so the two screens cannot come to leave
       // different words where their panels were.

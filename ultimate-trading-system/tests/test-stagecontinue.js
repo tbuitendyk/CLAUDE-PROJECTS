@@ -812,8 +812,12 @@ module.exports = {
     assert.deepStrictEqual([del.disabled, del.off], [true, true], 'with no paused run chosen the delete is live');
     assert.strictEqual(locked, 2, 'the section is not locked to what stage 3 record set names');
     const lock = src.slice(src.indexOf('function swLockSections() {'), src.indexOf('\n}\n', src.indexOf('function swLockSections() {')));
-    assert.ok(lock.includes("if (body) { body.disabled = on; body.classList.toggle('ctl-off', on); }") && lock.includes("(on && !(n === 3 && swContinueOf()))"),
-      'a picked set does not ghost its section as one, or a paused run leaves Start asleep');
+    // a picked set opens with every box live and Start awake (3.241.7, owner order
+    // 2026-09-24: "they should open as normal with all fields active"); only a
+    // paused run chosen in stage 3 greys its section, since nothing under it is read
+    assert.ok(lock.includes("const shut = n === 3 && !!swContinueOf();") && lock.includes("if (body) { body.disabled = shut; body.classList.toggle('ctl-off', shut); }"),
+      'a picked set greys its section, or a paused run leaves its section live');
+    assert.ok(lock.includes('if (go) go.disabled = !!swPressed || !!swHeldNow;'), 'a picked set puts Start to sleep');
     // the press: the chosen run, through the one flow, then the boxes refill and the count line is asked again
     const wire = src.slice(src.indexOf("$('#swDelete3').onclick = async () => {"), src.indexOf("$('#swGo3').onclick = async () => {"));
     assert.ok(wire.includes('const cont = swContinueOf();\n    if (!cont) return;'), 'the delete acts on something other than the paused run the box names');

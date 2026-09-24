@@ -874,21 +874,25 @@ function swSetOptions(sets, stage, selected, parentId) {
   const paused = stage === 3 ? swPausedOptions(mine, selected) : '';
   return head + paused + mine.filter((x) => !swPausedRow(x)).map((x) => `<option value="${esc(x.id)}"${x.id === selected ? ' selected' : ''}>${rebuildPrefix(x)}${esc(x.name)} — ${esc(x.status)} — ${esc((x.createdAt || '').slice(0, 10))} — ${Number((x.plan || {}).units || 0).toLocaleString()} units</option>`).join('');
 }
-// WHAT A PICK DOES TO ITS SECTION: a picked set is SHOWN -- its boxes filled
-// from it and ghosted, Start asleep -- and new frees them. A paused stage 3 run
-// is the one pick Start still acts on: it starts it again. The ghosting is a
-// disabled fieldset around the section's boxes, so nothing else that wakes or
-// sleeps a single box can wake one inside it.
+// WHAT A PICK DOES TO ITS SECTION: its boxes are filled from the set picked,
+// and new frees them. EVERY BOX STAYS LIVE AND START STAYS AWAKE (3.241.7,
+// owner order 2026-09-24: "when a record set is opened you have the whole
+// thing in read-only ghosted mode. no. they should open as normal with all
+// fields active"), so Start runs a new set from what the boxes hold. The one
+// section still greyed is stage 3's with a paused run chosen: Start starts that
+// run again with the settings it was launched with, so nothing under its box
+// is read. The greying is a disabled fieldset around the section's boxes, so
+// nothing else that wakes or sleeps a single box can wake one inside it.
 const SW_PICK = { 1: '#swFrom2', 2: '#swFrom3', 3: '#swSet3' };
 const swPicked = (n) => { const b = $(SW_PICK[n]); return (b && b.value) || ''; };
 let swHeldNow = null;              // what holds the box, as the poll last read it
 function swLockSections() {
   for (const n of [1, 2, 3]) {
-    const on = !!swPicked(n);
+    const shut = n === 3 && !!swContinueOf();
     const body = $(`#swBody${n}`);
-    if (body) { body.disabled = on; body.classList.toggle('ctl-off', on); }
+    if (body) { body.disabled = shut; body.classList.toggle('ctl-off', shut); }
     const go = $(`#swGo${n}`);
-    if (go) go.disabled = !!swPressed || !!swHeldNow || (on && !(n === 3 && swContinueOf()));
+    if (go) go.disabled = !!swPressed || !!swHeldNow;
   }
 }
 // PUT AWAY ON SWEEP (3.240.0, owner order: "Put away buttons near the selectors
@@ -925,8 +929,10 @@ const swLevelSet = (k) => (k === 'c' ? !!($('#campOut') && $('#campOut').dataset
 // ITS BOX WAKES WITH ITS OPEN (3.241.5, owner order 2026-09-24: "anytime that a
 // stage 1/2/3 open button becomes available the drop down selector needs to
 // become available at the same time"). 3.241.4 kept the box greyed until Open
-// was pressed; now the two are greyed and live together, and a pick in the box
-// of a stage that is put away opens it (swPick).
+// was pressed; now the two are greyed and live together. A PICK NEVER OPENS
+// (3.241.7, owner order 2026-09-24: "when record sets or campaigns are selected
+// you have the code ASSuming that the record set should be opened. no. that's
+// why we have open buttons"): only Open opens.
 function swApplyAway() {
   const all = swAwayAll();
   let moved = false;
@@ -1055,7 +1061,7 @@ async function swProgress() {
     const b = $(`#${bid}`);
     if (b) { b.disabled = !!held; b.title = held ? `${held} — one heavy job at a time. The button wakes when it lands.` : ''; }
   }
-  swLockSections();   // a section showing a picked set keeps Start asleep (3.240.0)
+  swLockSections();   // a paused run chosen in stage 3 keeps its section greyed
   if (!st.running) {
     // SOMETHING ELSE MAY STILL HOLD THE BOX (3.163.0). This line was read off
     // the stage runs alone, so a walk or a coin reading showed as "nothing is
@@ -1863,9 +1869,7 @@ function wireCampaignPanel(redraw) {
     const tree = $('#campTree'); const set = $('#campSet');
     if (tree) tree.disabled = true; if (set) set.disabled = true;
     const out = await tryPost('api/campaign', { name: campPick.value });
-    // a pick with the Campaign box put away opens it, as a stage's pick opens
-    // that stage (3.241.6); the stages under it stay as they are
-    if (out) { if (swAway('c')) swSetAway('c', false); redraw(); }
+    if (out) redraw();
     else { if (tree) tree.disabled = false; if (set) set.disabled = false; }
   };
   // A TOGGLE (owner, 2026-08-22): the same button that shows a campaign's runs
@@ -4015,7 +4019,7 @@ async function drawSweep() {
     <p class="note warn" id="swWhy1" style="margin:.2rem 0 .5rem;display:none"></p>
     <div class="row" style="align-items:flex-end">
       ${putAwayBtn('swfold', '1', !swAway('1'), 'this stage, and the stages under it')}
-      <label class="f" title="a stage 1 record set of the campaign that is set, to see it — its boxes below are filled from it and greyed — or new, to set one up and start it. Stage 2 comes out of the set picked here.">stage 1 record set<select id="swFrom2" style="min-width:24rem">${swOpt1}</select></label>
+      <label class="f" title="a stage 1 record set of the campaign that is set, to fill the boxes below from it — they stay live, and Start stage 1 runs a new set from what they hold; Open shows them — or new, to set one up and start it. Stage 2 comes out of the set picked here.">stage 1 record set<select id="swFrom2" style="min-width:24rem">${swOpt1}</select></label>
     </div>
     <div id="swSec1"${swAway('1') ? ' hidden' : ''}>
     <fieldset id="swBody1" class="swbody">
@@ -4083,7 +4087,7 @@ async function drawSweep() {
     <p class="note warn" id="swWhy2" style="margin:.2rem 0 .5rem;display:none"></p>
     <div class="row" style="align-items:flex-end">
       ${putAwayBtn('swfold', '2', !swAway('2'), 'this stage, and the stage under it')}
-      <label class="f" title="a stage 2 record set that came out of the stage 1 set picked above, to see it — its boxes below are filled from it and greyed — or new, to build one from that stage 1 set. Stage 3 comes out of the set picked here.">stage 2 record set<select id="swFrom3" style="min-width:24rem">${swOpt2}</select></label>
+      <label class="f" title="a stage 2 record set that came out of the stage 1 set picked above, to fill the boxes below from it — they stay live, and Start stage 2 runs a new set from what they hold; Open shows them — or new, to build one from that stage 1 set. Stage 3 comes out of the set picked here.">stage 2 record set<select id="swFrom3" style="min-width:24rem">${swOpt2}</select></label>
     </div>
     <div id="swSec2"${swAway('2') ? ' hidden' : ''}>
     <fieldset id="swBody2" class="swbody">
@@ -4111,7 +4115,7 @@ async function drawSweep() {
     <p class="note warn" id="swWhy3" style="margin:.2rem 0 .5rem;display:none"></p>
     <div class="row" style="align-items:flex-end">
       ${putAwayBtn('swfold', '3', !swAway('3'), 'this stage')}
-      <label class="f" title="a stage 3 record set that came out of the stage 2 set picked above, to see it — its boxes below are filled from it and greyed — or new, to price one from that stage 2 set. A paused run is offered here too, and Start stage 3 then starts it again where it stopped.">stage 3 record set<select id="swSet3" style="min-width:24rem">${swOpt3}</select></label>
+      <label class="f" title="a stage 3 record set that came out of the stage 2 set picked above, to fill the boxes below from it — they stay live, and Start stage 3 prices a new set from what they hold; Open shows them — or new, to price one from that stage 2 set. A paused run is offered here too, and Start stage 3 then starts it again where it stopped.">stage 3 record set<select id="swSet3" style="min-width:24rem">${swOpt3}</select></label>
     </div>
     <div id="swSec3"${swAway('3') ? ' hidden' : ''}>
     <fieldset id="swBody3" class="swbody">
@@ -4267,7 +4271,7 @@ async function drawSweep() {
       }
       rememberSweepForm();
       if (k === 'c') { drawSweep(); return; }
-      swRefillPicks(false);
+      swRefillPicks(false, from - 1);
       swLockSections();
       swProvenance();
       swApplyAway();
@@ -4503,7 +4507,15 @@ async function drawSweep() {
 // THE LOWER BOXES FOLLOW THE PICKS ABOVE THEM (3.240.0). keep: a box keeps the
 // set it names while that set is still offered under the new pick; otherwise it
 // falls back to new.
-function swRefillPicks(keep) {
+// A REFILL LETS GO OF THE BOXES UNDER THE LEVEL IT IS FOR, NEVER OF THAT LEVEL'S
+// OWN OR THE ONES ABOVE (3.241.7, owner: "when S1-Doubles-CFA-70/15/15... is
+// opened on Sweep | Stage 1 and then the S2-Doubles-CFA-70/15/15... is opened on
+// Stage 2 below it, it does not select for open properly, but just changes to
+// --new stage 2 sweep--"). A stage 2 pick refilled both boxes under stage 1 with
+// nothing kept, its own among them, so it wiped itself back to new; a start on
+// stage 2 did the same to the set it had just made, and Put away on stage 3 let
+// go of stage 2's pick. `upTo` is the deepest level whose pick stays.
+function swRefillPicks(keep, upTo = 0) {
   const sets = swSetsCache || [];
   // a remembered pick that is no longer offered (another campaign is set, or
   // the set is gone) falls back to new, and its section's name goes with it
@@ -4512,7 +4524,7 @@ function swRefillPicks(keep) {
   for (const [n, sel] of [[2, '#swFrom3'], [3, '#swSet3']]) {
     const box = $(sel);
     if (!box) continue;
-    const was = keep ? box.value : '';
+    const was = keep || n <= upTo ? box.value : '';
     const parentId = swPicked(n - 1);
     box.innerHTML = swSetOptions(sets, n, was || null, parentId);
     swParentShown.set(sel, swSetOptions(sets, n, null, parentId));
@@ -4525,10 +4537,7 @@ function swForget(n) { for (const f of [`#swName${n}`, `#swDesc${n}`]) { const e
 // picked), then the section shows the set it names, filled from it, or stands
 // free for a new one with its name and description emptied.
 async function swPick(n) {
-  // a pick in a stage that is put away opens that stage alone, the way its
-  // Open does, to show the set picked or the form for a new one (3.241.5)
-  if (swAway(String(n))) swSetAway(String(n), false);
-  if (n < 3) swRefillPicks(false);
+  if (n < 3) swRefillPicks(false, n);
   for (const m of [1, 2, 3]) {
     if (m < n) continue;
     const v = swPicked(m);
@@ -4580,7 +4589,7 @@ function swLandOn(n, id) {
   if (!opts.includes(`value="${id}"`)) box.insertAdjacentHTML('beforeend', `<option value="${esc(id)}" selected>${esc(($(`#swName${n}`) || {}).value || id)} — starting</option>`);
   else box.innerHTML = opts;
   box.value = id;
-  if (n < 3) swRefillPicks(false);
+  if (n < 3) swRefillPicks(false, n);
   swLockSections();
   rememberSweepForm();
   swApplyAway();
@@ -4746,7 +4755,7 @@ async function drawBoards() {
   for (const k of [2, 3]) if (upEmpty[k] && fold[k]) { fold[k] = false; bSaveView({ [`fold${k}`]: false }); }
   // a stage put away shows its heading, its Open and its box, and the box is
   // greyed and live with its Open (3.241.5, owner order 2026-09-24: "the same
-  // goes for the open button on boards"); a pick in it opens the stage
+  // goes for the open button on boards"); a pick in it opens nothing (3.241.7)
   const pickOff = (n) => upEmpty[n];
   const foldBtn = (stage) => putAwayBtn('bfold', stage, fold[stage], "this stage's table", upEmpty[stage] ? 'disabled class="ctl-off"' : '');
   // ONE STAGE AT A TIME, ON ITS OWN SUB TAB (3.238.0, owner order 2026-09-23:
@@ -4852,9 +4861,11 @@ async function drawBoards() {
     if (pick) {
       pick.onchange = () => {
         const idv = pick.value || null;
-        if (stage === 1) bSaveView({ s1: idv, s2: null, s3: null, fold1: true, openS3: [] });
-        if (stage === 2) bSaveView({ s1: idv ? parentOf(idv) : null, s2: idv, s3: null, fold1: true, fold2: true, openS3: [] });
-        if (stage === 3) bSaveView({ s1: idv ? parentOf(parentOf(idv)) || null : null, s2: idv ? parentOf(idv) : null, s3: idv, fold1: true, fold2: true, fold3: true, openS3: [] });
+        // a pick never opens a stage: Open does (3.241.7, owner order
+        // 2026-09-24: "that's why we have open buttons")
+        if (stage === 1) bSaveView({ s1: idv, s2: null, s3: null, openS3: [] });
+        if (stage === 2) bSaveView({ s1: idv ? parentOf(idv) : null, s2: idv, s3: null, openS3: [] });
+        if (stage === 3) bSaveView({ s1: idv ? parentOf(parentOf(idv)) || null : null, s2: idv ? parentOf(idv) : null, s3: idv, openS3: [] });
         bRedrawPeggedTo(`#bPick${stage}`);
       };
     }

@@ -104,7 +104,7 @@ const GUARDS = [
     'theStageThreeTablesMatchThePencil', 'lead over null set on the ranked table reads as nothing, silently, for every set'],
   [path.join(ROOT, 'public', 'construct.js'), 'if (s3sel) { s2sel = parentOf(s3sel); s1sel = s2sel ? parentOf(s2sel) : null; }', 'if (false) { s2sel = parentOf(s3sel); s1sel = null; }',
     'theTwoScreensDrawTheSharedPanelsFromOneFunction', 'a stage 3 pick stops putting its provenance on screen and the sections drift apart'],
-  [path.join(ROOT, 'public', 'construct.js'), 'bSaveView({ s1: idv, s2: null, s3: null, fold1: true, openS3: [] })', 'bSaveView({ s1: idv, fold1: true, openS3: [] })',
+  [path.join(ROOT, 'public', 'construct.js'), 'bSaveView({ s1: idv, s2: null, s3: null, openS3: [] })', 'bSaveView({ s1: idv, openS3: [] })',
     'theTwoScreensDrawTheSharedPanelsFromOneFunction', 'picking a new stage 1 parent leaves stale children selected under it'],
   [path.join(ROOT, 'lib', 'stages.js'), "  try { if (readTally(id)) return { ready: true }; } catch (_) { /* fall through */ }", '  return { ready: true };',
     'theTablesRebuildThemselvesWhenOpened', 'a set stranded without its tables reads as ready forever and the stage 3 tables stay empty'],
