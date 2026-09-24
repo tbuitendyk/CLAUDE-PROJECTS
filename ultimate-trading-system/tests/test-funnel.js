@@ -1704,7 +1704,7 @@ module.exports = {
     assert.ok(/\/across`, \{ rule: st\.rule, unit: st\.unit, barPct: st\.barPct \}/.test(wire), 'the across carries the unit');
     const cutAt = wire.indexOf('/cut`');
     assert.ok(cutAt > 0 && /unit: st\.unit,\n\s*barPct: st\.barPct,\n\s*\}, WHERE_FUNNEL\);/.test(wire.slice(cutAt, cutAt + 700)), 'the cut carries the unit');
-    assert.ok(src.includes('<select id="fUnit"><option value="all"'), 'the picker offers the blend as all');
+    assert.ok(src.includes('<select id="fUnit">${units.length > 1 ? `<option value="all"'), 'the picker offers the blend as all, and only when there is more than one coin and shape to blend (3.244.0)');
     // 3.80.0: the boxes are one per part, so their options are coins, alongside
     // coins and chunk shapes rather than joined-up unit keys. What has to stay
     // true is that every option comes from the reply's own list and that what

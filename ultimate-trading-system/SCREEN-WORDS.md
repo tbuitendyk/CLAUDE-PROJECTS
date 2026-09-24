@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **7028d6758434 — what the box is serving**, not from the working tree.
+Generated from **f49c4d59fcf1 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -1224,7 +1224,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 
 # Funnel
 
-## What the controls are called (263)
+## What the controls are called (265)
 
 - `- chosen`
 - `- what each limit would keep of`
@@ -1270,6 +1270,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `avg held-back $`
 - `avg test`
 - `avg test $`
+- `back in the message box;`
 - `beat its own null set`
 - `beaten`
 - `beats`
@@ -1385,6 +1386,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `pair(s) read,`
 - `Passed over:`
 - `pays only at`
+- `pick another`
 - `Press`
 - `Prev`
 - `prices this set's own`
@@ -1520,12 +1522,13 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `trailMult`
 - `weekdaysOnly`
 
-## Sentences the page prints (271)
+## Sentences the page prints (272)
 
 - There is no finished stage 3 record set on this box yet, so there
 - is nothing for the Funnel to walk. Run stage 3 on Sweep; the finished set appears under source.
-- . Nothing below is from it, because there
-- is nothing below. The reason came back in the message box; pick another under source above.
+- . Nothing here is from it. The reason came
+- pick another coin in the boxes above, or another
+- under source above.
 - the tables for this set are being worked out -
 - - this page asks again in a few seconds
 - — the filter on Table 3.C, not saved
