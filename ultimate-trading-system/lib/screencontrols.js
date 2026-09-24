@@ -39,7 +39,20 @@ function tabs(src) {
 
 // One screen's renderer, brace-matched, so nothing from another leaks in.
 // The braced body of a named function, from its opening { to its matching }.
+//
+// AN ARROW HELPER WITH NO BRACES OF ITS OWN IS ITS EXPRESSION (3.241.5, owner:
+// "fix the word list hole GO NOW!"). `const putAwayBtn = (...) => \`<button ...\``
+// is a whole helper written as one expression, and taking the first { after
+// its name took the { of its first ${...}: the reader got `{attr}`, found no
+// markup in it, and skipped the helper. So the Open / Put away button it draws
+// on Sweep, Boards and the Funnel was on the owner's screen and on no word
+// list. Such a helper is read from its arrow to the end of its statement.
 function bodyOf(S, start) {
+  const arrow = /^const [A-Za-z_$][\w$]*\s*=\s*\([^)]*\)\s*=>\s*/.exec(S.slice(start, start + 400));
+  if (arrow && S[start + arrow[0].length] !== '{') {
+    const from = start + arrow[0].length;
+    return S.slice(from, endOfStatement(S, from));
+  }
   let i = S.indexOf('{', start);
   const from = i;
   let depth = 0;
@@ -48,6 +61,60 @@ function bodyOf(S, start) {
     else if (S[i] === '}') { depth--; if (depth === 0) break; }
   }
   return S.slice(from, i + 1);
+}
+
+// Where a top-level expression ends: the first ; outside every bracket, or the
+// first line after it that starts in the first column, which is where this
+// file begins its next statement. Strings, templates, comments and regular
+// expressions are stepped over whole, so a quote or brace inside one cannot
+// end it early or run it on (cth carries /"/g, and a " there read as a string
+// ran the helper on to the end of the file).
+function endOfStatement(S, i) {
+  let depth = 0;
+  let prev = '';
+  while (i < S.length) {
+    const ch = S[i];
+    if (ch === '/' && S[i + 1] === '/') { i = S.indexOf('\n', i); if (i < 0) return S.length; continue; }
+    if (ch === '/' && S[i + 1] === '*') { const e = S.indexOf('*/', i + 2); i = e < 0 ? S.length : e + 2; continue; }
+    if (ch === "'" || ch === '"') { i = pastQuote(S, i + 1, ch); prev = 'x'; continue; }
+    if (ch === '`') { i = pastTemplate(S, i + 1); prev = 'x'; continue; }
+    if (ch === '/' && (!prev || '(,=:[!&|?{};+-*%<>~^'.includes(prev))) { i = pastRegex(S, i + 1); prev = 'x'; continue; }
+    if ('([{'.includes(ch)) depth++;
+    else if (')]}'.includes(ch)) { depth--; if (depth < 0) return i; }
+    else if (depth === 0 && ch === ';') return i + 1;
+    else if (depth === 0 && ch === '\n' && /\S/.test(S[i + 1] || '')) return i;
+    if (/\S/.test(ch)) prev = ch;
+    i++;
+  }
+  return i;
+}
+function pastQuote(S, i, q) {
+  while (i < S.length) {
+    if (S[i] === '\\') { i += 2; continue; }
+    if (S[i] === q) return i + 1;
+    i++;
+  }
+  return i;
+}
+function pastTemplate(S, i) {
+  while (i < S.length) {
+    if (S[i] === '\\') { i += 2; continue; }
+    if (S[i] === '`') return i + 1;
+    if (S[i] === '$' && S[i + 1] === '{') { i = endOfStatement(S, i + 2) + 1; continue; }
+    i++;
+  }
+  return i;
+}
+function pastRegex(S, i) {
+  let inClass = false;
+  while (i < S.length && S[i] !== '\n') {
+    if (S[i] === '\\') { i += 2; continue; }
+    if (S[i] === '[') inClass = true;
+    else if (S[i] === ']') inClass = false;
+    else if (S[i] === '/' && !inClass) { i++; while (/[a-z]/i.test(S[i] || '')) i++; return i; }
+    i++;
+  }
+  return i;
 }
 
 // A SCREEN IS ITS RENDERER PLUS WHAT ITS RENDERER DRAWS WITH (2026-08-23).

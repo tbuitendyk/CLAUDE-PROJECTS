@@ -64,6 +64,21 @@ module.exports = {
           if (w && /[A-Za-z]/.test(w) && w.length > 1) seen.add(w);
         }
       }
+      // A CHOICE THAT IS THE WHOLE TEXT OF AN ELEMENT IS VISIBLE TOO (3.241.5,
+      // owner: "fix the word list hole GO NOW!"). `>${open ? 'Put away' : 'Open'}<`
+      // prints one of its two words, and this check could not see either: it
+      // read only text with no interpolation in it, so the Open / Put away
+      // button was on the owner's screen, on no list, and nothing failed. Read
+      // here by its own pattern, not the collector's walker: a quoted string
+      // straight after a choice's `?` or `:`, in an interpolation that is all
+      // an element holds.
+      for (const m of raw.matchAll(/(?<!=)>\s*\$\{([^{}`<>]*)\}\s*</g)) {
+        for (const c of m[1].matchAll(/(?<![?])[?:](?![?.])\s*(['"])((?:(?!\1)[^\\]|\\.)*)\1/g)) {
+          for (const w of c[2].replace(/&[#\w]+;/g, ' ').split(/[^A-Za-z0-9%/.\-]+/)) {
+            if (w && /[A-Za-z]/.test(w) && w.length > 1) seen.add(w);
+          }
+        }
+      }
       const have = new Set(collect(t.fn).words);
       for (const w of seen) if (!have.has(w)) missing.push(`${t.label}: "${w}"`);
     }
@@ -71,6 +86,44 @@ module.exports = {
       'these words are plainly visible on a screen and are on no word list, so the rule that '
       + 'says the list is the only permitted vocabulary would forbid a word the owner can see:\n  '
       + missing.join('\n  '));
+  },
+
+  // EVERY HELPER A SCREEN CALLS THAT DRAWS SOMETHING REACHES ITS READER
+  // (3.241.5). The reader cut an arrow helper written as one expression --
+  // `const putAwayBtn = (...) => \`<button ...\`` -- at the first { after its
+  // name, which is the { of its first ${...}; it got `{attr}`, found no markup
+  // and skipped it, so the Open / Put away button was on three screens and on
+  // no list. Both directions of every other check read through that same
+  // reader, so none of them could see it. This cuts each helper its own way --
+  // from its first line to the next line that starts in the first column --
+  // and asks that the first line of markup it draws is in what the reader
+  // collected for every screen that calls it.
+  async everyHelperAScreenCallsReachesItsReader() {
+    const { servedSourceForTests } = require('./sweep-words');
+    const S = servedSourceForTests();
+    const own = new Map();
+    for (const m of S.matchAll(/^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(|^const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(/gm)) {
+      const name = m[1] || m[2];
+      if (own.has(name)) continue;
+      const rest = S.slice(m.index);
+      const end = rest.slice(1).search(/\n[^\s}\])]/);
+      own.set(name, end < 0 ? rest : rest.slice(0, end + 1));
+    }
+    const screens = new Set(['draw', ...tabs().map((t) => t.fn)]);
+    const missed = [];
+    for (const t of tabs()) {
+      const body = drawBody(t.fn);
+      for (const [name, text] of own) {
+        if (screens.has(name) || !new RegExp(`\\b${name.replace(/\$/g, '\\$')}\\s*\\(`).test(body)) continue;
+        const line = text.split('\n').find((l) => /<[a-z]/i.test(l));
+        if (!line) continue;
+        const markup = line.slice(line.search(/<[a-z]/i)).trim();
+        if (!body.includes(markup)) missed.push(`${t.label}: ${name}() draws "${markup.slice(0, 70)}"`);
+      }
+    }
+    assert.deepStrictEqual(missed, [],
+      'a screen calls these helpers and they draw something, and the reader never saw what they draw — '
+      + 'so their words are on the owner\'s screen and on no list:\n  ' + missed.join('\n  '));
   },
 
   // EVERY CHOICE A CONTROL OFFERS IS ON A LIST (owner order, 2026-08-29:

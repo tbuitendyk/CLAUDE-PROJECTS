@@ -245,6 +245,15 @@ const GUARDS = [
     'theReaderFollowsWhatARendererDrawsWith', 'the reader stops one hop from the renderer again and the paging bar goes back to being a screen the word list cannot see'],
   [path.join(ROOT, 'lib', 'screencontrols.js'), "      if (isScreen(name)) { seen.add(name); continue; }", '',
     'theReaderFollowsWhatARendererDrawsWith', 'a helper that redraws the page drags every other screen\'s words onto this list — every word in the app authorised on every screen'],
+  // ...AND IT READS WHAT IT FOLLOWS (3.242.2, owner: "fix the word list hole
+  // GO NOW!"): an arrow helper written as one expression, a plain word one side
+  // of a choice prints, and a search pattern with a quote in it
+  [path.join(ROOT, 'lib', 'screencontrols.js'), "  if (arrow && S[start + arrow[0].length] !== '{') {", '  if (false) {',
+    'everyHelperAScreenCallsReachesItsReader', 'an arrow helper written as one expression is cut at the { of its first ${...} again, and the Open / Put away button goes back to being on no list'],
+  [path.join(ROOT, 'tests', 'sweep-words.js'), '      if (!inTag) for (const w of choiceWords(code)) out += `\n${w}\n`;', '',
+    'theWordListSeesEveryVisibleLabel', 'a plain word one side of a choice prints is dropped again, so Open, Put away, Pause and Stop are on the screen and on no list'],
+  [path.join(ROOT, 'tests', 'sweep-words.js'), '    { const j = endOfRegex(src, i); if (j > 0) { i = j; continue; } }', '',
+    'theListIsNotStale', 'a search pattern with a quote in it is read as a string again, and everything after the table header helper is read as page text'],
   // THE MEMBER COUNTS THE OWNER READS. Both halves: the two lines the Sweep
   // screen prints, and the three hovers where they were actually wrong.
   [path.join(ROOT, 'public', 'construct.js'), '4 per coin on its own, 5 alongside others', '3 per coin on its own, 4 alongside others',

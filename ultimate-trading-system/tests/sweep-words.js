@@ -130,6 +130,35 @@ function endOfQuote(src, i, q) {
   return i;
 }
 
+// A SEARCH PATTERN IS NOT A STRING EITHER (3.241.5). The table header helper
+// writes /"/g, and once the reader could see that helper at all, its " opened
+// a string that ran on past the helper's end: everything drawn after it on
+// that screen was read as page text, and five screens lost templates they had
+// had. A / starts a pattern where a value is expected — after an operator, an
+// opening bracket or a keyword such as return — and a division everywhere
+// else. Returns the position just past the pattern, or -1 when it is not one.
+function endOfRegex(src, i) {
+  if (src[i] !== '/' || src[i + 1] === '/' || src[i + 1] === '*') return -1;
+  let k = i - 1;
+  while (k >= 0 && /\s/.test(src[k])) k--;
+  const p = k < 0 ? '' : src[k];
+  if (/[\w$]/.test(p)) {
+    let w = k;
+    while (w >= 0 && /[\w$]/.test(src[w])) w--;
+    if (!/^(return|typeof|case|void|delete|throw|in|of|new)$/.test(src.slice(w + 1, k + 1))) return -1;
+  } else if (p && !'(,=:[!&|?{};+-*%<>~^'.includes(p)) return -1;
+  let j = i + 1;
+  let inClass = false;
+  while (j < src.length && src[j] !== '\n') {
+    if (src[j] === '\\') { j += 2; continue; }
+    if (src[j] === '[') inClass = true;
+    else if (src[j] === ']') inClass = false;
+    else if (src[j] === '/' && !inClass) { j++; while (/[a-z]/i.test(src[j] || '')) j++; return j; }
+    j++;
+  }
+  return -1;
+}
+
 // From just inside a `${` to just past its matching `}`.
 function endOfInterpolation(src, i) {
   let depth = 1;
@@ -137,6 +166,7 @@ function endOfInterpolation(src, i) {
     const ch = src[i];
     if (ch === '\\') { i += 2; continue; }
     { const j = skipComment(src, i); if (j !== i) { i = j; continue; } }
+    { const j = endOfRegex(src, i); if (j > 0) { i = j; continue; } }
     if (ch === "'" || ch === '"') { i = endOfQuote(src, i + 1, ch); continue; }
     if (ch === '`') { i = endOfTemplate(src, i + 1); continue; }
     if (ch === '{') { depth++; i++; continue; }
@@ -172,6 +202,7 @@ function htmlTemplates(body) {
     const ch = body[i];
     if (ch === '\\') { i += 2; continue; }
     { const j = skipComment(body, i); if (j !== i) { i = j; continue; } }
+    { const j = endOfRegex(body, i); if (j > 0) { i = j; continue; } }
     if (ch === "'" || ch === '"') { i = endOfQuote(body, i + 1, ch); continue; }
     if (ch === '`') {
       const end = endOfTemplate(body, i + 1) - 1;   // index of the closing backtick
@@ -203,15 +234,96 @@ function htmlTemplates(body) {
 //
 // So the code goes and the page stays: a template literal or a quoted string
 // holding a tag is page text, at any depth, and is kept.
+//
+// AND SO IS A PLAIN WORD ONE SIDE OF A CHOICE PRINTS (3.241.5, owner: "fix the
+// word list hole GO NOW!"). `>${open ? 'Put away' : 'Open'}<` puts one of those
+// two words on the page, and both are words the owner can see. The reading
+// kept a string only when it carried a tag, so the Open / Put away button,
+// Pause / Stop, and whole sentences written as the two sides of a choice were
+// on the owner's screen and on no list. So a tag is tracked as the text is
+// walked, and an interpolation sitting in the page's text, never inside a tag,
+// gives up the plain words its choice can print (choiceWords, below).
 function stripInterpolations(src) {
   let out = '';
   let i = 0;
+  let inTag = false;
+  let q = null;                                   // the quote an attribute is open in
   while (i < src.length) {
     if (src[i] === '$' && src[i + 1] === '{') {
       const end = endOfInterpolation(src, i + 2);
-      out += `  ${pageTextInside(src.slice(i + 2, Math.max(i + 2, end - 1)))}\n`;
+      const code = src.slice(i + 2, Math.max(i + 2, end - 1));
+      out += `  ${pageTextInside(code)}\n`;
+      if (!inTag) for (const w of choiceWords(code)) out += `\n${w}\n`;
       i = end;
-    } else { out += src[i]; i++; }
+      continue;
+    }
+    const ch = src[i];
+    if (inTag) {
+      if (q) { if (ch === q) q = null; } else if (ch === '"' || ch === "'") q = ch; else if (ch === '>') inTag = false;
+    } else if (ch === '<' && /[A-Za-z/!]/.test(src[i + 1] || '')) inTag = true;
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
+// The plain words the two sides of a choice can print. Kept narrow, because
+// over-collecting authorises words nobody can see: only a quoted string that
+// IS one side of a choice, standing after its `?` or its `:` and running to
+// that choice's `:` or to the end of what holds it; never an argument handed
+// to a call, a key or a comparison. A choice may sit inside brackets that are
+// themselves one side of a choice -- `a ? '—' : (b ? 'yes' : 'no')` on Held --
+// or inside esc(...), which prints what it is given; any other call's brackets
+// hold arguments, not page. A side with no word in it (`'s'`, `'&mdash;'`) is a
+// piece of punctuation or of a word, not a word.
+function choiceWords(code) {
+  const out = [];
+  let depth = 0;
+  let prev = '';
+  let word = '';                                  // the name just read, to know an esc( call
+  const waiting = [0];                            // `?` still waiting for their `:`, per depth
+  const prints = [true];                          // whether what this depth holds is printed
+  let i = 0;
+  while (i < code.length) {
+    const ch = code[i];
+    if (/\s/.test(ch)) { i++; continue; }
+    { const j = skipComment(code, i); if (j !== i) { i = j; continue; } }
+    { const j = endOfRegex(code, i); if (j > 0) { i = j; prev = 'lit'; continue; } }
+    if (ch === "'" || ch === '"') {
+      const e = endOfQuote(code, i + 1, ch);
+      const lit = code.slice(i + 1, Math.max(i + 1, e - 1));
+      let j = e;
+      while (j < code.length && /\s/.test(code[j])) j++;
+      const atEnd = depth === 0 ? j >= code.length : code[j] === ')';
+      const side = prints[depth] && (prev === '?' || prev === 'T:')
+        && (atEnd || (code[j] === ':' && waiting[depth] > 0));
+      if (side && /[A-Za-z]{2}/.test(lit.replace(/&[#\w]+;/g, ' '))) out.push(lit);
+      prev = 'lit';
+      i = e;
+      continue;
+    }
+    if (ch === '`') { i = endOfTemplate(code, i + 1); prev = 'lit'; continue; }
+    if (/[A-Za-z_$]/.test(ch)) {
+      let j = i;
+      while (j < code.length && /[\w$.]/.test(code[j])) j++;
+      word = code.slice(i, j);
+      prev = 'id';
+      i = j;
+      continue;
+    }
+    if (ch === '(') {
+      const p = prints[depth] && (prev === '?' || prev === 'T:' || prev === '' || (prev === 'id' && word === 'esc'));
+      depth++; waiting[depth] = 0; prints[depth] = p; prev = ch; i++;
+      continue;
+    }
+    if (ch === '[' || ch === '{') { depth++; waiting[depth] = 0; prints[depth] = false; prev = ch; i++; continue; }
+    if (')]}'.includes(ch)) { depth--; prev = ch; i++; continue; }
+    if (ch === '?' && code[i + 1] === '?') { prev = '??'; i += 2; continue; }
+    if (ch === '?' && code[i + 1] === '.' && !/\d/.test(code[i + 2] || '')) { prev = '?.'; i += 2; continue; }
+    if (ch === '?') { waiting[depth] = (waiting[depth] || 0) + 1; prev = '?'; i++; continue; }
+    if (ch === ':') { if (waiting[depth] > 0) { waiting[depth]--; prev = 'T:'; } else prev = ':'; i++; continue; }
+    prev = ch;
+    i++;
   }
   return out;
 }
@@ -226,6 +338,7 @@ function pageTextInside(code) {
     const ch = code[i];
     if (ch === '\\') { i += 2; continue; }
     { const j = skipComment(code, i); if (j !== i) { i = j; continue; } }
+    { const j = endOfRegex(code, i); if (j > 0) { i = j; continue; } }
     if (ch === "'" || ch === '"') {
       const e = endOfQuote(code, i + 1, ch);
       const lit = code.slice(i + 1, Math.max(i + 1, e - 1));
