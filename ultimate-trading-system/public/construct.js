@@ -3003,15 +3003,27 @@ function hHalfLifeBlockHtml(b, isFirst) {
     <p class="note muted">${rows.length} records, in the set's own order. Green is the best of the row: a half-life wins only by at least a cent over the unweighted column; a tie goes to the unweighted side.</p>
   </div>`;
 }
-// THE 4.h SET FROM THIS TABLE (3.95.0): the rows a half-life won, each carrying its half-life; named by the owner
+// THE TWO SAVES FROM THIS TABLE (3.245.0, owner order 2026-09-24: "there
+// should be two saves from the History half-life analysis: the cut which is
+// rows that improve, and the complete which is all best rows"). Each is a
+// record set of its own, named by the owner in its own box: the cut is every
+// row a half-life won, each carrying that half-life (3.95.0); the complete is
+// every row at its best, the rows the unweighted column won carrying none.
 function hHlBuildRowHtml(run, built) {
   const wins = run.wins || {};
+  const rows = run.rows || [];
   const improved = Object.entries(wins).filter(([k, v]) => k !== 'none' && v > 0).reduce((a, [, v]) => a + v, 0);
+  const best = rows.filter((r) => r.best).length;
   const mine = (built || []).filter((b) => b.run === run.id);
+  const said = (list) => (list.length ? ` · saved from this table: ${list.map((b) => `<b>${esc(b.name)}</b> (${b.survivors} records)`).join(', ')}` : '');
   return `<div class="row" style="margin-top:.4rem;align-items:flex-end">
-    <label class="f" style="flex:1" title="what you want to see on Tune and Greenlight for the set built from this table">name<input id="hHlName" style="width:100%" placeholder="e.g. XRP daily, half-life set"></label>
-    </div><div class="row"><button id="hHlBuild" class="pri" ${improved ? '' : 'disabled title="no record improved with any half-life on this table"'} title="builds a record set from every row a half-life won on this table, each record carrying the half-life that won on it; rows the unweighted column won are left out. It appears on Tune and Greenlight, named with the set it was built from.">Build the half-life set from this table</button>
-    <span class="note">${improved} of ${(run.rows || []).length} records improved with a half-life${mine.length ? ` · built from this table: ${mine.map((b) => `<b>${esc(b.name)}</b> (${b.survivors} records)`).join(', ')}` : ''}</span>
+    <label class="f" style="flex:1" title="what you want to see on Tune and Greenlight for the cut saved from this table">name of the cut<input id="hHlName" style="width:100%" placeholder="e.g. XRP daily, half-life cut"></label>
+    </div><div class="row"><button id="hHlBuild" class="pri" ${improved ? '' : 'disabled title="no record improved with any half-life on this table"'} title="saves a record set of every row a half-life won on this table, each record carrying the half-life that won on it; rows the unweighted column won are left out. It appears on Tune and Greenlight, named with the set it was built from.">Save the cut</button>
+    <span class="note">${improved} of ${rows.length} records improved with a half-life${said(mine.filter((b) => !b.complete))}</span>
+  </div><div class="row" style="align-items:flex-end">
+    <label class="f" style="flex:1" title="what you want to see on Tune and Greenlight for the complete set saved from this table">name of the complete<input id="hHlNameAll" style="width:100%" placeholder="e.g. XRP daily, half-life complete"></label>
+    </div><div class="row"><button id="hHlBuildAll" class="pri" ${best ? '' : 'disabled title="no record has a best on this table"'} title="saves a record set of every row on this table at its best: a row a half-life won carries that half-life, and a row the unweighted column won carries none and keeps the members' saved models. It appears on Tune and Greenlight, named with the set it was built from.">Save the complete</button>
+    <span class="note">${best} of ${rows.length} records at their best: ${improved} with the half-life that won, ${best - improved} unweighted${said(mine.filter((b) => b.complete))}</span>
   </div>`;
 }
 function hHalfLifePanelHtml(list, chosen, d) {
@@ -3096,15 +3108,29 @@ async function drawHistory() {
     hHalfLifeFollow(hChosen, started.token);
   };
   if (hl && hl.running && hlb) { hlb.disabled = true; hHalfLifeFollow(hChosen, hl.running.token); }
-  const hlBuild = $('#hHlBuild');
-  if (hlBuild && hChosen && hl && (hl.runs || []).length) hlBuild.onclick = async () => {
-    const name = $('#hHlName').value.trim();
-    if (!name) { alert('name the half-life set - something you will recognise on Tune and Greenlight.'); return; }
-    const run = hl.runs[0];
-    if (!confirm(`Build the half-life set "${name}" from the newest table of ${hl.name}?\n\nEvery row a half-life won, each record carrying its half-life; rows the unweighted column won are left out. It appears on Tune and Greenlight, named with this set.`)) return;
-    const out = await tryPost(`api/funnel/set/${encodeURIComponent(hChosen)}/halflife/build`, { runId: run.id, name }, 'The Stage 4 record set box on History lists the source set - pick it there.');
-    if (out) { alert(`Built: ${out.set.name} - ${out.set.survivors} of ${out.set.of} records, each with its half-life.\n\nIt is on Tune and Greenlight now.`); drawHistory(); }
+  // THE TWO SAVES (3.245.0): the cut and the complete, each from its own name box
+  const hlSave = (btnId, nameId, keep) => {
+    const btn = $(`#${btnId}`);
+    if (!btn || !hChosen || !hl || !(hl.runs || []).length) return;
+    btn.onclick = async () => {
+      const name = $(`#${nameId}`).value.trim();
+      const what = keep === 'complete' ? 'the complete' : 'the cut';
+      if (!name) { alert(`name ${what} - something you will recognise on Tune and Greenlight.`); return; }
+      const run = hl.runs[0];
+      if (!confirm(keep === 'complete'
+        ? `Save the complete "${name}" from the newest table of ${hl.name}?\n\nEvery row at its best: a row a half-life won carries that half-life, and a row the unweighted column won carries none and keeps the members' saved models. It appears on Tune and Greenlight, named with this set.`
+        : `Save the cut "${name}" from the newest table of ${hl.name}?\n\nEvery row a half-life won, each record carrying its half-life; rows the unweighted column won are left out. It appears on Tune and Greenlight, named with this set.`)) return;
+      const out = await tryPost(`api/funnel/set/${encodeURIComponent(hChosen)}/halflife/build`, { runId: run.id, name, keep }, 'The Stage 4 record set box on History lists the source set - pick it there.');
+      if (out) {
+        alert(keep === 'complete'
+          ? `Saved: ${out.set.name} - ${out.set.survivors} of ${out.set.of} records at their best, ${out.set.unweighted} of them unweighted.\n\nIt is on Tune and Greenlight now.`
+          : `Saved: ${out.set.name} - ${out.set.survivors} of ${out.set.of} records, each with its half-life.\n\nIt is on Tune and Greenlight now.`);
+        drawHistory();
+      }
+    };
   };
+  hlSave('hHlBuild', 'hHlName', 'cut');
+  hlSave('hHlBuildAll', 'hHlNameAll', 'complete');
 }
 
 // ---- THE PER-TRADE CAPTURE OF A STAGE 4 RECORD SET, on Tune (3.92.0) ----------

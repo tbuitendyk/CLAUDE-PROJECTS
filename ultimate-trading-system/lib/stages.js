@@ -8642,6 +8642,8 @@ const BLEND_REFUSAL = 'this set was cut on all units together; a verdict is read
 const STRETCHES = ['held', 'reserve'];
 const NO_HELD_PASS = 'no held set of this rule passed under this release line — read the rule on Held first; a rule that has not stood on the held-back window is read on nothing else';
 const HL_MEMBERS_MISSING = 'the retrained members this half-life set was built from are missing beside its source — press Retrain at the ticked half-lives on History again and build it again';
+// the group the rows no half-life improved are priced in, on a complete set
+const HL_UNWEIGHTED = 'unweighted';
 const HL_OWN_UNIT_ONLY = 'a half-life rule\'s retrained forecasts exist for its own survivors on its own unit only';
 const firstDigitOfRelease = (v) => String(v || '').split('.')[0] || null;
 function stretchOrRefuse(st) {
@@ -8779,14 +8781,18 @@ async function priceSurvivorsOn(doc, stretch, join, rules, note = null) {
     const hlFile = readHalfLifeRun(doc.derived.from, doc.derived.run);
     if (!hlFile) throw new Error(HL_MEMBERS_MISSING);
     const hlOf = new Map((doc.survivors || []).map((sv) => [sv.label, sv.halfLife]));
+    // a row the unweighted column won on a complete set (3.245.0) is priced
+    // from the members' saved models, as that column was
+    const plain = unweightedOf(doc);
     const groups = new Map();
     for (const st of settings) {
-      const h = hlOf.get(st.label);
-      if (!Number.isFinite(h)) throw new Error(`'${st.label}' carries no half-life on this set`);
+      const h = plain.has(st.label) ? HL_UNWEIGHTED : hlOf.get(st.label);
+      if (h !== HL_UNWEIGHTED && !Number.isFinite(h)) throw new Error(`'${st.label}' carries no half-life on this set`);
       if (!groups.has(h)) groups.set(h, []);
       groups.get(h).push(st);
     }
     payloads = [...groups.entries()].map(([h, list]) => {
+      if (h === HL_UNWEIGHTED) return { ...base, settings: list };
       const members = hlFile.halfLives.find((x) => x.halfLifeMonths === h);
       if (!members) throw new Error(`the run file holds no members retrained at ${h} months`);
       return {
@@ -8795,7 +8801,8 @@ async function priceSurvivorsOn(doc, stretch, join, rules, note = null) {
         unit: { bandPct: hlFile.originalBandPct, probs: members.members.map((m) => m.probs), ts: members.ts, members: members.members.map((m) => ({ spec: m.spec, tauProbs: m.tauProbs, saved: m.saved })) },
       };
     });
-    forecasts = `the members retrained at each survivor's own half-life (${[...groups.keys()].sort((a, b) => a - b).join(', ')} months)`;
+    const monthsHeld = [...groups.keys()].filter((h) => h !== HL_UNWEIGHTED).sort((a, b) => a - b);
+    forecasts = `the members retrained at each survivor's own half-life (${monthsHeld.length ? `${monthsHeld.join(', ')} months` : 'none'})${groups.has(HL_UNWEIGHTED) ? ', and the members\' saved models for the records no half-life improved' : ''}`;
   }
   if (note) note(0, payloads.length);
   const pool = createPool();
@@ -9712,12 +9719,13 @@ async function stage4GreenlightSource(setId, asked = {}) {
     training: { trainOn: p1.trainOn ?? null, weightCap: p1.weightCap ?? null, windowLayout: p1.windowLayout ?? null, startMonth: p1.startMonth ?? null, endMonth: p1.endMonth ?? null, allLoaded: !!p1.allLoaded, nullN: p1.nullN ?? null,
       // and the split its extra members trained under (3.202.0), so live cuts the history for them the same way
       extraTrainShare: p1.extraTrainShare ?? null,
-      halfLife: hl ? HL.daysOfMonths(hl.halfLife) : null, halfLifeMonths: hl ? hl.halfLife : null },
+      // a record no half-life improved (3.245.0) trains unweighted: no half-life, never 0 days
+      halfLife: hl && hl.halfLife != null ? HL.daysOfMonths(hl.halfLife) : null, halfLifeMonths: hl && hl.halfLife != null ? hl.halfLife : null },
     fee: Number.isFinite(Number((parent.params || {}).fee)) ? Number((parent.params || {}).fee) : null,
     readings: {
       held: held ? { money: held.money, trades: held.trades, tuned: tunedOf(heldSet, survivor.label) } : null,
       reserve: un ? { money: un.money, trades: un.trades, look: (doc.block || {}).look ?? null, tuned: tunedOf(doc, survivor.label) } : null,
-      halfLife: hl ? { months: hl.halfLife, judge: (doc.derived || {}).judgeWord || null, money: hl.money ? hl.money.judge : null, unweighted: hl.money ? hl.money.unweighted : null } : null,
+      halfLife: hl && hl.halfLife != null ? { months: hl.halfLife, judge: (doc.derived || {}).judgeWord || null, money: hl.money ? hl.money.judge : null, unweighted: hl.money ? hl.money.unweighted : null } : null,
     },
   };
 }
@@ -9928,15 +9936,18 @@ async function tuneCaptureRun(doc, note = null, fill = null) {
   base.captureFill = base.field && fill != null ? fill : null;
   let payloads = [base];
   if (doc.derived) {
-    // one payload per half-life the records carry, each on the retrain layout with that half-life's members
+    // one payload per half-life the records carry, each on the retrain layout with that half-life's members;
+    // the rows the unweighted column won on a complete set (3.245.0) from the members' saved models
+    const plain = unweightedOf(doc);
     const groups = new Map();
     for (const st of settings) {
-      const h = hlOf.get(st.label);
-      if (!Number.isFinite(h)) throw new Error(`'${st.label}' carries no half-life on this set`);
+      const h = plain.has(st.label) ? HL_UNWEIGHTED : hlOf.get(st.label);
+      if (h !== HL_UNWEIGHTED && !Number.isFinite(h)) throw new Error(`'${st.label}' carries no half-life on this set`);
       if (!groups.has(h)) groups.set(h, []);
       groups.get(h).push(st);
     }
     payloads = [...groups.entries()].map(([h, list]) => {
+      if (h === HL_UNWEIGHTED) return { ...base, settings: list };
       const members = hlFile.halfLives.find((x) => x.halfLifeMonths === h);
       if (!members) throw new Error(`the run file holds no members retrained at ${h} months`);
       return {
@@ -10266,20 +10277,21 @@ async function halfLifeRebuild(hl, run) {
   if (mine.error) throw new Error(`the half-life run could not be done again: ${mine.error}`);
   const src = getSet(srcId);
   const runRec = (src.halflife || [])[0];
-  const kept = (runRec.rows || []).filter((r) => r.best && r.best !== HL.NONE);
-  if (!kept.length) throw new Error('no record improved with any half-life on the table run again, so there is nothing to build — the set is left as it was');
   const was = getSet(hl.id);
+  // the cut or the complete, as the set was saved (3.245.0)
+  const complete = !!(was.derived || {}).complete;
+  const kept = halfLifeSurvivorsOf(runRec.rows, complete);
+  if (!kept.length) {
+    throw new Error(complete ? 'no record has a best on the table run again, so there is nothing to save — the set is left as it was'
+      : 'no record improved with any half-life on the table run again, so there is nothing to build — the set is left as it was');
+  }
   const fresh = JSON.parse(JSON.stringify(was));
-  fresh.derived = { ...(was.derived || {}), kind: 'halflife', from: src.id, fromName: src.name, run: runRec.id, at: new Date().toISOString(), judge: runRec.judge, judgeWord: runRec.judgeWord, layout: runRec.layout, months: runRec.months || months };
+  fresh.derived = { ...(was.derived || {}), kind: 'halflife', complete, from: src.id, fromName: src.name, run: runRec.id, at: new Date().toISOString(), judge: runRec.judge, judgeWord: runRec.judgeWord, layout: runRec.layout, months: runRec.months || months };
   fresh.rule = src.rule;
   fresh.userRule = src.userRule || null;
-  fresh.survivors = kept.map((r) => ({
-    si: r.si, label: r.label, halfLife: Number(String(r.best).slice(1)),
-    money: { judge: (r.money || {})[r.best] ?? null, unweighted: (r.money || {})[HL.NONE] ?? null },
-    trades: { judge: (r.trades || {})[r.best] ?? null, unweighted: (r.trades || {})[HL.NONE] ?? null },
-  }));
+  fresh.survivors = kept;
   fresh.counts = { survivors: kept.length, of: (runRec.rows || []).length, target: src.target };
-  fresh.ruleSentence = `${src.ruleSentence || S4.ruleSentence(src.rule)} · retrained, a half-life per record`;
+  fresh.ruleSentence = `${src.ruleSentence || S4.ruleSentence(src.rule)}${halfLifeSentenceOf(complete)}`;
   fresh.rich = src.rich || {};
   fresh.keptUnits = src.keptUnits || null;
   fresh.release = ENGINE_VERSION;
@@ -11048,6 +11060,31 @@ async function halfLifeRunOn(doc, months, note = null) {
   saveSet(fresh);
   return { id: block.id, look: block.look, rows: block.rows.length, wins: block.wins, columns: columns.map((c) => c.key), refused: columns.filter((c) => c.refused).map((c) => c.key) };
 }
+// THE ROWS A HALF-LIFE SET KEEPS (3.245.0, owner order 2026-09-24: "there
+// should be two saves from the History half-life analysis: the cut which is
+// rows that improve, and the complete which is all best rows"). The cut keeps
+// every row a half-life won, each carrying the half-life that won; the
+// complete keeps every row with a best, and a row the unweighted column won
+// carries no half-life (`unweighted`) and is priced from the members' saved
+// models, exactly as that column was. One function, for the build and for the
+// rebuild of a flagged set, so the two cannot keep different rows.
+function halfLifeSurvivorsOf(rows, complete) {
+  const HL = require('./halflife');
+  return (rows || []).filter((r) => r.best && (complete || r.best !== HL.NONE)).map((r) => {
+    const none = r.best === HL.NONE;
+    return {
+      si: r.si, label: r.label, halfLife: none ? null : Number(String(r.best).slice(1)), ...(none ? { unweighted: true } : {}),
+      money: { judge: (r.money || {})[r.best] ?? null, unweighted: (r.money || {})[HL.NONE] ?? null },
+      trades: { judge: (r.trades || {})[r.best] ?? null, unweighted: (r.trades || {})[HL.NONE] ?? null },
+    };
+  });
+}
+const halfLifeSentenceOf = (complete) => (complete
+  ? ' · retrained, each record at its best: the half-life that won where one improved it, unweighted where none did'
+  : ' · retrained, a half-life per record');
+// which of a half-life set's survivors are priced from the members' saved
+// models: the rows the unweighted column won, on a complete set
+const unweightedOf = (doc) => new Set((doc.survivors || []).filter((sv) => sv.unweighted).map((sv) => sv.label));
 // THE 4.h SET, BUILT FROM A TABLE (3.95.0, owner design): every row whose
 // green cell sits under a half-life column, each record carrying the
 // half-life that won on it; rows the unweighted column won are left out. A
@@ -11066,8 +11103,15 @@ function buildHalfLifeSet(setId, asked = {}) {
   const run = (src.halflife || []).find((r) => r.id === String(asked.runId || ''));
   if (!run) throw new Error('name which half-life table to build from');
   if (!readHalfLifeRun(src.id, run.id)) throw new Error('the retrained members for that table are missing beside the set — press Retrain at the ticked half-lives again');
-  const kept = (run.rows || []).filter((r) => r.best && r.best !== HL.NONE);
-  if (!kept.length) throw new Error('no record improved with any half-life on this table, so there is nothing to build');
+  // the cut or the complete (3.245.0); nothing else is a kind of half-life set
+  const keep = String(asked.keep || 'cut');
+  if (!['cut', 'complete'].includes(keep)) throw new Error(`"${keep}" is not a half-life save — the cut or the complete`);
+  const complete = keep === 'complete';
+  const kept = halfLifeSurvivorsOf(run.rows, complete);
+  if (!kept.length) {
+    throw new Error(complete ? 'no record has a best on this table, so there is nothing to save'
+      : 'no record improved with any half-life on this table, so there is nothing to build');
+  }
   // THE NAME TYPED IS THE NAME (3.234.4, owner order 2026-09-23: "when the user
   // gives a name to a new half life record set on the history tab THAT IS THE
   // NAME TO GO WITH"). It was cut at 80 characters, so a name that ended with
@@ -11085,23 +11129,19 @@ function buildHalfLifeSet(setId, asked = {}) {
     id, seq, name, parent, release: ENGINE_VERSION, target: src.target, seed: src.seed || id,
     boardNull: src.boardNull || null, sealed: src.sealed || null, unit: src.unit, unitName: src.unitName || null, keptUnits: src.keptUnits || null, check: src.check || null,
   });
-  doc.derived = { kind: 'halflife', from: src.id, fromName: src.name, run: run.id, at: new Date().toISOString(), judge: run.judge, judgeWord: run.judgeWord, layout: run.layout, months: run.months || [] };
+  doc.derived = { kind: 'halflife', complete, from: src.id, fromName: src.name, run: run.id, at: new Date().toISOString(), judge: run.judge, judgeWord: run.judgeWord, layout: run.layout, months: run.months || [] };
   doc.rule = src.rule;
   doc.userRule = src.userRule || null;
   doc.exam = !!src.exam;
-  doc.survivors = kept.map((r) => ({
-    si: r.si, label: r.label, halfLife: Number(String(r.best).slice(1)),
-    money: { judge: (r.money || {})[r.best] ?? null, unweighted: (r.money || {})[HL.NONE] ?? null },
-    trades: { judge: (r.trades || {})[r.best] ?? null, unweighted: (r.trades || {})[HL.NONE] ?? null },
-  }));
+  doc.survivors = kept;
   doc.counts = { survivors: kept.length, of: (run.rows || []).length, target: src.target };
   doc.closing = src.closing || null;
   doc.warnings = [];
   doc.marks = Array.isArray(src.marks) ? src.marks.slice() : [];
-  doc.ruleSentence = `${src.ruleSentence || S4.ruleSentence(src.rule)} · retrained, a half-life per record`;
+  doc.ruleSentence = `${src.ruleSentence || S4.ruleSentence(src.rule)}${halfLifeSentenceOf(complete)}`;
   doc.rich = src.rich || {};
   saveSet(doc);
-  return { id: doc.id, name: doc.name, survivors: kept.length, of: (run.rows || []).length, from: src.id, run: run.id };
+  return { id: doc.id, name: doc.name, keep, survivors: kept.length, unweighted: kept.filter((r) => r.unweighted).length, of: (run.rows || []).length, from: src.id, run: run.id };
 }
 async function halfLifeDry(id) {
   const HL = require('./halflife');
@@ -11117,7 +11157,7 @@ async function halfLifeDry(id) {
     halfLives: HL.HALF_LIVES_MONTHS.slice(),
     runs: doc.halflife || [], looks: (doc.halflife || []).length, rebuild: rebuildOf(doc),
     // the half-life sets already built from this set, newest first
-    built: listFunnelSets().filter((d) => d.kind === 'funnel' && d.derived && d.derived.from === doc.id).map((d) => ({ id: d.id, name: d.name, run: d.derived.run, at: d.derived.at, survivors: (d.counts || {}).survivors ?? (d.survivors || []).length, of: (d.counts || {}).of ?? null })),
+    built: listFunnelSets().filter((d) => d.kind === 'funnel' && d.derived && d.derived.from === doc.id).map((d) => ({ id: d.id, name: d.name, run: d.derived.run, at: d.derived.at, complete: !!d.derived.complete, survivors: (d.counts || {}).survivors ?? (d.survivors || []).length, of: (d.counts || {}).of ?? null })),
     refused: halfLifeRefusalOf(doc),
     running: halfLifeRun && halfLifeRun.id === doc.id && !halfLifeRun.result && !halfLifeRun.error ? { token: halfLifeRun.token, done: halfLifeRun.done, of: halfLifeRun.of } : null,
   };

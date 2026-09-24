@@ -997,10 +997,15 @@ window.HELP = {
         what: 'Retrains the forecasts behind every setting of the chosen set, once per ticked half-life, and prices the same settings again beside the unweighted figures on the Test window, which the retraining never touched.',
         more: 'The set\'s own layout, judged on the Test window either way: a set built 61/13/13/13 (sealed exam) retrains on its 61% and is judged on its 13% test window, with its held-back 13% not read and its last 13% sealed; a set built 70/15/15 retrains on its 70% and is judged on its 15% test window, with its held-back 15% not read. Both kinds of forecast are retrained; every other training choice stays as the set was made. The best of each row is green, and a half-life wins only by at least a cent. History comes before Held and asks nothing of it, and it never reads the held-back window: that stays secret until Held, or until a scan on Tune is told to read it. Every press appends a table; none is overwritten.',
       },
-      hHlName: { what: 'The name of the half-life set built from the newest table, as it will read on Tune and Greenlight.' },
+      hHlName: { what: 'The name of the cut saved from the newest table, as it will read on Tune and Greenlight.' },
       hHlBuild: {
-        what: 'Builds a record set from every row a half-life won on the newest table, each record carrying the half-life that won on it. Rows the unweighted column won are left out.',
+        what: 'Saves the cut: a record set of every row a half-life won on the newest table, each record carrying the half-life that won on it. Rows the unweighted column won are left out.',
         more: 'It appears in the Stage 4 record set boxes on Tune and Greenlight, named with the set it was built from, and goes forward under that set\'s name. A greenlight from one of its records carries the half-life, and the live path trains that setup the same way.',
+      },
+      hHlNameAll: { what: 'The name of the complete set saved from the newest table, as it will read on Tune and Greenlight.' },
+      hHlBuildAll: {
+        what: 'Saves the complete: a record set of every row on the newest table at its best. A row a half-life won carries that half-life; a row the unweighted column won carries none and keeps the members\' saved models.',
+        more: 'Held, Reserve and Tune price the rows with a half-life on the members retrained at it, and the rows without one on the members\' saved models, exactly as the table\'s unweighted column priced them. A greenlight from a row without a half-life trains that setup unweighted.',
       },
     },
   },
