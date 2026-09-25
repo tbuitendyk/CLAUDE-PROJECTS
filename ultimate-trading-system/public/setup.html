@@ -208,6 +208,10 @@ let cEngEdit = null;         // the engine record being changed in the form, or 
 let cEngTyped = {};          // what is typed in the form, kept across the thirty-second redraw
 let aAcc = null;             // the account's exchange records, and which fee is the system default
 let aErr = null;             // why they could not be read, when they could not
+let aTr = null;              // the trading accounts, the engines, and what each engine says of their keys (loop of 2026-09-25)
+let aTrErr = null;
+let aTrKeys = null;          // the trading account whose key form is open, or null
+let aTrTyped = {};           // the new-account form as typed, kept across a redraw (never the keys)
 let vTimer = null;           // the five-second re-read, armed only while Version shows
 let vSg = null;              // last reading of the stage-engine check
 let vErr = null;             // why the check could not be read, when it could not
@@ -226,8 +230,128 @@ const age = (s) => s == null ? '—' : s < 90 ? s + 's' : s < 5400 ? Math.round(
 // the day a second one is supported it appears on this screen with nobody
 // editing this file (RULE FIVE).
 async function loadAccount() {
-  try { aAcc = await getJson('api/account'); aErr = null; }
-  catch (e) { aAcc = null; aErr = e.message; }
+  const a = getJson('api/account').then((d) => { aAcc = d; aErr = null; }, (e) => { aAcc = null; aErr = e.message; });
+  const b = getJson('api/account/trading').then((d) => { aTr = d; aTrErr = null; }, (e) => { aTr = null; aTrErr = e.message; });
+  await Promise.all([a, b]);
+}
+
+// ---- THE TRADING ACCOUNTS (loop of 2026-09-25) --------------------------------
+// One record for each trading account a setup trades through, named the way a
+// setup names its account. Its keys are typed here once and go straight to the
+// trading engine, which keeps them encrypted on the trading box: this machine
+// never keeps them, and nothing anywhere shows them again -- only whether they
+// are there, and when they were entered (item 7 of the read-back).
+function tradingKeysLine(a) {
+  const engines = aTr.engines || [];
+  if (!engines.length) return '<div class="row" style="align-items:baseline; margin-top:.35rem"><span class="note">no trading engine on record yet — one is added on the <b>Compute</b> tab</span></div>';
+  return engines.map((g) => {
+    const k = (aTr.keys || {})[g.id] || { answers: false, why: 'not asked' };
+    const mine = k.answers ? (k.keys || []).find((x) => x.account === a.id) : null;
+    const said = !k.answers
+      ? '<span class="neg">cannot tell</span> <span class="muted">(' + esc(k.why) + ')</span>'
+      : mine && mine.present
+        ? '<span class="pos">present</span> <span class="muted">entered ' + esc(String(mine.addedAt || '').slice(0, 16).replace('T', ' ')) + ' UTC</span>'
+        : '<span class="neg">missing</span>';
+    return '<div class="row" style="align-items:baseline; margin-top:.35rem"><span class="k">keys on ' + esc(g.name) + '</span> ' + said + '</div>';
+  }).join('');
+}
+function tradingAccountCard(a) {
+  const ex = (aTr.offered || []).find((x) => x.id === a.exchange);
+  const engines = aTr.engines || [];
+  const open = aTrKeys === a.id;
+  const pick = engines.find((g) => g.isDefault) || engines[0] || null;
+  const keysHere = pick && (aTr.keys || {})[pick.id] && (aTr.keys[pick.id].keys || []).find((x) => x.account === a.id && x.present);
+  return '<div class="tile" style="margin-bottom:.55rem">'
+    + '<div class="row" style="align-items:baseline"><b>' + esc(a.id) + '</b><span class="note">' + esc(ex ? ex.label : a.exchange) + (a.note ? ' · ' + esc(a.note) : '') + '</span></div>'
+    + tradingKeysLine(a)
+    + (open
+      ? '<div class="row" style="align-items:flex-end; margin-top:.5rem">'
+        + '<label class="f" title="the public half of the key, as the exchange shows it when the key is made">API key<input id="takKey" type="password" autocomplete="off" spellcheck="false" style="width:24rem"></label>'
+        + '<label class="f" title="the secret half, shown by the exchange once, when the key is made">secret key<input id="takSec" type="password" autocomplete="off" spellcheck="false" style="width:24rem"></label>'
+        + (engines.length > 1 ? '<label class="f" title="the trading engine that keeps these keys">trading engine<select id="takEng">'
+          + engines.map((g) => '<option value="' + esc(g.id) + '"' + (pick && g.id === pick.id ? ' selected' : '') + '>' + esc(g.name) + '</option>').join('') + '</select></label>' : '')
+        + '</div>'
+        + '<p class="note" style="margin-top:.4rem">Make the key on the exchange trade-only, with withdrawals off, and lock it to the trading box&#39;s address before sending it.</p>'
+        + '<div class="row" style="margin-top:.4rem"><button id="takSend" class="pri">Send the keys to the trading engine</button><button id="takCancel">Do not send</button><span id="takMsg" class="note"></span></div>'
+      : '<div class="row" style="margin-top:.5rem">'
+        + (engines.length ? '<button data-takeys="' + esc(a.id) + '">' + (keysHere ? 'Replace the keys' : 'Enter the keys') + '</button>' : '')
+        + (keysHere ? '<button data-tarm="' + esc(a.id) + '" class="danger" title="takes the keys off the trading engine; the account record stays">Remove the keys</button>' : '')
+        + '<button data-tadel="' + esc(a.id) + '" class="danger" title="takes the record away; refused while any setup names it as its account">Delete the trading account</button>'
+        + '<span id="taOut_' + esc(a.id) + '" class="note"></span></div>')
+    + '</div>';
+}
+function tradingAccountsHtml() {
+  if (!aTr) return '<div class="panel"><h3 style="margin-top:0">Trading accounts</h3><p class="note neg">the trading service did not answer, so the trading accounts cannot be shown' + (aTrErr ? ' — ' + esc(aTrErr) : '') + '</p></div>';
+  const v = (k) => esc(aTrTyped[k] || '');
+  return '<div class="panel"><h3 style="margin-top:0">Trading accounts</h3>'
+    + '<p class="note">One record for each trading account a setup trades through, named the way the setup names its account. '
+    + 'Its keys go straight to the trading engine, which keeps them encrypted on the trading box. This machine never keeps them, '
+    + 'and nothing shows them again — only whether they are there.</p>'
+    + ((aTr.accounts || []).length ? aTr.accounts.map(tradingAccountCard).join('') : '<p class="note">no trading account yet</p>')
+    + '<div class="tile"><div class="k" style="margin-bottom:.35rem">A new trading account</div>'
+    + '<div class="row" style="align-items:flex-end">'
+    + '<label class="f" title="the name a setup gives its account: letters, digits, dot, dash and underscore">account name<input id="taId" value="' + v('id') + '" style="width:12rem"></label>'
+    + '<label class="f" title="the exchange the account is on">exchange<select id="taEx">' + (aTr.offered || []).map((x) => '<option value="' + esc(x.id) + '">' + esc(x.label) + '</option>').join('') + '</select></label>'
+    + '<label class="f" title="anything you want to see beside the name">note<input id="taNote" value="' + v('note') + '" style="width:20rem"></label>'
+    + '</div>'
+    + '<div class="row" style="margin-top:.5rem"><button id="taSave" class="pri">Save the trading account</button><span id="taMsg" class="note"></span></div>'
+    + '</div></div>';
+}
+function wireTradingAccounts() {
+  if (!aTr) return;
+  for (const [sel, key] of [['#taId', 'id'], ['#taNote', 'note']]) { const el = $(sel); if (el) el.oninput = () => { aTrTyped[key] = el.value; }; }
+  const redraw = async () => { await loadAccount(); drawAccount(); };
+  const sv = $('#taSave');
+  if (sv) sv.onclick = async () => {
+    const msg = $('#taMsg');
+    sv.disabled = true; msg.innerHTML = 'saving…';
+    try {
+      await postJson('api/account/trading', { id: $('#taId').value.trim(), exchange: $('#taEx').value, note: $('#taNote').value });
+      aTrTyped = {};
+      await redraw();
+      const m2 = $('#taMsg'); if (m2) m2.innerHTML = '<span class="pos">saved</span>';
+    } catch (e) { msg.innerHTML = '<span class="neg">not saved — ' + esc(e.message) + '</span>'; sv.disabled = false; }
+  };
+  document.querySelectorAll('[data-takeys]').forEach((b) => { b.onclick = () => { aTrKeys = b.dataset.takeys; drawAccount(); const k = $('#takKey'); if (k) k.focus(); }; });
+  document.querySelectorAll('[data-tadel]').forEach((b) => {
+    b.onclick = async () => {
+      if (!confirm('Delete the trading account "' + b.dataset.tadel + '"?\n\nRefused while any setup names it as its account. Its keys on the trading engine are not touched — remove them first if they should go too.')) return;
+      try { await postJson('api/account/trading/' + encodeURIComponent(b.dataset.tadel) + '/delete', {}); await redraw(); }
+      catch (e) { const o = $('#taOut_' + b.dataset.tadel); if (o) o.innerHTML = '<span class="neg">not deleted — ' + esc(e.message) + '</span>'; }
+    };
+  });
+  const enginePick = () => { const sel = $('#takEng'); if (sel) return sel.value; const g = (aTr.engines || []).find((x) => x.isDefault) || (aTr.engines || [])[0]; return g ? g.id : ''; };
+  document.querySelectorAll('[data-tarm]').forEach((b) => {
+    b.onclick = async () => {
+      if (!confirm('Take the keys of "' + b.dataset.tarm + '" off the trading engine?\n\nA setup that trades through this account cannot place a real order until keys are entered again.')) return;
+      try { await postJson('api/account/trading/' + encodeURIComponent(b.dataset.tarm) + '/keys', { engine: enginePick(), remove: true }); await redraw(); }
+      catch (e) { const o = $('#taOut_' + b.dataset.tarm); if (o) o.innerHTML = '<span class="neg">not removed — ' + esc(e.message) + '</span>'; }
+    };
+  });
+  const cancel = $('#takCancel');
+  if (cancel) cancel.onclick = () => { aTrKeys = null; drawAccount(); };
+  const send = $('#takSend');
+  if (send) send.onclick = async () => {
+    const msg = $('#takMsg');
+    const key = $('#takKey'); const sec = $('#takSec');
+    send.disabled = true; msg.innerHTML = 'sending…';
+    try {
+      const acct = aTrKeys;
+      const got = await postJson('api/account/trading/' + encodeURIComponent(acct) + '/keys', { engine: enginePick(), apiKey: key.value.trim(), secret: sec.value.trim() });
+      // THE BOXES ARE EMPTIED THE MOMENT THE KEYS ARE SENT, taken or not
+      key.value = ''; sec.value = '';
+      aTrKeys = null;
+      await redraw();
+      const o = $('#taOut_' + acct);
+      if (o) o.innerHTML = got.checked
+        ? '<span class="pos">kept — the exchange says the key can trade and borrow, cannot move money, and is locked to one address</span>'
+        : '<span class="warn">kept, but not checked — ' + esc(got.why || 'the engine could not ask the exchange') + '</span>';
+    } catch (e) {
+      key.value = ''; sec.value = '';
+      msg.innerHTML = '<span class="neg">not stored — ' + esc(e.message) + '</span>';
+      send.disabled = false;
+    }
+  };
 }
 
 const pc3 = (v) => (v == null ? '—' : Number(v).toFixed(3) + '%');
@@ -272,10 +396,12 @@ function drawAccount() {
     + (aAcc ? '<div class="panel" style="padding-bottom:.2rem"><h3 style="margin-top:0">Where this account trades</h3>'
       + '<p class="note">One exchange record for each venue this account trades on. Only Binance is supported today, '
       + 'and more appear here on their own when they are.</p></div>' + rows : '')
+    + tradingAccountsHtml()
     + '<div class="panel"><div class="empty">The rest of the settings that belong to the whole account '
     + '&mdash; who you are, where alerts are sent &mdash; will live here. Settings that '
     + 'belong to one trading configuration live with that configuration, under <b>Trade</b>.</div></div>';
 
+  wireTradingAccounts();
   if (!aAcc) return;
   for (const e of aAcc.exchanges) {
     const b = $('#acSave_' + e.id);

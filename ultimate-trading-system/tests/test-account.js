@@ -214,6 +214,42 @@ function everyRowOfMixedSizeTextOnSetupSitsOnOneBaseline() {
     'the rule is stated in the stylesheet, not only in a test nobody reads while writing a row');
 }
 
+// THE TRADING ACCOUNTS (loop of 2026-09-25, items 6-7): the owner's records,
+// named the way a setup names its account; the record holds no key, and one a
+// setup still names cannot be taken away under it
+function aTradingAccountIsTheOwnersRecordAndHoldsNoKey() {
+  onACleanFile((acc) => {
+    assert.deepStrictEqual(acc.tradingAccounts(), []);
+    const saved = acc.saveTradingAccount({ id: 'ltc-1', exchange: 'binance', note: 'the LTC sub-account' });
+    assert.deepStrictEqual([saved.id, saved.exchange, saved.note], ['ltc-1', 'binance', 'the LTC sub-account']);
+    assert.deepStrictEqual(Object.keys(saved).sort(), ['createdAt', 'exchange', 'id', 'note'], 'nothing about a key is in the record');
+    const bad = (spec, re) => { let e = null; try { acc.saveTradingAccount(spec); } catch (x) { e = x; } assert(e && e.code === 'BAD_ACCOUNT' && re.test(e.message), e && e.message); };
+    bad({ id: '../x', exchange: 'binance' }, /a trading account is named with/);
+    bad({ id: 'ok', exchange: 'kraken' }, /"kraken" is not an exchange this system knows/);
+    let e = null;
+    try { acc.deleteTradingAccount('ltc-1', [{ id: 's1', name: 'LTC live', keyRef: 'ltc-1', state: 'live' }]); } catch (x) { e = x; }
+    assert(e && e.code === 'IN_USE' && /1 setup\(s\) name ltc-1 as their account \(LTC live\)/.test(e.message), e && e.message);
+    assert.deepStrictEqual(acc.deleteTradingAccount('ltc-1', [{ id: 's2', keyRef: 'ltc-1', state: 'retired' }]), { deleted: 'ltc-1' });
+    assert.deepStrictEqual(acc.tradingAccounts(), []);
+  });
+}
+
+// THE KEYS ARE NEVER KEPT HERE. The route that takes them hands them to the
+// engine and writes nothing; the page empties both boxes the moment they are
+// sent, and asks for them in boxes that do not show what is typed
+function theKeysPassThroughThisMachineAndAreNeverKeptOrShown() {
+  const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const route = server.slice(server.indexOf("app.post('/api/account/trading/:id/keys'"), server.indexOf('\n});\n', server.indexOf("app.post('/api/account/trading/:id/keys'")));
+  assert(route.length > 100, 'the keys route is where it was');
+  assert(!/writeFile|appendFile|console\.|log\(/.test(route), 'the keys route writes nothing and logs nothing');
+  assert(/csrfGuard/.test(route), 'the keys route refuses a request from another site');
+  assert(!/err\.message/.test(route), 'an error never repeats what was sent');
+  const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
+  assert(/id="takKey" type="password"/.test(page) && /id="takSec" type="password"/.test(page), 'the two halves are typed into boxes that do not show them');
+  assert((page.match(/key\.value = ''; sec\.value = '';/g) || []).length === 2, 'both boxes are emptied whether the keys were taken or not');
+  assert(!/localStorage[^\n]*(takKey|takSec|apiKey|secret)/.test(page), 'the page keeps no key in the browser');
+}
+
 module.exports = {
   anUnsetFeeSaysItIsUnsetRatherThanLookingChosen,
   theFeeTheOwnerEntersIsTheFeeTheSystemCharges,
@@ -222,4 +258,6 @@ module.exports = {
   theFeeIsTypedOnAccountAndOnlyShownOnCompute,
   theAccountTicksBottomAlignAndItsButtonHasItsOwnRow,
   everyRowOfMixedSizeTextOnSetupSitsOnOneBaseline,
+  aTradingAccountIsTheOwnersRecordAndHoldsNoKey,
+  theKeysPassThroughThisMachineAndAreNeverKeptOrShown,
 };

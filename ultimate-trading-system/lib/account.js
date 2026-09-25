@@ -135,4 +135,58 @@ function systemFee() {
 // Coins screens is already in.
 function roundTripPct() { return systemFee().roundTripPct; }
 
-module.exports = { EXCHANGES, exchanges, setExchange, systemFee, roundTripPct };
+// ---- THE TRADING ACCOUNTS (loop of 2026-09-25, items 6 and 7) --------------
+//
+// One record for each trading account the owner trades through: its name --
+// the one a setup names as its account -- the exchange it is on, and a note.
+// THE RECORD HOLDS NO KEY. A trading account's keys are entered on this tab and
+// passed straight through to the trading engine, which stores them encrypted
+// on the trading box; this machine never keeps, logs or shows them. What this
+// machine knows of them is what the engine answers: present or missing, and
+// when they were entered.
+const TRADING_ACCOUNT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+function tradingAccounts() {
+  const all = readSettings().account_trading || {};
+  return Object.values(all).filter((a) => a && TRADING_ACCOUNT_RE.test(a.id)).sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function saveTradingAccount({ id, exchange, note } = {}) {
+  const name = String(id || '').trim();
+  if (!TRADING_ACCOUNT_RE.test(name)) {
+    const e = new Error('a trading account is named with 1 to 64 of letters, digits, dot, dash and underscore, starting with a letter or digit');
+    e.code = 'BAD_ACCOUNT';
+    throw e;
+  }
+  const known = EXCHANGES.find((x) => x.id === String(exchange || ''));
+  if (!known) {
+    const e = new Error(`"${exchange}" is not an exchange this system knows — it knows ${EXCHANGES.map((x) => x.id).join(', ')}`);
+    e.code = 'BAD_ACCOUNT';
+    throw e;
+  }
+  let saved = null;
+  writeSettings((st) => {
+    const all = st.account_trading || (st.account_trading = {});
+    const had = all[name] || {};
+    saved = { id: name, exchange: known.id, note: typeof note === 'string' ? note.trim().slice(0, 200) : (had.note || ''), createdAt: had.createdAt || new Date().toISOString() };
+    all[name] = saved;
+  });
+  return saved;
+}
+
+// a trading account a setup still names cannot be taken away under it
+function deleteTradingAccount(id, setups = []) {
+  const name = String(id || '');
+  const all = readSettings().account_trading || {};
+  if (!all[name]) { const e = new Error(`no trading account called ${name}`); e.code = 'NOT_FOUND'; throw e; }
+  const users = setups.filter((x) => x.keyRef === name && x.state !== 'retired');
+  if (users.length) {
+    const e = new Error(`${users.length} setup(s) name ${name} as their account (${users.map((x) => x.name || x.id).join(', ')}) — change or retire them first`);
+    e.code = 'IN_USE';
+    throw e;
+  }
+  writeSettings((st) => { delete (st.account_trading || {})[name]; });
+  return { deleted: name };
+}
+
+module.exports = { EXCHANGES, exchanges, setExchange, systemFee, roundTripPct, tradingAccounts, saveTradingAccount, deleteTradingAccount, TRADING_ACCOUNT_RE };

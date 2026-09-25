@@ -83,7 +83,11 @@ class SimulatedExchange {
     const price = w.cost / qty;
     const notional = price * qty;
     if (f.minNotional && notional < f.minNotional) return { status: 'refused', why: `the order is worth ${notional.toFixed(2)}, under the exchange's smallest order of ${f.minNotional}` };
-    const feeUsd = notional * this.feePerLeg;
+    // THE FEE THE ORDER CARRIES: the account's own, read from the venue with its
+    // key, or else the setup's; the engine's own setting only when neither came
+    const feePerLeg = Number.isFinite(o.feePerLeg) ? o.feePerLeg : this.feePerLeg;
+    const feeSource = Number.isFinite(o.feePerLeg) ? (o.feeSource || 'the setup') : 'the engine\'s own setting';
+    const feeUsd = notional * feePerLeg;
     const wal = this.wallet(o.setupId, o.walletStartUsd);
     // the wallet moves as a margin wallet would: a long buys with quote; a short
     // borrows the coin and sells it; closing buys back and repays
@@ -97,7 +101,7 @@ class SimulatedExchange {
       status: 'filled', mode: MODE, price, qty, feeUsd, ts: at,
       against: {
         levels: w.took, bookTs: book.ts, bookAgeMs: age, bestBid, bestAsk, lastTrade: last ? { price: last.price, ts: last.ts } : null,
-        bookShort: w.short || 0, delayMs: this.delayMs, atLevel: o.atLevel ?? null,
+        bookShort: w.short || 0, delayMs: this.delayMs, atLevel: o.atLevel ?? null, feePerLeg, feeSource,
       },
     };
   }

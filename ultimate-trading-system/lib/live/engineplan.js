@@ -46,6 +46,8 @@ function planFor({ setup, greenlight, target, geo, decision, feePerLeg, now }) {
   return {
     planId: `${setup.id}|${chunkStart}`,
     setupId: setup.id,
+    // the trading account it would trade live on: its fee and borrowing rate are read with its own key
+    account: typeof setup.keyRef === 'string' && setup.keyRef.trim() ? setup.keyRef.trim() : null,
     mode: setup.state === 'live' ? 'live' : 'simulated',
     symbol: cfg.combo.trade,
     chunkStart,

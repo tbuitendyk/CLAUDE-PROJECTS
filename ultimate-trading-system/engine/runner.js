@@ -18,7 +18,7 @@ const HOUR_MS = P.HOUR_MS;
 const LATE_MARKET_MS = 5 * 60000;   // a market entry more than five minutes after its hour is not the trade the lab priced
 
 class Runner {
-  constructor({ journal, market, venues, liveEnabled = false, now = () => Date.now(), log = () => {} }) {
+  constructor({ journal, market, venues, accounts = null, liveEnabled = false, now = () => Date.now(), log = () => {} }) {
     this.journal = journal;
     this.market = market;
     this.venues = venues;           // { simulated, live? }
@@ -28,6 +28,14 @@ class Runner {
     this.plans = new Map();         // planId -> { plan, state, ledger, fetchingRef, lateChecked }
     this.marks = new Map();         // planId -> the last mark sent
     this.retry = new Map();         // orderId -> attempts
+    // WHAT THE VENUE SAYS ABOUT A PLAN'S TRADING ACCOUNT, read with that
+    // account's own key (engine/keystore.js) at most once an hour: its fee on the
+    // pair and the hourly rate it would pay to borrow the coin. A plan with no
+    // account, or an account with no key stored, pays the setup's fee and its
+    // borrowing is recorded unpriced -- never guessed.
+    this.accounts = accounts;       // (account) -> a reader, or throws when no key is stored
+    this.facts = new Map();         // `${account}|${symbol}` -> { at, fee, rate, why }
+    this.fetchingFacts = new Set();
   }
 
   // ---- the journal ----
@@ -78,6 +86,8 @@ class Runner {
     this.write({ type: 'plan', planId: plan.planId, setupId: plan.setupId, mode: plan.mode, plan });
     this.snapshot(plan.planId);
     this.followSymbols();
+    // the account's fee and borrowing rate are read now, so the first fill already pays them
+    this.refreshFacts(rec);
     return { ok: true, planId: plan.planId, phase: rec.state.phase };
   }
 
@@ -110,6 +120,7 @@ class Runner {
       if (r.state.phase === 'waiting' && now >= r.plan.entryTs + 2000 && !r.lateChecked && !r.fetchingRef) this.catchUp(r);
       this.feed(id, { type: 'time', ts: now });
       this.accrue(r, now);
+      this.refreshFacts(r, now);
     }
     this.sendMarks(now);
   }
@@ -182,7 +193,8 @@ class Runner {
     if (!venue) return this.refused(r, a, `no exchange module will take a ${a.mode} order on this engine`);
     let res;
     try {
-      res = await venue.placeOrder({ ...a, setupId: r.plan.setupId, feePerLeg: r.plan.feePerLeg, walletStartUsd: r.plan.walletStartUsd });
+      const fee = this.feeOf(r.plan);
+      res = await venue.placeOrder({ ...a, setupId: r.plan.setupId, feePerLeg: fee.feePerLeg, feeSource: fee.source, walletStartUsd: r.plan.walletStartUsd });
     } catch (e) { res = { status: 'refused', why: e.message }; }
     if (res.status !== 'filled') return this.refused(r, a, res.why);
     const leg = { price: res.price, qty: res.qty, feeUsd: res.feeUsd, ts: res.ts, against: res.against, orderId: a.orderId };
@@ -212,6 +224,44 @@ class Runner {
     return null;
   }
 
+  // ---- what the venue says about a plan's account ----
+  factsOf(plan) { return plan && plan.account ? this.facts.get(`${plan.account}|${plan.symbol}`) || null : null; }
+  feeOf(plan) {
+    const f = this.factsOf(plan);
+    // a market order pays the taker's fee
+    if (f && f.fee && Number.isFinite(f.fee.taker)) return { feePerLeg: f.fee.taker, source: `${f.venue}, the taker fee quoted to ${plan.account}` };
+    return { feePerLeg: Number.isFinite(plan.feePerLeg) ? plan.feePerLeg : undefined, source: 'the setup' };
+  }
+  async refreshFacts(r, now = this.now()) {
+    const p = r.plan;
+    if (!p.account || !this.accounts) return null;
+    const key = `${p.account}|${p.symbol}`;
+    const had = this.facts.get(key);
+    if ((had && now - had.at < HOUR_MS) || this.fetchingFacts.has(key)) return had || null;
+    this.fetchingFacts.add(key);
+    try {
+      let reader;
+      try { reader = this.accounts(p.account); } catch (e) { return this.keepFacts(key, p, { at: now, fee: null, rate: null, why: e.message }); }
+      const filters = await this.market.filtersOf(p.symbol);
+      if (reader.syncClock) await reader.syncClock();
+      const fee = await reader.fee(p.symbol);
+      const rate = await reader.hourlyRate(filters.baseAsset);
+      return this.keepFacts(key, p, {
+        at: now, venue: reader.venue || 'the venue',
+        fee: fee.ok ? { maker: fee.maker, taker: fee.taker, at: now } : null,
+        rate: rate.ok ? { asset: rate.asset, rate: rate.rate, at: now } : null,
+        why: [fee.ok ? null : `the fee: ${fee.why}`, rate.ok ? null : `the borrowing rate: ${rate.why}`].filter(Boolean).join('; ') || null,
+      });
+    } catch (e) {
+      return this.keepFacts(key, p, { at: now, fee: null, rate: null, why: e.message });
+    } finally { this.fetchingFacts.delete(key); }
+  }
+  keepFacts(key, plan, f) {
+    this.facts.set(key, f);
+    this.write({ type: 'account', account: plan.account, symbol: plan.symbol, venue: f.venue || null, fee: f.fee, rate: f.rate, why: f.why });
+    return f;
+  }
+
   // THE HOUR'S BORROWING on an open short, once per hour held
   accrue(r, now) {
     if (r.state.phase !== 'open' || r.state.dir !== -1 || !r.ledger.entry) return;
@@ -219,7 +269,10 @@ class Runner {
     const last = r.ledger.interestHours.length ? r.ledger.interestHours[r.ledger.interestHours.length - 1].hourTs : Math.floor(r.ledger.entry.ts / HOUR_MS) * HOUR_MS - HOUR_MS;
     if (hour <= last) return;
     const venue = this.venueFor(r.plan.mode);
-    const rate = venue && venue.borrowRate ? venue.borrowRate() : { rate: null, source: null };
+    const f = this.factsOf(r.plan);
+    const rate = f && f.rate && Number.isFinite(f.rate.rate)
+      ? { rate: f.rate.rate, source: `${f.venue}, the hourly rate quoted to ${r.plan.account} at ${new Date(f.rate.at).toISOString().slice(11, 16)} UTC` }
+      : (venue && venue.borrowRate ? venue.borrowRate() : { rate: null, source: null });
     const row = { hourTs: hour, qty: r.ledger.entry.qty, rate: rate.rate, source: rate.source, owedBase: rate.rate == null ? null : r.ledger.entry.qty * rate.rate };
     r.ledger.interestHours.push(row);
     this.write({ type: 'interest', planId: r.plan.planId, setupId: r.plan.setupId, mode: r.plan.mode, ...row, ...(rate.rate == null ? { why: 'the borrowing rate has not been read from the venue yet' } : {}) });

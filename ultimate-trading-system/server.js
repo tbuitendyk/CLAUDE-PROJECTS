@@ -209,6 +209,57 @@ app.post('/api/account/exchange', (req, res) => {
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+// ---- THE TRADING ACCOUNTS AND THEIR KEYS (loop of 2026-09-25, items 6-7) ----
+// The records are the owner's (lib/account.js). The keys go straight through
+// to the trading engine the owner picks, over this machine's tunnel to it, and
+// are never kept, logged or shown here: the only thing this machine ever holds
+// of a key is the engine's answer -- present or missing, and when entered.
+app.get('/api/account/trading', async (req, res) => {
+  try {
+    const acc = require('./lib/account');
+    const targets = require('./lib/live/targets');
+    const link = require('./lib/live/enginelink');
+    const engines = targets.listEngines();
+    const keys = {};
+    await Promise.all(engines.map(async (t) => {
+      const r = await link.call(t, 'GET', '/keys', null, 4000);
+      keys[t.id] = r.ok && r.json && Array.isArray(r.json.keys)
+        ? { answers: true, keys: r.json.keys.map((k) => ({ account: k.account, present: !!k.present, addedAt: k.addedAt || null })) }
+        : { answers: false, why: r.why || (r.json && r.json.error) || `the engine answered ${r.status}` };
+    }));
+    res.json({
+      accounts: acc.tradingAccounts(), offered: acc.EXCHANGES,
+      engines: engines.map((t) => ({ id: t.id, name: t.name, isDefault: !!t.isDefault })), keys,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/account/trading', csrfGuard, (req, res) => {
+  try { res.json({ ok: true, account: require('./lib/account').saveTradingAccount(req.body || {}) }); }
+  catch (err) { res.status(err.code === 'BAD_ACCOUNT' ? 400 : 500).json({ error: err.message }); }
+});
+app.post('/api/account/trading/:id/delete', csrfGuard, (req, res) => {
+  try { res.json({ ok: true, ...require('./lib/account').deleteTradingAccount(String(req.params.id), require('./lib/live/setups').listSetups()) }); }
+  catch (err) { res.status(err.code === 'IN_USE' ? 409 : err.code === 'NOT_FOUND' ? 404 : 500).json({ error: err.message }); }
+});
+// THE KEYS, IN AND OUT. The body is read here and handed on; it is not
+// written anywhere, and an error never repeats what was sent.
+app.post('/api/account/trading/:id/keys', csrfGuard, async (req, res) => {
+  const b = req.body || {};
+  try {
+    const acc = require('./lib/account');
+    const id = String(req.params.id);
+    if (!acc.tradingAccounts().some((a) => a.id === id)) return res.status(404).json({ error: `no trading account called ${id} — save its record first` });
+    const target = require('./lib/live/targets').getTarget(String(b.engine || ''));
+    if (!target || target.kind !== 'engine') return res.status(400).json({ error: 'pick the trading engine the keys go to' });
+    const link = require('./lib/live/enginelink');
+    const r = b.remove === true
+      ? await link.call(target, 'POST', `/keys/${encodeURIComponent(id)}/delete`, {}, 8000)
+      : await link.call(target, 'POST', `/keys/${encodeURIComponent(id)}`, { apiKey: String(b.apiKey || ''), secret: String(b.secret || '') }, 8000);
+    if (!r.ok) return res.status(r.status >= 400 && r.status < 500 ? r.status : 502).json({ error: (r.json && r.json.error) || r.why || `the engine answered ${r.status}` });
+    return res.json({ ok: true, account: id, engine: target.id, present: !!(r.json && r.json.present), addedAt: (r.json && r.json.addedAt) || null, checked: !!(r.json && r.json.checked), why: (r.json && r.json.why) || null });
+  } catch (err) { return res.status(500).json({ error: 'the keys could not be passed to the engine' }); }
+});
+
 // WORKER SELF-TEST. The pool is created per job and torn down after it, so
 // there is no long-lived set of threads to inspect between runs, and `ps` on
 // the host cannot tell the pool's threads apart from any other node thread.

@@ -9,6 +9,11 @@
 //   POST /plans             a plan in (the same plan twice is the same plan)
 //   POST /plans/:id/cancel  the owner takes a plan back ({ why, entriesOnly }: with
 //                           entriesOnly an open position is left to close by its rules)
+//   GET  /keys              each trading account: keys present or missing, and when
+//                           they were entered -- never a key
+//   POST /keys/:account     { apiKey, secret } stored encrypted; the answer is the same
+//                           present / missing line, never the key
+//   POST /keys/:account/delete  the keys taken away
 //   GET  /journal?since=N   the record, numbered lines from N
 //   GET  /events?since=N    the same, then every new line as it is written and
 //                           the live figures of open positions (server-sent events)
@@ -29,7 +34,7 @@ function send(res, code, obj) {
   res.end(text);
 }
 
-function makeServer({ runner, journal, health }) {
+function makeServer({ runner, journal, health, keystore = null, checkKey = null }) {
   const followers = new Set();
   journal.on('record', (rec) => { for (const f of followers) f(`id: ${rec.n}\nevent: record\ndata: ${JSON.stringify(rec)}\n\n`); });
   journal.on('mark', (m) => { for (const f of followers) f(`event: mark\ndata: ${JSON.stringify(m)}\n\n`); });
@@ -47,6 +52,31 @@ function makeServer({ runner, journal, health }) {
         const b = await body(req);
         const out = runner.cancelPlan(decodeURIComponent(m[1]), typeof b.why === 'string' && b.why.trim() ? b.why.trim().slice(0, 200) : 'cancelled by the owner', { entriesOnly: b.entriesOnly === true });
         return send(res, out.ok ? 200 : 404, out);
+      }
+      // THE KEYS (item 7): stored and taken away here, never handed back. A key
+      // that arrives is never written to the record, a log line or an answer.
+      if (u.pathname === '/keys' || u.pathname.startsWith('/keys/')) {
+        if (!keystore) return send(res, 503, { error: 'this engine has no key store' });
+        if (req.method === 'GET' && u.pathname === '/keys') return send(res, 200, { keys: keystore.list() });
+        const km = /^\/keys\/([^/]+)(\/delete)?$/.exec(u.pathname);
+        if (req.method === 'POST' && km) {
+          const account = decodeURIComponent(km[1]);
+          try {
+            if (km[2]) return send(res, 200, keystore.remove(account));
+            const b = await body(req, 8192);
+            const kept = keystore.put(account, { apiKey: b.apiKey, secret: b.secret });
+            // WHAT THE KEY MAY DO, asked of the venue with the key itself: a key
+            // that can move money, or is not locked to this box, is not kept
+            if (!checkKey) return send(res, 200, { ...kept, checked: false, why: 'this engine cannot ask the venue what the key may do' });
+            const v = await checkKey(account);
+            if (v.checked && !v.ok) { keystore.remove(account); return send(res, 400, { error: `the keys were not kept: ${v.refusals.join('; ')}` }); }
+            return send(res, 200, { ...kept, checked: !!v.checked, why: v.checked ? null : v.why });
+          } catch (e) {
+            // words the key store chose, or the request's shape -- never anything that could carry the key
+            const mine = e.code === 'BAD_ACCOUNT' || e.code === 'BAD_KEY' || e.message === 'not JSON' || e.message === 'too large';
+            return send(res, mine ? 400 : 500, { error: mine ? e.message : 'the keys could not be stored' });
+          }
+        }
       }
       if (req.method === 'GET' && u.pathname === '/journal') {
         return send(res, 200, { records: journal.since(Number(u.searchParams.get('since')) || 1, Math.min(5000, Number(u.searchParams.get('limit')) || 1000)), n: journal.n });
