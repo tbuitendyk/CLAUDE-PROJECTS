@@ -412,7 +412,7 @@ function engineNextActivity(st, setup, nowMs, eng) {
     items.push({ what: `Set the levels for the ${sideOf(p.call)} call of ${String(p.chunk_start).slice(0, 10)}`, whenUtc: p.entry_utc,
       why: cell.entry === 'breakout'
         ? `at its entry hour the engine sets a buying level and a selling level${levelPct != null ? ` ${levelPct}%` : ''} either side of that hour's opening price; a printed trade reaching one opens the position.`
-        : 'at its entry hour the engine opens the position at the market.' });
+        : `at its entry hour the engine opens the position at the market${Number(setup.stopPct) > 0 ? `, with a stop ${Math.round(Number(setup.stopPct) * 1e6) / 1e4}% against the price it opens at` : ''}.` });
   }
   for (const p of plans.filter((x) => x.phase === 'armed')) {
     const lv = [p.buy != null ? `buying level ${px(p.buy)} opens a LONG` : null, p.sell != null ? `selling level ${px(p.sell)} opens a SHORT` : null].filter(Boolean).join('; ');
@@ -485,6 +485,8 @@ function pendingDecision(setup, logged, nowMs) {
     gate: cell.gate || null,
     levelPct: cell.entry === 'breakout' && Number.isFinite(Number(cell.dMult)) && Number.isFinite(band) ? Math.round(Number(cell.dMult) * band * 1e4) / 1e4 : null,
     holdHours: cell.tHours ?? null,
+    // a market entry's stop: the setup's Stop %, as a percent; a breakout's is the level on the other side
+    stopPct: cell.entry === 'market' && Number(setup.stopPct) > 0 ? Math.round(Number(setup.stopPct) * 1e6) / 1e4 : null,
     engine: eng && traded ? { taken: !!eng.ok, said: eng.ok ? null : (said(eng.answer) || 'being sent') } : null,
   };
 }

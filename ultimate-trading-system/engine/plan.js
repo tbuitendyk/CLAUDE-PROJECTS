@@ -32,7 +32,13 @@
 //     bar's best, then the arm and the trail), so what trades is what was
 //     measured (loop decision record).
 //   * market: the position opens at the entry hour's opening price in the
-//     called direction, with no levels and no stop.
+//     called direction, with no levels. Its stop is the one the setup names
+//     (Stop %, copied from the stop picked on Tune at Activate; owner,
+//     2026-09-25): that percent against the price it opened at, reached only
+//     when a printed trade goes PAST it -- Tune's own boundary (lib/stoptuner.js:
+//     a trade is stopped when the worst price strictly exceeds the stop), and
+//     the lab books it exactly there. No Stop %, no stop. A trail, when the
+//     configuration carries one, tightens it from there as it does any stop.
 //   * whatever is open at t hours after the entry hour closes at the first price
 //     at or after that moment.
 // The engine watches the price and sends the order itself when a level is
@@ -69,6 +75,7 @@ function planProblems(plan) {
   if (c.entry === 'breakout' && !(Number.isFinite(p.bandPct) && p.bandPct > 0)) out.push('bandPct: the band the multiples are read against');
   const s = p.size || {};
   if (!Number.isFinite(s.quoteUsd) || s.quoteUsd < 0) out.push('size.quoteUsd: the money the position is opened with');
+  if (p.stopPct != null && !(Number.isFinite(p.stopPct) && p.stopPct > 0 && p.stopPct < 1)) out.push('stopPct: a fraction of the price the position opened at, above 0 and below 1, or none');
   return out;
 }
 
@@ -90,6 +97,9 @@ function newState(plan) {
     endTs: plan.entryTs + c.tHours * HOUR_MS,
     sides: sidesOf(plan),
     d: c.entry === 'breakout' ? (c.dMult * band) / 100 : null,
+    // a market entry's stop, as a fraction of the price it opens at (the setup's Stop %)
+    fixedStop: c.entry === 'market' && plan.stopPct != null ? plan.stopPct : null,
+    stopStrict: false,
     trail: c.trailMult == null ? null : (c.trailMult * band) / 100,
     arm: c.armMult == null ? 0 : (c.armMult * band) / 100,
     ref: null,
@@ -168,6 +178,8 @@ function endOfHour(state, plan, ts) {
     const next = state.stop == null ? want : (state.dir === 1 ? Math.max(state.stop, want) : Math.min(state.stop, want));
     if (next !== state.stop) {
       state.stop = next;
+      // the trail's stop is reached AT it, as the lab's bar reaches it
+      state.stopStrict = false;
       acts.push(note('stop moved', { stop: state.stop, best: state.ext, ts }));
     }
   }
@@ -189,7 +201,9 @@ function rollTo(state, plan, ts) {
 function follow(state, plan, price, ts) {
   if (ts >= state.endTs) return closeOrder(state, plan, price, 'time', price, ts);
   const acts = rollTo(state, plan, ts);
-  if (state.stop != null && (state.dir === 1 ? price <= state.stop : price >= state.stop)) {
+  // the stop a market entry opened with is reached only when a price goes past it (Tune's boundary)
+  const past = state.stopStrict ? (state.dir === 1 ? price < state.stop : price > state.stop) : (state.dir === 1 ? price <= state.stop : price >= state.stop);
+  if (state.stop != null && past) {
     return acts.concat(closeOrder(state, plan, state.stop, state.armed ? 'trailing stop' : 'stop', price, ts));
   }
   if (state.curHour > state.openHour) {
@@ -261,8 +275,10 @@ function step(state, plan, ev) {
       state.curHour = state.openHour;
       state.hourSeen = false;
       state.hourBest = null;
-      // the other level is the stop; a market entry has none
-      state.stop = plan.cell.entry === 'breakout' ? (dir === 1 ? state.rails.sell : state.rails.buy) : null;
+      // the other level is the stop; a market entry's is its Stop % against the price it opened at, or none
+      state.stop = plan.cell.entry === 'breakout' ? (dir === 1 ? state.rails.sell : state.rails.buy)
+        : state.fixedStop != null ? (dir === 1 ? ev.price * (1 - state.fixedStop) : ev.price * (1 + state.fixedStop)) : null;
+      state.stopStrict = plan.cell.entry !== 'breakout' && state.fixedStop != null;
       state.phase = 'open';
       state.inFlight = null;
       acts.push(note('opened', { side: dir === 1 ? 'LONG' : 'SHORT', price: ev.price, qty: ev.qty, stop: state.stop, ts: ev.ts }));

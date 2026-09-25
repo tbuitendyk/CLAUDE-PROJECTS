@@ -58,6 +58,10 @@ function planFor({ setup, greenlight, target, geo, decision, feePerLeg, now }) {
       trailMult: cfg.cell.trailMult ?? null, armMult: cfg.cell.armMult ?? null,
     },
     bandPct: Math.abs(Number(cfg.branch.band)),
+    // A MARKET ENTRY'S STOP (owner, 2026-09-25): the setup's Stop %, which
+    // Activate filled from the stop picked on Tune. A breakout position's stop
+    // is the level on the other side, so none is sent for one.
+    stopPct: cfg.cell.entry === 'market' && Number(setup.stopPct) > 0 && Number(setup.stopPct) < 1 ? Number(setup.stopPct) : null,
     size,
     feePerLeg,
     decision: {

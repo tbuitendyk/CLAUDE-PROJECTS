@@ -59,6 +59,16 @@ function statusLine(parts) {
 // shuttle — the only door), or restarts a stopped one. Every transition gate
 // applies unchanged; a refused gate (e.g. real without keyRef) surfaces as the
 // transition's own error.
+// THE STOP PICKED ON TUNE (owner, 2026-09-25): a market-entry configuration
+// brings the stop frozen with its greenlight into Stop % when a book is made at
+// Activate, on either side, and it stays editable on Setup detail. A breakout
+// position's stop is the level on the other side, so nothing is copied for one.
+function tunedStopOf(g) {
+  const cell = (g && g.configSnapshot && g.configSnapshot.cell) || {};
+  const s = g && g.frozen && g.frozen.stop ? Number(g.frozen.stop.stopPct) : NaN;
+  return cell.entry === 'market' && Number.isFinite(s) && s > 0 && s < 1 ? s : null;
+}
+
 function activate(greenlightId, channel, { by = OWNER_ID, clipUsd, name, trainPolicy } = {}) {
   // A deployment must say when its members train. Legacy setups fall back to
   // the freeze inside their old configSnapshot, out loud — see trainpolicy.js.
@@ -114,6 +124,7 @@ function activate(greenlightId, channel, { by = OWNER_ID, clipUsd, name, trainPo
       // clip is operational (point 20), not part of the frozen snapshot; the
       // $10 default matches the pilot's clip and is editable on Setup detail.
       clipUsd: Number.isFinite(clipUsd) && clipUsd > 0 ? clipUsd : 10,
+      stopPct: tunedStopOf(g),
       by, channel, trainPolicy,
     });
     s = made.setup;
@@ -132,4 +143,4 @@ function deactivate(greenlightId, channel, { by = OWNER_ID } = {}) {
   return reg.transition(s.id, 'stopped', by, `deactivate ${channel}`);
 }
 
-module.exports = { CHANNELS, channelSetup, channelSetups, statusLine, activate, deactivate };
+module.exports = { CHANNELS, channelSetup, channelSetups, statusLine, activate, deactivate, tunedStopOf };

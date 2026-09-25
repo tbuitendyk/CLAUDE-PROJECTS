@@ -344,7 +344,7 @@ function pendingHtml(p, next, engineName){
         ?`At ${hh} UTC a buying level and a selling level are set${level} either side of that hour's opening price; a printed trade reaching one opens the position, and the other level is its stop.`
         :`At ${hh} UTC a buying level and a selling level are set${level} either side of that hour's opening price; a printed trade reaching the ${p.side==='LONG'?'buying':'selling'} level opens the ${p.side} position, and the other level is its stop.`)
        +(p.holdHours!=null?` If neither is reached within ${esc(p.holdHours)} hours nothing opens, and a position still open then is closed.`:'')
-      :`At ${hh} UTC the ${p.side} position opens at that hour's opening price${p.holdHours!=null?` and is closed ${esc(p.holdHours)} hours later`:''}.`);
+      :`At ${hh} UTC the ${p.side} position opens at that hour's opening price${p.stopPct!=null?`, with a stop ${esc(p.stopPct)}% ${p.side==='LONG'?'below':'above'} the price it opens at,`:''}${p.holdHours!=null?` and is closed ${esc(p.holdHours)} hours later${p.stopPct!=null?' unless a printed trade goes past the stop first':''}`:''}.`);
   const eng=!p.engine?'':p.engine.taken
     ?` <span class="pos">On ${esc(engineName||'the engine')}</span>, waiting for ${hh} UTC.`
     :` <span class="warn">Not on ${esc(engineName||'the engine')} yet: ${esc(p.engine.said)}</span> — it is asked again every minute.`;
@@ -836,7 +836,7 @@ async function drawDetail(){
     <div class="panel"><div class="k">Config editor (operational only — snapshot never changes)</div>
       <div class="row" style="margin-top:.5rem">
         <label class="muted" title="position size per entry in US DOLLARS of notional. It does not compound.">Clip $ <input id="clipIn" type="number" min="1" step="1" value="${s.clipUsd}" style="width:6rem"></label>
-        <label class="muted" title="the protective stop as a PERCENT move against the position. Blank means none: the position rests on its scheduled exit alone.">Stop % <input id="stopIn" type="number" min="0" step="0.01" value="${s.stopPct==null?'':(s.stopPct*100)}" placeholder="none" style="width:6rem"></label>
+        <label class="muted" title="the protective stop as a PERCENT move against the position, from the price it opened at. Blank means none: the position rests on its scheduled exit alone. A book made at Activate starts with the stop picked on Tune. It is used on a market entry; a breakout position's stop is the level on the other side, and this is not used.">Stop % <input id="stopIn" type="number" min="0" step="0.01" value="${s.stopPct==null?'':(s.stopPct*100)}" placeholder="none" style="width:6rem"></label>
         <label class="muted" title="what this profile pays to trade, as a percent of the money in the position. It is charged EACH WAY — once going in and once coming out — so 0.125 here costs 0.25% over the whole trade. Set it to what the venue this profile runs on actually charges; venues differ, which is why it belongs to the profile and not to the rule.">Fee % each way <input id="feeIn" type="number" min="0" max="5" step="0.005" value="${(s.feePerLeg*100)}" style="width:6rem"></label>
       </div>
       <!-- WHEN THE MEMBERS TRAIN (owner, 2026-09-25). A deployment says when its
