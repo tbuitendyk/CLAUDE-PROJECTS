@@ -30,6 +30,24 @@ function agreementWords(a) {
   return `${what}; ${bar}${extras.length ? `; ${extras.join('; ')}` : ''}`;
 }
 
+// THE COIN'S OWN DECISION FIELD AND ITS GATE, in words (owner, 2026-09-25:
+// "i'm not seeing any mention of the Coin Field History gating"): one function
+// for the tested configuration and the pipeline's step 4b, so the two cannot
+// differ. Null on a configuration priced without a field; a field that cannot
+// be read says so in its own words.
+function fieldWords(f) {
+  if (!f) return null;
+  if (f.error) return { field: f.error, gate: null };
+  const d = f.dials || {};
+  const g = f.gate || null;
+  return {
+    field: `${f.id}${f.name ? `, ${f.name}` : ''}: rebuilt at every decision from every closed decision over a window of ${d.windowDays} days, half-life ${d.halfLifeDays} days, and read on the decision's own day`,
+    gate: g
+      ? `the call is BLOCKED when the field's sign is against it${g.signOnly ? ' (sign only: the minimums are ignored)' : require('../fieldgate').blockWords(g)}, and otherwise SIZED by the rung its ${g.read} falls in (${g.rungs}, as "up to this read:multiple of the clip"); a day the field says nothing on trades at ${g.silent}× the clip`
+      : 'none: the field is not read as a gate',
+  };
+}
+
 // The tested configuration, in the owner's terms.
 function describeConfig(cfg, opts = {}) {
   const geo = GEOMETRIES[cfg.branch.geometry] || {};
@@ -54,6 +72,9 @@ function describeConfig(cfg, opts = {}) {
     // a stage-engine configuration agrees by its own rule, not a quorum (3.91.0)
     engine: cfg.engine,
     agreement: agreementWords(cfg.agreement),
+    // the coin's own decision field and the gate it holds over the call
+    field: fieldWords(cfg.field) ? fieldWords(cfg.field).field : null,
+    fieldGate: fieldWords(cfg.field) ? fieldWords(cfg.field).gate : null,
     // a record's half-life, in months, when it carries one (3.95.0)
     halfLifeMonths: cfg.training && cfg.training.halfLife ? (cfg.training.halfLifeMonths || Math.round(cfg.training.halfLife / 30.4375)) : null,
     entry: cfg.cell.entry,
@@ -103,7 +124,7 @@ function describeAnatomy(cfg, opts = {}) {
       `3. MEMBERS VOTE — ${members.length} independent models (committee below), each seeing a different SLICE of those ${cv.featureCount} numbers, each trained through ${trained}${halfLifeWords} and frozen. Each classifies the window as UP / DOWN / ASIDE, where ASIDE means "the coming move looks smaller than the ${bandPct}% dormant band"${extras.length ? ` — except the ${extras.length} member${extras.length > 1 ? 's' : ''} added from a walk set, which read their own longer look-back and sit out below their own band instead (committee below)` : ''}. Decision rule '${cfg.branch.decision}': the member votes whichever class has the highest probability.`,
       `4. COMMITTEE — the votes are weighed the way the stage engine weighs them: ${agreeWords()}. The committee's own shape and each member's threshold are read from its test slice, never from a later window. Short of enough, stand aside.`,
       ...(cfg.field && cfg.field.gate ? [
-        `4b. THE FIELD — the coin's own decision field (${cfg.field.id}${cfg.field.name ? `, ${cfg.field.name}` : ''}) is rebuilt at every decision from every closed decision over a window of ${cfg.field.dials.windowDays} days, half-life ${cfg.field.dials.halfLifeDays} days, and read on this decision's own day. The call is BLOCKED when the field's sign is against it${cfg.field.gate.signOnly ? ' (sign only: the minimums are ignored)' : require('../fieldgate').blockWords(cfg.field.gate)}, and otherwise SIZED by the rung its ${cfg.field.gate.read} falls in (${cfg.field.gate.rungs}, as "up to this read:multiple of the clip"); a day the field says nothing on trades at ${cfg.field.gate.silent}× the clip.`,
+        `4b. THE FIELD — the coin's own decision field, ${fieldWords(cfg.field).field}. T${fieldWords(cfg.field).gate.slice(1)}.`,
       ] : []),
       `5. ENTRY — '${cfg.cell.entry}' algorithm with a '${cfg.cell.gate}' gate: a market order in the called direction at the hourly OPEN of window start +${entryH}h (${String(entryH % 24).padStart(2, '0')}:00 UTC). Long = buy; short = borrow-and-sell on isolated margin.`,
       `6. EXIT — a market order exactly ${cfg.cell.tHours}h after entry (${(cfg.cell.tHours / 24).toFixed(1)} days later)${opts.stopPct ? `, or sooner if the ${(opts.stopPct * 100).toFixed(2)}% protective stop is hit` : '. No stop, no trail, no target: the tested cell is a pure time exit, so the hold length is the only exit knob'}.`,
@@ -152,4 +173,4 @@ function describeAnatomy(cfg, opts = {}) {
   };
 }
 
-module.exports = { agreementWords, describeConfig, describeAnatomy };
+module.exports = { agreementWords, fieldWords, describeConfig, describeAnatomy };
