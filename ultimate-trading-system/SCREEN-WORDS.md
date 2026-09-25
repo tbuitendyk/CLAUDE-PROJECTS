@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **c776e2357aab — what the box is serving**, not from the working tree.
+Generated from **b24a63b9b27e — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -1841,7 +1841,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 
 # History
 
-## What the controls are called (43)
+## What the controls are called (44)
 
 - `- the first`
 - `: retrains on its`
@@ -1871,6 +1871,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `records)`
 - `refused`
 - `refused:`
+- `Rename`
 - `Retrain at the ticked half-lives`
 - `rows won`
 - `run`
@@ -1908,17 +1909,17 @@ _none_
 - survivor(s) are not in the stage 3 set's block on this unit
 - records, in the set's own order. Green is the best of the row: a half-life wins only by at least a cent over the unweighted column; a tie goes to the unweighted side.
 
-## Every word, flat (147)
+## Every word, flat (148)
 
 ```
-again and appends are as at average behind beside best block both box built by campaign cent choice chosen chunks column complete currently cut Delete every Every exactly exam figures. first forecasts from goes Green half-life half-lives Held held-back here history improved in is it it. its judged keeping kept kinds last layout least made members months more name never No no none not Nothing of on once one only or order. other over overwritten. own pass per press priced read read. reads rebuild REBUILD recent record records refused release REQUIRED Retrain retrained retraining retrains row rows run same Save saved scan screen sealed secret set setting side. Stage stage stays stopped stretch survivor survivors table taken Test test that The the their Then this ticked tie to told touched trained training Tune under unit until unweighted was weighted whole window wins with with. won yet yet.
+again and appends are as at average behind beside best block both box built by campaign cent choice chosen chunks column complete currently cut Delete every Every exactly exam figures. first forecasts from goes Green half-life half-lives Held held-back here history improved in is it it. its judged keeping kept kinds last layout least made members months more name never No no none not Nothing of on once one only or order. other over overwritten. own pass per press priced read read. reads rebuild REBUILD recent record records refused release Rename REQUIRED Retrain retrained retraining retrains row rows run same Save saved scan screen sealed secret set setting side. Stage stage stays stopped stretch survivor survivors table taken Test test that The the their Then this ticked tie to told touched trained training Tune under unit until unweighted was weighted whole window wins with with. won yet yet.
 ```
 
 ---
 
 # Tune
 
-## What the controls are called (158)
+## What the controls are called (159)
 
 - `- by conviction -`
 - `— no reason recorded`
@@ -2016,6 +2017,7 @@ again and appends are as at average behind beside best block both box built by c
 - `REBUILD REQUIRED`
 - `Recompute`
 - `refused:`
+- `Rename`
 - `reserve`
 - `return % on $ traded`
 - `return on the amount traded`
@@ -2101,7 +2103,7 @@ _none_
 - overlay on the same captured trades, against a shuffled-assignment chance check and exposure-honest metrics. The
 - declared ladder (one clip a member that agreed) until you type your own numbers down the rows and press Recompute;
 - 0 turns a row off. Target:
-- none — each trade at its own size alone
+- none — ×1 on every row, each trade at its own size alone
 - - choose those under Tuning targets to see it.
 - Not run yet on what is chosen under Tuning targets - press
 - to run it.
@@ -2144,17 +2146,17 @@ _none_
 - train trades counted only on days the field was at least
 - survivor(s) are not in the stage 3 set's block on this unit
 
-## Every word, flat (346)
+## Every word, flat (347)
 
 ```
-aborted about above again again. against agree agreed agreeing agreement aimed all alone among amount an and any anywhere. appears applied apply Apply are as asks at At baseline be been before below bet block both box boxes building by called campaign can cannot capture Capture captured carried carries chance Chance changes check choice choose Choosing chosen clear clip clip. clipped comes complete completion concurrent Conviction conviction could count counted counts currently curve custom cut day days deals declared Delete depth disabled down drawdown each either entries entries. estimate Every every evidence Exposure exposure-honest failed family field finds first fixed flat floor for force from full give given green Greenlight half-life has have heavy Held held held-back helps. here History history holds how in is it it. its itself kept ladder lands last launchers least left list longer look losers loses loss-side machine. made many mean means measured member members metrics. mid-flight minutes money more mult multiplier name named NET never new newest no No no-stop no-winner-lost none not Not nothing Nothing nothing. numbers of off off. on on. Once one one. only onto or original out over overlay own partial peak per per- Per-trade plus positive press price priced Prices prices Protective protective pure purpose read Read reading reads Reads reason rebuild REBUILD Recompute record recorded refused release REQUIRED Reserve reserve result return row rows run Run running runs. sacrifice same Save saved Saves says scan scanned scans see set setting shuffled shuffled-assignment shuffles. side simulator since single size size. sizing so spent Stage stage stay stop stopped stops survivor survivors sweep table table. tables Take take taken takes target Target targets test than that the The their them them. themselves there they this This those ticked ticked. tighter tightest time to took top touched trade traded traded. trades trades. trading Train train training Tune tuned tuner Tuning turns two type typed under unit until up uplift Verdict vs was way weight were What what when where whose will win window window. windows winner winners wins with worst would writes yet yet. you your yourself
+aborted about above again again. against agree agreed agreeing agreement aimed all alone among amount an and any anywhere. appears applied apply Apply are as asks at At baseline be been before below bet block both box boxes building by called campaign can cannot capture Capture captured carried carries chance Chance changes check choice choose Choosing chosen clear clip clip. clipped comes complete completion concurrent Conviction conviction could count counted counts currently curve custom cut day days deals declared Delete depth disabled down drawdown each either entries entries. estimate every Every evidence Exposure exposure-honest failed family field finds first fixed flat floor for force from full give given green Greenlight half-life has have heavy Held held held-back helps. here History history holds how in is it it. its itself kept ladder lands last launchers least left list longer look losers loses loss-side machine. made many mean means measured member members metrics. mid-flight minutes money more mult multiplier name named NET never new newest no No no-stop no-winner-lost none not Not nothing Nothing nothing. numbers of off off. on on. Once one one. only onto or original out over overlay own partial peak per per- Per-trade plus positive press price priced Prices prices Protective protective pure purpose read Read reading reads Reads reason rebuild REBUILD Recompute record recorded refused release Rename REQUIRED Reserve reserve result return row rows run Run running runs. sacrifice same Save saved Saves says scan scanned scans see set setting shuffled shuffled-assignment shuffles. side simulator since single size size. sizing so spent Stage stage stay stop stopped stops survivor survivors sweep table table. tables Take take taken takes target Target targets test than that the The their them them. themselves there they this This those ticked ticked. tighter tightest time to took top touched trade traded traded. trades trades. trading Train train training Tune tuned tuner Tuning turns two type typed under unit until up uplift Verdict vs was way weight were What what when where whose will win window window. windows winner winners wins with worst would writes yet yet. you your yourself
 ```
 
 ---
 
 # Held
 
-## What the controls are called (203)
+## What the controls are called (204)
 
 - `- INCOMPLETE, never a pass`
 - `, information only)`
@@ -2292,6 +2294,7 @@ aborted about above again again. against agree agreed agreeing agreement aimed a
 - `REBUILD REQUIRED`
 - `refused:`
 - `release`
+- `Rename`
 - `requires + held back $ avg`
 - `requires + reserve $ avg`
 - `reserve $`
@@ -2458,17 +2461,17 @@ _none_
 - conviction sizing frozen on this set:
 - survivor(s) the capture's plain re-pricing is off the reading by a cent or more (the largest gap
 
-## Every word, flat (412)
+## Every word, flat (413)
 
 ```
-about About above above. after against ahead all allow alone already always an and any anything applied are as at automatic average avg back bar be beat beaten beating beats before begins behind being below below. beside best blank block board board. boards bound box broken buys by campaign can cannot capture carried carry cent chance check checked choices chunks claim clear clears clips coin coin-and-shape compared comparison comparisons conviction copies copy count counted counted. counts currently cut data deal deals declared Delete demand. dials did differ differs digit digits direction do does drawdown dropped each Each earlier even every Every existed FAIL fail fail. FAILS failure fee fees fewer figure figures Final finest first five floor Footing forecast-free forecasting forward four freezing from frozen Funnel gap gate gate. gated give gone Greenlight gross half halves has head-to-heads held held-back here hindsight history hold holds honestly. how if in include INCOMPLETE information Information inside intact is IS is. it It it. its Its judge. keep keeps kept keys known largest later layout lead least length lengths lengths. like limits line Line listed long look look. looked Looks lose loses made many mark marks Marks measure median members minutes. missing models moment money more mostly must nearly never newest no No noise NOISE noise. none not Not NOT nothing Nothing now null numbered numbers obvious of off on On one ones only only. Opening or order. other out over own paid panel paper parent part PASS pass passed passes past past. pays per picking. plain positive positive. press presses Price priced Priced prices pricing printed prints PROFITING re-pricing reached reaching read Read readable reader reading readings reads reads. real rebuild REBUILD record recorded refuse refused release releases replace REQUIRED requires reserve results ride rides rose row rule Rule Rules same sanity says scrambled sealed search second seconds seen. set setting settings shape share shopping side simpler simulation single sizing so so. sort Stage stage stamp stamped stands Stands STANDS step Stop stop stopped stops stored strength stretch stride survivor survivors survivors. system tab. table taken test tests than that The the their them then There they things third this those three threshold through ticked time time. to today too touched trade trades trained Tune tunings two Two under unit units unstamped until use User verdict vs walk was were what What whatever when where which whole whose window window. windows with without won Work Worked worked worst would write writes yes yet yet.
+about About above above. after against ahead all allow alone already always an and any anything applied are as at automatic average avg back bar be beat beaten beating beats before begins behind being below below. beside best blank block board board. boards bound box broken buys by campaign can cannot capture carried carry cent chance check checked choices chunks claim clear clears clips coin coin-and-shape compared comparison comparisons conviction copies copy count counted counted. counts currently cut data deal deals declared Delete demand. dials did differ differs digit digits direction do does drawdown dropped each Each earlier even every Every existed FAIL fail fail. FAILS failure fee fees fewer figure figures Final finest first five floor Footing forecast-free forecasting forward four freezing from frozen Funnel gap gate gate. gated give gone Greenlight gross half halves has head-to-heads held held-back here hindsight history hold holds honestly. how if in include INCOMPLETE information Information inside intact is IS is. it It it. its Its judge. keep keeps kept keys known largest later layout lead least length lengths lengths. like limits line Line listed long look look. looked Looks lose loses made many mark marks Marks measure median members minutes. missing models moment money more mostly must nearly never newest no No noise NOISE noise. none not Not NOT nothing Nothing now null numbered numbers obvious of off on On one ones only only. Opening or order. other out over own paid panel paper parent part PASS pass passed passes past past. pays per picking. plain positive positive. press presses Price priced Priced prices pricing printed prints PROFITING re-pricing reached reaching read Read readable reader reading readings reads reads. real rebuild REBUILD record recorded refuse refused release releases Rename replace REQUIRED requires reserve results ride rides rose row rule Rule Rules same sanity says scrambled sealed search second seconds seen. set setting settings shape share shopping side simpler simulation single sizing so so. sort Stage stage stamp stamped stands Stands STANDS step Stop stop stopped stops stored strength stretch stride survivor survivors survivors. system tab. table taken test tests than that The the their them then There they things third this those three threshold through ticked time time. to today too touched trade trades trained Tune tunings two Two under unit units unstamped until use User verdict vs walk was were what What whatever when where which whole whose window window. windows with without won Work Worked worked worst would write writes yes yet yet.
 ```
 
 ---
 
 # Reserve
 
-## What the controls are called (203)
+## What the controls are called (204)
 
 - `- INCOMPLETE, never a pass`
 - `, information only)`
@@ -2606,6 +2609,7 @@ about About above above. after against ahead all allow alone already always an a
 - `REBUILD REQUIRED`
 - `refused:`
 - `release`
+- `Rename`
 - `requires + held back $ avg`
 - `requires + reserve $ avg`
 - `reserve $`
@@ -2772,17 +2776,17 @@ _none_
 - conviction sizing frozen on this set:
 - survivor(s) the capture's plain re-pricing is off the reading by a cent or more (the largest gap
 
-## Every word, flat (412)
+## Every word, flat (413)
 
 ```
-about About above above. after against ahead all allow alone already always an and any anything applied are as at automatic average avg back bar be beat beaten beating beats before begins behind being below below. beside best blank block board board. boards bound box broken buys by campaign can cannot capture carried carry cent chance check checked choices chunks claim clear clears clips coin coin-and-shape compared comparison comparisons conviction copies copy count counted counted. counts currently cut data deal deals declared Delete demand. dials did differ differs digit digits direction do does drawdown dropped each Each earlier even every Every existed FAIL fail fail. FAILS failure fee fees fewer figure figures Final finest first five floor Footing forecast-free forecasting forward four freezing from frozen Funnel gap gate gate. gated give gone Greenlight gross half halves has head-to-heads held held-back here hindsight history hold holds honestly. how if in include INCOMPLETE information Information inside intact is IS is. it It it. its Its judge. keep keeps kept keys known largest later layout lead least length lengths lengths. like limits line Line listed long look look. looked Looks lose loses made many mark marks Marks measure median members minutes. missing models moment money more mostly must nearly never newest no No noise NOISE noise. none not Not NOT nothing Nothing now null numbered numbers obvious of off on On one ones only only. Opening or order. other out over own paid panel paper parent part PASS pass passed passes past past. pays per picking. plain positive positive. press presses Price priced Priced prices pricing printed prints PROFITING re-pricing reached reaching read Read readable reader reading readings reads reads. real rebuild REBUILD record recorded refuse refused release releases replace REQUIRED requires reserve results ride rides rose row rule Rule Rules same sanity says scrambled sealed search second seconds seen. set setting settings shape share shopping side simpler simulation single sizing so so. sort Stage stage stamp stamped stands Stands STANDS step Stop stop stopped stops stored strength stretch stride survivor survivors survivors. system tab. table taken test tests than that The the their them then There they things third this those three threshold through ticked time time. to today too touched trade trades trained Tune tunings two Two under unit units unstamped until use User verdict vs walk was were what What whatever when where which whole whose window window. windows with without won Work Worked worked worst would write writes yes yet yet.
+about About above above. after against ahead all allow alone already always an and any anything applied are as at automatic average avg back bar be beat beaten beating beats before begins behind being below below. beside best blank block board board. boards bound box broken buys by campaign can cannot capture carried carry cent chance check checked choices chunks claim clear clears clips coin coin-and-shape compared comparison comparisons conviction copies copy count counted counted. counts currently cut data deal deals declared Delete demand. dials did differ differs digit digits direction do does drawdown dropped each Each earlier even every Every existed FAIL fail fail. FAILS failure fee fees fewer figure figures Final finest first five floor Footing forecast-free forecasting forward four freezing from frozen Funnel gap gate gate. gated give gone Greenlight gross half halves has head-to-heads held held-back here hindsight history hold holds honestly. how if in include INCOMPLETE information Information inside intact is IS is. it It it. its Its judge. keep keeps kept keys known largest later layout lead least length lengths lengths. like limits line Line listed long look look. looked Looks lose loses made many mark marks Marks measure median members minutes. missing models moment money more mostly must nearly never newest no No noise NOISE noise. none not Not NOT nothing Nothing now null numbered numbers obvious of off on On one ones only only. Opening or order. other out over own paid panel paper parent part PASS pass passed passes past past. pays per picking. plain positive positive. press presses Price priced Priced prices pricing printed prints PROFITING re-pricing reached reaching read Read readable reader reading readings reads reads. real rebuild REBUILD record recorded refuse refused release releases Rename replace REQUIRED requires reserve results ride rides rose row rule Rule Rules same sanity says scrambled sealed search second seconds seen. set setting settings shape share shopping side simpler simulation single sizing so so. sort Stage stage stamp stamped stands Stands STANDS step Stop stop stopped stops stored strength stretch stride survivor survivors survivors. system tab. table taken test tests than that The the their them then There they things third this those three threshold through ticked time time. to today too touched trade trades trained Tune tunings two Two under unit units unstamped until use User verdict vs walk was were what What whatever when where which whole whose window window. windows with without won Work Worked worked worst would write writes yes yet yet.
 ```
 
 ---
 
 # Greenlight
 
-## What the controls are called (67)
+## What the controls are called (68)
 
 - `· no tuning on record`
 - `· read from`
@@ -2830,6 +2834,7 @@ about About above above. after against ahead all allow alone already always an a
 - `pair`
 - `REBUILD REQUIRED`
 - `refused:`
+- `Rename`
 - `reserve $`
 - `short and hold`
 - `sized by conviction`
@@ -2889,10 +2894,10 @@ _none_
 - is priced and nothing counts as a look. Each stretch is held against the four simpler things at the survivors' own hold lengths.
 - neighbouring settings that survived
 
-## Every word, flat (247)
+## Every word, flat (248)
 
 ```
-Activation activation. after against agree agreement. all alone. always and appears applied are as at average be becomes before behind being below both box brackets built buy by campaign can capture carry centre chain. change changed chosen clear cleared clears config configs conviction counts currently dash deactivation decision Delete depth Deviance deviance dial did does does. down drawn each Each engine ever ever. Every every evidence evidentiary exact exactly Existing fee figure first fit for forecasts forward found four from frozen Greenlight greenlight greenlighted greenlights half-life hand-built has held Held here here. History history hold how id in is It it its keeps layout lengths. lines live long look. means members minted money most name named neighbouring never no none none. not notch Nothing nothing nuked nuking of off on one One Only only or order other out over own pair PASS passed path per period pick picture predates press priced put read rebuild REBUILD record recorded. Records records refused release required REQUIRED reserve Reserve retraining row rule run same. sent set set. sets setting settings share short side sides simpler size sized sizing sizing. so speaks Stage stage stand starts state step stood stop stopped stretch surrounded survive survived surviving survivor survivors tab taken test that the The them then there. they things this through to too trade Trade trades Train train Tune tuning tunings under until up verdict version was way way. what when where WHO/WHEN/WHY whole why with without work write yes yet you
+Activation activation. after against agree agreement. all alone. always and appears applied are as at average be becomes before behind being below both box brackets built buy by campaign can capture carry centre chain. change changed chosen clear cleared clears config configs conviction counts currently dash deactivation decision Delete depth Deviance deviance dial did does does. down drawn each Each engine ever ever. Every every evidence evidentiary exact exactly Existing fee figure first fit for forecasts forward found four from frozen Greenlight greenlight greenlighted greenlights half-life hand-built has held Held here here. History history hold how id in is It it its keeps layout lengths. lines live long look. means members minted money most name named neighbouring never no none none. not notch Nothing nothing nuked nuking of off on one One Only only or order other out over own pair PASS passed path per period pick picture predates press priced put read rebuild REBUILD record recorded. Records records refused release Rename required REQUIRED reserve Reserve retraining row rule run same. sent set set. sets setting settings share short side sides simpler size sized sizing sizing. so speaks Stage stage stand starts state step stood stop stopped stretch surrounded survive survived surviving survivor survivors tab taken test that the The them then there. they things this through to too trade Trade trades Train train Tune tuning tunings under until up verdict version was way way. what when where WHO/WHEN/WHY whole why with without work write yes yet you
 ```
 
 ---
