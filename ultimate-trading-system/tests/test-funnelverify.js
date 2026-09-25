@@ -455,7 +455,7 @@ module.exports = {
     assert.ok(/^async function drawHeld\(\) \{ return drawJudge\('held'\); \}$/m.test(ui) && /^async function drawReserve\(\) \{ return drawJudge\('reserve'\); \}$/m.test(ui), 'the two tabs are one renderer handed the stretch');
     // WHAT EACH BOX LISTS (VERIFY-DESIGN.md Part 9): Held every rule, Reserve only a rule whose layout keeps a reserve and whose newest held set passed, Greenlight the sets a press made
     assert.ok(ui.includes("  const rules = (sets || []).filter((x) => (x.kind || 'funnel') === 'funnel');\n  if (stretch === 'held') return rules;\n  return rules.filter((x) => x.judge && x.judge.keepsReserve && x.judge.held && x.judge.held.stands);"), 'Held lists every rule and Reserve only the rules that stand with a reserve to read');
-    assert.ok(ui.includes(".filter((x) => x.kind === 'held' || x.kind === 'reserve');\n  const glChosen = glRememberedSet(glSets);"), 'Greenlight lists held sets and reserve sets, never a rule');
+    assert.ok(ui.includes(".filter((x) => x.kind === 'held' || x.kind === 'reserve'));\n  const glChosen = glRememberedSet(glSets);"), 'Greenlight lists held sets and reserve sets, never a rule');
     assert.ok(/list\.length \? list\[0\]\.id : null/.test(ui), 'with nothing remembered it opens on the newest');
   },
 
@@ -1555,7 +1555,8 @@ module.exports.theHeldAndReserveSetBoxShowsEachRuleByItsNameAlone = function () 
   const at = page.indexOf('function vSetBoxHtml(list, chosen, stretch) {');
   const rp = page.indexOf('function rebuildPrefix(x) {');
   // eslint-disable-next-line no-new-func
-  const vSetBoxHtml = new Function('esc', 'stretchPlain', `${page.slice(rp, page.indexOf('\n', rp) + 1)}${page.slice(at, page.indexOf('\n}\n', at) + 3)}\nreturn vSetBoxHtml;`)((t) => String(t), (x) => (x === 'reserve' ? 'reserve' : 'held-back'));
+  // the campaign tick and the delete beside every Stage 4 record set box (3.249.0) are their own helpers, stood in for here
+  const vSetBoxHtml = new Function('esc', 'stretchPlain', 's4CampOn', 's4CampNow', 's4CampTickHtml', 's4DeleteRowHtml', `${page.slice(rp, page.indexOf('\n', rp) + 1)}${page.slice(at, page.indexOf('\n}\n', at) + 3)}\nreturn vSetBoxHtml;`)((t) => String(t), (x) => (x === 'reserve' ? 'reserve' : 'held-back'), () => false, { name: '' }, () => '', () => '');
   const list = [
     { id: 's4-a', name: 'HALF LIFE TABLE: my own name', unitName: 'BNBUSDT alongside LTCUSDT daily-4d', counts: { survivors: 51 }, target: null, derived: { fromName: 'the set it came from' }, judge: { held: { newest: { number: 2, pass: true, at: '2026-09-23' }, stands: true } } },
     { id: 's4-b', name: 'a rule on BTC', unitName: 'BTCUSDT alongside ETCUSDT daily-3d', counts: { survivors: 70 }, target: 100, judge: null },

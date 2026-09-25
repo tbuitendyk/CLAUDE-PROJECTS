@@ -984,9 +984,12 @@ app.get('/api/funnel/set/:id/rebuild', (req, res) => res.json(stages.rebuildSetR
 app.get('/api/funnel/sets', (req, res) => {
   const parent = req.query.parent ? String(req.query.parent) : null;
   const all = stages.listFunnelSets();
+  const camps = new Map();
   return res.json({
     sets: stages.listFunnelSets(parent).filter((d) => !d.exam).map((d) => ({
       id: d.id, seq: d.seq, name: d.name, createdAt: d.createdAt,
+      // the campaign its stage 3 set was run under (3.249.0), for the tick beside every Stage 4 record set box
+      campaign: stages.campaignOfSet(d, camps),
       // REBUILD REQUIRED, and why (3.235.0)
       rebuild: stages.rebuildOf(d),
       parent: d.parent, unit: d.unit || null, unitName: d.unitName || null, target: d.target, counts: d.counts,
@@ -1487,6 +1490,8 @@ app.post('/api/stageset/:id/picked', (req, res) => {
   catch (err) { return res.status(400).json({ error: err.message }); }
 });
 app.post('/api/stageset/:id/delete', (req, res) => {
+  // a scan on Tune reads a Stage 4 set's captured trades and writes its answer beside the set (3.249.0)
+  if (heavyScanOn && String(req.params.id).startsWith('s4-')) return res.status(409).json({ error: `a scan is running on Tune (${heavyScanOn.bookId}) — nothing on Stage 4 is deleted until it lands` });
   try { return res.json(stages.deleteSet(req.params.id, (req.body || {}).confirm)); }
   catch (err) { return res.status(409).json({ error: err.message }); }
 });

@@ -2443,6 +2443,53 @@ function repickOnOpen(id) {
     .then((r) => say(r.done ? `its survivor by depth is now ${r.label || 'none'} - choose it again to see it` : ''))
     .catch((e) => say(`its survivor by depth could not be chosen again: ${e.message}`));
 }
+// ---- EVERY STAGE 4 RECORD SET BOX CARRIES THE SAME TWO THINGS (3.249.0) ----
+//
+// Owner order 2026-09-25: "i need a way to: 1. DELETE stage 4 record sets --
+// they're multiplying like rabbits 2. FILTER (with a checkbox beside all of the
+// Stage 4 record set selectors) on the currently selected campaign". The tick
+// is ONE setting for every box: ticked on one tab, it is ticked on all of them,
+// because the campaign it names is the one Sweep has set, and that is one
+// thing. The delete is the one flow every record set is deleted through; a
+// rule takes the held and reserve sets read from it along, and every read of
+// the held-back or reserve window that goes is written onto a set of the same
+// family, so it still counts as a look.
+const S4_CAMP_KEY = 'cx-s4-campaign-only';
+let s4CampNow = { name: '' };        // the campaign currently set on Sweep, as the tab being drawn last read it
+async function s4CampRead() { s4CampNow = await apiOr('api/campaign', ({ name: '' })); return s4CampNow; }
+function s4CampOn() { try { return localStorage.getItem(S4_CAMP_KEY) === '1'; } catch (_) { return false; } }
+// the sets of the campaign set on Sweep while the tick is on; `keep` stays listed whatever it is (the Funnel's open set)
+function s4CampList(list, keep = null) {
+  const name = s4CampNow && s4CampNow.name;
+  if (!s4CampOn() || !name) return list || [];
+  return (list || []).filter((x) => x.campaign === name || (keep && x.id === keep));
+}
+function s4CampTickHtml() {
+  const name = (s4CampNow && s4CampNow.name) || '';
+  return `<label class="c" title="${name
+    ? `ticked, the box beside this lists only the Stage 4 record sets whose stage 3 set was run under ${esc(name)}, the campaign currently set on Sweep. One tick for every Stage 4 record set box: ticked here, it is ticked on every tab.`
+    : 'no campaign is currently set on Sweep, so there is no campaign to narrow the box to'}"><input type="checkbox" class="s4Camp"${s4CampOn() && name ? ' checked' : ''}${name ? '' : ' disabled'}> ${name ? `only campaign ${esc(name)}` : 'only the campaign currently set'}</label>`;
+}
+function s4CampWire(redraw) {
+  document.querySelectorAll('.s4Camp').forEach((el) => {
+    el.onchange = () => { try { localStorage.setItem(S4_CAMP_KEY, el.checked ? '1' : '0'); } catch (_) { /* private window */ } redraw(); };
+  });
+}
+// the press, in a row of its own under the box (RULE FOUR-A), the same words as the Funnel's
+function s4DeleteRowHtml(chosen) {
+  return `<div class="row"><button class="danger s4Delete" ${chosen ? '' : 'disabled'} title="permanently deletes the Stage 4 record set chosen in the box above. A rule takes the held and reserve sets read from it along; every read of the held-back or reserve window that goes is written onto a set of the same family and still counts as a look. Refused while the set is being worked on, or while a greenlight written from it stands. Nothing is deleted until the set's id is typed back.">Delete Stage 4 record set…</button></div>`;
+}
+function s4DeleteWire(chosen, after) {
+  if (!chosen) return;
+  document.querySelectorAll('.s4Delete').forEach((b) => {
+    b.onclick = async () => {
+      b.disabled = true;
+      const done = await deleteSetFlow(chosen);
+      b.disabled = false;
+      if (done) after(done);
+    };
+  });
+}
 // THE RULES A TAB LISTS (VERIFY-DESIGN.md Part 9): Held lists every rule, plain
 // or half-life; Reserve lists only rules whose layout keeps a reserve and whose
 // newest held set passed. Held sets and reserve sets are never listed here:
@@ -2462,12 +2509,15 @@ function vRulesFor(sets, stretch) {
 // as well. The line under the box and the sets under the press say those
 // things about the rule chosen. Held and Reserve draw this one box.
 function vSetBoxHtml(list, chosen, stretch) {
-  const empty = stretch === 'reserve'
-    ? '<option value="">- no rule stands on the held-back window yet with a layout that keeps a reserve - read a rule on Held first -</option>'
-    : '<option value="">- no Stage 4 record set on this box yet - cut one on the Funnel -</option>';
-  return `<div class="row"><label class="f" title="every rule on this box that can be read on the ${stretchPlain(stretch)} window, newest first, by the name it was given. A rule is a Stage 4 record set cut on the Funnel or built on History.">Stage 4 record set<select id="vSet" style="min-width:28rem">${list.length
+  const empty = s4CampOn() && s4CampNow.name
+    ? `<option value="">- no Stage 4 record set of campaign ${esc(s4CampNow.name)} here -</option>`
+    : stretch === 'reserve'
+      ? '<option value="">- no rule stands on the held-back window yet with a layout that keeps a reserve - read a rule on Held first -</option>'
+      : '<option value="">- no Stage 4 record set on this box yet - cut one on the Funnel -</option>';
+  return `<div class="row" style="align-items:flex-end"><label class="f" title="every rule on this box that can be read on the ${stretchPlain(stretch)} window, newest first, by the name it was given. A rule is a Stage 4 record set cut on the Funnel or built on History.">Stage 4 record set<select id="vSet" style="min-width:28rem">${list.length
     ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${rebuildPrefix(x)}${esc(x.name || x.id)}</option>`).join('')
-    : empty}</select></label></div>`;
+    : empty}</select></label>${s4CampTickHtml()}</div>
+    ${s4DeleteRowHtml(chosen)}`;
 }
 function vFootingHtml(d) {
   const f = d.footing;
@@ -2490,7 +2540,9 @@ function vFootingHtml(d) {
 function vLooksHtml(d, stretch) {
   const l = d.looks;
   if (!l) return '';
-  return `<p class="note">${stretch === 'reserve' ? '<b>Looks at the reserve window before any stamp:</b>' : '<b>Looks at the held-back window before any stamp:</b>'} at least ${Number(l.unstamped).toLocaleString()} unstamped${(l.what || []).length ? ` (${l.what.map(esc).join('; ')})` : ''}${l.stamped ? ` · ${l.stamped} ${stretch === 'reserve' ? '<span>reserve set(s) below, each a stamped look</span>' : '<span>held set(s) below, each a stamped look</span>'}` : ' · none stamped yet'}${l.rides ? ` · ${l.rides} ride(s) worked out below, each a stamped look` : ''}${d.readAt ? ` · first stamped look ${esc(String(d.readAt).slice(0, 16))}` : ''}</p>`;
+  // THE STAMPED LOOKS ARE THE FAMILY'S (3.249.0): the sets below, the reads of
+  // sets saved from the same original, and the reads of sets since deleted
+  return `<p class="note">${stretch === 'reserve' ? '<b>Looks at the reserve window before any stamp:</b>' : '<b>Looks at the held-back window before any stamp:</b>'} at least ${Number(l.unstamped).toLocaleString()} unstamped${(l.what || []).length ? ` (${l.what.map(esc).join('; ')})` : ''}${l.own ? ` · ${l.own} ${stretch === 'reserve' ? '<span>reserve set(s) below, each a stamped look</span>' : '<span>held set(s) below, each a stamped look</span>'}` : ''}${l.family ? ` · ${l.family} read from sets saved from the same original` : ''}${l.gone ? ` · ${l.gone} read from sets since deleted` : ''}${l.stamped ? ` · ${l.stamped} stamped in all` : ' · none stamped yet'}${l.rides ? ` · ${l.rides} ride(s) worked out below, each a stamped look` : ''}${d.readAt ? ` · first stamped look ${esc(String(d.readAt).slice(0, 16))}` : ''}</p>`;
 }
 // THE RESERVE BOARD OF THE RULE'S UNIT (3.148.0, VERIFY-DESIGN.md Part 9
 // release 2), on Reserve only: every setting of the coin and shape priced on
@@ -2588,7 +2640,26 @@ function vTunedNoteHtml(t) {
   const body = t.why
     ? `<b class="warn">${esc(t.why)}</b>`
     : `${t.withAStop} of them carry a stop and ${t.readInto} are read above at their money under it, worked out off their captured trades${cap} at the record's own $${Number(t.clipUsd) || 0} a trade; the money without it, and the money the sizing would have made, are in the table below${(t.notCaptured || []).length ? ` · ${t.notCaptured.length} with a tuning but no captured trades on this window, read plain` : ''}`;
-  return `<p class="note"><b>The tunings applied on Tune:</b> ${t.withATuning} of ${t.of} survivors carry a stop or a sizing · ${body} · ${esc(t.reads || '')}${vDiffersWords(t)}</p>`;
+  return `<p class="note"><b>The tunings applied on Tune:</b> ${t.withATuning} of ${t.of} survivors carry a stop or a sizing · ${body}${vSizingWordsHtml(t)} · ${esc(t.reads || '')}${vDiffersWords(t)}</p>`;
+}
+// THE CONVICTION SIZING THIS SET FROZE, IN NUMBERS (3.249.0, owner 2026-09-25:
+// "the greenlight is reflecting the new conviction sizing this time, but the
+// held tab is not"). The table says "by conviction" whatever the multipliers,
+// so two held sets frozen at different numbers read alike; the multipliers,
+// and what they made on this window against the same trades without them, are
+// said here. The money column above stays one clip a trade (3.156.0).
+function vSizingWordsHtml(t) {
+  const rows = ((t && t.rows) || []).filter((x) => x.sizing && x.sizing.on);
+  if (!rows.length) return '';
+  const groups = new Map();
+  for (const x of rows) { const k = JSON.stringify(x.sizing.ladder || []); groups.set(k, (groups.get(k) || 0) + 1); }
+  const ladders = [...groups.entries()].map(([k, n]) => {
+    const l = JSON.parse(k);
+    return `${l.map((m) => `×${m}`).join(' · ')} (1 to ${l.length} agreeing) on ${n} survivor(s)`;
+  }).join('; ');
+  const sum = (f) => rows.reduce((a, x) => a + (Number(x[f]) || 0), 0);
+  const clips = rows.filter((x) => x.clipsPerTrade != null);
+  return ` · <b>conviction sizing frozen on this set:</b> ${esc(ladders)} · with the sizing ${money(sum('tunedUsd'))} over those survivors, against ${money(sum('plainUsd'))} without them${clips.length ? `, ${(clips.reduce((a, x) => a + Number(x.clipsPerTrade), 0) / clips.length).toFixed(2)} clips a trade on average` : ''}`;
 }
 function vSurvivorsTableHtml(b, stretch) {
   const rows = ((b.survivors || {}).rows) || [];
@@ -2813,7 +2884,8 @@ async function drawHeld() { return drawJudge('held'); }
 async function drawReserve() { return drawJudge('reserve'); }
 async function drawJudge(stretch) {
   const all = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []);
-  const sets = vRulesFor(all, stretch);
+  await s4CampRead();
+  const sets = s4CampList(vRulesFor(all, stretch));
   const chosen = vRememberedSet(sets, stretch);
   const d = chosen ? await apiOr(`api/funnel/set/${encodeURIComponent(chosen)}/judge/${stretch}`, null) : null;
   // THE SCREEN'S OWN FRAME IS DRAWN HERE, not only through the helpers: the
@@ -2827,6 +2899,8 @@ async function drawJudge(stretch) {
     try { localStorage.setItem(JUDGE_SET_KEY[stretch], sel.value); } catch (_) { /* private window */ }
     drawJudge(stretch);
   };
+  s4CampWire(() => drawJudge(stretch));
+  s4DeleteWire(chosen, () => drawJudge(stretch));
   const btn = $('#vRead');
   if (btn && chosen && d && !d.refused) btn.onclick = async () => {
     // a press that PRICES is said before it starts: the reserve window is the one look at data nothing has seen
@@ -2839,6 +2913,12 @@ async function drawJudge(stretch) {
         : 'Read the rule on the held-back window?\n\nThis prices its survivors with their retrained members on the held-back window and writes a held set. Minutes. A stamped look, counted on every later verdict.';
       if (!confirm(msg)) return;
     }
+    // THE SET READ IS THE SET SHOWN WHEN THE READ LANDS (3.249.0, owner
+    // 2026-09-25: "why do i have to push ... two times to get it to display"):
+    // the box offered the set remembered, or else the newest, and a set saved
+    // while the screen was open changed which one that was by the time the
+    // read landed and the screen was drawn again
+    try { localStorage.setItem(JUDGE_SET_KEY[stretch], chosen); } catch (_) { /* private window */ }
     btn.disabled = true;
     $('#vReadMsg').textContent = d.prices ? 'starting…' : 'reading…';
     const body = { barPct: vTyped('#vBarPct'), sanityPct: vTyped('#vSanityPct'), ofFour: Number($('#vOfFour').value), autoPass: !!$('#vAutoPass').checked };
@@ -3016,7 +3096,8 @@ function hSetBoxHtml(list, chosen) {
   return `<div class="row" style="align-items:flex-end">
     <label class="f" title="which Stage 4 record set to retrain, from every set on this box, newest first">Stage 4 record set<select id="hSet">${list.length
     ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors</option>`).join('')
-    : '<option value="">no Stage 4 record set on this box yet</option>'}</select></label></div>`;
+    : `<option value="">${s4CampOn() && s4CampNow.name ? `no Stage 4 record set of campaign ${esc(s4CampNow.name)} here` : 'no Stage 4 record set on this box yet'}</option>`}</select></label>${s4CampTickHtml()}</div>
+    ${s4DeleteRowHtml(chosen)}`;
 }
 // ---- THE RETRAIN RUN ON HISTORY (3.94.0, AGEDIAL-DESIGN.md; the one panel since 3.142.0) ----
 //
@@ -3130,7 +3211,9 @@ async function hHalfLifeFollow(id, token) {
 async function drawHistory() {
   // a half-life set is graded and retrained through its source, so it is not offered here (3.95.0)
   // a rule, plain: a half-life set is not retrained again, and a held set or a reserve set is frozen (3.147.0)
-  const hSets = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []).filter((x) => (x.kind || 'funnel') === 'funnel' && !x.derived);
+  const hAll = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []).filter((x) => (x.kind || 'funnel') === 'funnel' && !x.derived);
+  await s4CampRead();
+  const hSets = s4CampList(hAll);
   const hChosen = hRememberedSet(hSets);
   const hl = hChosen ? await apiOr(`api/funnel/set/${encodeURIComponent(hChosen)}/halflife`, null) : null;
   $('#view').innerHTML = hHalfLifePanelHtml(hSets, hChosen, hl);
@@ -3139,6 +3222,8 @@ async function drawHistory() {
     try { localStorage.setItem(H_SET_KEY, hSel.value); } catch (_) { /* private window */ }
     drawHistory();
   };
+  s4CampWire(drawHistory);
+  s4DeleteWire(hChosen, drawHistory);
   // the half-life run: the ticks are remembered, the press sends them, started and polled
   for (const m of H_HALF_LIVES) {
     const box = $(`#hHl${m}`);
@@ -3207,6 +3292,7 @@ const TN_WINDOWS = [['train', 'tnWinTrain', 'training'], ['test', 'tnWinTest', '
 // while it is being watched, or on coming back to the tab later -- puts that
 // set under scan target and forgets it. A capture that failed moves nothing.
 const TN_CAPTURED_KEY = 'cx-tune-captured';
+let tnTypedLadder = null;          // multipliers typed on Tune and not yet priced: { key: set|survivor|windows, raw } (3.249.0)
 // REBUILT ON FIRST OPEN (3.235.0, owner 2026-09-23: "rebuilding on first
 // open"): what this visit to the page has already started again, so a set is
 // rebuilt once when opened and a refusal is never pressed over and over
@@ -3247,7 +3333,8 @@ function tnSetBoxHtml(list, chosen) {
   return `<div class="row" style="align-items:flex-end">
     <label class="f" title="which Stage 4 record set to capture the trades of, from every set on this box, newest first">Stage 4 record set<select id="tnSet">${list.length
     ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${rebuildPrefix(x)}${esc(x.name || x.id)}</option>`).join('')
-    : '<option value="">no Stage 4 record set on this box yet</option>'}</select></label></div>`;
+    : `<option value="">${s4CampOn() && s4CampNow.name ? `no Stage 4 record set of campaign ${esc(s4CampNow.name)} here` : 'no Stage 4 record set on this box yet'}</option>`}</select></label>${s4CampTickHtml()}</div>
+    ${s4DeleteRowHtml(chosen)}`;
 }
 function tnCaptureBlockHtml(c) {
   const e = c.entries || {};
@@ -3391,14 +3478,16 @@ async function drawTune() {
   const cand = await apiOr('api/pilot/stop-candidates', ({ candidates: [] }));
   const books = (cand && cand.candidates) || [];
   // the Stage 4 record sets on this box, for the capture panel (3.92.0)
-  const tnSets = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []);
+  await s4CampRead();
+  const tnSets = s4CampList(((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []));
   const tnChosen = tnRememberedSet(tnSets);
   const tnd = tnChosen ? await apiOr(`api/funnel/set/${encodeURIComponent(tnChosen)}/capture`, null) : null;
   // the Stage 4 record sets that carry a per-trade capture (3.92.0): a scan on
   // one reads the captured entries of one survivor over the windows ticked
-  const stage4 = books.filter((b) => b.kind === 'stage4');
+  // the campaign tick narrows the scan target box as it does every Stage 4 record set box (3.249.0)
+  const stage4 = s4CampList(books.filter((b) => b.kind === 'stage4'));
   const optId = (b) => `s:${b.id}`;
-  const known = new Set(books.map(optId));
+  const known = new Set(stage4.map(optId));
   // A CAPTURE THIS TAB PRESSED HAS LANDED: its set goes under scan target
   // (3.233.1). Still going, it waits for a later draw; failed, it is forgotten
   // and moves nothing; no answer at all, it is asked again on the next draw.
@@ -3480,6 +3569,25 @@ async function drawTune() {
   const sizeHeld = busy || !isSet || !rowsSized.length;
   const sizeHeldWhy = !isSet ? 'no Stage 4 record set with its trades captured is chosen under Tuning targets' : busy ? 'a heavy scan is running' : '';
   const ladderWords = (ladder) => (ladder || []).map((x, i) => `${i + 1} of ${ladder.length}: ×${x}`).join(', ');
+  // THE NUMBERS APPLIED ARE THE NUMBERS PRICED (3.235.0): the multipliers the
+  // table on screen was last priced at. WITH NO TABLE PRICED ON WHAT IS CHOSEN,
+  // NOTHING IS APPLIED (3.249.0, owner 2026-09-25: "the apply button in tune WAS
+  // used the first time and it blew away the multiplier settings i had put on
+  // the records"): Apply used to fall back to the declared ladder, one clip a
+  // member that agreed, and wrote it over whatever the survivors carried.
+  const pricedLadder = conv.status === 'done' && Array.isArray(conv.ladder) ? conv.ladder : null;
+  const noTableWhy = 'no conviction table is priced on what is chosen under Tuning targets: Apply records the numbers the table was priced at, so run the conviction sweep on it first';
+  // WHAT THE SAVE UNDER A NEW NAME CARRIES WHEN THE SIZING IS TICKED (3.249.0):
+  // the numbers the table was priced at, on the survivors that table covers,
+  // and the sizing on record on every other survivor -- said in numbers
+  const allRows = isSet ? (chosen.rows || []) : [];
+  const allSized = allRows.filter((r) => sizingOf(r));
+  const allSame = allSized.length && allSized.every((r) => JSON.stringify(sizingOf(r).ladder) === JSON.stringify(sizingOf(allSized[0]).ladder));
+  const copySizingWords = !isSet ? '' : pricedLadder
+    ? `${ladderWords(pricedLadder)} — the numbers the conviction table below was priced at, on ${tnPickVal === 'all' ? `all ${rowsSized.length} captured survivors` : `the survivor ${stopLabel}`}${tnPickVal === 'all' ? '' : `; every other survivor carries the sizing on record (${allSized.length} of ${allRows.length} carry one)`}`
+    : allSized.length
+      ? `the sizing on record, ${allSame ? `${ladderWords(sizingOf(allSized[0]).ladder)}, on ${allSized.length} of ${allRows.length} survivors` : `on ${allSized.length} of ${allRows.length} survivors, not all at the same numbers`} — no conviction table is priced on what is chosen`
+      : 'nothing: no survivor carries a sizing on record and no conviction table is priced on what is chosen';
   $('#view').innerHTML = `
   ${busy ? `<div class="panel warn">A heavy scan is running (${esc(String(busy))}) — one at a time; both launchers are disabled until it lands (scans run minutes and cannot be aborted mid-flight).</div>` : ''}
   ${tnCapturePanelHtml(tnSets, tnChosen, tnd)}
@@ -3490,7 +3598,7 @@ async function drawTune() {
     <div class="row" style="margin-bottom:.4rem;align-items:flex-end"><label class="f" title="what the two scans below are aimed at: a Stage 4 record set whose trades are captured above, one survivor of it or all of them, over the windows ticked">scan target<select id="tuneTarget">
       ${stage4.map((b) => `<option value="${esc(optId(b))}" ${tgt === optId(b) ? 'selected' : ''}>${setNameWords(b)} · ${b.captured} of ${b.survivors} survivors captured</option>`).join('')}
     </select></label>
-    <span class="note">${stage4.length} Stage 4 record set(s) with their trades captured</span></div>
+    ${s4CampTickHtml()}<span class="note">${stage4.length} Stage 4 record set(s) with their trades captured</span></div>
     ${isSet ? tnTargetRowHtml(chosen, tnPickVal, tnWins) : ''}
   </div>
   <div class="panel">
@@ -3538,15 +3646,16 @@ async function drawTune() {
       <label class="f" title="why you applied the conviction sizing to the survivor picked under Tuning targets, or to every survivor when all survivors are chosen, or took it off. Saved with the choice on each of them.">your reason for the sizing<input id="sizingWhy" type="text" maxlength="300" placeholder="why size by conviction, or why not" value="${esc(onRecord && onRecord.sizing ? onRecord.sizing.why || '' : '')}" style="width:48rem"></label>
     </div>
     <div class="row">
-      <button id="sizingApply" ${sizeHeld ? `disabled title="${esc(sizeHeldWhy)}"` : 'title="records on the survivor picked under Tuning targets -- or on every captured survivor when all survivors are chosen -- that its trades are sized by conviction: each trade at its own size times the multiplier of its row in the table below, the numbers the table was last priced at. A held set or a reserve set read after this freezes the choice, and a greenlight carries it. Nothing is applied to any trading machine."'}>Apply the conviction sizing</button>
+      <button id="sizingApply" ${sizeHeld || !pricedLadder ? `disabled title="${esc(sizeHeldWhy || noTableWhy)}"` : 'title="records on the survivor picked under Tuning targets -- or on every captured survivor when all survivors are chosen -- that its trades are sized by conviction: each trade at its own size times the multiplier of its row in the table below, the numbers the table was last priced at. A held set or a reserve set read after this freezes the choice, and a greenlight carries it. Nothing is applied to any trading machine."'}>Apply the conviction sizing</button>
       <button id="sizingOff" ${sizeHeld || !sizedOnRecord.length ? `disabled title="${esc(sizeHeldWhy || 'no sizing is on record for what is chosen under Tuning targets')}"` : 'title="records that the survivor picked under Tuning targets -- or every captured survivor when all survivors are chosen -- is NOT sized by conviction: each trade at its own size alone"'}>Take the sizing off</button>
     </div>
+    ${isSet && !sizeHeld && !pricedLadder ? `<div class="note" style="margin-bottom:.4rem">${esc(noTableWhy)}.</div>` : ''}
     ${stopLabel ? `<div class="note" style="margin-bottom:.4rem">sizing on record for <b>${esc(stopLabel)}</b>: ${onRecord && onRecord.sizing ? `<b>by conviction</b> at the $${Number(onRecord.sizing.clipUsd) || 0} clip, ${esc(ladderWords(onRecord.sizing.ladder))}${onRecord.sizing.why ? ` — ${esc(onRecord.sizing.why)}` : ''} (${esc(String(onRecord.sizing.at || '').slice(0, 10))})` : 'none — each trade at its own size alone'}</div>`
     : (isSet && tnPickVal === 'all' ? `<div class="note" style="margin-bottom:.4rem">sizing on record: <b>${sizedOnRecord.length} of ${rowsSized.length}</b> captured survivors by conviction${ladderOnRecord ? `, all at ${esc(ladderWords(ladderOnRecord))}` : (sizedOnRecord.length ? ', not all at the same numbers' : '')}</div>` : '')}
     <div class="row"><button id="convRun" class="pri" ${busy ? 'disabled' : ''}>Run conviction sweep</button></div>
     <div id="convOut">${conv.status === 'done' ? renderConvResult(conv) : conv.status === 'running' ? '<p class="note">running…</p>' : conv.status === 'error' ? `<p class="warn">last sweep failed: ${esc(conv.error || '')}</p>` : conv.status === 'unread' ? '<p class="warn">the result kept for this could not be read from the box</p>' : isSet ? tnNotRunHtml(conv, 'Run conviction sweep') : ''}</div>
   </div>
-  ${isSet ? tnCopyPanelHtml(chosen, busy) : ''}
+  ${isSet ? tnCopyPanelHtml(chosen, busy, copySizingWords) : ''}
 `;
   // THE SIZING ON RECORD, AS A GREEN LINE at the top of the conviction panel (3.154.0,
 // owner order): the same green as the stop tuner's "your choice" row, drawn only
@@ -3568,7 +3677,7 @@ function tnNotRunHtml(x, press) {
 // tuning", then "populate with the current S4 name ... with one or two of the
 // current settings on the tab ... tick boxes"). What each tick would carry is
 // read off the set and said above the ticks, so nothing about it is a guess.
-function tnCopyPanelHtml(cand, busy) {
+function tnCopyPanelHtml(cand, busy, sizingWords) {
   const rows = cand.rows || [];
   const stops = rows.filter((r) => r.stop && Object.prototype.hasOwnProperty.call(r.stop, 'stopPct')).length;
   const sized = rows.filter((r) => r.stop && r.stop.sizing && r.stop.sizing.on).length;
@@ -3577,14 +3686,16 @@ function tnCopyPanelHtml(cand, busy) {
     <p class="note">Saves <b>${esc(cand.name)}</b>, the Stage 4 record set under Tuning targets, as a new set under the name typed:
       the same survivors, the same numbers and the same captured trades, with the protective stops and the conviction sizing on
       record carried only where ticked. ${esc(cand.name)} itself is not touched, so both can be read on Held, Reserve and
-      Greenlight, and either can be tuned again and saved again. History's tables stay with the set they were run on. The reads
-      the held-back and reserve windows have had go with the copy and are counted on it.</p>
+      Greenlight, and either can be tuned again and saved again. History's tables stay with the set they were run on. Every set
+      saved from the same original is one family: a read of the held-back or reserve window on any of them is counted on all
+      of them.</p>
     <div class="note" style="margin-bottom:.4rem">on record on <b>${esc(cand.name)}</b>: a protective stop, or no stop chosen on purpose, for <b>${stops} of ${rows.length}</b> captured survivors; the conviction sizing on <b>${sized} of ${rows.length}</b></div>
     <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
       <label class="f" title="the name the copy is saved under: filled with the name of the set under Tuning targets, to change. Names are unique across every set on this box.">new name<input id="tnCopyName" type="text" value="${esc(cand.name)}" style="width:32rem"></label>
       <label class="c" title="ticked, the copy carries the protective stop on record for each survivor, or the no stop chosen on purpose, with its reason; unticked, the copy carries no choice about the stop"><input type="checkbox" id="tnCopyStops" checked> with its protective stops</label>
-      <label class="c" title="ticked, the copy carries the conviction sizing on record for each survivor, at its numbers, with its reason; unticked, every trade of the copy is taken at its own size alone"><input type="checkbox" id="tnCopySizing" checked> with its conviction sizing</label>
+      <label class="c" title="ticked, the copy carries the conviction sizing: the numbers the conviction table below was priced at on the survivors that table covers, and the sizing on record on every other survivor, as the line under this says; unticked, every trade of the copy is taken at its own size alone"><input type="checkbox" id="tnCopySizing" checked> with its conviction sizing</label>
     </div>
+    <div class="note" id="tnCopySizingSay" style="margin-bottom:.4rem"><b>the conviction sizing it carries:</b> ${esc(sizingWords || '')}</div>
     <div class="row">
       <button id="tnCopy" ${busy ? 'disabled title="a heavy scan is running"' : 'title="saves the set under Tuning targets under the name typed, with what is ticked. The set it is saved from is not touched; nothing is applied to any trading machine."'}>Save under a new name</button><span id="tnCopyMsg" class="note"></span>
     </div>
@@ -3706,19 +3817,16 @@ function renderStopResult(s) {
   };
   // the sizing applied or taken off (3.151.0): a record on the survivor, no scan
   const sizeWhy = () => { const el = $('#sizingWhy'); return el ? el.value.trim() : ''; };
-  // THE NUMBERS APPLIED ARE THE NUMBERS PRICED (3.235.0): the multipliers the
-  // table on screen was last priced at; with no table, the declared ladder
-  const pricedLadder = conv.status === 'done' && Array.isArray(conv.ladder) ? conv.ladder : null;
   const sizing = async (on) => {
     const who = tnPickVal === 'all' ? `all ${rowsSized.length} captured survivors` : `the survivor ${stopLabel}`;
     if (!confirm(on
-      ? `Apply the conviction sizing to ${who} of ${chosen.name}?\n\nThis records that each trade is sized at its own size times the multiplier of its row: ${pricedLadder ? ladderWords(pricedLadder) : 'the declared ladder, one clip a member that agreed'}. The next held set or reserve set read from the rule freezes it, and a greenlight carries it. Nothing is applied to any trading machine.`
+      ? `Apply the conviction sizing to ${who} of ${chosen.name}?\n\nThis records that each trade is sized at its own size times the multiplier of its row: ${ladderWords(pricedLadder)}. The next held set or reserve set read from the rule freezes it, and a greenlight carries it. Nothing is applied to any trading machine.`
       : `Take the conviction sizing off ${who} of ${chosen.name}?\n\nThis records that each trade is taken at its own size alone.`)) return;
     const out = await tryPost(`api/funnel/set/${encodeURIComponent(chosen.id)}/sizing-choice`, { pick: tnPickVal, on, why: sizeWhy(), ...(on && pricedLadder ? { ladder: pricedLadder } : {}) }, 'The Stage 4 record set under Tuning targets lists what is captured.');
     if (out) drawTune();
   };
   const szOn = $('#sizingApply');
-  if (szOn) szOn.onclick = () => sizing(true);
+  if (szOn) szOn.onclick = () => { if (pricedLadder) sizing(true); };
   const szOff = $('#sizingOff');
   if (szOff) szOff.onclick = () => sizing(false);
   // saved under a new name (3.247.0): the set under Tuning targets stays chosen, and the line under the press names the copy
@@ -3728,15 +3836,20 @@ function renderStopResult(s) {
     const stops = !!$('#tnCopyStops').checked;
     const sizing = !!$('#tnCopySizing').checked;
     if (!name) { $('#tnCopyMsg').textContent = 'type a name for the copy'; return; }
-    const carried = [stops ? 'its protective stops' : '', sizing ? 'its conviction sizing' : ''].filter(Boolean);
+    const carried = [stops ? 'its protective stops' : '', sizing ? `its conviction sizing: ${copySizingWords}` : ''].filter(Boolean);
     if (!confirm(`Save ${chosen.name} under the name ${name}?\n\nThe copy carries ${carried.length ? carried.join(' and ') : 'neither the protective stops nor the conviction sizing'}. ${chosen.name} itself is not touched. Nothing is applied to any trading machine.`)) return;
     cpy.disabled = true;
-    const out = await tryPost(`api/funnel/set/${encodeURIComponent(chosen.id)}/copy`, { name, stops, sizing }, 'The scan target box on Tune lists the sets whose trades are captured.');
+    const out = await tryPost(`api/funnel/set/${encodeURIComponent(chosen.id)}/copy`, { name, stops, sizing, ...(sizing && pricedLadder ? { ladder: pricedLadder, pick: tnPickVal } : {}) }, 'The scan target box on Tune lists the sets whose trades are captured.');
     if (!out) { cpy.disabled = false; return; }
     const s = out.set || {};
+    // THE COPY IS THE SET HELD OPENS NEXT (3.249.0, owner 2026-09-25: "the held
+    // tab is not [reflecting the new conviction sizing]"): Held kept the set
+    // picked there last, and the copy's name differed from its sibling's by one
+    // character, so the read landed on the older set
+    try { localStorage.setItem(JUDGE_SET_KEY.held, s.id); } catch (_) { /* private window */ }
     await drawTune();
     const msg = $('#tnCopyMsg');
-    if (msg) msg.textContent = `saved as ${s.name}: ${s.stops || 0} protective stop choice(s) and the conviction sizing on ${s.sizing || 0} survivor(s) carried. It is in the scan target box, and on Held, Reserve and Greenlight.`;
+    if (msg) msg.textContent = `saved as ${s.name}: ${s.stops || 0} protective stop choice(s) and the conviction sizing on ${s.sizing || 0} survivor(s) carried${s.ladder ? `, at ${ladderWords(s.ladder)}` : ''}. It is in the scan target box, and it is the set chosen on Held.`;
   };
   const clr = $('#stopClear');
   if (clr) clr.onclick = () => {
@@ -3790,14 +3903,37 @@ function renderStopResult(s) {
     if (!tnConfirm('conviction sweep at the numbers in the boxes')) return;
     const out = await tryPost('api/pilot/convictionsweep', { ...scanBody, ladder }); if (out) { clearTimeout(tunePoll); tunePoll = setTimeout(drawTune, 1500); }
   };
+  // YOUR NUMBERS OUTLIVE A REDRAW (3.249.0, owner 2026-09-25: "it blew away the
+  // multiplier settings i had put"): the tab is drawn again after every press
+  // and every half minute while a scan runs, and each draw filled the boxes
+  // from the table as priced. Numbers typed and not yet priced are kept for the
+  // same set, survivor and windows, and put back, until Recompute prices them.
+  const aimKey = isSet ? `${chosen.id}|${tnPickVal}|${tnWins.join(',')}` : '';
   const onTyped = () => {
     const same = pricedLadder && JSON.stringify(typedLadder()) === JSON.stringify(pricedLadder);
+    tnTypedLadder = same || !aimKey ? null : { key: aimKey, raw: multBoxes().map((el) => el.value) };
     const msg = $('#convRecomputeMsg');
     if (msg) msg.textContent = same ? 'prices the same trades again at the numbers in the boxes above' : 'the numbers in the boxes are not priced yet — press Recompute, then apply them';
     const ap = $('#sizingApply');
     if (ap && !sizeHeld) { ap.disabled = !same; ap.title = same ? '' : 'press Recompute to price the numbers in the boxes before applying them'; }
+    tnCopyHold(same);
   };
+  // the save carries the numbers priced, so with the sizing ticked it waits for the boxes to be priced too
+  const tnCopyHold = (same) => {
+    const b = $('#tnCopy');
+    const tick = $('#tnCopySizing');
+    const say = $('#tnCopySizingSay');
+    const held = !!(pricedLadder && tick && tick.checked && !same);
+    if (b && !busy) { b.disabled = held; b.title = held ? 'press Recompute to price the numbers in the boxes before saving them' : ''; }
+    if (say) say.innerHTML = held ? '<b class="warn">the numbers in the boxes are not priced yet — press Recompute, then save</b>' : `<b>the conviction sizing it carries:</b> ${esc(copySizingWords)}`;
+  };
+  if (tnTypedLadder && tnTypedLadder.key === aimKey && multBoxes().length === tnTypedLadder.raw.length) {
+    multBoxes().forEach((el, i) => { el.value = tnTypedLadder.raw[i]; });
+    onTyped();
+  } else tnTypedLadder = null;
   for (const el of multBoxes()) el.oninput = onTyped;
+  const tnSizTick = $('#tnCopySizing');
+  if (tnSizTick) tnSizTick.onchange = () => tnCopyHold(!pricedLadder || JSON.stringify(typedLadder()) === JSON.stringify(pricedLadder));
   // the survivor and the windows are remembered and redrawn, so what the
   // sentence above says is what the press sends
   const tnPickSel = $('#tnPick');
@@ -3816,6 +3952,8 @@ function renderStopResult(s) {
     try { localStorage.setItem(TN_SET_KEY, tnSel.value); } catch (_) { /* private window */ }
     drawTune();
   };
+  s4CampWire(drawTune);
+  s4DeleteWire(tnChosen, drawTune);
   const tnb = $('#tnCapture');
   // the completion typed above the press: its line follows the box, and nothing else is drawn again (3.237.0)
   const tnFillBox = $('#tnFill');
@@ -4106,7 +4244,8 @@ function glStage4PanelHtml(list, chosen, d) {
     <div class="row" style="align-items:flex-end">
       <label class="f" title="which held set or reserve set to take a survivor from, from every one on this box, newest first, with the verdict it carries. A rule is never greenlighted: the set a press made on Held or Reserve is.">Stage 4 record set<select id="gl4Set">${list.length
     ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors · ${x.judge && x.judge.block ? `${x.judge.block.pass ? 'PASS' : 'FAIL'} ${esc(String(x.judge.block.at || '').slice(0, 10))}` : 'no verdict'}${x.derived ? ` · half-life set from ${esc(x.derived.fromName || x.derived.from)}` : ''}</option>`).join('')
-    : '<option value="">no held set or reserve set on this box yet - read a rule on Held first</option>'}</select></label></div>
+    : `<option value="">${s4CampOn() && s4CampNow.name ? `no held set or reserve set of campaign ${esc(s4CampNow.name)} here` : 'no held set or reserve set on this box yet - read a rule on Held first'}</option>`}</select></label>${s4CampTickHtml()}</div>
+    ${s4DeleteRowHtml(chosen)}
     ${d ? `${rebuildLineHtml(d)}<p class="note"><b>${rebuildPrefix(d)}${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${esc(d.ruleSentence || '')} · ${(d.survivors || []).length} survivors${d.from ? ` · read from <b>${esc(d.from.name)}</b>` : ''}${d.standsOn ? ` · stands on ${esc(d.standsOn.name)}` : ''}
       · verdict ${d.gate ? `<b class="pos">stood (PASS, release ${esc(d.gate.release || '?')})</b>` : `<b class="neg">does not stand</b> - ${esc(d.standing || '')}`}${d.heldAlone && d.kind === 'held' ? ` · ${esc(d.heldAlone)}` : ''}${d.members ? ` · ${d.members} members as the stage 2 set trained them` : ''}${d.refused ? ` · <b class="warn">refused:</b> ${esc(d.refused)}` : ''}</p>
       ${glPictureHtml(d)}
@@ -4129,7 +4268,8 @@ async function drawGreenlight() {
   // WHAT GREENLIGHT LISTS (3.147.0, VERIFY-DESIGN.md Part 9): held sets and
   // reserve sets, each with its standing; a rule is never greenlighted, the
   // set a press made on Held or Reserve is
-  const glSets = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []).filter((x) => x.kind === 'held' || x.kind === 'reserve');
+  await s4CampRead();
+  const glSets = s4CampList(((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []).filter((x) => x.kind === 'held' || x.kind === 'reserve'));
   const glChosen = glRememberedSet(glSets);
   const gl4 = glChosen ? await apiOr(`api/live/greenlight/stage4/${encodeURIComponent(glChosen)}`, null) : null;
   $('#view').innerHTML = `<div class="panel">
@@ -4156,6 +4296,8 @@ async function drawGreenlight() {
     try { localStorage.setItem(GL_SET_KEY, gl4Sel.value); } catch (_) { /* private window */ }
     drawGreenlight();
   };
+  s4CampWire(drawGreenlight);
+  s4DeleteWire(glChosen, drawGreenlight);
   // the drill-down: the survivor the pick names, its own lines under the picture;
   // the table of every survivor picks it too, and sorts (3.247.0)
   const pk = $('#gl4Pick');
@@ -5677,14 +5819,21 @@ async function deleteSetFlow(id) {
   const look = await tryPost(`api/stageset/${encodeURIComponent(id)}/delete`, {});
   if (!look) return null;
   if (!look.preview) { alert('Nothing was deleted — the service answered strangely.'); return null; }
+  // A STAGE 4 RULE SAYS WHAT GOES WITH IT, and where its looks are kept (3.249.0)
+  const also = (look.alsoDeletes || []).length
+    ? `\n\nWith it go the ${look.alsoDeletes.length} held and reserve set(s) read from it:\n${look.alsoDeletes.map((x) => `  ${x.name}`).join('\n')}` : '';
+  const kept = look.readsKept
+    ? (look.readsKeptOn
+      ? `\n\n${look.readsKept} read(s) of the held-back or reserve window go too; each is written onto ${look.readsKeptOn}, saved from the same original, and still counts as a look there.`
+      : `\n\n${look.readsKept} read(s) of the held-back or reserve window go too, and no set saved from the same original stays to count them.`) : '';
   const typed = prompt(`Permanently delete ${look.name} (stage ${look.stage}, ${look.status})?\n\n`
     + `${Number(look.rows).toLocaleString()} record row(s), ${(look.bytes / 1048576).toFixed(1)} MB on disk`
-    + `${look.desc ? `\n"${look.desc}"` : ''}\n\nType the record set id back to confirm:\n${look.confirmWith}`, '');
+    + `${look.desc ? `\n"${look.desc}"` : ''}${also}${kept}\n\nType the record set id back to confirm:\n${look.confirmWith}`, '');
   if (typed === null) return null;
   if (typed.trim() !== look.confirmWith) { alert('That is not the record set id — nothing was deleted.'); return null; }
   const done = await tryPost(`api/stageset/${encodeURIComponent(id)}/delete`, { confirm: typed.trim() });
   if (!(done && done.deleted)) return null;
-  alert(`Deleted ${done.name} — ${Number(done.rows).toLocaleString()} row(s), ${(done.bytes / 1048576).toFixed(1)} MB freed.`);
+  alert(`Deleted ${done.name}${(done.alsoDeleted || []).length ? ` and the ${done.alsoDeleted.length} held and reserve set(s) read from it` : ''} — ${Number(done.rows).toLocaleString()} row(s), ${(done.bytes / 1048576).toFixed(1)} MB freed.`);
   return done;
 }
 
@@ -7601,6 +7750,7 @@ const fFix = (v, n) => (v == null || !Number.isFinite(Number(v)) ? '-' : Number(
 // exactly what lands on a wait -- and a wait with no source box would leave no
 // way back out.
 async function drawFunnel() {
+  await s4CampRead();
   const src = await fSourceSettle();
   try { return await fDrawView(); } finally { fSourcePut(fSourceHtml(src), src); }
 }
@@ -9173,9 +9323,10 @@ function fCutPickOption(c, st, who) {
 // which one (3.104.1, owner order). A list narrowed to the four boxes above it
 // can only be used by somebody who already knows what is in it.
 function fCutPickBox(d, st) {
-  const cuts = d.cuts || [];
+  // the campaign tick (3.249.0): the set open stays listed whatever it is, so the box never names another
+  const cuts = s4CampList(d.cuts || [], st.cut);
   const named = (key) => ((d.units || []).find((u) => u.key === key) || {}).name || key || 'all units together';
-  return `<label class="f">Stage 4 record set<select id="fCutPick" style="min-width:20rem">${cuts.map((c) => fCutPickOption(c, st, named(c.unit))).join('')}<option value="new" ${st.cut === F_NEW ? 'selected' : ''}>new rule</option></select></label>`;
+  return `<label class="f">Stage 4 record set<select id="fCutPick" style="min-width:20rem">${cuts.map((c) => fCutPickOption(c, st, named(c.unit))).join('')}<option value="new" ${st.cut === F_NEW ? 'selected' : ''}>new rule</option></select></label>${s4CampTickHtml()}`;
 }
 // ONE HEADING, NOT TWO. This drew "Funnel - <set> - <coin and shape>" above a
 // heading that says the same thing plus the counts, which is the owner's own
@@ -9231,7 +9382,9 @@ function fTitle(d, st, name, away, open) {
     : 'the steps below this row, and the rule so far', `${gap}${dead}`)}
     </div>
     <p class="note" style="margin:.35rem 0 0">${(d.cuts || []).filter((c) => c.mine).length} Stage 4 record set(s) have been cut from this coin and shape,
-      and the box offers all ${(d.cuts || []).length} cut from this stage 3 record set - one from another coin and shape says which.
+      and the box offers ${s4CampList(d.cuts || [], st.cut).length < (d.cuts || []).length
+    ? `${s4CampList(d.cuts || [], st.cut).length} of the ${(d.cuts || []).length} cut from this stage 3 record set, the ones of campaign ${esc(s4CampNow.name)}`
+    : `all ${(d.cuts || []).length} cut from this stage 3 record set`} - one from another coin and shape says which.
       Choose <b>new rule</b> to walk the steps again and cut another.</p>
     ${d.unitFilter ? `<p class="note" style="margin:.35rem 0 0">the filter on Table 3.C keeps <b>${Number(d.unitFilter.kept).toLocaleString()}</b> of
       ${Number(d.unitFilter.of).toLocaleString()} coins and shapes, and the coin box, Worth walking?, all units together and the rule steps read those alone${
@@ -9594,6 +9747,7 @@ function fOpenNewRule(st, d) {
 }
 
 function fWireCutPick(st, d) {
+  s4CampWire(drawFunnel);
   const cs = $('#fCutPick');
   if (cs) {
     cs.onchange = () => {

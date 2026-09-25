@@ -5629,14 +5629,26 @@ function deleteSet(id, confirm) {
     throw new Error(`${doc.name} is the parent of ${children.map((c) => c.name).join(', ')} — a set another set names as its `
       + 'parent is never deleted. Delete the children first.');
   }
+  // a Stage 4 rule takes the held and reserve sets read from it along (3.249.0)
+  const plan = doc.stage === 4 ? stage4DeletePlan(doc) : null;
   const rows = rowstore.count(doc.id, 'records');
   const bytes = rowstore.bytes(doc.id);
   if (String(confirm || '') !== doc.id) {
     return {
       preview: true, id: doc.id, name: doc.name, stage: doc.stage, status: doc.status,
       desc: doc.desc || '', rows, bytes, confirmWith: doc.id,
+      ...(plan ? { kind: doc.kind || 'funnel', alsoDeletes: plan.judged.map((d) => ({ id: d.id, name: d.name, kind: d.kind })), readsKept: plan.reads.length, readsKeptOn: plan.keeper ? plan.keeper.name : null } : {}),
     };
   }
+  if (plan) {
+    stage4DeleteCarry(doc, plan);
+    for (const j of plan.judged) removeSetFiles(j);
+  }
+  removeSetFiles(doc);
+  return { deleted: true, id: doc.id, name: doc.name, rows, bytes, ...(plan ? { alsoDeleted: plan.judged.map((d) => ({ id: d.id, name: d.name })), readsKept: plan.reads.length } : {}) };
+}
+// EVERYTHING ONE SET OWNS, off the disk and out of every cache
+function removeSetFiles(doc) {
   rowstore.remove(doc.id);
   try { fs.rmSync(tallyFile(doc.id), { force: true }); } catch (_) { /* may not exist */ }
   try { fs.rmSync(unitsFile(doc.id), { force: true }); } catch (_) { /* may not exist */ }
@@ -5658,7 +5670,87 @@ function deleteSet(id, confirm) {
   if (recordsInHand.id === doc.id) { recordsInHand.id = null; recordsInHand.rows = null; }
   if (tallyInHand.id === doc.id) { tallyInHand.id = null; tallyInHand.tally = null; }
   if (tallyInHand.staleId === doc.id) { tallyInHand.staleId = null; }
-  return { deleted: true, id: doc.id, name: doc.name, rows, bytes };
+}
+// ---- DELETING A STAGE 4 RECORD SET (3.249.0) ---------------------------------
+//
+// Owner order 2026-09-25: "i need a way to: 1. DELETE stage 4 record sets --
+// they're multiplying like rabbits". The Funnel's delete only ever listed the
+// sets cut there, so a half-life set, a set saved under a new name and every
+// held and reserve set could be deleted from nowhere. Each Stage 4 record set
+// box now carries the press, and it comes here.
+//
+// A RULE TAKES ITS HELD AND RESERVE SETS WITH IT: they are the rule frozen at a
+// press, and a held set whose rule is gone is a verdict on nothing the screens
+// can open. A LOOK IS NEVER DELETED: every held and reserve set that goes is
+// written onto a set of the same family that stays (familyReadsOf), so the
+// next read of that data counts it, exactly as if the set were still there.
+// REFUSED while anything is working on one of the sets, while a greenlight
+// written from one of them still stands, and for a held set a reserve set of
+// the same rule stands on.
+function stage4DeletePlan(doc) {
+  const all = listFunnelSets();
+  const judged = isJudgeSet(doc) ? [] : [...judgeSetsOf(doc.id, 'held', all), ...judgeSetsOf(doc.id, 'reserve', all)];
+  const going = [doc, ...judged];
+  const ids = new Set(going.map((d) => d.id));
+  const work = stage4WorkOn(ids);
+  if (work) throw new Error(`${work} — nothing is deleted while a set is being worked on`);
+  const gl = require('./live/greenlight');
+  const stands = gl.listGreenlights().filter((g) => !g.revoked && g.sourceSet && ids.has(g.sourceSet.id));
+  if (stands.length) {
+    throw new Error(`${stands.map((g) => `greenlight ${g.name || g.id}`).join(', ')} was written from ${stands.map((g) => g.sourceSet.name).join(', ')} and is still greenlighted `
+      + '— a set a standing greenlight came from is kept');
+  }
+  if (doc.kind === 'held') {
+    const on = all.filter((x) => x.kind === 'reserve' && x.standsOn && x.standsOn.id === doc.id && !ids.has(x.id));
+    if (on.length) throw new Error(`${on.map((x) => x.name).join(', ')} stands on ${doc.name} — delete that reserve set first`);
+  }
+  // the reads that go, and the set of the same family that keeps them
+  const rule = isJudgeSet(doc) ? getSet((doc.from || {}).id) : doc;
+  const members = rule ? familyOf(rule, all) : [];
+  const stay = members.filter((m) => !ids.has(m.id)).sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+  const keeper = stay.find((m) => m.id === familyRootOf(m)) || stay[0] || null;
+  const readOf = (j) => ({ kind: j.kind, id: j.id, name: j.name, from: (j.from || {}).id || null, at: (j.block || {}).at || j.createdAt || null, look: (j.block || {}).look ?? null, deletedAt: null });
+  const reads = [
+    ...going.filter((d) => isJudgeSet(d)).map(readOf),
+    // a rule that goes hands on the reads written onto it before
+    ...(!isJudgeSet(doc) ? ['held', 'reserve'].flatMap((k) => ((doc.deletedReads || {})[k] || []).map((r) => ({ ...r, kind: k }))) : []),
+  ];
+  return { all, judged, keeper, reads };
+}
+function stage4DeleteCarry(doc, plan) {
+  const at = new Date().toISOString();
+  if (plan.keeper && plan.reads.length) {
+    const k = getSet(plan.keeper.id);
+    k.deletedReads = k.deletedReads && typeof k.deletedReads === 'object' ? k.deletedReads : {};
+    for (const r of plan.reads) {
+      const { kind, ...rest } = r;
+      (k.deletedReads[kind] = k.deletedReads[kind] || []).push({ ...rest, deletedAt: rest.deletedAt || at });
+    }
+    saveSet(k);
+  }
+  // THE CHAIN OF "SAVED FROM" NEVER BREAKS: a set saved from this one now names
+  // the set this one was saved from; saved from the original, it keeps naming
+  // the original's id, which is still the family's name
+  if (!isJudgeSet(doc) && doc.copiedFrom && doc.copiedFrom.id) {
+    for (const x of plan.all) {
+      if (!x.copiedFrom || x.copiedFrom.id !== doc.id) continue;
+      const fresh = getSet(x.id);
+      fresh.copiedFrom = { ...fresh.copiedFrom, id: doc.copiedFrom.id, name: doc.copiedFrom.name };
+      saveSet(fresh);
+    }
+  }
+}
+// what is working on one of these sets right now, in words, or null
+function stage4WorkOn(ids) {
+  const live = (r) => r && !r.result && !r.error;
+  for (const [r, what] of [[judgeRun, 'being read'], [othersRun, 'read on the other units'], [rideRun, 'having its ride worked out'], [boardRun, 'having its reserve board priced'],
+    [captureRun, 'having its trades captured'], [halfLifeRun, 'being retrained on History'], [setRichRun, 'having its numbers worked out']]) {
+    if (live(r) && ids.has(r.id)) return `${(getSet(r.id) || {}).name || r.id} is ${what} right now`;
+  }
+  if (rebuildRun && !rebuildRun.done && !rebuildRun.error && (rebuildRun.chain || []).some((x) => ids.has(x))) return `${rebuildRun.name} is being rebuilt right now`;
+  const queued = rebuildQueue.find((x) => ids.has(x));
+  if (queued) return `${(getSet(queued) || {}).name || queued} is waiting to be rebuilt`;
+  return null;
 }
 
 // POST-RUN NOTES, the same contract the runs have (owner order, 2026-08-04;
@@ -8546,7 +8638,7 @@ function windowsForVerify(doc, parent) {
 }
 // how many times the held-back number was on a screen before any stamp: every
 // step and step back of the walk printed it, and the cut view did once more
-function verifyLooksOf(doc, keys, stamped) {
+function verifyLooksOf(doc, keys, fam) {
   const steps = (doc.steps || []).length;
   const back = (doc.backSteps || []).length;
   const s3 = doc && doc.parent && doc.parent.id ? getSet(doc.parent.id) : null;
@@ -8574,16 +8666,60 @@ function verifyLooksOf(doc, keys, stamped) {
   // which window it priced, and only a held-priced one is counted here
   const halfLifeReads = (doc.halflife || []).filter((r) => r && r.judge === 'hold').length;
   if (halfLifeReads) what.push(`the half-life run on History priced the held-back window ${halfLifeReads} time(s), each a stamped look`);
-  // a set saved under a new name on Tune (3.247.0) carries the reads of the one it was saved from
-  const carried = copiedLooksOf(doc, 'held');
-  if (carried) what.push(`${carried} held-back read(s) of ${doc.copiedFrom.name}, the set this was saved from, each a stamped look`);
-  return { unstamped: steps + back + 1, stamped: stamped || 0, rides, tuneReads, halfLifeReads, boardLooks, what };
+  // every set saved from the same original, and every held set since deleted (3.249.0)
+  what.push(...familyReadWords(doc, fam, 'held'));
+  return { unstamped: steps + back + 1, stamped: fam.stamped, own: fam.own, family: fam.family, gone: fam.gone.length, rides, tuneReads, halfLifeReads, boardLooks, what };
 }
-// THE LOOKS A COPY'S DATA HAS HAD (3.247.0): a set saved under a new name on Tune
-// is the same survivors on the same windows, so the held and reserve reads of
-// the set it was saved from -- and of any it was saved from in turn -- are its
-// looks too; a copy never reads as a fresh look at data already seen
-const copiedLooksOf = (doc, stretch) => Number((((doc && doc.copiedFrom) || {}).looks || {})[stretch] || 0);
+// ---- EVERY SET SAVED FROM THE SAME ORIGINAL IS ONE FAMILY (3.249.0) ----------
+//
+// Owner order 2026-09-25, on the proposal that the looks of sets saved from the
+// same original be counted on every one of them: a set saved under a new name
+// on Tune is the same survivors on the same windows, so a held or reserve read
+// of the original, of the set itself, or of any other set saved from that
+// original, is a look at the data this set holds. 3.247.0 carried the
+// original's reads as a number written onto the copy when it was saved, which
+// missed every read made after that -- on the original or on a sibling. The
+// family is now read where it stands, and a read whose set was deleted is
+// written onto the family before the set goes (deleteSet), so no delete ever
+// makes a later read look like an earlier one.
+//
+// The original is where the chain of "saved from" ends; a set in the middle of
+// the chain that is deleted hands its own "saved from" to the sets saved from
+// it, so the chain never breaks. An original that is deleted still names the
+// family: its sets keep its id.
+function familyRootOf(doc) {
+  let cur = doc;
+  const seen = new Set();
+  while (cur && cur.copiedFrom && cur.copiedFrom.id && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    const up = getSet(cur.copiedFrom.id);
+    if (!up) return cur.copiedFrom.id;
+    cur = up;
+  }
+  return cur ? cur.id : null;
+}
+function familyOf(doc, all = null) {
+  const root = familyRootOf(doc);
+  return (all || listFunnelSets()).filter((x) => !isJudgeSet(x) && familyRootOf(x) === root);
+}
+// the reads of a stretch taken on a rule's family: the sets on disk read from
+// any member, and the reads of deleted ones written onto the members
+function familyReadsOf(doc, stretch, all = null) {
+  const list = all || listFunnelSets();
+  const members = familyOf(doc, list);
+  const sets = members.flatMap((m) => judgeSetsOf(m.id, stretch, list));
+  const gone = members.flatMap((m) => (((m.deletedReads || {})[stretch]) || []));
+  const own = sets.filter((x) => x.from.id === doc.id).length;
+  return { members, sets, gone, own, family: sets.length - own, stamped: sets.length + gone.length };
+}
+function familyReadWords(doc, fam, stretch) {
+  const out = [];
+  const word = stretch === 'reserve' ? 'reserve' : 'held-back';
+  const others = [...new Set(fam.sets.filter((x) => x.from.id !== doc.id).map((x) => x.from.name))];
+  if (fam.family) out.push(`${fam.family} ${word} read(s) of ${others.join(', ')}, saved from the same original, each a stamped look`);
+  if (fam.gone.length) out.push(`${fam.gone.length} ${stretch} set(s) since deleted (${fam.gone.map((g) => g.name).join(', ')}), each a stamped look that still counts`);
+  return out;
+}
 function verifyFooting(doc, join) {
   const V = require('./funnelverify');
   const S4 = require('./funnelset');
@@ -9051,7 +9187,7 @@ function reserveBoardStop(id) {
   return { stopping: true };
 }
 // the looks a reserve set counts: the unit's board pricings (the first was the one look at data nothing had seen), the reserve sets already made from this rule, and the rides worked out on it
-function reserveLooksOf(doc, stamped, board = null) {
+function reserveLooksOf(doc, fam, board = null) {
   const rides = readingsIn(doc, 'reserve').ride.length;
   const pricings = board && board.priced ? board.pricings : 0;
   // a scan on Tune that read the captured reserve entries (3.150.0): a look on the reserve, stamped on the capture
@@ -9060,10 +9196,9 @@ function reserveLooksOf(doc, stamped, board = null) {
   if (pricings) what.push(`the reserve board of this unit was priced ${pricings} time(s), first on ${String(board.firstAt || '').slice(0, 10)} — that pricing was the one look at data nothing in the system had seen`);
   if (rides) what.push(`the reserve ride was worked out ${rides} time(s) on Reserve, each a stamped look`);
   if (tuneReads) what.push(`a scan on Tune read the captured reserve trades ${tuneReads} time(s), each a stamped look`);
-  const carried = copiedLooksOf(doc, 'reserve');
-  if (carried) what.push(`${carried} reserve read(s) of ${doc.copiedFrom.name}, the set this was saved from, each a stamped look`);
+  what.push(...familyReadWords(doc, fam, 'reserve'));
   // nothing before a pricing opens the reserve window: no walk printed it, no tick shows it
-  return { unstamped: 0, stamped: (stamped || 0) + pricings + tuneReads, rides, tuneReads, boardPricings: pricings, what };
+  return { unstamped: 0, stamped: fam.stamped + pricings + tuneReads, own: fam.own, family: fam.family, gone: fam.gone.length, rides, tuneReads, boardPricings: pricings, what };
 }
 // THE SET A PRESS MAKES: the rule and its survivors as they stand, the stop
 // choices on record frozen in, one block, and the rule it came from by name.
@@ -9181,12 +9316,17 @@ async function judgeRunOn(doc, stretch, asked, note = null, opts = {}) {
   const at = new Date().toISOString();
   const seq = into ? into.seq : seqFor(4);
   const id = into ? into.id : `s4-${Date.now().toString(36)}-${seq}`;
-  // the reads of the set this one was saved from are looks too (3.247.0)
-  const carried = copiedLooksOf(fresh, stretch);
+  // THE LOOK IS THE FAMILY'S (3.249.0): every read of this rule, of the set it
+  // was saved from and of every other set saved from that original, and every
+  // one of those since deleted, came before this one. A set read again in place
+  // keeps the look it had.
+  const fam = familyReadsOf(fresh, stretch);
+  if (into) { fam.sets = fam.sets.filter((x) => x.id !== into.id); fam.stamped -= 1; fam.own -= 1; }
+  const look = into && into.block && into.block.look != null ? into.block.look : fam.stamped + 1;
   const block = V.buildBlock({
-    id: `${id}-v1`, at, release: ENGINE_VERSION, look: number + carried, stretch,
+    id: `${id}-v1`, at, release: ENGINE_VERSION, look, stretch,
     rules, stageGate, footing: rest,
-    looks: stretch === 'held' ? verifyLooksOf(fresh, footing.keys, had.length + carried) : reserveLooksOf(fresh, had.length + carried, boardStamp ? reserveBoardOf(fresh) : null),
+    looks: stretch === 'held' ? verifyLooksOf(fresh, footing.keys, fam) : reserveLooksOf(fresh, fam, boardStamp ? reserveBoardOf(fresh) : null),
     read, copies, survivors, sanity, lineA, lineB,
     board: boardStamp,
     // the newest reading of the rule on the other units on this stretch, when one exists (3.88.0)
@@ -9202,7 +9342,7 @@ async function judgeRunOn(doc, stretch, asked, note = null, opts = {}) {
   saveSet(set);
   const stamp = stretch === 'held' ? 'heldBackReadAt' : 'reserveReadAt';
   if (!fresh[stamp]) { fresh[stamp] = block.at; saveSet(fresh); }
-  return { id: set.id, name: set.name, look: number, pass: block.verdict.pass, sentence: block.verdict.sentence };
+  return { id: set.id, name: set.name, look, pass: block.verdict.pass, sentence: block.verdict.sentence };
 }
 const judgeStatusOf = (run) => ({ running: !run.result && !run.error, token: run.token, done: run.done, of: run.of, cpu: cpuLoad(), error: run.error, result: run.result });
 function judgeStart(id, stretch, asked = {}) {
@@ -9272,7 +9412,8 @@ async function judgeDry(id, stretch) {
   let join;
   try { join = await funnelVerifyJoin(doc); } catch (err) { out.refused = err.message; out.othersRefused = err.message; out.rideRefused = err.message; out.droppedRefused = err.message; return out; }
   out.footing = judgeFooting(doc, join);
-  out.looks = stretch === 'held' ? verifyLooksOf(doc, out.footing.keys, out.sets.length) : reserveLooksOf(doc, out.sets.length, out.board);
+  const fam = familyReadsOf(doc, stretch);
+  out.looks = stretch === 'held' ? verifyLooksOf(doc, out.footing.keys, fam) : reserveLooksOf(doc, fam, out.board);
   out.refused = judgeRefusalOf(doc, stretch, out.footing);
   out.boardRefused = stretch === 'reserve' ? boardRefusalOf(doc) : null;
   out.othersRefused = othersRefusalOf(doc, stretch, out.footing);
@@ -10555,10 +10696,12 @@ function tuneCaptureStatus(id) {
 // the Stage 4 sets a scan on Tune can be aimed at: those carrying a capture, with what the picker needs and nothing heavy
 function captureCandidates() {
   const paper = require('./paper');
+  const camps = new Map();
   return listFunnelSets().filter((d) => !d.exam && d.capture && d.capture.v === CAPTURE_V && d.capture.captured > 0).map((d) => {
     const fee = Number((d.capture.fee || {}).feePerLeg) || 0;
     return {
       kind: 'stage4', id: d.id, name: d.name, rebuild: rebuildOf(d), unitName: d.unitName || null, at: d.capture.at, release: d.capture.release,
+      campaign: campaignOfSet(d, camps),
       survivors: d.capture.survivors, captured: d.capture.captured, members: d.capture.members, pick: d.capture.pick,
       // each captured survivor with the stop the owner forced onto it, when one is on record (3.145.0)
       rows: (d.capture.rows || []).map((r) => ({ ...r, stop: stopChoiceOf(d, r.label) })), entries: d.capture.entries, looks: (d.capture.reads || []).filter((r) => r && r.look != null).length,
@@ -10648,6 +10791,15 @@ function copyStage4Set(setId, asked = {}) {
   if (taken) { const e = new Error(`a record set called "${name}" already exists (${taken.id}) — pick another name`); e.status = 400; throw e; }
   const stops = asked.stops === true;
   const sizing = asked.sizing === true;
+  // THE SIZING AS THE TAB SHOWS IT (3.249.0, owner 2026-09-25: "the apply button
+  // in tune WAS used ... so i used it again and did save instead"): the save
+  // carried the sizing on RECORD, so a table priced on Tune and never applied
+  // went nowhere, and nothing on the tab said which numbers would travel. With
+  // the multipliers the table was priced at sent beside the tick, the survivors
+  // that table covers -- every captured survivor, or the one picked -- carry
+  // those numbers; any other survivor carries what is on record.
+  const cap0 = sizing && asked.ladder != null ? captureOnSet(src) : null;
+  const table = cap0 ? { ladder: ladderAsked(asked, Math.max(1, Number(cap0.members) || 1)), labels: new Set(sizedLabelsOf(src, cap0, asked.pick)) } : null;
   const seq = seqFor(4);
   const id = `s4-${Date.now().toString(36)}-${seq}`;
   const at = new Date().toISOString();
@@ -10656,24 +10808,22 @@ function copyStage4Set(setId, asked = {}) {
   doc.seq = seq;
   doc.name = name;
   doc.createdAt = at;
-  // the tunings on record, carried only where ticked
+  // the tunings on record, carried only where ticked; the table's numbers where it covers a survivor
   const choices = {};
-  for (const [L, c] of Object.entries(src.stopChoices || {})) {
+  const labels = new Set([...Object.keys(src.stopChoices || {}), ...(table ? table.labels : [])]);
+  for (const L of labels) {
+    const c = (src.stopChoices || {})[L] || null;
     const mine = {};
     if (stops && c && Object.prototype.hasOwnProperty.call(c, 'stopPct')) for (const f of ['stopPct', 'why', 'at', 'by']) if (f in c) mine[f] = c[f];
-    if (sizing && c && c.sizing) mine.sizing = JSON.parse(JSON.stringify(c.sizing));
+    if (table && table.labels.has(L)) mine.sizing = { on: true, ladder: table.ladder.slice(), clipUsd: require('./paper').NOTIONAL, why: `the numbers the conviction table on Tune was priced at, carried when ${src.name} was saved as ${name}`, at, by: 'owner' };
+    else if (sizing && c && c.sizing) mine.sizing = JSON.parse(JSON.stringify(c.sizing));
     if (Object.keys(mine).length) choices[L] = mine;
   }
   doc.stopChoices = choices;
   // History's tables stay beside the set they were run on
   doc.halflife = [];
-  // the reads the data has had: the held and reserve sets of the original, its held-priced History runs, and what it carried itself
-  const had = src.copiedFrom && src.copiedFrom.looks ? src.copiedFrom.looks : {};
-  const looks = {
-    held: judgeSetsOf(src.id, 'held').length + (src.halflife || []).filter((r) => r && r.judge === 'hold').length + (Number(had.held) || 0),
-    reserve: judgeSetsOf(src.id, 'reserve').length + (Number(had.reserve) || 0),
-  };
-  doc.copiedFrom = { id: src.id, name: src.name, at, stops, sizing, looks };
+  // the reads the data has had are the family's, counted where they stand (familyReadsOf)
+  doc.copiedFrom = { id: src.id, name: src.name, at, stops, sizing, ladder: table ? table.ladder.slice() : null };
   // the captured trades, under the copy's own name, with the scans that read them
   const cap = readCapture(src.id);
   if (cap && doc.capture) {
@@ -10683,7 +10833,8 @@ function copyStage4Set(setId, asked = {}) {
   saveSet(doc);
   return {
     id, name, from: src.id, fromName: src.name, survivors: (doc.survivors || []).length, captured: !!doc.capture,
-    stops: Object.values(choices).filter((c) => 'stopPct' in c).length, sizing: Object.values(choices).filter((c) => c.sizing && c.sizing.on).length, looks,
+    stops: Object.values(choices).filter((c) => 'stopPct' in c).length, sizing: Object.values(choices).filter((c) => c.sizing && c.sizing.on).length,
+    ladder: table ? table.ladder : null,
   };
 }
 // ---- THE SIZING APPLIED TO A SURVIVOR (3.151.0, owner order 2026-09-15) ----
@@ -10705,21 +10856,7 @@ function setSizingChoice(setId, asked = {}) {
   const cap = captureOnSet(doc);
   if (!cap) { const e = new Error(`${doc.name}: ${CAPTURE_NOT_YET}`); e.status = 400; throw e; }
   const pick = asked.pick == null || asked.pick === '' || asked.pick === 'depth' ? 'depth' : String(asked.pick);
-  // EVERY SURVIVOR IN THE TABLE (3.235.0, owner order 2026-09-23: "it is going
-  // to apply to all of the settings configurations that are represented in
-  // that table ... that's going to trickle back onto all the survivors"): with
-  // all survivors chosen the one table pools every captured survivor, and the
-  // sizing lands on every one of them.
-  let labels;
-  if (pick === 'all') {
-    labels = (cap.rows || []).map((r) => r.label);
-    if (!labels.length) { const e = new Error(`${doc.name} has no captured survivor to size`); e.status = 400; throw e; }
-  } else {
-    const label = pick === 'depth' ? ((cap.pick || {}).label || null) : pick;
-    const row = (cap.rows || []).find((r) => r.label === label) || null;
-    if (!row) { const e = new Error(pick === 'depth' ? `${doc.name} has no survivor by depth among the captured` : `'${pick}' is not one of the ${cap.captured} captured survivors of ${doc.name}`); e.status = 400; throw e; }
-    labels = [label];
-  }
+  const labels = sizedLabelsOf(doc, cap, pick);
   const on = !!asked.on;
   const why = typeof asked.why === 'string' ? asked.why.trim().slice(0, 300) : '';
   const members = Math.max(1, Number(cap.members) || 1);
@@ -10737,6 +10874,26 @@ function setSizingChoice(setId, asked = {}) {
   fresh.stopChoices = choices;
   saveSet(fresh);
   return { setId: fresh.id, set: fresh.name, survivor: pick === 'all' ? null : labels[0], survivors: labels, sizing: on ? { ...choices[labels[0]].sizing } : null };
+}
+// WHICH SURVIVORS A SIZING LANDS ON: every captured survivor when all survivors
+// are chosen, else the one picked -- by depth among the captured, or named.
+// EVERY SURVIVOR IN THE TABLE (3.235.0, owner order 2026-09-23: "it is going
+// to apply to all of the settings configurations that are represented in
+// that table ... that's going to trickle back onto all the survivors"): with
+// all survivors chosen the one table pools every captured survivor, and the
+// sizing lands on every one of them. The save under a new name reads the same
+// answer (3.249.0), so the two can never cover different survivors.
+function sizedLabelsOf(doc, cap, asked) {
+  const pick = asked == null || asked === '' || asked === 'depth' ? 'depth' : String(asked);
+  if (pick === 'all') {
+    const labels = (cap.rows || []).map((r) => r.label);
+    if (!labels.length) { const e = new Error(`${doc.name} has no captured survivor to size`); e.status = 400; throw e; }
+    return labels;
+  }
+  const label = pick === 'depth' ? ((cap.pick || {}).label || null) : pick;
+  const row = (cap.rows || []).find((r) => r.label === label) || null;
+  if (!row) { const e = new Error(pick === 'depth' ? `${doc.name} has no survivor by depth among the captured` : `'${pick}' is not one of the ${cap.captured} captured survivors of ${doc.name}`); e.status = 400; throw e; }
+  return [label];
 }
 // THE SURVIVOR'S MONEY WITH AND WITHOUT ITS TUNINGS, per window, off its captured
 // trades (3.151.0): the scans' own arithmetic -- a trade stopped when its
@@ -11506,6 +11663,19 @@ function stageGateStart() {
   return stageGateStatus();
 }
 
+// THE CAMPAIGN A STAGE 4 RECORD SET BELONGS TO (3.249.0): the one its stage 3
+// set was run under, which Sweep stamps on the stage 1 set and carries down.
+// A Stage 4 set, a held set and a reserve set carry no campaign of their own,
+// so it is read off the stage 3 set they were cut from -- once a listing.
+function campaignOfSet(doc, cache = null) {
+  const pid = doc && doc.parent && doc.parent.id;
+  if (!pid) return null;
+  if (cache && cache.has(pid)) return cache.get(pid);
+  const p = getSet(pid);
+  const c = (p && p.params && p.params.campaign) || null;
+  if (cache) cache.set(pid, c);
+  return c;
+}
 function listFunnelSets(parentId = null) {
   return listSets()
     .filter((x) => String(x.id).startsWith('s4-'))
@@ -11539,10 +11709,12 @@ function listFunnelSets(parentId = null) {
 // itself, and whether the walk in hand is the walk that wrote one of them.
 function funnelCutsFor(parentId, unitKey) {
   const want = unitKey == null || String(unitKey) === 'all' ? null : String(unitKey);
+  const camps = new Map();
   return listFunnelSets(parentId)
     .filter((d) => !d.exam && !d.derived && d.kind === 'funnel')
     .map((d) => ({
       id: d.id, seq: d.seq, name: d.name, createdAt: d.createdAt,
+      campaign: campaignOfSet(d, camps),
       rebuild: rebuildOf(d),
       unit: d.unit || null,
       mine: (d.unit || null) === want,
@@ -12318,7 +12490,7 @@ module.exports = {
   tuneCaptureDry, tuneCaptureStart, tuneCaptureStatus, tuneOnCapture, captureCandidates, captureTargetOf, readCapture, captureFile,
   tuneScanAimOf, saveTuneScan, readTuneScans, tuneScanFor, tuneScansFile,
   halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet, buildHalfLifeSet, gateOfSet,
-  stopChoiceOf, setStopChoice, fieldFillOf, fieldPairOfSet, fieldWindowDaysOf, ownedFilesOf, copyStage4Set, DEPTH_MEASURE, pickBehind, repickCapture,
+  stopChoiceOf, setStopChoice, fieldFillOf, fieldPairOfSet, fieldWindowDaysOf, ownedFilesOf, copyStage4Set, DEPTH_MEASURE, pickBehind, repickCapture, campaignOfSet, familyRootOf, familyReadsOf, sizedLabelsOf,
   CAPTURE_V, CAPTURE_WINDOWS, CAPTURE_NOT_YET, STOP_NOT_ON_BREAKOUT, scanRefusalOf, ladderAsked, rebuildOf, rebuildStart, rebuildStatus, rebuildWait, recutInPlace, rebuildChainOf,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,

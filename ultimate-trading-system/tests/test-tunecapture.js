@@ -1250,7 +1250,8 @@ module.exports = {
     const at = ui.indexOf('function tnSetBoxHtml(list, chosen) {');
     const rp = ui.indexOf('function rebuildPrefix(x) {');
     // eslint-disable-next-line no-new-func
-    const tnSetBoxHtml = new Function('esc', `${ui.slice(rp, ui.indexOf('\n', rp) + 1)}${ui.slice(at, ui.indexOf('\n}\n', at) + 3)}\nreturn tnSetBoxHtml;`)((t) => String(t));
+    // the campaign tick and the delete beside every Stage 4 record set box (3.249.0) are their own helpers, stood in for here
+    const tnSetBoxHtml = new Function('esc', 's4CampOn', 's4CampNow', 's4CampTickHtml', 's4DeleteRowHtml', `${ui.slice(rp, ui.indexOf('\n', rp) + 1)}${ui.slice(at, ui.indexOf('\n}\n', at) + 3)}\nreturn tnSetBoxHtml;`)((t) => String(t), () => false, { name: '' }, () => '', () => '');
     const list = [
       { id: 's4-a', name: 'HALF LIFE TABLE: my own name', unitName: 'BNBUSDT alongside LTCUSDT daily-4d', counts: { survivors: 51 }, derived: { fromName: 'the set it came from' } },
       { id: 's4-b', name: 'a rule on BTC', unitName: 'BTCUSDT alongside ETCUSDT daily-3d', counts: { survivors: 70 } },
@@ -1304,7 +1305,10 @@ module.exports = {
         assert.ok(out.id !== c.cut.id && /^s4-/.test(out.id) && doc.name === out.name, 'its own id and the name typed');
         assert.deepStrictEqual([doc.rule, doc.survivors, doc.parent, doc.unit], [src0.rule, src0.survivors, src0.parent, src0.unit], 'the same rule and survivors on the same unit');
         assert.deepStrictEqual(doc.halflife, [], 'History\'s tables stay with the set they were run on');
-        assert.deepStrictEqual({ id: doc.copiedFrom.id, name: doc.copiedFrom.name, held: doc.copiedFrom.looks.held }, { id: c.cut.id, name: src0.name, held: heldReads }, 'where it came from, and the held-back reads it carries');
+        assert.deepStrictEqual({ id: doc.copiedFrom.id, name: doc.copiedFrom.name }, { id: c.cut.id, name: src0.name }, 'where it came from');
+        // THE READS ARE THE FAMILY'S, counted where they stand (3.249.0), never a number written onto the copy
+        assert.ok(!('looks' in doc.copiedFrom), 'no count of reads is written onto the copy');
+        assert.strictEqual(stages.familyReadsOf(doc, 'held').stamped, heldReads, 'the held-back reads of the set it was saved from count on it');
         // its captured trades, under its own name
         const capC = stages.readCapture(out.id);
         assert.deepStrictEqual({ ...capC, id: null }, { ...stages.readCapture(c.cut.id), id: null }, 'the captured trades are the original\'s');
@@ -1315,18 +1319,46 @@ module.exports = {
       assert.strictEqual(fs.readFileSync(file, 'utf8'), before, 'the set it was saved from is byte for byte as it was');
       // the reads the data has had are counted on the copy: on its looks line, and in the look a press on it stamps
       const vdry = await stages.judgeDry(neither.out.id, 'held');
-      assert.ok(vdry.looks.what.some((w) => w.includes(`${heldReads} held-back read(s) of ${src0.name}, the set this was saved from`)), vdry.looks.what.join(' | '));
+      assert.ok(vdry.looks.what.some((w) => w.includes(`${heldReads} held-back read(s) of ${src0.name}, saved from the same original`)), vdry.looks.what.join(' | '));
+      assert.deepStrictEqual([vdry.looks.own, vdry.looks.family, vdry.looks.stamped], [0, heldReads, heldReads], 'none below, the original\'s counted');
       stages.judgeStart(neither.out.id, 'held', { barPct: 100 });
       await settle(() => stages.judgeStatus(neither.out.id, 'held'), 'the held read of the copy');
       const hs = stages.judgeSetsOf(neither.out.id, 'held')[0];
       assert.strictEqual(hs.block.look, 1 + heldReads, 'the copy\'s first held-back read is stamped after the reads of the set it was saved from');
-      // a copy of a copy carries both
+      // A READ OF A SIBLING COUNTS (3.249.0): the copy saved first sees the read of the copy saved after it
+      assert.strictEqual(stages.familyReadsOf(stages.getSet(both.out.id), 'held').stamped, heldReads + 1, 'a held read of a set saved from the same original counts on every one of them');
+      // a copy of a copy is the same family
       const again = stages.copyStage4Set(neither.out.id, { name: `${src0.name} again`, stops: false, sizing: false });
       copies.push(again.id);
-      assert.strictEqual(again.looks.held, heldReads + 1, 'the reads of the copy, and of the set it was saved from');
+      assert.strictEqual(stages.familyRootOf(stages.getSet(again.id)), c.cut.id, 'the family is named by the original');
+      assert.strictEqual(stages.familyReadsOf(stages.getSet(again.id), 'held').stamped, heldReads + 1, 'the reads of the copy, and of the set it was saved from');
+      // THE SIZING AS THE TAB SHOWS IT (3.249.0): the numbers the table was priced at, on the survivors it covers
+      const members = stages.getSet(c.cut.id).capture.members;
+      const ladder = Array.from({ length: members }, (_, i) => 0.5 + i / 10);
+      const asTab = stages.copyStage4Set(c.cut.id, { name: `${src0.name} as the tab`, stops: false, sizing: true, ladder, pick: 'all' });
+      copies.push(asTab.id);
+      const tabDoc = stages.getSet(asTab.id);
+      const capLabels = stages.getSet(c.cut.id).capture.rows.map((r) => r.label);
+      assert.ok(capLabels.length > 1 && capLabels.every((L) => JSON.stringify(((tabDoc.stopChoices[L] || {}).sizing || {}).ladder) === JSON.stringify(ladder)), 'every captured survivor carries the table\'s numbers');
+      assert.deepStrictEqual([asTab.ladder, tabDoc.copiedFrom.ladder, asTab.sizing], [ladder, ladder, capLabels.length], 'the reply and the record say which numbers travelled');
+      assert.strictEqual(fs.readFileSync(file, 'utf8'), before, 'and the set it was saved from is still not touched');
+      const onePick = stages.copyStage4Set(c.cut.id, { name: `${src0.name} one survivor`, stops: false, sizing: true, ladder, pick: capLabels[1] });
+      copies.push(onePick.id);
+      const oneDoc = stages.getSet(onePick.id);
+      assert.deepStrictEqual([oneDoc.stopChoices[capLabels[1]].sizing.ladder, oneDoc.stopChoices[depth].sizing.ladder], [ladder, src0.stopChoices[depth].sizing.ladder], 'the survivor the table covers carries its numbers, any other the sizing on record');
+      assert.ok(/give one multiplier for each agreement count/.test(refusal(c.cut.id, { name: `${src0.name} short`, sizing: true, ladder: [1], pick: 'all' })), 'a table of the wrong length is refused');
       // deleting a copy deletes its captured trades and leaves the original's
       stages.deleteSet(both.out.id, both.out.id);
       assert.ok(!fs.existsSync(stages.captureFile(both.out.id)) && fs.existsSync(stages.captureFile(c.cut.id)), 'the copy\'s capture goes with it');
+      // A RULE TAKES ITS HELD SETS WITH IT, AND THEIR LOOKS STAY (3.249.0)
+      const look = stages.deleteSet(neither.out.id);
+      assert.deepStrictEqual([look.preview, look.alsoDeletes.map((x) => x.id), look.readsKept, look.readsKeptOn], [true, [hs.id], 1, src0.name], 'the preview names the held set that goes and where its look is kept');
+      stages.deleteSet(neither.out.id, neither.out.id);
+      assert.ok(!stages.getSet(hs.id), 'the held set read from it went with it');
+      assert.strictEqual(stages.getSet(again.id).copiedFrom.id, c.cut.id, 'the set saved from the deleted copy now names the set that copy was saved from');
+      const famAfter = stages.familyReadsOf(stages.getSet(again.id), 'held');
+      assert.deepStrictEqual([famAfter.stamped, famAfter.gone.map((g) => g.id)], [heldReads + 1, [hs.id]], 'the deleted held set is still a look on the family');
+      assert.strictEqual((stages.getSet(c.cut.id).deletedReads.held || []).length, 1, 'written onto the original, which stays');
     } finally {
       for (const id of copies.slice().reverse()) {
         for (const j of [...stages.judgeSetsOf(id, 'held'), ...stages.judgeSetsOf(id, 'reserve')]) { try { stages.deleteSet(j.id, j.id); } catch (_) { /* gone */ } }
@@ -1417,7 +1449,7 @@ module.exports = {
     const ui = src('public/construct.js');
     const fn = ui.slice(ui.indexOf('function tnCopyPanelHtml('), ui.indexOf('function tnSizingChoiceHtml('));
     assert.ok(fn.length > 0, 'a top-level helper draws it');
-    assert.ok(ui.indexOf("${isSet ? tnCopyPanelHtml(chosen, busy) : ''}") > ui.indexOf('Conviction sizing — bet more when more members agree?'), 'after the conviction sizing panel');
+    assert.ok(ui.indexOf("${isSet ? tnCopyPanelHtml(chosen, busy, copySizingWords) : ''}") > ui.indexOf('Conviction sizing — bet more when more members agree?'), 'after the conviction sizing panel');
     const rows = [...fn.matchAll(/<div class="row"([^>]*)>([\s\S]*?)<\/div>/g)].map((m) => ({ attrs: m[1], body: m[2] }));
     const tickRow = rows.find((r) => r.body.includes('id="tnCopyName"'));
     assert.ok(tickRow && /align-items:flex-end/.test(tickRow.attrs), 'the name and the ticks bottom-align');
@@ -1428,7 +1460,11 @@ module.exports = {
     assert.ok(btnRow && !btnRow.body.includes('<input'), 'the press in a row of its own');
     const help = src('public/help-content.js');
     for (const id of ['tnCopyName', 'tnCopyStops', 'tnCopySizing', 'tnCopy']) assert.ok(new RegExp(`\\n\\s+${id}: \\{`).test(help), `${id} has a help entry`);
-    assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(chosen\.id\)\}\/copy`, \{ name, stops, sizing \}/.test(ui), 'the press sends the name and the two ticks');
+    assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(chosen\.id\)\}\/copy`, \{ name, stops, sizing, \.\.\.\(sizing && pricedLadder \? \{ ladder: pricedLadder, pick: tnPickVal \} : \{\}\) \}/.test(ui), 'the press sends the name, the two ticks, and with the sizing ticked the numbers the table was priced at');
+    // WHAT THE SIZING TICK CARRIES IS SAID IN NUMBERS UNDER THE TICKS (3.249.0)
+    const sayAt = fn.indexOf('id="tnCopySizingSay"');
+    assert.ok(sayAt > fn.indexOf('id="tnCopySizing"') && sayAt < fn.indexOf('id="tnCopy"'), 'the line saying which multipliers travel sits under the ticks, above the press');
+    assert.ok(/\$\{esc\(sizingWords \|\| ''\)\}/.test(fn), 'and it prints the words worked out on the tab');
     const srv = src('server.js');
     assert.ok(srv.includes("app.post('/api/funnel/set/:id/copy'") && /stages\.copyStage4Set\(req\.params\.id, req\.body \|\| \{\}\)/.test(srv), 'the route is served');
   },
