@@ -284,3 +284,42 @@ module.exports.thePendingDecisionIsDrawnFirstOnLiveByTheOnePath = function () {
   const at = live.indexOf('${pendingHtml(st.pending');
   assert.ok(at > 0 && at < live.indexOf('Reproduce-check') && at < live.indexOf('<div class="grid"'), 'drawn above the check line and the money tiles');
 };
+
+// WHICH CONFIG THIS IS (3.260.0): one line under the config's name, drawn by
+// one helper on all five Trade tabs of both books, from facts the configs list
+// serves -- so two configs cut from the same set can be matched tab to tab
+module.exports.everyTradeTabSaysWhichConfigThisIsTheSameWay = function () {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'trade.html'), 'utf8');
+  const body = (name) => { const a = src.indexOf(`async function ${name}(`); const b = src.indexOf('\nasync function ', a + 10); return src.slice(a, b > 0 ? b : a + 20000); };
+  for (const tab of ['drawDash', 'drawConfigs', 'drawSetups', 'drawDetail', 'drawLive']) {
+    assert.ok(/ident(Html|Sub|Line)\(/.test(body(tab)), `${tab} draws the config's identifying line`);
+  }
+  // the line itself: the same helper, the facts in one order, nothing asked of the book
+  const fn = src.slice(src.indexOf('function identLine('), src.indexOf('const IDENT_WHY='));
+  assert.ok(!/branch|isP\b/.test(fn), 'the line does not depend on which book it is on');
+  const identLine = new Function('esc', `${fn}; return identLine;`)((t) => String(t));
+  const g = { id: 'gl-1', name: 'LTCUSDT stage4', ident: { pair: 'LTCUSDT', geometry: 'daily-4d', entry: 'breakout', gate: 'active', d: 0.75, t: 65, trail: 1.5, arm: 0.5, band: 5, pickedBy: 'named' } };
+  assert.strictEqual(identLine(g), 'gl-1 · LTCUSDT daily-4d · breakout active · d 0.75 · t 65 · trail 1.5 · arm 0.5 · band 5% · named by you');
+  assert.strictEqual(identLine({ ...g, name: null, ident: { ...g.ident, entry: 'market', gate: 'directional', d: null, trail: null, arm: null, pickedBy: 'depth' } }), 'LTCUSDT daily-4d · market directional · t 65 · band 5% · by depth', 'an unnamed config shows its id as its name, so the line does not repeat it');
+  // the configs list serves the facts
+  const routes = fs.readFileSync(path.join(__dirname, '..', 'lib', 'live', 'routes.js'), 'utf8');
+  assert.ok(/ident: identOf\(g\)/.test(routes), 'the configs list carries what tells one config from another');
+};
+
+// THE FIELD AND ITS GATE IN TESTED CONFIGURATION (3.261.0), in the same words
+// as the pipeline's step 4b
+module.exports.theTestedConfigurationSaysTheFieldAndItsGate = function () {
+  const an = require('../lib/live/anatomy');
+  const { aSetupConfig } = require('./fixtures-setup');
+  const field = { id: 'fld-1', name: 'LTC field', dials: { windowDays: 60, halfLifeDays: 20 }, gate: { read: 'certainty', agreeMin: 40, certMin: 70, rule: 'both', signOnly: false, rungs: '80:0.75,90:1,100:1.25', silent: 0 } };
+  const cfg = aSetupConfig({ field });
+  const c = an.describeConfig(cfg);
+  assert.strictEqual(c.field, 'fld-1, LTC field: rebuilt at every decision from every closed decision over a window of 60 days, half-life 20 days, and read on the decision\'s own day');
+  assert.ok(/^the call is BLOCKED when the field's sign is against it, BLOCKED when its agreement is below 40 or its certainty is below 70, and otherwise SIZED by the rung its certainty falls in \(80:0\.75,90:1,100:1\.25/.test(c.fieldGate), c.fieldGate);
+  assert.ok(/0× the clip$/.test(c.fieldGate));
+  const step = an.describeAnatomy(cfg).pipeline.find((x) => /^4b\. THE FIELD/.test(x));
+  assert.ok(step.includes(c.field) && step.includes(c.fieldGate.slice(1)), 'the pipeline says the same words');
+  const none = an.describeConfig(aSetupConfig());
+  assert.deepStrictEqual([none.field, none.fieldGate], [null, null], 'no field: a dash on screen');
+  assert.strictEqual(an.describeConfig(aSetupConfig({ field: { id: 'x', error: 'the field x cannot be read' } })).field, 'the field x cannot be read');
+};
