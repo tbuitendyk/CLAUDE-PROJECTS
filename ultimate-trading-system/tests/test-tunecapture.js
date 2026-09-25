@@ -1289,6 +1289,12 @@ module.exports = {
       stages.setStopChoice(c.cut.id, { pick: 'depth', stopPct: 0.25, why: 'a wide stop' });
       stages.setSizingChoice(c.cut.id, { pick: 'depth', on: true, why: 'size by conviction' });
       const file = path.join(SETS_DIR, `${c.cut.id}.json`);
+      // what was done with the original: its held-back row shown on the Funnel, and a ride worked out on Held (3.251.4)
+      stages.recordHeldBackLook(c.cut.id, ['rows']);
+      const withRide = stages.getSet(c.cut.id);
+      withRide.readings = { held: { others: [], dropped: [], ride: [{ id: `${c.cut.id}-held-r1`, at: new Date().toISOString(), look: 1 }] } };
+      withRide.heldBackReadAt = withRide.heldBackReadAt || new Date().toISOString();
+      fs.writeFileSync(file, JSON.stringify(withRide));
       const before = fs.readFileSync(file, 'utf8');
       const src0 = stages.getSet(c.cut.id);
       const heldReads = stages.judgeSetsOf(c.cut.id, 'held').length;
@@ -1315,6 +1321,9 @@ module.exports = {
         assert.ok(out.id !== c.cut.id && /^s4-/.test(out.id) && doc.name === out.name, 'its own id and the name typed');
         assert.deepStrictEqual([doc.rule, doc.survivors, doc.parent, doc.unit], [src0.rule, src0.survivors, src0.parent, src0.unit], 'the same rule and survivors on the same unit');
         assert.deepStrictEqual(doc.halflife, [], 'History\'s tables stay with the set they were run on');
+        // THE COPY'S SCREENS SHOW WHAT WAS DONE WITH THE COPY (3.251.4, owner 2026-09-25: "why did the code leave
+        // the old 'work out the held-back ride' section populated with previous data ... FIX THAT ON HELD AND RESERVE")
+        assert.deepStrictEqual([doc.readings, doc.heldBackLooks, doc.heldBackReadAt, doc.reserveReadAt], [undefined, undefined, undefined, undefined], 'none of the readings, looks or first read of the set it was saved from');
         assert.deepStrictEqual({ id: doc.copiedFrom.id, name: doc.copiedFrom.name }, { id: c.cut.id, name: src0.name }, 'where it came from');
         // THE READS ARE THE FAMILY'S, counted where they stand (3.249.0), never a number written onto the copy
         assert.ok(!('looks' in doc.copiedFrom), 'no count of reads is written onto the copy');
@@ -1331,6 +1340,10 @@ module.exports = {
       const vdry = await stages.judgeDry(neither.out.id, 'held');
       assert.ok(vdry.looks.what.some((w) => w.includes(`${heldReads} held-back read(s) of ${src0.name}, saved from the same original`)), vdry.looks.what.join(' | '));
       assert.deepStrictEqual([vdry.looks.own, vdry.looks.family, vdry.looks.stamped], [0, heldReads, heldReads], 'none below, the original\'s counted');
+      assert.deepStrictEqual([vdry.readings.ride.length, vdry.looks.rides], [0, 0], 'the copy shows no ride of its own, and says none was worked out below');
+      assert.ok(vdry.looks.what.includes('the held-back ride was worked out 1 time(s) on Held on the sets saved from the same original, each a stamped look'), `the original's ride still counts as a look: ${vdry.looks.what.join(' | ')}`);
+      assert.ok(vdry.looks.what.includes('the sets saved from the same original showed their held-back row on the Funnel 1 time(s), each a counted look'), `and the original's held-back row on the Funnel: ${vdry.looks.what.join(' | ')}`);
+      assert.ok(vdry.looks.what.includes('the Stage 4 record set has not shown its held-back row on the Funnel since it went behind a tick'), 'the copy itself has not');
       stages.judgeStart(neither.out.id, 'held', { barPct: 100 });
       await settle(() => stages.judgeStatus(neither.out.id, 'held'), 'the held read of the copy');
       const hs = stages.judgeSetsOf(neither.out.id, 'held')[0];

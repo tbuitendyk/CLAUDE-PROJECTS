@@ -8664,18 +8664,26 @@ function verifyLooksOf(doc, keys, fam) {
   // 3.140.0: the Stage 4 record set keeps its held-back row behind a tick on
   // the Funnel, off every time, and each tick on is a counted look on it
   const cutLooks = ((doc && doc.heldBackLooks) || []).length;
+  // (3.251.4) each set saved from the same original keeps its own, and every one
+  // of them was a look at the same held-back window
+  const them = theOthersSavedFrom(doc, fam);
+  const theirCutLooks = them.reduce((a, m) => a + ((m && m.heldBackLooks) || []).length, 0);
   const what = [
     `every step and step back of the walk printed the held-back line (${steps} step(s), ${back} step(s) back)`,
     cutLooks ? `the Stage 4 record set showed its held-back row on the Funnel ${cutLooks} time(s), each a counted look`
       : 'the Stage 4 record set has not shown its held-back row on the Funnel since it went behind a tick',
+    ...(theirCutLooks ? [`the sets saved from the same original showed their held-back row on the Funnel ${theirCutLooks} time(s), each a counted look`] : []),
     // 3.131.0: Boards keeps the held-back columns behind a tick, off by default, and each tick on is a counted look on the stage 3 set
     boardLooks ? `Boards showed the held-back columns of ${s3.name} ${boardLooks} time(s), each a counted look`
       : `Boards has not shown the held-back columns of ${s3 ? s3.name : 'the stage 3 set'} since they went behind a tick`,
   ];
   if (keys && keys.readsHeldBackTrades) what.push('one floor of the rule read the held-back trade count');
-  // the held-back ride (3.88.0) prints held-back numbers per survivor: a look, stamped
+  // the held-back ride (3.88.0) prints held-back numbers per survivor: a look, stamped;
+  // the rides are the set's own, the ones Held shows below (3.251.4)
   const rides = readingsIn(doc, 'held').ride.length;
   if (rides) what.push(`the held-back ride was worked out ${rides} time(s) on Held, each a stamped look`);
+  const theirRides = them.reduce((a, m) => a + readingsIn(m, 'held').ride.length, 0);
+  if (theirRides) what.push(`the held-back ride was worked out ${theirRides} time(s) on Held on the sets saved from the same original, each a stamped look`);
   // a tool run on Tune that read the captured held-back entries (3.92.0): a look, stamped on the capture
   const tuneReads = (((captureOnSet(doc) || {}).reads) || []).filter((r) => r && r.look != null).length;
   if (tuneReads) what.push(`a scan on Tune read the captured held-back trades ${tuneReads} time(s), each a stamped look`);
@@ -8729,6 +8737,11 @@ function familyReadsOf(doc, stretch, all = null) {
   const gone = members.flatMap((m) => (((m.deletedReads || {})[stretch]) || []));
   const own = sets.filter((x) => x.from.id === doc.id).length;
   return { members, sets, gone, own, family: sets.length - own, stamped: sets.length + gone.length };
+}
+// the other sets saved from the same original as this one, each with what was done with it (3.251.4)
+function theOthersSavedFrom(doc, fam) {
+  const id = doc && doc.id;
+  return (fam && Array.isArray(fam.members) ? fam.members : []).filter((m) => m && m.id !== id);
 }
 function familyReadWords(doc, fam, stretch) {
   const out = [];
@@ -9206,13 +9219,16 @@ function reserveBoardStop(id) {
 }
 // the looks a reserve set counts: the unit's board pricings (the first was the one look at data nothing had seen), the reserve sets already made from this rule, and the rides worked out on it
 function reserveLooksOf(doc, fam, board = null) {
+  // the rides are the set's own, the ones Reserve shows below; the sets saved from the same original keep theirs (3.251.4)
   const rides = readingsIn(doc, 'reserve').ride.length;
+  const theirRides = theOthersSavedFrom(doc, fam).reduce((a, m) => a + readingsIn(m, 'reserve').ride.length, 0);
   const pricings = board && board.priced ? board.pricings : 0;
   // a scan on Tune that read the captured reserve entries (3.150.0): a look on the reserve, stamped on the capture
   const tuneReads = (((captureOnSet(doc) || {}).reads) || []).filter((r) => r && r.reserveLook != null).length;
   const what = [];
   if (pricings) what.push(`the reserve board of this unit was priced ${pricings} time(s), first on ${String(board.firstAt || '').slice(0, 10)} — that pricing was the one look at data nothing in the system had seen`);
   if (rides) what.push(`the reserve ride was worked out ${rides} time(s) on Reserve, each a stamped look`);
+  if (theirRides) what.push(`the reserve ride was worked out ${theirRides} time(s) on Reserve on the sets saved from the same original, each a stamped look`);
   if (tuneReads) what.push(`a scan on Tune read the captured reserve trades ${tuneReads} time(s), each a stamped look`);
   what.push(...familyReadWords(doc, fam, 'reserve'));
   // nothing before a pricing opens the reserve window: no walk printed it, no tick shows it
@@ -10847,6 +10863,17 @@ function copyStage4Set(setId, asked = {}) {
   doc.stopChoices = choices;
   // History's tables stay beside the set they were run on
   doc.halflife = [];
+  // WHAT WAS DONE WITH THE SET SAVED FROM STAYS WITH IT (3.251.4, owner 2026-09-25:
+  // "why did the code leave the old 'work out the held-back ride' section
+  // populated with previous data ... FIX THAT ON HELD AND RESERVE"): its
+  // readings on Held and Reserve -- the rule on the other units, what it
+  // dropped, its ride -- its held-back row shown on the Funnel, and when it was
+  // first read. The copy's screens show what was done with the copy; every look
+  // the original had still counts on the copy, through the family (verifyLooksOf).
+  delete doc.readings;
+  delete doc.heldBackLooks;
+  delete doc.heldBackReadAt;
+  delete doc.reserveReadAt;
   // the reads the data has had are the family's, counted where they stand (familyReadsOf)
   doc.copiedFrom = { id: src.id, name: src.name, at, stops, sizing, ladder: table ? table.ladder.slice() : null };
   // the captured trades, under the copy's own name, with the scans that read them
