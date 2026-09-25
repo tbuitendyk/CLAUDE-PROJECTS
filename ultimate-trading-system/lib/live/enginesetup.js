@@ -23,6 +23,9 @@ const crypto = require('crypto');
 const DIR = () => process.env.GC_ENGINE_SETUPS_DIR || path.join(__dirname, '..', '..', 'data', 'live', 'engine-setups');
 const ID_RE = /^es-[a-z0-9]{6,12}-[0-9a-f]{6}$/;
 const NAME_MAX = 60;
+// the engine record's own rule for a short name (lib/live/targets.js), so the
+// short name chosen here is the one step 6 saves the engine under
+const SHORT_RE = /^[a-z0-9][a-z0-9-]{1,29}$/;
 
 // ---- THE TEMPLATE -----------------------------------------------------------
 // A guidance block shows when each of its `when` choices matches; one marked
@@ -126,14 +129,42 @@ function list() {
 }
 const withSteps = (rec) => ({ ...rec, steps: stepsOf(rec) });
 
-// ONE PER ENGINE: a checklist is started under the name of the engine it sets up
-function create(name) {
+// THE ENGINE'S TWO NAMES (owner, 2026-09-25): a short name -- letters, digits,
+// dashes -- and a descriptive name, what the screens show, exactly as the
+// engine record asks for them; step 6 saves the engine under both. A short
+// name another checklist or an engine record already has is refused.
+function checkShort(shortName, selfId = null) {
+  const v = String(shortName == null ? '' : shortName).trim();
+  const bad = (m) => { const e = new Error(m); e.status = 400; throw e; };
+  if (!SHORT_RE.test(v)) bad('short name: 2 to 30 of a-z, 0-9 and -, starting with a letter or digit');
+  if (v === 'mx-1') bad('short name: mx-1 is the old order program');
+  const other = list().find((x) => x.shortName === v && x.id !== selfId);
+  if (other) bad(`short name: ${v} is already the short name of the setup for "${other.name}"`);
+  const eng = require('./targets').listEngines().find((t) => t.id === v);
+  if (eng) bad(`short name: ${v} is already the short name of the engine record "${eng.name}"`);
+  return v;
+}
+
+// ONE PER ENGINE: a checklist is started under the two names of the engine it sets up
+function create(name, shortName) {
   const n = String(name == null ? '' : name).trim();
-  if (!n || n.length > NAME_MAX) { const e = new Error(`name the engine this sets up: 1 to ${NAME_MAX} characters`); e.status = 400; throw e; }
+  if (!n || n.length > NAME_MAX) { const e = new Error(`descriptive name: 1 to ${NAME_MAX} characters`); e.status = 400; throw e; }
   const taken = list().find((x) => String(x.name).toLowerCase() === n.toLowerCase());
   if (taken) { const e = new Error(`there is already a setup for an engine called "${taken.name}" — one per engine`); e.status = 400; throw e; }
+  const sn = checkShort(shortName);
   const now = new Date().toISOString();
-  const rec = { id: `es-${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`, name: n, templateVersion: TEMPLATE.version, createdUtc: now, updatedUtc: now, engineId: null, choices: {}, ticks: {} };
+  const rec = { id: `es-${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`, name: n, shortName: sn, templateVersion: TEMPLATE.version, createdUtc: now, updatedUtc: now, engineId: null, choices: {}, ticks: {} };
+  write(rec);
+  return withSteps(rec);
+}
+
+// the short name of a checklist started before it was asked for, or a new one
+// while its engine is not saved yet
+function setShortName(id, shortName) {
+  const rec = read(id);
+  if (rec.engineId) { const e = new Error(`the engine is saved under ${rec.engineId}; its short name is the engine record's now`); e.status = 400; throw e; }
+  rec.shortName = checkShort(shortName, rec.id);
+  rec.updatedUtc = new Date().toISOString();
   write(rec);
   return withSteps(rec);
 }
@@ -192,4 +223,4 @@ function remove(id) {
   return { ok: true, id };
 }
 
-module.exports = { TEMPLATE, stepsOf, list: () => list().map(withSteps), get: (id) => withSteps(read(id)), create, setChoice, setTick, remove, DIR };
+module.exports = { TEMPLATE, stepsOf, list: () => list().map(withSteps), get: (id) => withSteps(read(id)), create, setShortName, setChoice, setTick, remove, DIR };

@@ -25,10 +25,13 @@ module.exports = {
 
   // ONE PER ENGINE, and each step opens only when the one before it is done
   aChecklistOpensEachStepOnlyWhenTheOneBeforeIsDone() {
-    const a = es.create('Mexico engine');
+    const a = es.create('Mexico engine', 'mx-engine-2');
     assert.deepStrictEqual(a.steps.map((s) => [s.open, s.done]), [[true, false], [false, false], [false, false], [false, false], [false, false], [false, false], [false, false]]);
-    refused(() => es.create(' mexico ENGINE '), /already a setup for an engine called "Mexico engine" — one per engine/);
-    refused(() => es.create(''), /name the engine this sets up/);
+    refused(() => es.create(' mexico ENGINE ', 'other'), /already a setup for an engine called "Mexico engine" — one per engine/);
+    refused(() => es.create('', 'other'), /^descriptive name: 1 to 60 characters$/);
+    refused(() => es.create('Another', 'Not Short'), /^short name: 2 to 30 of a-z, 0-9 and -, starting with a letter or digit$/);
+    refused(() => es.create('Another', 'mx-engine-2'), /short name: mx-engine-2 is already the short name of the setup for "Mexico engine"/);
+    refused(() => es.create('Another', 'mx-1'), /mx-1 is the old order program/);
     refused(() => es.setTick(a.id, 'access', 'x', true), /^step 2 opens when step 1 is done$/);
     refused(() => es.setChoice(a.id, 'ready', 'os', 'mac'), /^its operating system is asked only when where it runs is this computer$/);
     refused(() => es.setChoice(a.id, 'ready', 'where', 'moon'), /one of a rented server, this computer/);
@@ -65,4 +68,24 @@ module.exports = {
     assert.ok(/<div class="row" style="margin-top:\.9rem"><button id="esDelete" class="danger"/.test(src), 'Delete this setup has a row of its own');
     assert.ok(/opens when step ' \+ i \+ ' is done/.test(src) && /This step is still being written\./.test(src), 'a locked step and a step still being written say so');
   },
+};
+
+// THE ENGINE'S TWO NAMES (3.264.0): asked when a setup starts; a checklist
+// started before they were asked for is given its short name on screen
+module.exports.aChecklistCarriesTheEnginesTwoNames = function () {
+  const dir = process.env.GC_ENGINE_SETUPS_DIR;
+  const id = 'es-muhgabc1-a1b2c3';
+  fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({ id, name: 'CDMX UTS Trading Engine (AWS)', templateVersion: 1, createdUtc: '2026-09-25T20:55:00.000Z', updatedUtc: '2026-09-25T20:55:00.000Z', engineId: null, choices: {}, ticks: {} }));
+  assert.strictEqual(es.get(id).shortName, undefined);
+  refused(() => es.setShortName(id, 'CDMX'), /^short name: 2 to 30/);
+  assert.strictEqual(es.setShortName(id, 'cdmx-engine').shortName, 'cdmx-engine');
+  const b = es.create('Second engine', 'second-engine');
+  refused(() => es.setShortName(b.id, 'cdmx-engine'), /already the short name of the setup for "CDMX UTS Trading Engine \(AWS\)"/);
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
+  assert.ok(/setups\.length > 1\s*\? '<div class="row" style="margin-bottom:\.5rem"><label class="c"><span class="muted">show the checklist for<\/span>/.test(src), 'the picker shows only with more than one checklist');
+  assert.ok(/<b style="font-size:\.95rem">' \+ esc\(sel\.name\) \+ '<\/b>/.test(src), 'the checklist is headed with its engine\'s name');
+  assert.ok(/id="esShortFix"/.test(src) && /<button id="esShortSave">Save the short name<\/button>/.test(src), 'a checklist without a short name asks for it');
+  assert.ok(/<button id="esNewToggle"[^>]*>' \+ \(cEsNew \? '▾' : '▸'\) \+ ' Set up another engine<\/button>/.test(src), 'another engine is set up behind its own button');
+  assert.ok(!/name for the new engine/.test(src), 'the name box that read as this engine\'s second name is gone');
+  es.remove(id); es.remove(b.id);
 };

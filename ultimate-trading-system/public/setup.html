@@ -208,7 +208,10 @@ let cEngEdit = null;         // the engine record being changed in the form, or 
 let cEngTyped = {};          // what is typed in the form, kept across the thirty-second redraw
 let cEs = null;              // the engine setups: the template and one checklist per engine (owner, 2026-09-25)
 let cErrEs = null;
-let cEsTyped = '';           // the name typed for a new engine, kept across the redraw
+let cEsTyped = '';           // the descriptive name typed for another engine, kept across the redraw
+let cEsTypedShort = '';      // its short name, likewise
+let cEsTypedFix = '';        // the short name typed for a checklist started without one
+let cEsNew = false;          // the boxes for another engine's setup shown or not
 let cEsOpen = false;         // the setup area open or closed: this viewer's own, remembered in the browser
 let cEsSel = null;           // which engine's checklist is shown
 try { cEsOpen = localStorage.getItem('setup-es-open') === '1'; cEsSel = localStorage.getItem('setup-es-sel') || null; } catch (_) { /* a private window: closed, newest */ }
@@ -598,6 +601,18 @@ function esSetupHtml(s, t) {
   return '<div style="border-top:1px solid var(--line);margin-top:.7rem">' + blocks + '</div>'
     + '<div class="row" style="margin-top:.9rem"><button id="esDelete" class="danger" title="takes this checklist away; nothing on any machine is touched">Delete this setup</button></div>';
 }
+// THE TOP OF THE CHECKLIST SAYS WHOSE IT IS (owner, 2026-09-25). A picker of
+// checklists and a name box for another engine sat side by side at the top,
+// and read as two names for one engine. The checklist is headed with its
+// engine's two names; the picker appears only when there is more than one; and
+// another engine's setup is started behind a button of its own, asking the
+// same two names the engine record asks for.
+function esNewHtml() {
+  return '<div class="row" style="margin-top:.5rem">'
+    + '<label class="c"><span class="muted">short name — letters, digits, dashes</span><input id="esShort" value="' + esc(cEsTypedShort) + '" placeholder="mx-engine-2" style="width:11rem"></label>'
+    + '<label class="c"><span class="muted">descriptive name — what you see on screen</span><input id="esName" value="' + esc(cEsTyped) + '" placeholder="Mexico engine 2" style="width:16rem"></label></div>'
+    + '<div class="row" style="margin-top:.5rem"><button id="esStart">Start its setup</button><span id="esMsg" class="note"></span></div>';
+}
 function esHtml() {
   let body = '';
   if (cEsOpen) {
@@ -605,13 +620,23 @@ function esHtml() {
     else {
       const setups = cEs.setups || [];
       const sel = currentEs();
-      body = (setups.length
-        ? '<div class="row"><label class="c" title="one checklist per engine: the one shown below"><span class="muted">engine being set up</span><select id="esSel">'
-          + setups.map((x) => '<option value="' + esc(x.id) + '"' + (sel && x.id === sel.id ? ' selected' : '') + '>' + esc(x.name) + ' — ' + esProgress(x) + '</option>').join('') + '</select></label></div>'
-        : '<p class="note" style="margin:0">no engine is being set up yet: name the engine this is for, and start its setup</p>')
-        + '<div class="row" style="margin-top:.5rem"><label class="c" title="what you want to call the engine this checklist sets up; one checklist per engine"><span class="muted">name for the new engine</span><input id="esName" value="' + esc(cEsTyped) + '" style="width:16rem"></label></div>'
-        + '<div class="row" style="margin-top:.5rem"><button id="esStart">Start its setup</button><span id="esMsg" class="note"></span></div>'
-        + (sel ? esSetupHtml(sel, cEs.template) : '');
+      if (!sel) {
+        body = '<p class="note" style="margin:0">no engine is being set up yet: give the engine its two names, and start its setup</p>' + esNewHtml();
+      } else {
+        body = (setups.length > 1
+          ? '<div class="row" style="margin-bottom:.5rem"><label class="c"><span class="muted">show the checklist for</span><select id="esSel">'
+            + setups.map((x) => '<option value="' + esc(x.id) + '"' + (x.id === sel.id ? ' selected' : '') + '>' + esc(x.name) + ' — ' + esProgress(x) + '</option>').join('') + '</select></label></div>'
+          : '')
+          + '<div class="row" style="align-items:baseline"><b style="font-size:.95rem">' + esc(sel.name) + '</b>'
+          + (sel.shortName ? '<span class="note">short name ' + esc(sel.shortName) + '</span>' : '') + '<span class="note">' + esProgress(sel) + '</span></div>'
+          // a checklist started before the short name was asked for asks for it here
+          + (sel.shortName ? '' : '<div class="row" style="margin-top:.5rem"><label class="c"><span class="muted">short name — letters, digits, dashes</span><input id="esShortFix" value="' + esc(cEsTypedFix) + '" placeholder="mx-engine-2" style="width:11rem"></label>'
+            + '<span class="note">this engine has no short name yet: it is the one the engine is saved under at step 6</span></div>'
+            + '<div class="row" style="margin-top:.5rem"><button id="esShortSave">Save the short name</button><span id="esShortMsg" class="note"></span></div>')
+          + esSetupHtml(sel, cEs.template)
+          + '<div class="row" style="margin-top:1rem;border-top:1px solid var(--line);padding-top:.7rem"><button id="esNewToggle" aria-expanded="' + cEsNew + '">' + (cEsNew ? '▾' : '▸') + ' Set up another engine</button></div>'
+          + (cEsNew ? esNewHtml() : '');
+      }
     }
   }
   return '<div class="row" style="margin-top:.4rem"><button id="esToggle" aria-expanded="' + cEsOpen + '" title="opens and closes the checklist that takes an engine from nothing to installed and running, one step at a time">' + (cEsOpen ? '▾' : '▸') + ' Set up a trading engine</button></div>'
@@ -633,6 +658,21 @@ function wireEs() {
   if (tg) tg.onclick = () => { cEsOpen = !cEsOpen; try { localStorage.setItem('setup-es-open', cEsOpen ? '1' : '0'); } catch (_) { /* not remembered */ } drawCompute(); };
   const nm = $('#esName');
   if (nm) nm.oninput = () => { cEsTyped = nm.value; };
+  const sh = $('#esShort');
+  if (sh) sh.oninput = () => { cEsTypedShort = sh.value; };
+  const fx = $('#esShortFix');
+  if (fx) fx.oninput = () => { cEsTypedFix = fx.value; };
+  const nt = $('#esNewToggle');
+  if (nt) nt.onclick = () => { cEsNew = !cEsNew; drawCompute(); };
+  const fs = $('#esShortSave');
+  if (fs) fs.onclick = async () => {
+    const sel = currentEs();
+    const msg = $('#esShortMsg');
+    if (!sel) return;
+    fs.disabled = true;
+    try { await postJson('api/live/engine-setups/' + encodeURIComponent(sel.id) + '/short', { shortName: $('#esShortFix').value.trim() }); cEsTypedFix = ''; await esReload(); }
+    catch (e) { msg.innerHTML = '<span class="neg">not saved — ' + esc(e.message) + '</span>'; fs.disabled = false; }
+  };
   const sl = $('#esSel');
   if (sl) sl.onchange = () => { cEsSel = sl.value; try { localStorage.setItem('setup-es-sel', cEsSel); } catch (_) { /* not remembered */ } drawCompute(); };
   const st = $('#esStart');
@@ -641,9 +681,11 @@ function wireEs() {
     st.disabled = true;
     msg.innerHTML = 'starting…';
     try {
-      const got = await postJson('api/live/engine-setups', { name: $('#esName').value.trim() });
+      const got = await postJson('api/live/engine-setups', { name: $('#esName').value.trim(), shortName: $('#esShort').value.trim() });
       cEsSel = got.setup.id;
       cEsTyped = '';
+      cEsTypedShort = '';
+      cEsNew = false;
       try { localStorage.setItem('setup-es-sel', cEsSel); } catch (_) { /* not remembered */ }
       await esReload();
     } catch (e) { msg.innerHTML = '<span class="neg">not started — ' + esc(e.message) + '</span>'; st.disabled = false; }

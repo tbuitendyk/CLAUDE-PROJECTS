@@ -135,7 +135,8 @@ function installLiveRoutes(app, { csrfGuard }) {
   app.get('/api/live/engine-setups', (req, res) => {
     try { res.json({ template: es.TEMPLATE, setups: es.list() }); } catch (e) { res.status(500).json({ error: e.message }); }
   });
-  app.post('/api/live/engine-setups', csrfGuard, (req, res) => esSend(res, () => es.create((req.body || {}).name)));
+  app.post('/api/live/engine-setups', csrfGuard, (req, res) => esSend(res, () => es.create((req.body || {}).name, (req.body || {}).shortName)));
+  app.post('/api/live/engine-setups/:id/short', csrfGuard, (req, res) => esSend(res, () => es.setShortName(String(req.params.id), (req.body || {}).shortName)));
   app.post('/api/live/engine-setups/:id/choice', csrfGuard, (req, res) => esSend(res, () => { const b = req.body || {}; return es.setChoice(String(req.params.id), String(b.step || ''), String(b.choice || ''), String(b.value || '')); }));
   app.post('/api/live/engine-setups/:id/tick', csrfGuard, (req, res) => esSend(res, () => { const b = req.body || {}; return es.setTick(String(req.params.id), String(b.step || ''), String(b.tick || ''), b.on === true); }));
   app.post('/api/live/engine-setups/:id/delete', csrfGuard, (req, res) => { try { res.json(es.remove(String(req.params.id))); } catch (e) { res.status(e.status || 500).json({ error: e.message }); } });
