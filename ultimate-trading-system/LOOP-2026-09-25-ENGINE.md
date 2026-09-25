@@ -177,6 +177,24 @@ Mexico City.
   so an open position still closes by its stop or its hold -- the old program's
   rule, kept (3.255.0).
 
+- D12. The new engine's keys come only from its own store, entered on Setup >
+  Account (item 7). Each trading account is one file, encrypted, opened by a
+  key only the engine's user can read; the web box passes keys through and
+  keeps nothing; the list answers present or missing and when (3.256.0).
+- D13. A key is asked, with itself, what it may do. One that allows
+  withdrawals or transfers, is not locked to one address, or cannot trade or
+  borrow on margin is not kept, and the page says why (3.256.0).
+- D14. Paper pays what the account would pay: its own taker fee on every fill
+  (a market order pays the taker's fee) and, on every hour of a short, the rate
+  quoted to it -- both read with its own key as the plan arrives and hourly
+  after. Without keys, the fill pays the setup's fee and the hour is recorded
+  unpriced. Found on the way: the simulated exchange charged its own setting
+  and ignored the fee the plan carried (3.256.0).
+- D15. The producer's steps live in lib/live/engineproduce.js with every
+  dependency handed in, so each is tested: the period decided, written before
+  sent, sent once, a stand-aside written with nothing sent, a refused plan
+  asked again, a window with a hole waits (3.256.1).
+
 ## Found and fixed after a deploy
 
 - 3.254.0 shipped the engine form on Setup > Compute with captions over their
@@ -210,3 +228,23 @@ Mexico City.
   orders by its own client ids, and its reconcile reads only the coin -- so the
   order tests' last condition holds. Whether and how the probe runs is the
   owner's decision.
+- P3 (09:15 UTC). Stage D -- live orders and `Activate real` -- is built from
+  what the probe shows (the approved plan), and the probe is parked (P2), so
+  stage D is parked with it and none of it was written. In place for it: the
+  mode on every call, a live plan refused while real orders are off, the key
+  store and the keyed reads, and `Activate real` refusing on an engine whose
+  real orders are off.
+
+## Where it stands at the end of the loop
+
+- Deployed to the web box: 3.254.0 to 3.256.1. The whole suite is green at
+  3.256.1 (1259 tests). 53 guards were written on the lines this loop shipped;
+  every one is caught, after one was re-aimed through a new S3 kind and one
+  on a redundant gate was deleted.
+- Met: S2, S3 (six kinds of trade, to the cent), S4, S5, S6, S7, S12, and S8 in
+  code (the store is built and tested; it has never run on the trading box).
+- Not met, because the engine is not on the trading box (P1): S1's before and
+  after, S9 (events within seconds, measured), S11 (the manual pick on Paper
+  Books with its plan held by the engine). S10 is the probe (P2).
+- The old order program on the trading box: read, never touched; its program
+  file is unchanged (sha256 65d077efe8ec00c3).
