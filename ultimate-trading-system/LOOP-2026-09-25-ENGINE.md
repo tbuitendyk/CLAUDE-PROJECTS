@@ -248,3 +248,15 @@ Mexico City.
   Books with its plan held by the engine). S10 is the probe (P2).
 - The old order program on the trading box: read, never touched; its program
   file is unchanged (sha256 65d077efe8ec00c3).
+
+## After the loop
+
+- P1 resolved (09:25 UTC). The owner said: "install the new engine on the
+  trading box", then GO NOW!. vps-access/scripts/uts-engine-deploy.sh installed Node
+  20.19.2 from Debian's packages, the uts-engine user, the code in
+  /opt/uts-engine (commit 78e09d19, release 3.256.1) and the uts-engine service
+  on the trading box, plus the uts-engine-link service on the web box
+  (127.0.0.1:18095 at both ends). The engine answers on the trading box and
+  from the web box: real orders off, no plans, no keys, key store open.
+  S1: the old order program's fingerprint (65d077efe8ec00c3...), env file,
+  master switch, timers and units were identical before and after.
