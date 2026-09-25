@@ -241,6 +241,26 @@ const esc=(t)=>{
   return String(t??'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
 };
 const paperBadge='<span class="badge b-paper" title="paper — not real money">paper</span>';
+// WHICH CONFIG THIS IS (owner, 2026-09-25: "the software need to give
+// distinguishing information between greenlit configs so that on all of the
+// tabs under trade the exact config that we are looking at can be matched up").
+// One line under its name, drawn by these two helpers on every tab of both
+// books: its id (the id Construct's Greenlight tab lists), the pair and chunk
+// shape, the setting, and how its survivor was picked.
+function identLine(g){
+  const i=(g&&g.ident)||{};
+  const n=(v)=>esc(String(Number(v)));
+  return [g&&g.name?esc(g.id):null,
+    [i.pair,i.geometry].filter(Boolean).map(esc).join(' ')||null,
+    [i.entry,i.gate].filter(Boolean).map(esc).join(' ')||null,
+    i.d!=null?`d ${n(i.d)}`:null, i.t!=null?`t ${n(i.t)}`:null,
+    i.trail!=null?`trail ${n(i.trail)}`:null, i.arm!=null?`arm ${n(i.arm)}`:null,
+    i.band!=null?`band ${n(i.band)}%`:null,
+    i.pickedBy==='depth'?'by depth':i.pickedBy==='named'?'named by you':null].filter(Boolean).join(' · ');
+}
+const IDENT_WHY='which config this is: its id (as the Greenlight tab on Construct lists it), the pair and chunk shape, its setting, and how its survivor was picked. The same line on every tab here, on both books.';
+const identSub=(g)=>`<div class="muted" style="font-size:.72rem;margin-top:.1rem;text-transform:none;letter-spacing:0" title="${IDENT_WHY}">${identLine(g)}</div>`;
+const identHtml=(g)=>`<b>${esc((g&&(g.name||g.id))||'—')}</b>${identSub(g)}`;
 
 // COLUMN KEYS. The owner's standing rule: every table gets a name and a key, and
 // the key defines every heading in plain words INCLUDING ITS UNITS — money and
@@ -248,7 +268,7 @@ const paperBadge='<span class="badge b-paper" title="paper — not real money">p
 // operator does next. This page had 67 headings and not one of them said what it
 // held. Written once here so the same word means the same thing on every table.
 const TH={
-  config:'the greenlighted configuration — the entity both sides trade. Minted on the Construct tab and never edited here.',
+  config:'the greenlighted configuration — the entity both sides trade. Minted on the Construct tab and never edited here. Under its name: its id, the pair and chunk shape, its setting and how its survivor was picked — the same line on every tab, so one config can be matched from tab to tab.',
   pair:'the TRADED pair. On a three-asset committee the other two are context only — nothing is bought or sold in them.',
   campaign:'the named line of work the record sets behind this config belonged to. Blank means it was not filed under one.',
   why:'the reason recorded at greenlight time, in the words of whoever cleared it. It is the decision record and cannot be edited afterwards.',
@@ -623,8 +643,8 @@ async function drawConfigs(){
       const needsKey=branch==='real'&&!(ch2&&ch2.keyRefSet);
       const realBlocked=needsKey;
       return `<tr class="clickable" data-id="${g.id}">
-      <td><b>${esc(g.name||g.id)}</b>
-        <button data-ren="${g.id}" class="themebtn" title="rename this config and restate its reasoning. Labels only — nothing here changes what it trades.">Rename</button></td>
+      <td style="text-align:left"><b>${esc(g.name||g.id)}</b>
+        <button data-ren="${g.id}" class="themebtn" title="rename this config and restate its reasoning. Labels only — nothing here changes what it trades.">Rename</button>${identSub(g)}</td>
       <td>${esc(g.pair||'—')}</td><td class="muted">${esc(g.campaign||'—')}</td>
       <td style="max-width:20rem;white-space:normal;text-align:left" class="muted">${esc(g.why)}</td>
       <td style="white-space:nowrap" class="${/active/.test(g.status)?'pos':'muted'}">${esc(g.status)}</td>
@@ -669,9 +689,10 @@ async function drawSetups(){
   const rows=(d.setups||[]).filter(s=>wanted.has(s.id));
   if(!rows.length){ $('#view').innerHTML=`<div class="panel empty">No ${branch==='paper'?'paper books':'live setups'} yet — activate a config on the Greenlights page.</div>`; return; }
   $('#view').innerHTML=`<div class="panel"><table><thead><tr>
-    ${th('setup','setup')}${th('pair','pair')}${th('state','state')}${th('clip','clip')}${th('stop','stop')}${th('fee','fee')}${th('created','created')}</tr></thead><tbody>
+    ${th('setup','setup')}${th('config','config','text-align:left')}${th('pair','pair')}${th('state','state')}${th('clip','clip')}${th('stop','stop')}${th('fee','fee')}${th('created','created')}</tr></thead><tbody>
     ${rows.map(s=>`<tr class="clickable" data-id="${s.id}">
       <td>${esc(s.name)} ${branch==='paper'?paperBadge:''}</td>
+      <td style="text-align:left">${identHtml(meta[s.id])}</td>
       <td>${esc(s.tradedPair)}</td><td><span class="badge b-${s.state==='live'?'live':s.state==='paper'?'paper':s.state==='stopped'?'stopped':'idle'}">${s.state}</span></td>
       <td>$${Number(s.clipUsd).toFixed(0)}</td>
       <td>${s.stopPct==null?'—':(s.stopPct*100).toFixed(2)+'%'}</td>
@@ -737,8 +758,8 @@ async function drawDash(){
   const isP=branch==='paper';
   const { rows, totR, totU, totOpen, skipped } = dashTotals(parts, isP);
   const cards=rows.map(({g,ch,rp,up,open})=>
-    `<div class="tile" style="cursor:pointer" data-id="${g.id}" data-setup="${ch.setupId}">
-      <div class="k">${esc(g.id)} ${isP?paperBadge:''}</div>
+    `<div class="tile" style="cursor:pointer" data-id="${g.id}" data-setup="${ch.setupId}" title="one book: its config's name and, under it, which config it is; the money it has banked, in US dollars; then the money its open positions would make or lose, how many are open, and where it stands. Press it to open its LIVE.">
+      <div class="k">${esc(g.name||g.id)} ${isP?paperBadge:''}</div>${identSub(g)}
       <div class="v ${cls(rp)}">${money(rp)}</div>
       <div class="muted" style="font-size:.72rem">unreal ${money(up)} · open ${open} · ${esc(g.status)}</div></div>`
   ).join('');
@@ -776,7 +797,7 @@ async function drawDetail(){
   if(!g){ $('#view').innerHTML=`<div class="panel empty">Select a config from the Greenlights page.</div>`; return; }
   selectedConfig=g.id;
   const ch=chanOf(g);
-  if(!ch){ $('#view').innerHTML=`<div class="panel"><div class="row"><b style="font-size:1rem">${esc(g.id)}</b>
+  if(!ch){ $('#view').innerHTML=`<div class="panel"><div class="row"><div style="font-size:1rem">${identHtml(g)}</div>
       <span class="badge b-idle">idle</span><div class="spacer"></div>
       <button id="actBtn" class="pri">Activate ${branch}</button></div>
       <div class="muted" style="margin-top:.4rem">This config has never run on the ${branch} side. Activate to start it.</div></div>`;
@@ -798,6 +819,7 @@ async function drawDetail(){
       <div class="spacer"></div>
       ${active?`<button id="deactBtn">Deactivate</button>`:`<button id="actBtn" class="pri">Activate ${branch}</button>`}
     </div>
+    <div style="margin-top:.35rem;font-size:.85rem">${identHtml(g)}</div>
     <div class="muted" style="font-size:.74rem;margin-top:.3rem">Deactivate stops new entries; open positions exit on schedule and the record freezes. ${branch==='real'?'<b class="warn">Real channel — real money when armed.</b>':''}</div></div>
     <div class="grid" style="margin-bottom:1rem">
       ${tile('Pair','pair',esc(s.tradedPair))}
@@ -1037,7 +1059,7 @@ async function drawLive(){
   // names them the way the owner named them.
   const picker=running.length>1
     ? `<div class="row" style="margin-bottom:.5rem"><label class="muted" title="every config running on this side">watching
-        <select id="liveWhich">${running.map(x=>`<option value="${esc(x.id)}" ${x.id===g.id?'selected':''}>${esc(x.name||x.id)}${x.status?` — ${esc(x.status)}`:''}</option>`).join('')}</select></label>
+        <select id="liveWhich">${running.map(x=>`<option value="${esc(x.id)}" ${x.id===g.id?'selected':''}>${esc(x.name||x.id)} — ${identLine(x)}${x.status?` — ${esc(x.status)}`:''}</option>`).join('')}</select></label>
         <span class="muted" style="font-size:.78rem;margin-left:.5rem">${running.length} running on this side</span></div>`
     : '';
   const st=await api('api/live/setups/'+ch.setupId+'/status');
@@ -1055,7 +1077,7 @@ async function drawLive(){
   $('#view').innerHTML=`
     ${picker}
     <div class="banner ${st.state==='stopped'?'stopped':'running'}">
-      <b>${esc(g.name||g.id)}</b> ${isP?paperBadge:''} — ${esc(g.status)}${g.name?` <span class="muted">· ${esc(g.id)}</span>`:''}${st.runEpochUtc?` <span class="muted">· displayed run since ${st.runEpochUtc.slice(0,16)} UTC</span>`:''}</div>
+      <b>${esc(g.name||g.id)}</b> ${isP?paperBadge:''} — ${esc(g.status)}${st.runEpochUtc?` <span class="muted">· displayed run since ${st.runEpochUtc.slice(0,16)} UTC</span>`:''}${identSub(g)}</div>
     ${isP?'':boxControls(box)}
     ${st.journalDropped?`<div class="banner stale">⚠ ${st.journalDropped} line${st.journalDropped===1?'':'s'} of the trading record could not be read.
       Every figure on this page is worked out from the lines that could. Treat the money, the trade count and the

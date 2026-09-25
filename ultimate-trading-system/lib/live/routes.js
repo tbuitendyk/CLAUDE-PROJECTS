@@ -358,6 +358,24 @@ function installLiveRoutes(app, { csrfGuard }) {
   const ch = require('./channels');
   const view = require('./view');
 
+  // WHICH CONFIG THIS IS (owner, 2026-09-25: "the software need to give
+  // distinguishing information between greenlit configs so that on all of the
+  // tabs under trade the exact config that we are looking at can be matched
+  // up"): its id, pair and chunk shape, its setting, and how its survivor was
+  // picked, read off the greenlight -- the Trade tab draws it as one line, the
+  // same on every tab of both books
+  const identOf = (g) => {
+    const c = g.configSnapshot || {};
+    const cell = c.cell || {};
+    const br = c.branch || {};
+    return {
+      pair: (c.combo || {}).trade || null, geometry: br.geometry || null,
+      entry: cell.entry || null, gate: cell.gate || null,
+      d: cell.dMult ?? null, t: cell.tHours ?? null, trail: cell.trailMult ?? null, arm: cell.armMult ?? null,
+      band: Number.isFinite(Number(br.band)) ? Math.abs(Number(br.band)) : null,
+      pickedBy: g.pick ? g.pick.by || null : null,
+    };
+  };
   app.get('/api/live/configs', (req, res) => {
     try {
       const configs = gl.listGreenlights().filter((g) => !g.revoked).map((g) => {
@@ -389,6 +407,7 @@ function installLiveRoutes(app, { csrfGuard }) {
           id: g.id, name: g.name || null, createdUtc: g.createdUtc, campaign: g.campaign || null,
           pair: g.configSnapshot?.combo?.trade || null, target: g.target,
           why: g.why || '', engineVersion: g.engineVersion || null,
+          ident: identOf(g),
           status: ch.statusLine(parts), channels,
         };
       });
