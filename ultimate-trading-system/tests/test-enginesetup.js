@@ -23,6 +23,9 @@ module.exports = {
     // THE PLATFORM IS THE OWNER'S CHOICE (owner, 2026-09-25): Binance only ever as an example
     const all = JSON.stringify(es.TEMPLATE.steps.map((x) => [x.title, x.guidance, (x.ticks || []).map((t) => t.label), (x.choices || []).map((c) => [c.label, c.options])]));
     for (const m of all.match(/[^.]*Binance[^.]*/g) || []) assert.ok(/for example/.test(m), `Binance named only as an example: ${m}`);
+    // NOR ONE PROVIDER, NOR ONE INSTALLATION (owner, 2026-09-25): AWS only ever as an example, and nothing about the machines this system happens to run on
+    for (const m of all.match(/[^.]*(AWS|EC2)[^.]*/g) || []) assert.ok(/for example/.test(m), `a provider named only as an example: ${m}`);
+    assert.ok(!/Mexico|running today/.test(all), 'the template says nothing about one installation\'s machines');
     const words = JSON.stringify(first.guidance);
     for (const w of ['fixed public IP address', 'Elastic IP', 'Debian 12 or 13', 'Ubuntu 24.04', '300 MB', 'static one', 'Mac:', 'Windows:', 'Linux:']) assert.ok(words.includes(w), `step 1 says ${w}`);
   },
@@ -35,7 +38,7 @@ module.exports = {
     refused(() => es.create('', 'other'), /^descriptive name: 1 to 60 characters$/);
     refused(() => es.create('Another', 'Not Short'), /^short name: 2 to 30 of a-z, 0-9 and -, starting with a letter or digit$/);
     refused(() => es.create('Another', 'mx-engine-2'), /short name: mx-engine-2 is already the short name of the setup for "Mexico engine"/);
-    refused(() => es.create('Another', 'mx-1'), /mx-1 is the old order program/);
+    refused(() => es.create('Another', 'mx-1'), /^short name: mx-1 is already taken$/);
     refused(() => es.setTick(a.id, 'access', 'x', true), /^step 2 opens when step 1 is done$/);
     refused(() => es.setChoice(a.id, 'ready', 'os', 'mac'), /^its operating system is asked only when where it runs is this computer$/);
     refused(() => es.setChoice(a.id, 'ready', 'where', 'moon'), /one of a rented server, this computer/);

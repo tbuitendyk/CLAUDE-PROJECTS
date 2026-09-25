@@ -547,8 +547,8 @@ function engineHtml() {
     // WHICH IS WHICH, ON THE SCREEN ITSELF (owner, 2026-09-25: "can't tell from
     // the first two fields which is the short name and which is the descriptive
     // name" -- the words were hover text, and it did not reach the screen)
-    + '<label class="c"><span class="muted">short name — letters, digits, dashes</span><input id="engId" value="' + v('id', '') + '" placeholder="mx-engine-2" ' + (ed ? 'disabled' : '') + ' style="width:9rem"></label>'
-    + '<label class="c"><span class="muted">descriptive name — what you see on screen</span><input id="engName" value="' + v('name', '') + '" placeholder="Mexico engine 2" style="width:14rem"></label>'
+    + '<label class="c"><span class="muted">short name — letters, digits, dashes</span><input id="engId" value="' + v('id', '') + '" placeholder="engine-2" ' + (ed ? 'disabled' : '') + ' style="width:9rem"></label>'
+    + '<label class="c"><span class="muted">descriptive name — what you see on screen</span><input id="engName" value="' + v('name', '') + '" placeholder="Engine 2" style="width:14rem"></label>'
     + '</div>'
     + '<div class="row" style="margin-top:.5rem">'
     + '<label class="c" title="the trading box&#39;s address"><span class="muted">trading box address</span><input id="engHost" value="' + v('host', '') + '" style="width:26rem"></label>'
@@ -645,8 +645,8 @@ function esSetupHtml(s, t) {
 // same two names the engine record asks for.
 function esNewHtml() {
   return '<div class="row" style="margin-top:.5rem">'
-    + '<label class="c"><span class="muted">short name — letters, digits, dashes</span><input id="esShort" value="' + esc(cEsTypedShort) + '" placeholder="mx-engine-2" style="width:11rem"></label>'
-    + '<label class="c"><span class="muted">descriptive name — what you see on screen</span><input id="esName" value="' + esc(cEsTyped) + '" placeholder="Mexico engine 2" style="width:16rem"></label></div>'
+    + '<label class="c"><span class="muted">short name — letters, digits, dashes</span><input id="esShort" value="' + esc(cEsTypedShort) + '" placeholder="engine-2" style="width:11rem"></label>'
+    + '<label class="c"><span class="muted">descriptive name — what you see on screen</span><input id="esName" value="' + esc(cEsTyped) + '" placeholder="Engine 2" style="width:16rem"></label></div>'
     + '<div class="row" style="margin-top:.5rem"><button id="esStart">Start its setup</button><span id="esMsg" class="note"></span></div>';
 }
 function esHtml() {
@@ -666,7 +666,7 @@ function esHtml() {
           + '<div class="row" style="align-items:baseline"><b style="font-size:.95rem">' + esc(sel.name) + '</b>'
           + (sel.shortName ? '<span class="note">short name ' + esc(sel.shortName) + '</span>' : '') + '<span class="note">' + esProgress(sel) + '</span></div>'
           // a checklist started before the short name was asked for asks for it here
-          + (sel.shortName ? '' : '<div class="row" style="margin-top:.5rem"><label class="c"><span class="muted">short name — letters, digits, dashes</span><input id="esShortFix" value="' + esc(cEsTypedFix) + '" placeholder="mx-engine-2" style="width:11rem"></label>'
+          + (sel.shortName ? '' : '<div class="row" style="margin-top:.5rem"><label class="c"><span class="muted">short name — letters, digits, dashes</span><input id="esShortFix" value="' + esc(cEsTypedFix) + '" placeholder="engine-2" style="width:11rem"></label>'
             + '<span class="note">this engine has no short name yet: it is the one the engine is saved under at step 6</span></div>'
             + '<div class="row" style="margin-top:.5rem"><button id="esShortSave">Save the short name</button><span id="esShortMsg" class="note"></span></div>')
           + esSetupHtml(sel, cEs.template)

@@ -26,7 +26,7 @@ module.exports = {
     assert.strictEqual(targets.defaultEngine().id, 'mx-engine');
     assert.ok(targets.getTarget('mx-1') && targets.getTarget('mx-1').kind === 'ssh-box', 'the old order program stays where it was');
     const bad = (rec, re) => { let e = null; try { targets.saveEngine(rec); } catch (x) { e = x; } assert.ok(e && e.code === 'BAD_ENGINE' && re.test(e.message), e && e.message); };
-    bad({ ...ENGINE, id: 'mx-1' }, /mx-1 is the old order program and is not an engine/);
+    bad({ ...ENGINE, id: 'mx-1' }, /short name: mx-1 is already taken/);
     bad({ ...ENGINE, id: 'x2', host: 'no spaces allowed' }, /host: the trading box's address/);
     bad({ ...ENGINE, id: 'x2', localPort: 8094 }, /8094 and 8095 are this system's own services/);
     bad({ ...ENGINE, id: 'x2' }, /localPort: 18095 is already the tunnel port of mx-engine/);
@@ -350,8 +350,8 @@ module.exports.theEngineCardSaysWhatItsPricesMean = function () {
 // visible labels and an example in each box, never hover text alone
 module.exports.theEngineRecordFormSaysWhichNameIsWhich = function () {
   const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
-  assert.ok(/<span class="muted">short name — letters, digits, dashes<\/span><input id="engId"[^>]*placeholder="mx-engine-2"/.test(src), 'the short name says so, with an example');
-  assert.ok(/<span class="muted">descriptive name — what you see on screen<\/span><input id="engName"[^>]*placeholder="Mexico engine 2"/.test(src), 'the descriptive name says so, with an example');
+  assert.ok(/<span class="muted">short name — letters, digits, dashes<\/span><input id="engId"[^>]*placeholder="engine-2"/.test(src), 'the short name says so, with an example');
+  assert.ok(/<span class="muted">descriptive name — what you see on screen<\/span><input id="engName"[^>]*placeholder="Engine 2"/.test(src), 'the descriptive name says so, with an example');
   assert.ok(!/>record id</.test(src), 'the old label is gone');
   assert.throws(() => targets.saveEngine({ ...ENGINE, id: '', name: '' }), /short name: 2 to 30 .*descriptive name: 1 to 60/, 'a refusal names the two fields the same way');
 };

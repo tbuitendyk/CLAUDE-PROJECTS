@@ -47,9 +47,9 @@ const TEMPLATE = {
           'Whatever it runs on needs three things: a fixed public IP address, because an exchange\'s trading keys are locked to one address and this system refuses a key that is not; power and internet around the clock, because a plan waiting or a position open needs it watching prices; and a country where your exchange serves you and you are allowed to use it.',
         ] },
         { when: { where: 'server' }, ifUnset: true, heading: 'A rented server', paras: [
-          'Any cloud provider will do. Pick a country where your exchange serves you and you are allowed to use it: the engine running today is on AWS in Mexico City. An exchange\'s servers sit in one place (Binance\'s, for example, are in Tokyo), so nearer is quicker, but for trades decided once a day a fraction of a second hardly matters.',
+          'Any cloud provider will do. Pick a country where your exchange serves you and you are allowed to use it. An exchange\'s servers sit in one place (Binance\'s, for example, are in Tokyo), so nearer is quicker, but for trades decided once a day a fraction of a second hardly matters.',
           'The smallest size is plenty: 1 CPU, 1 GB of memory and 10 GB of disk, running Debian 12 or 13, or Ubuntu 24.04. The engine is held to 300 MB of memory and half a CPU.',
-          'Ask the provider for a fixed public IP address for it. On AWS that is an Elastic IP.',
+          'Ask the provider for a fixed public IP address for it (on AWS, for example, it is called an Elastic IP).',
         ] },
         { when: { where: 'local' }, ifUnset: true, heading: 'This computer', paras: [
           'Any computer made in the last several years is plenty: the engine is held to 300 MB of memory and half a CPU. Linux, Mac and Windows will all do.',
@@ -80,8 +80,8 @@ const TEMPLATE = {
         ] },
         { when: { keyHow: 'made' }, ifUnset: true, heading: 'With a key this system makes', paras: [
           'Press Make this engine\'s key. The system keeps the private half to itself and never shows it; you copy the public half, shown below, onto the machine.',
-          'A machine you are about to rent: most providers ask for a key when the machine is made. Give it the public half there (on AWS, import it as a key pair and choose it when you launch).',
-          'A machine you already have: sign in to it yourself and add the public half as a new line at the end of ~/.ssh/authorized_keys of the account this system signs in as. On AWS, EC2 Instance Connect opens a terminal on the machine in your browser.',
+          'A machine you are about to rent: most providers ask for a key when the machine is made. Give it the public half there (on AWS, for example, import it as a key pair and choose it when you launch).',
+          'A machine you already have: sign in to it yourself and add the public half as a new line at the end of ~/.ssh/authorized_keys of the account this system signs in as. Some providers open a terminal on the machine in your browser (on AWS, for example, EC2 Instance Connect).',
         ] },
         { when: { keyHow: 'file' }, ifUnset: true, heading: 'With a key file you already have', paras: [
           'Paste the private key file the provider gave you when the machine was made: it starts with -----BEGIN and ends with PRIVATE KEY-----. The system keeps it to itself and never shows it again, only its fingerprint. A key file locked with a passphrase cannot be used.',
@@ -173,7 +173,7 @@ function checkShort(shortName, selfId = null) {
   const v = String(shortName == null ? '' : shortName).trim();
   const bad = (m) => { const e = new Error(m); e.status = 400; throw e; };
   if (!SHORT_RE.test(v)) bad('short name: 2 to 30 of a-z, 0-9 and -, starting with a letter or digit');
-  if (v === 'mx-1') bad('short name: mx-1 is the old order program');
+  if (v === 'mx-1') bad('short name: mx-1 is already taken');
   const other = list().find((x) => x.shortName === v && x.id !== selfId);
   if (other) bad(`short name: ${v} is already the short name of the setup for "${other.name}"`);
   const eng = require('./targets').listEngines().find((t) => t.id === v);
