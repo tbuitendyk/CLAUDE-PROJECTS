@@ -2711,7 +2711,13 @@ const GUARDS = [
   [path.join(ROOT, "public", "setup.html"), "    + esHtml()\n", "",
     "theComputeTabOpensTheChecklistFromItsButton", "the setup is not on the Compute tab"],  // THE ENGINE RECORD'S TWO NAMES (3.263.1)
   [path.join(ROOT, "public", "setup.html"), "<span class=\"muted\">short name \u2014 letters, digits, dashes</span>", "<span class=\"muted\">record id</span>",
-    "theEngineRecordFormSaysWhichNameIsWhich", "the short name is labelled record id again, and nothing on screen says which name is which"],
+    "theEngineRecordFormSaysWhichNameIsWhich", "the short name is labelled record id again, and nothing on screen says which name is which"],  // THE CHECKLIST'S ENGINE NAMES (3.264.0)
+  [path.join(ROOT, "lib", "live", "enginesetup.js"), "  const sn = checkShort(shortName);", "  const sn = String(shortName || '');",
+    "aChecklistOpensEachStepOnlyWhenTheOneBeforeIsDone", "a checklist starts with any short name, or one another engine already has"],
+  [path.join(ROOT, "lib", "live", "enginesetup.js"), "  if (other) bad(`short name: ${v} is already the short name of the setup for", "  if (false) bad(`short name: ${v} is already the short name of the setup for",
+    "aChecklistCarriesTheEnginesTwoNames", "two checklists share one short name"],
+  [path.join(ROOT, "public", "setup.html"), "        body = (setups.length > 1\n", "        body = (setups.length > 0\n",
+    "aChecklistCarriesTheEnginesTwoNames", "the picker shows with one checklist and reads as a second name again"],
 ];
 
 const only = process.argv[2] || '';
