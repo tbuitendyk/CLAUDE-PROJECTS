@@ -87,6 +87,8 @@ function stage4Refusal(src) {
   if (sv.field && !(src.field && src.field.dials)) {
     return `the survivor was priced under the field's gate, and ${src.field && src.field.error ? src.field.error : 'the stage 3 set carries no field for it'} — the live path cannot rebuild what was priced`;
   }
+  // AND THE GATE ITSELF, rebuilt off the survivor's own dials by the source (3.252.0): its row keeps the gate's money, not the gate
+  if (sv.field && !sv.fieldGate) return "the survivor was priced under the field's gate, and the gate is not on its row — the live path cannot rebuild what was priced";
   if (!Array.isArray(src.members) || !src.members.length) return 'the stage 2 set names no members for this unit, so nothing could be trained the same way';
   // A MEMBER ADDED FROM A WALK SET NEEDS THE WALK'S TWO NUMBERS (3.188.0). The
   // live path builds the extra's block of numbers from the look-back and marks
@@ -149,7 +151,7 @@ function configFromStage4(src) {
     // the field from closed history and gate the call the way stage 3 did
     field: sv.field && src.field && src.field.dials ? {
       id: src.field.id, name: src.field.name || null, dials: { ...src.field.dials },
-      gate: require('../fieldgate').gateRecord(sv.field),
+      gate: require('../fieldgate').gateRecord(sv.fieldGate),
     } : null,
     configVersion: `${src.set.id}/${src.gate.id}/${src.pick.by}@${new Date().toISOString().slice(0, 10)}`,
   };

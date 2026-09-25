@@ -2369,6 +2369,9 @@ function confirmWanted(params) {
 // that combines two bars, sign only and a ladder of rungs, each permuted where
 // its tick says so, with the silent multiple shared -- read against the field
 // the run names. Refused in words, never coerced.
+// the silent multiple a run shares across its gates: one definition, read the
+// same way by the pricing and by the greenlight's rebuilt gate (3.252.0)
+const fieldSilentOf = (p) => confirmLib.multiplierOrRefuse((p || {}).fieldSilent, 'silent \u00d7', 1);
 function fieldAxesFor(params) {
   const p = params || {};
   const fieldId = p.fieldId == null || p.fieldId === '' || p.fieldId === 'none' ? null : String(p.fieldId);
@@ -2391,7 +2394,7 @@ function fieldAxesFor(params) {
   const signOnlys = p.fieldPermuteSignOnly ? [false, true] : [!!p.fieldSignOnly];
   const ladders = fieldGate.parseRungLists(p.fieldRungs);
   const rungs = p.fieldPermuteRungs ? ladders : [ladders[0]];
-  const silent = confirmLib.multiplierOrRefuse(p.fieldSilent, 'silent \u00d7', 1);
+  const silent = fieldSilentOf(p);
   const gates = [];
   for (const read of reads) for (const agreeMin of aMins) for (const certMin of cMins) for (const rule of rules) for (const signOnly of signOnlys) for (const r of rungs) {
     gates.push({ read, agreeMin, certMin, rule, signOnly, rungs: r, silent });
@@ -9814,6 +9817,23 @@ function unreadControlsOf(taskControls, unitKey, rows) {
 // own held-back and unread readings when they exist. lib/live/greenlight.js
 // turns it into the frozen configuration and refuses in words what the live
 // vocabulary cannot carry.
+// THE GATE A SURVIVOR WAS PRICED UNDER (3.252.0), rebuilt from its six Funnel
+// dials and the silent multiple its stage 3 set shares -- read as the pricing
+// read it (fieldSilentOf). Since 3.230.0 a unit row's `field` is the gate's money
+// on the test window, not the gate, and the greenlight read the gate off it:
+// every survivor priced under the field was refused with 'field.gate:
+// "undefined" is not a way to read the field' (owner, 2026-09-25: "fix it GO
+// NOW!"). A minimum the row reads as `no bar` is none; under sign only the row
+// keeps no minimums, and none are read there (lib/fieldgate.js sizesFor).
+function survivorFieldGate(row, params) {
+  if (!row || row.fieldSizeBy == null) return null;
+  const min = (v) => (v == null || v === 'no bar' ? null : Number(v));
+  return fieldGate.gateRecord({
+    read: row.fieldSizeBy, agreeMin: min(row.fieldAgreeMin), certMin: min(row.fieldCertMin),
+    rule: row.fieldRule || 'both', signOnly: !!row.fieldSignOnly, rungs: row.fieldRungs,
+    silent: fieldSilentOf(params),
+  });
+}
 async function stage4GreenlightSource(setId, asked = {}) {
   const S4 = require('./funnelset');
   const doc = getSet(setId);
@@ -9881,7 +9901,7 @@ async function stage4GreenlightSource(setId, asked = {}) {
       // and which of them belong together around a promoted row (3.203.0),
       // so live folds a plateau the way the set was priced
       plateaus: (rec.plateaus || []).map((f) => ({ centre: f.centre, members: (f.members || []).slice() })) },
-    survivor: { ...survivor, bandPct: survivor.bandMode === 'auto' || survivor.bandMode == null ? rec.bandPct : Math.abs(Number(survivor.bandMode)), halfLife: hl ? hl.halfLife : null },
+    survivor: { ...survivor, bandPct: survivor.bandMode === 'auto' || survivor.bandMode == null ? rec.bandPct : Math.abs(Number(survivor.bandMode)), halfLife: hl ? hl.halfLife : null, fieldGate: survivorFieldGate(survivor, parent.params) },
     // THE FIELD THE STAGE 3 SET WAS PRICED WITH (FIELD-DESIGN.md section H):
     // its id and name, its build dials with THIS pair's own window (each
     // coin's own, or the system number), read off the series frozen beside
@@ -12566,7 +12586,7 @@ module.exports = {
   funnelDropped, funnelDroppedStart, droppedRefusalOf,
   stageGateStart, stageGateStatus, examBusy,
   funnelOthersStart, funnelOthersStatus, othersSummaryOf, funnelRideStart, funnelRideStatus, RICH_FIELDS,
-  stage4GreenlightSource, stage4GreenlightDry, pictureOf, setSizingChoice, tunedOfRule, tunedOnStretch, TUNED_NONE, verifyLooksOf, partSlices, richSetOf, richMissingFor, mergeProofs, richAllIn, unitsDoneWithoutTables,
+  stage4GreenlightSource, survivorFieldGate, stage4GreenlightDry, pictureOf, setSizingChoice, tunedOfRule, tunedOnStretch, TUNED_NONE, verifyLooksOf, partSlices, richSetOf, richMissingFor, mergeProofs, richAllIn, unitsDoneWithoutTables,
   tuneCaptureDry, tuneCaptureStart, tuneCaptureStatus, tuneOnCapture, captureCandidates, captureTargetOf, readCapture, captureFile,
   tuneScanAimOf, saveTuneScan, readTuneScans, tuneScanFor, tuneScansFile,
   halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet, buildHalfLifeSet, gateOfSet,

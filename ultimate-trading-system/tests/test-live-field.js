@@ -102,8 +102,15 @@ module.exports.aSurvivorPricedUnderTheFieldIsTradedOnlyWithItsField = function (
   const { aStage4Source } = require('./fixtures-setup');
   const gate = { read: 'certainty', agreeMin: null, certMin: 55, rule: 'both', signOnly: false, rungs: '70:1, 100:2', silent: 1 };
   const dials = { windowDays: 400, halfLifeDays: 90, floor: 0.05, bands: [0.4, 0.8, 1.2], lookbackHours: [24, 72, 168], evidenceCap: 20, leastEvidence: 2, copies: 20 };
-  // the survivor as a stage 3 record carries it: the gate and its numbers
-  const priced = (over) => aStage4Source({ survivor: { ...aStage4Source().survivor, field: { ...gate, test: { placed: 1 }, hold: null } }, ...over });
+  // THE SURVIVOR AS ITS ROW CARRIES IT (re-aimed 3.252.0): the gate's money
+  // on the test window under `field`, never the gate -- the gate is rebuilt
+  // off the row's own dials by the source and handed over as `fieldGate`.
+  // This fixture gave `field` the gate itself, which no row has carried since
+  // 3.230.0, so every survivor priced under the field was refused on the box
+  // while this test passed.
+  const priced = (over) => aStage4Source({ survivor: { ...aStage4Source().survivor, field: { placed: 1 }, fieldGate: gate }, ...over });
+  // a row priced under the field whose gate could not be rebuilt: refused in words
+  assert.match(gl.stage4Refusal(aStage4Source({ survivor: { ...aStage4Source().survivor, field: { placed: 1 } }, field: { id: 'F-3', name: 'x', pairKey: 'LTCUSDT|daily-4d', dials } })), /priced under the field's gate, and the gate is not on its row/);
   // no field beside the set: refused in words, never traded at size 1
   assert.match(gl.stage4Refusal(priced({ field: null })), /priced under the field's gate, and the stage 3 set carries no field for it — the live path cannot rebuild what was priced/);
   // the series frozen beside the set gone: the set's own words for it
@@ -121,6 +128,37 @@ module.exports.aSurvivorPricedUnderTheFieldIsTradedOnlyWithItsField = function (
   // does not attach itself to a survivor that was not priced under it
   assert.strictEqual(gl.configFromStage4(aStage4Source({ field: { id: 'F-3', name: 'x', dials } })).field, null);
   assert.strictEqual(gl.configFromStage4(aStage4Source()).field, null);
+};
+
+// THE GATE IS REBUILT OFF THE SURVIVOR'S OWN DIALS EXACTLY AS IT WAS PRICED
+// (3.252.0, owner 2026-09-25: "fix it GO NOW!" on 'field.gate: "undefined" is
+// not a way to read the field'). A unit row keeps the gate's money under
+// `field` and the gate as six Funnel dials; the silent multiple is the stage 3
+// run's own. Every gate goes to dials and back to itself, and names itself
+// the way its setting was named.
+module.exports.theGateIsRebuiltFromTheSurvivorsOwnDialsExactlyAsItWasPriced = function () {
+  const stages = require('../lib/stages');
+  const fg = require('../lib/fieldgate');
+  const gates = [
+    { read: 'certainty', agreeMin: 40, certMin: 70, rule: 'both', signOnly: false, rungs: '100:1', silent: 0 },
+    { read: 'agreement', agreeMin: 40, certMin: 70, rule: 'either', signOnly: false, rungs: '70:1, 100:2', silent: 1 },
+    { read: 'agreement', agreeMin: null, certMin: 55, rule: 'both', signOnly: false, rungs: '100:1', silent: 1 },
+    { read: 'certainty', agreeMin: null, certMin: null, rule: 'both', signOnly: false, rungs: '100:2', silent: 0.5 },
+  ];
+  for (const g of gates) {
+    const row = { label: `x${fg.gateLabel(g)}`, field: { placed: 1 }, ...fg.funnelDialsOf(g) };
+    const back = stages.survivorFieldGate(row, { fieldId: 'F-3', fieldSilent: g.silent });
+    assert.deepStrictEqual(back, fg.gateRecord(g), JSON.stringify(g));
+    assert.strictEqual(fg.gateLabel(back), fg.gateLabel(g), 'and it names itself the way the setting was named');
+    assert.deepStrictEqual(fg.checkGate(back), fg.checkGate(g), 'and the shared vocabulary reads it the same');
+  }
+  // a run that named no silent multiple priced at 1, and the rebuilt gate reads 1 too
+  assert.strictEqual(stages.survivorFieldGate({ ...fg.funnelDialsOf(gates[1]) }, { fieldId: 'F-3' }).silent, 1);
+  // under sign only the row keeps no minimums, and none are read there
+  const so = { read: 'agreement', agreeMin: 40, certMin: 70, rule: 'both', signOnly: true, rungs: '100:1', silent: 1 };
+  assert.deepStrictEqual(stages.survivorFieldGate({ ...fg.funnelDialsOf(so) }, { fieldSilent: 1 }), { ...fg.gateRecord(so), agreeMin: null, certMin: null });
+  // no gate on the row, none rebuilt
+  assert.strictEqual(stages.survivorFieldGate({ ...fg.funnelDialsOf(null) }, { fieldSilent: 1 }), null);
 };
 
 // ---- THE SCHEMA ----
