@@ -80,7 +80,10 @@ function whyAndCampaignDoNotPropagate() {
 function theLiveScreenShowsTheNameNotOnlyTheGeneratedId() {
   assert.ok(/<b>\$\{esc\(g\.name\|\|g\.id\)\}<\/b>/.test(HTML),
     'the LIVE banner renders the generated id by construction, so renaming can never change it');
-  assert.ok(/\$\{g\.name\?` <span class="muted">· \$\{esc\(g\.id\)\}<\/span>`:''\}/.test(HTML),
+  // the id stays visible under the name, in the line that says which config
+  // this is (3.260.0): drawn in the banner, and carrying the id of a named config
+  const live = HTML.slice(HTML.indexOf('async function drawLive('), HTML.indexOf('async function drawLive(') + 6000);
+  assert.ok(/\$\{identSub\(g\)\}<\/div>/.test(live) && /g&&g\.name\?esc\(g\.id\):null/.test(HTML),
     'the id vanished entirely — it is still what the logs and the box use, so it must stay visible');
 }
 
