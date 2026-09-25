@@ -130,6 +130,27 @@ module.exports = {
     }
   },
 
+  // THE ENGINE'S PLANS SAY WHAT EVERY COLUMN HOLDS (the owner's standing
+  // rule: every table gets a key, and the key says what each heading holds,
+  // units included). The page's th() helper attaches a heading's description
+  // from the key only when the key has an entry, so a heading drawn through the
+  // helper with no entry is bare on screen and invisible to test-columnkeys.js,
+  // which trusts the helper -- 3.254.0 shipped all ten this way.
+  theEnginesPlansTableSaysWhatEveryColumnHolds() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'trade.html'), 'utf8');
+    const fn = src.slice(src.indexOf('function enginePlansHtml(e){'), src.indexOf('\n}\n', src.indexOf('function enginePlansHtml(e){')));
+    const keys = [...fn.matchAll(/\bth\('[^']*','([^']+)'/g)].map((m) => m[1]);
+    assert.strictEqual(keys.length, 10, `the engine's plans table has ten headings drawn through th(): ${keys.join(' ')}`);
+    const block = src.slice(src.indexOf('const TH={'), src.indexOf('\n};', src.indexOf('const TH={')) + 3);
+    // eslint-disable-next-line no-new-func
+    const TH = new Function(`${block}; return TH;`)();
+    for (const k of keys) {
+      assert.ok(typeof TH[k] === 'string' && TH[k].length > 25, `the heading keyed ${k} has no description on screen`);
+    }
+    assert.ok(/dollar/i.test(TH.engMoney) && /dollar/i.test(TH.engSize), 'the two money columns say dollars');
+    for (const k of ['engBuy', 'engSell', 'engStop', 'engBest']) assert.ok(/USDT/.test(TH[k]), `${k} says the price is in the quote currency`);
+  },
+
   // S5 AND THE LINK: a setup on an engine goes to paper only while the engine
   // answers through its link, and never to live while real orders are off
   aSetupOnTheEngineIsGatedOnTheLinkAndOnRealOrders() {

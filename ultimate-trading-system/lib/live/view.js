@@ -455,7 +455,9 @@ function setupStatus(setup, file = null) {
         phase: x.state ? x.state.phase : 'sent', reason: x.state ? x.state.reason : null, ref: x.state ? x.state.ref : null,
         buy: x.state && x.state.rails && x.state.sides.includes(1) ? x.state.rails.buy : null,
         sell: x.state && x.state.rails && x.state.sides.includes(-1) ? x.state.rails.sell : null,
-        stop: x.state ? x.state.stop : null, best: x.state ? x.state.ext : null, armed: x.state ? !!x.state.armed : false,
+        // the best price is the trail's own count, so a plan with no trailing stop has none to show
+        trail: !!(x.plan.cell && x.plan.cell.trailMult != null),
+        stop: x.state ? x.state.stop : null, best: x.state && x.plan.cell && x.plan.cell.trailMult != null ? x.state.ext : null, armed: x.state ? !!x.state.armed : false,
         end_utc: x.state ? new Date(x.state.endTs).toISOString() : null, size: x.plan.size || null,
         pnl: x.ledger ? x.ledger.pnlUsd : null,
         mark: (marks.find((m) => m.planId === x.plan.planId) || null),

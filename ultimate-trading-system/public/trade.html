@@ -292,6 +292,17 @@ const TH={
   call:'what the quorum decided from those votes. STAND DOWN means the quorum was not reached, which is a decision, not a failure.',
   field:'what the coin’s own decision field said on this decision and what its gate made of the call. up / down / none is the field’s sign; agreement and certainty are its two reads, 0 to 100; then the gate’s verdict — blocked by sign, blocked by minimum, silent, or sized on a rung, which multiplies the clip. "—" means this configuration was not priced under a field.',
   outcome:'what the executor actually did with the call — filled, skipped, gave up, or killed on price drift.',
+  // THE ENGINE'S PLANS (loop of 2026-09-25)
+  engEntry:'the hour this plan acts in, UTC — the feature window closed, and the engine starts watching the price at this hour. The date to think in.',
+  engCall:'what the committee called for this plan: LONG = buy the pair, SHORT = sell it borrowed, no call = it stood aside.',
+  engPhase:'where the engine says this plan stands right now, in its own words, and why when there is a reason.',
+  engBuy:'the price level ABOVE the price at the entry hour, in quote currency (USDT). A printed trade at or above it opens a LONG. On a SHORT it is the stop until the position opens.',
+  engSell:'the price level BELOW the price at the entry hour, in quote currency (USDT). A printed trade at or below it opens a SHORT. On a LONG it is the stop until the position opens.',
+  engStop:'the price the position is closed at if a printed trade reaches it, in quote currency (USDT). Once the trail has armed it follows the best price, once an hour, and never moves back.',
+  engBest:'the best price since the position opened, in quote currency (USDT): the highest for a LONG, the lowest for a SHORT, as the trail counts it — whole hours after the entry hour. "—" means no position has opened, or the plan has no trailing stop.',
+  engTrail:'whether the trailing stop has armed: armed once the best price has moved far enough in the position’s favour. "—" means no position has opened, or the plan has no trailing stop.',
+  engSize:'the money the position opens with, in US DOLLARS of notional: the clip × the field’s size on this call × the conviction multiplier for the members agreeing. Hover a figure for its three factors.',
+  engMoney:'in US dollars, after both legs’ fees: REALIZED on a closed position (banked), or what an open one would make or lose if closed at the price now (not banked). "—" means no position.',
 };
 // th(label, key) — a heading always carries its own description.
 const th=(label,key,style)=>`<th${style?` style="${style}"`:''}${TH[key]?` title="${esc(TH[key]).replace(/"/g,'&quot;')}"`:''}>${label}</th>`;
@@ -302,18 +313,21 @@ const th=(label,key,style)=>`<th${style?` style="${style}"`:''}${TH[key]?` title
 // size and its three factors, and the money. Drawn by the one path Paper Books
 // and Live Trading share; nothing here asks which book it is on.
 const PHASE_WORDS={waiting:'waiting for its entry hour',armed:'waiting for a level',entering:'opening',open:'open',exiting:'closing',closed:'closed',expired:'no level reached in the hold',skipped:'skipped',failed:'refused by the exchange',cancelled:'cancelled',sent:'sent to the engine'};
+const EXIT_WORDS={stop:'at the stop','trailing stop':'at the trailing stop',time:'the hold ended'};
 const px=(v)=>v==null||!Number.isFinite(Number(v))?'—':Number(v).toFixed(4).replace(/\.?0+$/,'');
 function enginePlansHtml(e){
   const link=e.link&&e.link.following?'<span class="pos">following the engine</span>':`<span class="neg">not following the engine</span> <span class="muted">(${esc((e.link&&e.link.why)||'not started')})</span>`;
   const rows=(e.plans||[]).slice(0,12).map(p=>{
     const sz=p.size||{};
     const usd=p.pnl!=null?p.pnl:(p.mark?p.mark.openUsd:null);
+    // a closed plan says how it closed; an expired one's words already say why
+    const why=p.phase==='closed'?(EXIT_WORDS[p.reason]||p.reason):p.phase==='expired'?null:p.reason;
     return `<tr>
-      <td>${esc(String(p.entry_utc||'').slice(0,16).replace('T',' '))}</td>
+      <td style="white-space:nowrap">${esc(String(p.entry_utc||'').slice(0,16).replace('T',' '))}</td>
       <td class="${p.call===1?'pos':p.call===-1?'neg':'muted'}">${p.call===1?'LONG':p.call===-1?'SHORT':'no call'}</td>
-      <td style="text-align:left">${esc(PHASE_WORDS[p.phase]||p.phase)}${p.reason?` <span class="muted">— ${esc(p.reason)}</span>`:''}</td>
-      <td>${px(p.buy)}</td><td>${px(p.sell)}</td><td>${px(p.stop)}</td><td>${p.phase==='open'?px(p.best):'—'}</td>
-      <td>${p.phase==='open'||p.phase==='closed'?(p.armed?'<span class="pos">armed</span>':'not yet'):'—'}</td>
+      <td style="text-align:left">${esc(PHASE_WORDS[p.phase]||p.phase)}${why?` <span class="muted">— ${esc(why)}</span>`:''}</td>
+      <td>${px(p.buy)}</td><td>${px(p.sell)}</td><td>${px(p.stop)}</td><td>${p.phase==='open'||p.phase==='exiting'||p.phase==='closed'?px(p.best):'—'}</td>
+      <td style="white-space:nowrap">${!p.trail?'—':p.phase==='open'||p.phase==='exiting'?(p.armed?'<span class="pos">armed</span>':'not yet'):p.phase==='closed'?(p.armed?'<span class="pos">armed</span>':'never armed'):'—'}</td>
       <td title="clip ${esc(sz.clipUsd)} x the field's size ${esc(sz.fieldSize)} x the conviction multiplier ${esc(sz.multiplier)} (${esc(sz.agree)} members agreeing)">${sz.quoteUsd==null?'—':'$'+Number(sz.quoteUsd).toFixed(2)}</td>
       <td class="${cls(usd)}">${money(usd)}</td></tr>`;
   }).join('');
