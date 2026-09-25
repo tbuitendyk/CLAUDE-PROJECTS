@@ -7,7 +7,8 @@
 //   GET  /health            the engine's version, clock, feeds and plan counts
 //   GET  /state             every plan: as received, where it stands, its money
 //   POST /plans             a plan in (the same plan twice is the same plan)
-//   POST /plans/:id/cancel  the owner takes a plan back
+//   POST /plans/:id/cancel  the owner takes a plan back ({ why, entriesOnly }: with
+//                           entriesOnly an open position is left to close by its rules)
 //   GET  /journal?since=N   the record, numbered lines from N
 //   GET  /events?since=N    the same, then every new line as it is written and
 //                           the live figures of open positions (server-sent events)
@@ -44,7 +45,7 @@ function makeServer({ runner, journal, health }) {
       const m = /^\/plans\/([^/]+)\/cancel$/.exec(u.pathname);
       if (req.method === 'POST' && m) {
         const b = await body(req);
-        const out = runner.cancelPlan(decodeURIComponent(m[1]), typeof b.why === 'string' && b.why.trim() ? b.why.trim().slice(0, 200) : 'cancelled by the owner');
+        const out = runner.cancelPlan(decodeURIComponent(m[1]), typeof b.why === 'string' && b.why.trim() ? b.why.trim().slice(0, 200) : 'cancelled by the owner', { entriesOnly: b.entriesOnly === true });
         return send(res, out.ok ? 200 : 404, out);
       }
       if (req.method === 'GET' && u.pathname === '/journal') {

@@ -81,10 +81,10 @@ class Runner {
     return { ok: true, planId: plan.planId, phase: rec.state.phase };
   }
 
-  cancelPlan(planId, why = 'cancelled by the owner') {
+  cancelPlan(planId, why = 'cancelled by the owner', { entriesOnly = false } = {}) {
     const r = this.plans.get(planId);
     if (!r) return { ok: false, problems: [`no plan ${planId}`] };
-    this.feed(planId, { type: 'cancel', why, ts: this.now() });
+    this.feed(planId, { type: 'cancel', why, entriesOnly: !!entriesOnly, ts: this.now() });
     return { ok: true, phase: r.state.phase };
   }
 

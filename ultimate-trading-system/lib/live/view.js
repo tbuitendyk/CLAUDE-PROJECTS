@@ -363,6 +363,68 @@ function nextActivity(st, setup, nowMs, tickMinuteUtc = 8) {
   };
 }
 
+// WHAT HAPPENS NEXT ON THE NEW TRADING ENGINE (loop of 2026-09-25). The old
+// order program recomputes hourly and opens at its entry window; the engine
+// does neither, and a panel that told the owner it did would be describing a
+// program this setup does not run on. Here: this machine decides once the
+// feature window closes and sends the plan; the plan waits on the trading box
+// for its entry hour, then for a printed trade to reach a level; the position
+// closes at its stop or when its hold ends. The same shape as nextActivity, so
+// the Trade tab draws both with its one table, on both books.
+function engineNextActivity(st, setup, nowMs, eng) {
+  const iso = (t) => new Date(t).toISOString();
+  const hh = (h) => `${String(h).padStart(2, '0')}:00`;
+  const px = (v) => (v == null || !Number.isFinite(Number(v)) ? '—' : String(Number(Number(v).toFixed(4))));
+  const cfg = setup.configSnapshot || {};
+  const cell = cfg.cell || {};
+  let geo = {};
+  try { geo = (require('../dataset').GEOMETRIES || {})[(cfg.branch || {}).geometry] || {}; } catch (_) { geo = {}; }
+  const entryOffH = geo.entryOffsetH || 0;
+  const holdH = cell.tHours || 0;
+  const entryHourUtc = entryOffH % 24;
+  const closeHourUtc = (entryHourUtc + 23) % 24;
+  const d = new Date(nowMs);
+  const at = (h) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), h, 0, 0, 0);
+  let nextEntry = at(entryHourUtc); if (nextEntry <= nowMs) nextEntry += 864e5;
+  let nextEval = at(closeHourUtc); if (nextEval <= nowMs) nextEval += 864e5;
+  const name = (eng && eng.name) || 'the trading engine';
+  const levelPct = cell.dMult != null && cfg.branch && Number.isFinite(Number(cfg.branch.band)) ? Math.round(cell.dMult * Math.abs(Number(cfg.branch.band)) * 1e4) / 1e4 : null;
+  const plans = ((eng && eng.plans) || []).slice().sort((a, b) => String(a.entry_utc).localeCompare(String(b.entry_utc)));
+  const sideOf = (c) => (c === 1 ? 'LONG' : c === -1 ? 'SHORT' : 'no call');
+  const items = [];
+  if (st.state === 'paper' || st.state === 'live') {
+    items.push({ what: 'Decide the next period (LONG / SHORT / no call)', whenUtc: iso(nextEval),
+      why: `this machine decides once the ${geo.featureHours || '?'}h feature window closes at ${hh(closeHourUtc)} UTC and that hour's candle is in, `
+        + `and sends the plan to ${name} before ${hh(entryHourUtc)} UTC; a period the committee stands aside is written down and nothing is sent.` });
+  } else {
+    items.push({ what: 'Send a new plan', whenUtc: null,
+      why: `this setup is ${st.state}: nothing is sent to ${name}, and a plan still waiting there is taken back. A position already open still closes by its own rules.` });
+  }
+  for (const p of plans.filter((x) => x.phase === 'waiting' || x.phase === 'sent')) {
+    items.push({ what: `Set the levels for the ${sideOf(p.call)} call of ${String(p.chunk_start).slice(0, 10)}`, whenUtc: p.entry_utc,
+      why: cell.entry === 'breakout'
+        ? `at its entry hour the engine sets a buying level and a selling level${levelPct != null ? ` ${levelPct}%` : ''} either side of that hour's opening price; a printed trade reaching one opens the position.`
+        : 'at its entry hour the engine opens the position at the market.' });
+  }
+  for (const p of plans.filter((x) => x.phase === 'armed')) {
+    const lv = [p.buy != null ? `buying level ${px(p.buy)} opens a LONG` : null, p.sell != null ? `selling level ${px(p.sell)} opens a SHORT` : null].filter(Boolean).join('; ');
+    items.push({ what: 'Open a position when a printed trade reaches a level', whenUtc: p.end_utc,
+      why: `${lv || 'waiting for a level'}. If no printed trade reaches one by then, the plan ends with no position.` });
+  }
+  const opens = plans.filter((x) => x.phase === 'open' || x.phase === 'exiting');
+  for (const p of opens.slice().sort((a, b) => String(a.end_utc).localeCompare(String(b.end_utc)))) {
+    items.push({ what: `Close the ${p.side || 'open'} position of ${String(p.entry_utc || '').slice(0, 16).replace('T', ' ')}`, whenUtc: p.end_utc,
+      why: `its ${holdH}h hold ends, unless a printed trade reaches the stop first (now ${px(p.stop)})${p.trail ? (p.armed ? '; the trail has armed and moves the stop once an hour' : '; the trail arms once the best price has moved far enough its way') : ''}. It closes whether the setup is running or stopped.` });
+  }
+  const exits = opens.map((p) => Date.parse(p.end_utc)).filter(Number.isFinite);
+  return {
+    serverUtc: iso(nowMs), entryHourUtc, holdHours: holdH,
+    nextEvalUtc: iso(nextEval), nextEntryUtc: iso(nextEntry),
+    nextExitUtc: exits.length ? iso(Math.min(...exits)) : null,
+    openPositions: opens.length, items,
+  };
+}
+
 // The UTC moment a decision ACTS: its feature window start plus the geometry's
 // entry offset. Null on an unusable stamp OR an unstated offset — the old
 // version fell back to one config's 97h, so a caller that could not supply an
@@ -457,6 +519,8 @@ function setupStatus(setup, file = null) {
         sell: x.state && x.state.rails && x.state.sides.includes(-1) ? x.state.rails.sell : null,
         // the best price is the trail's own count, so a plan with no trailing stop has none to show
         trail: !!(x.plan.cell && x.plan.cell.trailMult != null),
+        // the position's own side: with the gate active either level may open it, whichever the call
+        side: x.state && (x.state.dir === 1 || x.state.dir === -1) ? (x.state.dir === 1 ? 'LONG' : 'SHORT') : null,
         stop: x.state ? x.state.stop : null, best: x.state && x.plan.cell && x.plan.cell.trailMult != null ? x.state.ext : null, armed: x.state ? !!x.state.armed : false,
         end_utc: x.state ? new Date(x.state.endTs).toISOString() : null, size: x.plan.size || null,
         pnl: x.ledger ? x.ledger.pnlUsd : null,
@@ -464,8 +528,8 @@ function setupStatus(setup, file = null) {
       })).sort((a, b) => String(b.chunk_start).localeCompare(String(a.chunk_start))),
     };
   }
-  out.liveStatus = nextActivity(out, setup, Date.now());
+  out.liveStatus = mirror ? engineNextActivity(out, setup, Date.now(), out.engine) : nextActivity(out, setup, Date.now());
   return out;
 }
 
-module.exports = { deriveSetup, setupStatus, readJournal, journalFile, nextActivity, decisionEntryUtc };
+module.exports = { deriveSetup, setupStatus, readJournal, journalFile, nextActivity, engineNextActivity, decisionEntryUtc };

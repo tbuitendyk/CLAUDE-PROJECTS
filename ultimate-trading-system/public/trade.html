@@ -295,7 +295,7 @@ const TH={
   // THE ENGINE'S PLANS (loop of 2026-09-25)
   engEntry:'the hour this plan acts in, UTC — the feature window closed, and the engine starts watching the price at this hour. The date to think in.',
   engCall:'what the committee called for this plan: LONG = buy the pair, SHORT = sell it borrowed, no call = it stood aside.',
-  engPhase:'where the engine says this plan stands right now, in its own words, and why when there is a reason.',
+  engPhase:'where the engine says this plan stands right now, in its own words, and why when there is a reason. Once a position opens, its side follows: with both levels live, either one may open it, whichever the call.',
   engBuy:'the price level ABOVE the price at the entry hour, in quote currency (USDT). A printed trade at or above it opens a LONG. On a SHORT it is the stop until the position opens.',
   engSell:'the price level BELOW the price at the entry hour, in quote currency (USDT). A printed trade at or below it opens a SHORT. On a LONG it is the stop until the position opens.',
   engStop:'the price the position is closed at if a printed trade reaches it, in quote currency (USDT). Once the trail has armed it follows the best price, once an hour, and never moves back.',
@@ -325,7 +325,7 @@ function enginePlansHtml(e){
     return `<tr>
       <td style="white-space:nowrap">${esc(String(p.entry_utc||'').slice(0,16).replace('T',' '))}</td>
       <td class="${p.call===1?'pos':p.call===-1?'neg':'muted'}">${p.call===1?'LONG':p.call===-1?'SHORT':'no call'}</td>
-      <td style="text-align:left">${esc(PHASE_WORDS[p.phase]||p.phase)}${why?` <span class="muted">— ${esc(why)}</span>`:''}</td>
+      <td style="text-align:left">${esc(PHASE_WORDS[p.phase]||p.phase)}${p.side&&['entering','open','exiting','closed'].includes(p.phase)?` <span class="${p.side==='LONG'?'pos':'neg'}">${p.side}</span>`:''}${why?` <span class="muted">— ${esc(why)}</span>`:''}</td>
       <td>${px(p.buy)}</td><td>${px(p.sell)}</td><td>${px(p.stop)}</td><td>${p.phase==='open'||p.phase==='exiting'||p.phase==='closed'?px(p.best):'—'}</td>
       <td style="white-space:nowrap">${!p.trail?'—':p.phase==='open'||p.phase==='exiting'?(p.armed?'<span class="pos">armed</span>':'not yet'):p.phase==='closed'?(p.armed?'<span class="pos">armed</span>':'never armed'):'—'}</td>
       <td title="clip ${esc(sz.clipUsd)} x the field's size ${esc(sz.fieldSize)} x the conviction multiplier ${esc(sz.multiplier)} (${esc(sz.agree)} members agreeing)">${sz.quoteUsd==null?'—':'$'+Number(sz.quoteUsd).toFixed(2)}</td>

@@ -207,6 +207,10 @@ function step(state, plan, ev) {
   if (t === 'cancel') {
     // the owner took the plan back: nothing open is simply ended; an open position is closed at the market
     if (state.phase === 'waiting' || state.phase === 'armed') { state.phase = 'cancelled'; state.reason = ev.why || 'cancelled'; acts.push(note('cancelled', { reason: state.reason, ts: ev.ts })); }
+    // ENTRIES ONLY: a setup that stopped takes no new entry, and a position it
+    // already holds closes by its own rules (the stop, the hold's end) -- so a
+    // cancel that arrives just after the entry leaves the position alone
+    else if (ev.entriesOnly) return acts;
     else if (state.phase === 'open') return closeOrder(state, plan, null, ev.why || 'cancelled', null, ev.ts);
     else if (state.phase === 'entering') state.cancelAfterEntry = ev.why || 'cancelled';
     return acts;

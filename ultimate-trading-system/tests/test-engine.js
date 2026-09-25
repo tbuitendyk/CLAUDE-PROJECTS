@@ -319,3 +319,61 @@ module.exports.theWebsocketClientReadsMessagesAndAnswersPings = async function (
   assert.strictEqual(pong, 'hi', 'the ping is answered with its own payload');
   ws.close(); server.close();
 };
+
+// S6 AND D6: THE SIMULATED EXCHANGE FILLS ONLY WHAT THE LIVE BOOK HOLDS. A
+// market order walks the book for its size and records the levels it took; an
+// order the book cannot fill in full, a book too old to trust, a size under the
+// venue's step or its smallest order, and an order that says any mode but
+// simulated are each refused in words -- never filled at an invented price.
+module.exports.theSimulatedExchangeFillsOnlyWhatTheLiveBookHolds = async function () {
+  const { SimulatedExchange } = require('../engine/venues/simulated');
+  const now = Date.UTC(2026, 8, 26, 2);
+  const market = fakeMarket();
+  const sim = new SimulatedExchange({ market, feePerLeg: 0.001, maxBookAgeMs: 3000, now: () => now });
+  const order = (x) => sim.placeOrder({ mode: 'simulated', setupId: 's', symbol: 'LTCUSDT', purpose: 'enter', side: 'BUY', ...x });
+  let r = await order({ mode: 'live', qty: 1 });
+  assert.ok(r.status === 'refused' && /this is the simulated exchange and the order says "live"/.test(r.why), JSON.stringify(r));
+  r = await order({ qty: 1 });
+  assert.ok(r.status === 'refused' && /no live order book for this symbol yet/.test(r.why), JSON.stringify(r));
+  market.books.set('LTCUSDT', { bids: [[69.9, 1], [69.8, 2]], asks: [[70, 1], [70.1, 2]], ts: now - 5000 });
+  r = await order({ qty: 1 });
+  assert.ok(r.status === 'refused' && /the live order book is 5 seconds old/.test(r.why), JSON.stringify(r));
+  market.books.get('LTCUSDT').ts = now - 100;
+  r = await order({ qty: 3.5 });
+  assert.ok(r.status === 'refused' && /the live order book's top 2 levels hold less than 3\.5/.test(r.why), JSON.stringify(r));
+  r = await order({ qty: 0.0004 });
+  assert.ok(r.status === 'refused' && /under the exchange's smallest step or quantity/.test(r.why), JSON.stringify(r));
+  r = await order({ qty: 0.05 });
+  assert.ok(r.status === 'refused' && /the order is worth 3\.50, under the exchange's smallest order of 5/.test(r.why), JSON.stringify(r));
+  // a buy walks up the asks for its size, and pays the account's fee on what it took
+  r = await order({ qty: 2 });
+  assert.strictEqual(r.status, 'filled');
+  assert.deepStrictEqual(r.against.levels, [[70, 1], [70.1, 1]], 'the levels it took');
+  assert.ok(Math.abs(r.price - 70.05) < 1e-12, `${r.price}`);
+  assert.ok(Math.abs(r.feeUsd - 140.1 * 0.001) < 1e-12, `${r.feeUsd}`);
+  assert.deepStrictEqual([r.against.bestBid, r.against.bestAsk, r.against.bookAgeMs], [69.9, 70, 100], 'what it filled against');
+  // a sell sized in dollars walks down the bids, its quantity floored to the venue's step
+  r = await order({ side: 'SELL', quoteUsd: 100 });
+  assert.strictEqual(r.status, 'filled');
+  assert.strictEqual(r.qty, 1.43, 'the dollars at the best bid, floored to the step: 100 / 69.9 = 1.4306');
+  assert.deepStrictEqual(r.against.levels.map((l) => l[0]), [69.9, 69.8]);
+};
+
+// A TAKE-BACK FOR ENTRIES ONLY (a setup that stopped): a plan still waiting is
+// cancelled; a position already open is left to close by its own rules; the
+// owner's plain take-back still closes an open position at the market
+module.exports.aTakeBackForEntriesOnlyLeavesAnOpenPositionAlone = function () {
+  const plan = { planId: 'p', setupId: 's', mode: 'simulated', symbol: 'LTCUSDT', entryTs: Date.UTC(2026, 8, 26, 1), call: 1, cell: { entry: 'breakout', gate: 'active', dMult: 0.75, tHours: 65, trailMult: 1.5, armMult: 0.5 }, bandPct: 5, size: { quoteUsd: 100 } };
+  const waiting = P.newState(plan);
+  P.step(waiting, plan, { type: 'cancel', why: 'the setup is stopped: it takes no new entry', entriesOnly: true, ts: plan.entryTs - 1000 });
+  assert.deepStrictEqual([waiting.phase, waiting.reason], ['cancelled', 'the setup is stopped: it takes no new entry']);
+  const open = P.newState(plan);
+  P.step(open, plan, { type: 'ref', price: 70, ts: plan.entryTs });
+  P.step(open, plan, { type: 'price', price: 72.7, ts: plan.entryTs + 60000 });
+  P.step(open, plan, { type: 'filled', purpose: 'enter', price: 72.7, qty: 1.375, ts: plan.entryTs + 61000 });
+  assert.strictEqual(open.phase, 'open');
+  const acts = P.step(open, plan, { type: 'cancel', why: 'the setup is stopped: it takes no new entry', entriesOnly: true, ts: plan.entryTs + 120000 });
+  assert.deepStrictEqual([open.phase, acts.length], ['open', 0], 'the open position is left to its stop and its hold');
+  const closing = P.step(open, plan, { type: 'cancel', why: 'taken back by the owner', ts: plan.entryTs + 180000 });
+  assert.ok(open.phase === 'exiting' && closing.some((a) => a.kind === 'order' && a.purpose === 'exit' && a.type === 'market'), 'a plain take-back closes it at the market');
+};

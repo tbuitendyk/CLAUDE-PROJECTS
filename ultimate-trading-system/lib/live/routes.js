@@ -62,7 +62,13 @@ function startEngineWork() {
   // state, the producer runs as a child of its own (engine-produce.js) -- the
   // committee is trained there, never on the thread that answers the pages.
   // It sends nothing twice, so running it often costs a check, not a decision.
+  const asked = new Map();
   const tick = () => {
+    // a stopped or retired setup's plans still waiting on its engine are taken back
+    link.cancelLeftovers(targets.listEngines(), reg.listSetups(), asked).then((done) => {
+      if (!done.length) return;
+      try { fs.mkdirSync(path.join(__dirname, '..', '..', 'data', 'live'), { recursive: true }); fs.appendFileSync(path.join(__dirname, '..', '..', 'data', 'live', 'engine-produce.jsonl'), `${JSON.stringify({ at: new Date().toISOString(), ok: done.every((d) => d.ok), cancelled: done })}\n`); } catch (_) { /* the engine's own record holds each take-back */ }
+    }, () => {});
     if (produceRunning) return;
     const engines = new Set(targets.listEngines().map((t) => t.id));
     const due = reg.listSetups().some((s) => (s.state === 'paper' || s.state === 'live') && engines.has(s.executionTargetRef));

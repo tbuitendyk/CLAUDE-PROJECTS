@@ -151,6 +151,81 @@ module.exports = {
     for (const k of ['engBuy', 'engSell', 'engStop', 'engBest']) assert.ok(/USDT/.test(TH[k]), `${k} says the price is in the quote currency`);
   },
 
+  // A SETUP ON THE ENGINE, READ BY THE TRADE TAB'S ONE PATH: its plans where the
+  // engine says they stand, and what happens next in the engine's own terms --
+  // not the old order program's hourly recompute and entry window. Then the
+  // setup stops: the plan still waiting for a level is taken back, the open
+  // position is left to close by its own rules, and nothing is asked twice.
+  async aSetupOnTheEngineIsDrawnInItsOwnTermsAndStoppingTakesBackOnlyWhatHasNotOpened() {
+    const { Journal } = require('../engine/journal');
+    const { Runner } = require('../engine/runner');
+    const { SimulatedExchange } = require('../engine/venues/simulated');
+    const { makeServer } = require('../engine/api');
+    const view = require('../lib/live/view');
+    const edir = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-'));
+    const oldDecisions = process.env.GC_LIVE_DECISIONS;
+    process.env.GC_LIVE_DECISIONS = path.join(edir, 'decisions');
+    const t0 = Date.UTC(2026, 8, 26, 1);
+    let now = t0 - 60000;
+    const market = {
+      followed: new Set(), books: new Map(), trades: new Map(),
+      follow(x) { market.followed = new Set(x); }, book: (x) => market.books.get(x) || null, trade: (x) => market.trades.get(x) || null,
+      filtersOf: async () => ({ tickSize: 0.01, stepSize: 0.001, minQty: 0.001, minNotional: 5 }), hourOpenOf: async () => null, minutes: async () => [], status: () => ({ connected: true }),
+    };
+    const journal = new Journal(path.join(edir, 'journal.jsonl'));
+    const runner = new Runner({ journal, market, venues: { simulated: new SimulatedExchange({ market, feePerLeg: 0.001, now: () => now }) }, now: () => now });
+    const server = makeServer({ runner, journal, health: () => ({ ok: true, realOrders: 'off' }) });
+    await new Promise((r) => server.listen(0, '127.0.0.1', r));
+    const target = targets.saveEngine({ ...ENGINE, id: 'draw-engine', name: 'Draw engine', localPort: server.address().port, isDefault: false });
+    const m = link.mirrorFor(target);
+    const cell = { entry: 'breakout', gate: 'active', dMult: 0.75, tHours: 65, trailMult: 1.5, armMult: 0.5 };
+    const setup = { id: 'setup-draw', name: 'LTC on the engine', state: 'paper', executionTargetRef: 'draw-engine', tradedPair: 'LTCUSDT', clipUsd: 100,
+      configSnapshot: { branch: { geometry: 'daily-4d', band: 5 }, cell, combo: { trade: 'LTCUSDT' } } };
+    const plan = (chunk, entryTs) => ({ planId: `setup-draw|${chunk}`, setupId: 'setup-draw', mode: 'simulated', symbol: 'LTCUSDT', chunkStart: chunk, entryTs, call: 1, cell, bandPct: 5, size: { quoteUsd: 100 }, feePerLeg: 0.001 });
+    try {
+      m.start();
+      assert.ok((await link.postPlan(target, plan('2026-09-22T00:00:00.000Z', t0))).ok);
+      assert.ok((await link.postPlan(target, plan('2026-09-23T00:00:00.000Z', t0 + 24 * 3600000))).ok);
+      now = t0;
+      runner.onKline({ symbol: 'LTCUSDT', openTime: t0, open: 70 });
+      market.books.set('LTCUSDT', { bids: [[72.6, 5]], asks: [[72.7, 5]], ts: now });
+      market.trades.set('LTCUSDT', { price: 72.7, ts: now });
+      runner.onTrade({ symbol: 'LTCUSDT', price: 72.7, ts: now });
+      for (let i = 0; i < 50 && runner.plans.get('setup-draw|2026-09-22T00:00:00.000Z').state.phase !== 'open'; i++) await new Promise((r) => setTimeout(r, 20));
+      runner.sendMarks(now);
+      for (let i = 0; i < 100 && !(m.plansOf('setup-draw').some((x) => x.state && x.state.phase === 'open') && m.marksOf('setup-draw').length); i++) await new Promise((r) => setTimeout(r, 20));
+      const st = view.setupStatus(setup);
+      assert.deepStrictEqual(st.engine.plans.map((p) => [p.chunk_start.slice(0, 10), p.phase, p.side]), [['2026-09-23', 'waiting', null], ['2026-09-22', 'open', 'LONG']]);
+      assert.strictEqual(st.engine.plans[1].best, 72.7, 'a trailed plan shows its best price');
+      const whats = st.liveStatus.items.map((it) => it.what);
+      assert.ok(!whats.some((w) => /Recompute this profile/.test(w)), `the old order program's schedule is not this setup's: ${whats.join(' | ')}`);
+      assert.strictEqual(whats[0], 'Decide the next period (LONG / SHORT / no call)');
+      assert.ok(/before 01:00 UTC/.test(st.liveStatus.items[0].why) && /Draw engine/.test(st.liveStatus.items[0].why), st.liveStatus.items[0].why);
+      const lv = st.liveStatus.items.find((it) => /^Set the levels for the LONG call of 2026-09-23/.test(it.what));
+      assert.ok(lv && lv.whenUtc === new Date(t0 + 24 * 3600000).toISOString() && / 3\.75% either side of that hour's opening price/.test(lv.why), JSON.stringify(lv));
+      const close = st.liveStatus.items.find((it) => /^Close the LONG position of 2026-09-26 01:00/.test(it.what));
+      assert.ok(close && close.whenUtc === new Date(t0 + 65 * 3600000).toISOString() && /unless a printed trade reaches the stop first \(now 67\.375\)/.test(close.why), JSON.stringify(close));
+      assert.strictEqual(st.liveStatus.nextExitUtc, new Date(t0 + 65 * 3600000).toISOString());
+      // the setup stops: only the plan that has not opened is taken back
+      const stopped = { ...setup, state: 'stopped' };
+      const asked = new Map();
+      const done = await link.cancelLeftovers([target], [stopped, { id: 'other', executionTargetRef: 'draw-engine', state: 'paper' }], asked, now);
+      assert.deepStrictEqual(done.map((d) => [d.planId, d.ok]), [['setup-draw|2026-09-23T00:00:00.000Z', true]], JSON.stringify(done));
+      assert.strictEqual(runner.plans.get('setup-draw|2026-09-23T00:00:00.000Z').state.phase, 'cancelled');
+      assert.strictEqual(runner.plans.get('setup-draw|2026-09-23T00:00:00.000Z').state.reason, 'the setup is stopped: it takes no new entry');
+      assert.strictEqual(runner.plans.get('setup-draw|2026-09-22T00:00:00.000Z').state.phase, 'open', 'the open position is left to its stop and its hold');
+      assert.deepStrictEqual(await link.cancelLeftovers([target], [stopped], asked, now + 60000), [], 'not asked twice inside five minutes');
+      const after = view.setupStatus(stopped);
+      assert.ok(/this setup is stopped: nothing is sent to Draw engine/.test(after.liveStatus.items[0].why), after.liveStatus.items[0].why);
+    } finally {
+      m.stop();
+      server.close();
+      targets.deleteEngine('draw-engine', []);
+      if (oldDecisions === undefined) delete process.env.GC_LIVE_DECISIONS; else process.env.GC_LIVE_DECISIONS = oldDecisions;
+      fs.rmSync(edir, { recursive: true, force: true });
+    }
+  },
+
   // S5 AND THE LINK: a setup on an engine goes to paper only while the engine
   // answers through its link, and never to live while real orders are off
   aSetupOnTheEngineIsGatedOnTheLinkAndOnRealOrders() {

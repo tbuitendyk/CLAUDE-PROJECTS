@@ -49,7 +49,7 @@ async function health(target) {
   return r.ok ? { answers: true, ms: r.ms, health: r.json } : { answers: false, ms: r.ms, why: r.why || `the engine answered ${r.status}` };
 }
 async function postPlan(target, plan) { return call(target, 'POST', '/plans', plan, 8000); }
-async function cancelPlan(target, planId, why) { return call(target, 'POST', `/plans/${encodeURIComponent(planId)}/cancel`, { why }, 8000); }
+async function cancelPlan(target, planId, why, { entriesOnly = false } = {}) { return call(target, 'POST', `/plans/${encodeURIComponent(planId)}/cancel`, { why, entriesOnly }, 8000); }
 async function engineState(target) { return call(target, 'GET', '/state', null, 8000); }
 
 // ---- THE ENGINE'S WORDS, AGAIN IN THE WORDS THE TRADE TAB READS -------------
@@ -197,6 +197,38 @@ class Mirror {
   }
 }
 
+// ---- A SETUP THAT STOPPED TAKES NO NEW ENTRY ------------------------------
+//
+// The old order program's rule, kept on the engine: a setup that is stopped or
+// retired opens nothing, and a position it already holds still closes by its
+// own rules. A plan still waiting on the engine -- for its entry hour, or for a
+// printed trade to reach a level -- is a new entry, so it is taken back; an
+// open position is left alone (entriesOnly: a take-back that arrives just
+// after the entry leaves the position to close by its stop or its hold).
+// Asked each minute until the engine's own record says the plan is cancelled,
+// so an engine that was not answering at the moment of the stop is caught up
+// the moment it answers; never asked twice inside five minutes.
+const ASK_AGAIN_MS = 5 * 60000;
+async function cancelLeftovers(engines, setups, asked = new Map(), now = Date.now()) {
+  const out = [];
+  for (const t of engines) {
+    const m = mirrorFor(t);
+    for (const s of setups.filter((x) => x.executionTargetRef === t.id && x.state !== 'paper' && x.state !== 'live')) {
+      for (const x of m.plansOf(s.id)) {
+        const phase = x.state ? x.state.phase : 'waiting';
+        if (phase !== 'waiting' && phase !== 'armed') continue;
+        const id = x.plan.planId;
+        if (asked.has(id) && now - asked.get(id) < ASK_AGAIN_MS) continue;
+        asked.set(id, now);
+        // eslint-disable-next-line no-await-in-loop
+        const r = await cancelPlan(t, id, `the setup is ${s.state}: it takes no new entry`, { entriesOnly: true });
+        out.push({ engine: t.id, setup: s.id, planId: id, ok: !!r.ok, why: r.ok ? null : (r.why || (r.json && (r.json.problems || []).join('; ')) || `the engine answered ${r.status}`) });
+      }
+    }
+  }
+  return out;
+}
+
 const mirrors = new Map();
 function mirrorFor(target) {
   if (!mirrors.has(target.id)) mirrors.set(target.id, new Mirror(target));
@@ -211,4 +243,4 @@ function followAll(list) {
   for (const t of list) mirrorFor(t).start();
 }
 
-module.exports = { call, health, postPlan, cancelPlan, engineState, translate, Mirror, mirrorFor, followAll, MIRROR_DIR };
+module.exports = { call, health, postPlan, cancelPlan, cancelLeftovers, engineState, translate, Mirror, mirrorFor, followAll, MIRROR_DIR };
