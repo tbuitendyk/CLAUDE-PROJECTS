@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **7cc6575cf7db — what the box is serving**, not from the working tree.
+Generated from **4fe9a80ef39d — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -2861,7 +2861,7 @@ about About above above. after against ahead all allow alone already always an a
 
 _none_
 
-## Sentences the page prints (30)
+## Sentences the page prints (31)
 
 - Greenlight — the decision that a config is fit to trade
 - Records WHO/WHEN/WHY with the exact frozen config, engine version, and the campaign's whole
@@ -2875,8 +2875,8 @@ _none_
 - passed on Held on a layout that keeps no reserve, held alone. One of its
 - survivors is taken forward, chosen by how surrounded it is (the survivor with the most of its neighbouring settings
 - surviving too, never the one with the most money) or named by you, and both are recorded. The frozen settings carry the
-- way its members agree exactly as the survivor does. Nothing here trades, and nothing built from it can be put to
-- work until the live path speaks that agreement.
+- way its members agree exactly as the survivor does. Nothing here trades: the config goes to the Trade tab, and only a
+- press of Activate paper or Activate real there starts it.
 - no held set or reserve set on this box yet - read a rule on Held first
 - why — the decision record (required)
 - press a row to pick it; its own lines are drawn below
@@ -2885,6 +2885,7 @@ _none_
 - Deviance from the rule's centre is the share of its neighbouring settings that did not survive: the settings one notch up or down on one dial, every other dial the same.
 - 0 is surrounded on every side, 1 on none.
 - its money on each stretch step by step, each change in the order it is applied, with the trades each figure is over in brackets
+- it goes to the Trade tab, and cannot be started there yet:
 - The test stretch is without the History and Tune settings:
 - it is the forecasts as stage 3 priced them,
 - with no retraining, no stop and no sizing. Train and held are with History's retraining where the set has it, and held is
@@ -2894,10 +2895,10 @@ _none_
 - is priced and nothing counts as a look. Each stretch is held against the four simpler things at the survivors' own hold lengths.
 - neighbouring settings that survived
 
-## Every word, flat (248)
+## Every word, flat (251)
 
 ```
-Activation activation. after against agree agreement. all alone. always and appears applied are as at average be becomes before behind being below both box brackets built buy by campaign can capture carry centre chain. change changed chosen clear cleared clears config configs conviction counts currently dash deactivation decision Delete depth Deviance deviance dial did does does. down drawn each Each engine ever ever. Every every evidence evidentiary exact exactly Existing fee figure first fit for forecasts forward found four from frozen Greenlight greenlight greenlighted greenlights half-life hand-built has held Held here here. History history hold how id in is It it its keeps layout lengths. lines live long look. means members minted money most name named neighbouring never no none none. not notch Nothing nothing nuked nuking of off on one One Only only or order other out over own pair PASS passed path per period pick picture predates press priced put read rebuild REBUILD record recorded. Records records refused release Rename required REQUIRED reserve Reserve retraining row rule run same. sent set set. sets setting settings share short side sides simpler size sized sizing sizing. so speaks Stage stage stand starts state step stood stop stopped stretch surrounded survive survived surviving survivor survivors tab taken test that the The them then there. they things this through to too trade Trade trades Train train Tune tuning tunings under until up verdict version was way way. what when where WHO/WHEN/WHY whole why with without work write yes yet you
+Activate Activation activation. after against agree all alone. always and appears applied are as at average be becomes before behind being below both box brackets built buy by campaign can cannot capture carry centre chain. change changed chosen clear cleared clears config configs conviction counts currently dash deactivation decision Delete depth Deviance deviance dial did does does. down drawn each Each engine ever ever. Every every evidence evidentiary exact exactly Existing fee figure first fit for forecasts forward found four from frozen goes Greenlight greenlight greenlighted greenlights half-life hand-built has held Held here here. History history hold how id in is It it it. its keeps layout lengths. lines live long look. means members minted money most name named neighbouring never no none none. not notch Nothing nothing nuked nuking of off on one One Only only or order other out over own pair paper PASS passed per period pick picture predates press priced read real rebuild REBUILD record recorded. Records records refused release Rename required REQUIRED reserve Reserve retraining row rule run same. sent set set. sets setting settings share short side sides simpler size sized sizing sizing. so Stage stage stand started starts state step stood stop stopped stretch surrounded survive survived surviving survivor survivors tab taken test that the The them then there there. they things this through to too trade Trade trades Train train Tune tuning tunings under until up verdict version was way way. what when where WHO/WHEN/WHY whole why with without write yes yet you
 ```
 
 ---
