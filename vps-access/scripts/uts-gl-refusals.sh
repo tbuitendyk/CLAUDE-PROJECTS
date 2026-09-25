@@ -17,6 +17,7 @@ print(f\"{d.get('id')} | {d.get('kind')} | {d.get('name')}\")
 print(f\"   verdict: {'PASS' if (d.get('block') or {}).get('pass') else 'no pass'} | stands: {d.get('standing') or 'yes'}\")
 print(f\"   refused: {d.get('refused')}\")
 print(f\"   by depth: {dp.get('label')}\")
+print(f\"   not yet startable: {d.get('notYet')}\")
 "
 done
 echo '== done'
