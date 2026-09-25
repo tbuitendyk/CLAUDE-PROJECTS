@@ -382,7 +382,8 @@ function engineNextActivity(st, setup, nowMs, eng) {
   const entryOffH = geo.entryOffsetH || 0;
   const holdH = cell.tHours || 0;
   const entryHourUtc = entryOffH % 24;
-  const closeHourUtc = (entryHourUtc + 23) % 24;
+  // the decision is taken where the feature window ends (lib/windowmove.js decisionAt)
+  const closeHourUtc = (geo.featureHours || 0) % 24;
   const d = new Date(nowMs);
   const at = (h) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), h, 0, 0, 0);
   let nextEntry = at(entryHourUtc); if (nextEntry <= nowMs) nextEntry += 864e5;
@@ -401,8 +402,8 @@ function engineNextActivity(st, setup, nowMs, eng) {
       why: 'waiting for Members train: choose rolling or frozen at in the Config editor on Setup detail and press Save. Nothing is decided until it is set.' });
   } else if (st.state === 'paper' || st.state === 'live') {
     items.push({ what: 'Decide the next period (LONG / SHORT / no call)', whenUtc: iso(nextEval),
-      why: `this machine decides once the ${geo.featureHours || '?'}h feature window closes at ${hh(closeHourUtc)} UTC and that hour's candle is in, `
-        + `and sends the plan to ${name} before ${hh(entryHourUtc)} UTC; a period the committee stands aside is written down and nothing is sent.` });
+      why: `this machine decides as soon as the day closes at ${hh(closeHourUtc)} UTC, where the ${geo.featureHours || '?'}h feature window ends and its last hour's candle is in, `
+        + `and sends the plan to ${name} before ${hh(entryHourUtc)} UTC; the decision is on the LIVE tab the moment it is made. A period the committee stands aside is written down and nothing is sent.` });
   } else {
     items.push({ what: 'Send a new plan', whenUtc: null,
       why: `this setup is ${st.state}: nothing is sent to ${name}, and a plan still waiting there is taken back. A position already open still closes by its own rules.` });
@@ -429,6 +430,62 @@ function engineNextActivity(st, setup, nowMs, eng) {
     nextEvalUtc: iso(nextEval), nextEntryUtc: iso(nextEntry),
     nextExitUtc: exits.length ? iso(Math.min(...exits)) : null,
     openPositions: opens.length, items,
+  };
+}
+
+// THE DECISION WAITING TO OPEN (owner, 2026-09-25: "the pending trade decision
+// needs to be displayed on the LIVE tab of both Paper Books and Live Trading as
+// soon as that trade decision is available"). The newest decision whose entry
+// hour has not come yet, from this setup's decision log -- the last line written
+// for its period, so what the engine answered is part of it. Everything here is
+// read from that record and the setup's own configuration, and the one path
+// draws it for both books. Null when no decision is waiting.
+function pendingDecision(setup, logged, nowMs) {
+  const cfg = setup.configSnapshot || {};
+  const cell = cfg.cell || {};
+  let geo = null;
+  try { geo = (require('../dataset').GEOMETRIES || {})[(cfg.branch || {}).geometry] || null; } catch (_) { geo = null; }
+  if (!geo) return null;
+  const lastOf = new Map();
+  for (const x of logged || []) if (x && typeof x.chunk_start === 'string') lastOf.set(x.chunk_start, x);
+  let d = null;
+  let entryMs = null;
+  for (const x of lastOf.values()) {
+    const e = Date.parse(x.chunk_start) + (geo.entryOffsetH || 0) * 3600000;
+    if (Number.isFinite(e) && e > nowMs && (!d || x.chunk_start > d.chunk_start)) { d = x; entryMs = e; }
+  }
+  if (!d) return null;
+  const call = d.side === 'LONG' ? 1 : d.side === 'SHORT' ? -1 : 0;
+  const votes = Array.isArray(d.per_member) ? d.per_member : [];
+  const eng = d.engine && typeof d.engine === 'object' ? d.engine : null;
+  const f = d.field || null;
+  const traded = eng ? !!eng.traded : call !== 0;
+  const band = Math.abs(Number(d.band_pct != null ? d.band_pct : (cfg.branch || {}).band));
+  let why = null;
+  if (!traded) {
+    why = call !== 0 ? ((eng && eng.why) || 'sized to nothing')
+      : f && /^blocked /.test(f.why || '') ? `the field blocked the call ${f.why.replace(/^blocked /, '')}`
+        : f && /^silent/.test(f.why || '') ? `the field was silent${f.why.replace(/^silent/, '')}`
+        : (eng && eng.why) || 'the committee stood aside';
+  }
+  // what the engine said when the plan reached it, in words; nothing asked of it on a day with no trade
+  const said = (a) => (typeof a === 'string' ? a : a && typeof a === 'object' ? (a.why || a.error || (a.phase ? `taken, ${a.phase}` : null)) : null);
+  return {
+    chunk_start: d.chunk_start,
+    decided_utc: d.produced_utc || null,
+    entry_utc: new Date(entryMs).toISOString(),
+    side: d.side || null,
+    traded,
+    why,
+    members: { of: votes.length, up: votes.filter((v) => v === 1).length, down: votes.filter((v) => v === -1).length, agreeing: call !== 0 ? votes.filter((v) => v === call).length : null },
+    field: f ? { sign: f.sign ?? null, agreement: f.agreement ?? null, certainty: f.certainty ?? null, size: f.size ?? null, why: f.why || null } : null,
+    size: eng && eng.size ? eng.size : null,
+    quoteUsd: eng && eng.size ? eng.size.quoteUsd : (Number.isFinite(Number(d.clip_usd)) ? Number(d.clip_usd) : null),
+    entry: cell.entry || null,
+    gate: cell.gate || null,
+    levelPct: cell.entry === 'breakout' && Number.isFinite(Number(cell.dMult)) && Number.isFinite(band) ? Math.round(Number(cell.dMult) * band * 1e4) / 1e4 : null,
+    holdHours: cell.tHours ?? null,
+    engine: eng && traded ? { taken: !!eng.ok, said: eng.ok ? null : (said(eng.answer) || 'being sent') } : null,
   };
 }
 
@@ -536,7 +593,8 @@ function setupStatus(setup, file = null) {
     };
   }
   out.liveStatus = mirror ? engineNextActivity(out, setup, Date.now(), out.engine) : nextActivity(out, setup, Date.now());
+  out.pending = pendingDecision(setup, logged, Date.now());
   return out;
 }
 
-module.exports = { deriveSetup, setupStatus, readJournal, journalFile, nextActivity, engineNextActivity, decisionEntryUtc };
+module.exports = { deriveSetup, setupStatus, readJournal, journalFile, nextActivity, engineNextActivity, pendingDecision, decisionEntryUtc };

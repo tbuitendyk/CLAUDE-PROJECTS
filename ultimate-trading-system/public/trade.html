@@ -315,6 +315,50 @@ const th=(label,key,style)=>`<th${style?` style="${style}"`:''}${TH[key]?` title
 const PHASE_WORDS={waiting:'waiting for its entry hour',armed:'waiting for a level',entering:'opening',open:'open',exiting:'closing',closed:'closed',expired:'no level reached in the hold',skipped:'skipped',failed:'refused by the exchange',cancelled:'cancelled',sent:'sent to the engine'};
 const EXIT_WORDS={stop:'at the stop','trailing stop':'at the trailing stop',time:'the hold ended'};
 const px=(v)=>v==null||!Number.isFinite(Number(v))?'—':Number(v).toFixed(4).replace(/\.?0+$/,'');
+// THE DECISION WAITING TO OPEN (owner, 2026-09-25: "the pending trade decision
+// needs to be displayed on the LIVE tab of both Paper Books and Live Trading as
+// soon as that trade decision is available"). Drawn at the top of LIVE by this
+// one path for both books: the call, how many members agreed, what the field
+// read and the rung it gave, the money the position opens with, and when and
+// how it opens -- or that there is no trade, and why.
+function pendingHtml(p, next, engineName){
+  const at=(iso)=>esc(String(iso||'').slice(0,16).replace('T',' '));
+  if(!p) return `<div class="panel"><div class="k">Pending decision</div>
+    <div class="muted" style="font-size:.85rem;margin-top:.3rem">No decision is waiting to open.${next?(next.whenUtc?` The next is made at ${at(next.whenUtc)} UTC.`:` ${esc(next.why)}`):''}</div></div>`;
+  const m=p.members||{};
+  const called=p.side==='LONG'||p.side==='SHORT';
+  const call=!p.traded?['no trade','muted']:p.side==='LONG'?['LONG','pos']:['SHORT','neg'];
+  const members=!m.of?'—':called?`${m.agreeing} of ${m.of} said ${p.side==='LONG'?'UP':'DOWN'}`:`UP ${m.up} · DOWN ${m.down} · no call ${m.of-m.up-m.down}`;
+  const f=p.field;
+  const small=(t)=>t?`<div class="muted" style="font-size:.7rem;font-weight:400;margin-top:.15rem">${t}</div>`:'';
+  const field=!f?'—':`${f.sign>0?'<span class="pos">up</span>':f.sign<0?'<span class="neg">down</span>':'none'}${f.agreement!=null?` · agreement ${Number(f.agreement).toFixed(0)}`:''}${f.certainty!=null?` · certainty ${Number(f.certainty).toFixed(0)}`:''}${small(esc(f.why||''))}`;
+  const rung=!f||f.size==null?'—':`×${esc(Number(f.size))}`;
+  const sz=p.size;
+  const size=!p.traded||p.quoteUsd==null?'—'
+    :`$${Number(p.quoteUsd).toFixed(2)}${sz?small(`clip $${esc(sz.clipUsd)} × field ×${esc(sz.fieldSize)} × conviction ×${esc(sz.multiplier)} (${esc(sz.agree)} agreeing)`):''}`;
+  const hh=at(p.entry_utc).slice(11);
+  const level=p.levelPct!=null?` ${esc(p.levelPct)}%`:'';
+  const how=!p.traded?`No trade: ${esc(p.why||'')}.`
+    :(p.entry==='breakout'
+      ?(p.gate==='active'
+        ?`At ${hh} UTC a buying level and a selling level are set${level} either side of that hour's opening price; a printed trade reaching one opens the position, and the other level is its stop.`
+        :`At ${hh} UTC a buying level and a selling level are set${level} either side of that hour's opening price; a printed trade reaching the ${p.side==='LONG'?'buying':'selling'} level opens the ${p.side} position, and the other level is its stop.`)
+       +(p.holdHours!=null?` If neither is reached within ${esc(p.holdHours)} hours nothing opens, and a position still open then is closed.`:'')
+      :`At ${hh} UTC the ${p.side} position opens at that hour's opening price${p.holdHours!=null?` and is closed ${esc(p.holdHours)} hours later`:''}.`);
+  const eng=!p.engine?'':p.engine.taken
+    ?` <span class="pos">On ${esc(engineName||'the engine')}</span>, waiting for ${hh} UTC.`
+    :` <span class="warn">Not on ${esc(engineName||'the engine')} yet: ${esc(p.engine.said)}</span> — it is asked again every minute.`;
+  return `<div class="panel"><div class="k">Pending decision <span style="text-transform:none;letter-spacing:0">— for the window of ${esc(String(p.chunk_start).slice(0,10))}, decided ${p.decided_utc?at(p.decided_utc)+' UTC':'(time not recorded)'}</span></div>
+    <div class="grid" style="margin-top:.4rem">
+      ${tile('Call','pendCall',`<b>${call[0]}</b>`,call[1])}
+      ${tile('Members agreeing','pendMembers',members)}
+      ${tile('Field','pendField',field)}
+      ${tile('Size rung','pendRung',rung)}
+      ${tile('Trade size','pendSize',size)}
+      ${tile('Opens (UTC)','pendOpens',p.traded?at(p.entry_utc):'nothing opens',p.traded?'':'muted')}
+    </div>
+    <div style="font-size:.85rem;margin-top:.5rem">${how}${eng}</div></div>`;
+}
 function enginePlansHtml(e){
   const link=e.link&&e.link.following?'<span class="pos">following the engine</span>':`<span class="neg">not following the engine</span> <span class="muted">(${esc((e.link&&e.link.why)||'not started')})</span>`;
   const rows=(e.plans||[]).slice(0,12).map(p=>{
@@ -467,6 +511,12 @@ const TILE={
   rejects:'how many order rejections in a row. A run of them is how a broken rail announces itself before anything else does.',
   mirror:'whether the decisions this book acted on still recompute to the same calls from the same data. A BREAK means the record and the engine disagree.',
   master:'the arm switch. STOPPED places no orders at all; RUNNING lets real orders reach the exchange when a live channel is active.',
+  pendCall:'what this decision does: LONG = buy the pair, SHORT = sell it borrowed, no trade = nothing opens for this window. A call the field blocked, or one sized to nothing, is no trade.',
+  pendMembers:'how many of the committee\'s members voted the way of the call. With no trade, how the votes split: UP = long, DOWN = short, no call = named no direction.',
+  pendField:'what the coin\'s decision field read at the moment the day closed — its sign, its agreement and its certainty — and, underneath, what its gate made of the call.',
+  pendRung:'the multiple of the clip the field\'s gate gives this call: the rung its reading lands on. ×0 means the field blocked it; — means this configuration trades without a field.',
+  pendSize:'the money the position opens with, in US DOLLARS of notional: the clip × the field\'s size on this call × the conviction multiplier for the members agreeing.',
+  pendOpens:'the hour this decision acts in, UTC. The levels are set from that hour\'s opening price, or the position opens at it.',
 };
 const tile=(label,key,value,cls)=>`<div class="tile"${TILE[key]?` title="${esc(TILE[key]).replace(/"/g,'&quot;')}"`:''}><div class="k">${label}</div><div class="v${cls?' '+cls:''}">${value}</div></div>`;
 
@@ -1023,6 +1073,7 @@ async function drawLive(){
       </div>`:''}
     ${(st.mirror&&st.mirror.breaks)?`<div class="banner halted">⛔ MIRROR BREAK — ${st.mirror.breaks} decision(s) this config acted on no longer reproduce.
       Its new entries are stopped; investigate before clearing.</div>`:''}
+    ${pendingHtml(st.pending,((st.liveStatus||{}).items||[]).find(it=>/^(Decide the next period|Evaluate the next entry)/.test(it.what)),st.engine&&st.engine.name)}
     <div class="panel" style="font-size:.85rem"><b>Reproduce-check:</b> ${st.mirror==null
         ? '<span class="muted">not run yet</span>'
         : (st.mirror.breaks?`<span class="neg">${st.mirror.breaks} BREAK</span>`
