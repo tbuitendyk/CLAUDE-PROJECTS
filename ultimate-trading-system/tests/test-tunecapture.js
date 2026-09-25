@@ -1402,6 +1402,13 @@ module.exports = {
       assert.deepStrictEqual([famAfter.stamped, famAfter.gone.map((g) => g.id)], [heldReads + 1, [hs.id]], 'the deleted held set is still a look on the family');
       assert.deepStrictEqual(stages.familyReadsOf(stages.getSet(again.id), 'reserve').gone.map((g) => g.id), [fakeId], 'and the deleted reserve set a look on the reserve window');
       assert.strictEqual((stages.getSet(c.cut.id).deletedReads.held || []).length, 1, 'written onto the original, which stays');
+      // A RENAME IS CARRIED WHERE OTHER SETS NAME IT, AND KEPT WHOLE (3.251.0)
+      const renamed = `${src0.name} renamed ${'y'.repeat(90)}`;
+      stages.setSetName(c.cut.id, renamed);
+      assert.strictEqual(stages.getSet(c.cut.id).name, renamed, 'the name kept to its last character');
+      assert.strictEqual(stages.getSet(again.id).copiedFrom.name, renamed, 'a set saved from it names it by its new name');
+      assert.ok(stages.judgeSetsOf(c.cut.id, 'held').length && stages.judgeSetsOf(c.cut.id, 'held').every((h) => h.from.name === renamed), 'and so does every held set read from it');
+      stages.setSetName(c.cut.id, src0.name);
     } finally {
       for (const id of copies.slice().reverse()) {
         for (const j of [...stages.judgeSetsOf(id, 'held'), ...stages.judgeSetsOf(id, 'reserve')]) { try { stages.deleteSet(j.id, j.id); } catch (_) { /* gone */ } }

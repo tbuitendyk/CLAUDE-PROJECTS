@@ -2451,6 +2451,23 @@ const GUARDS = [
     "theTwoScansRunOnTheCapturedEntriesAndOnlyAHeldBackReadIsALook", "the reading counts the trades a multiplier of 0 left out"],
   [path.join(ROOT, 'lib', 'stages.js'), "    const readInto = t.stop != null || !!(t.sizing && t.sizing.on);", "    const readInto = t.stop != null;",
     "theTwoScansRunOnTheCapturedEntriesAndOnlyAHeldBackReadIsALook", "a survivor with a sizing and no stop is read plain"],
+  // 3.250.1 to 3.251.1 (2026-09-25): the kept boxes on Tune, Rename, and a set under scan target coming up with its results
+  [path.join(ROOT, 'public', 'construct.js'), "  const sizingWhyInBox = tnSizingWhyTyped ? tnSizingWhyTyped.text : whyOnRecord;", "  const sizingWhyInBox = whyOnRecord;",
+    "theReasonAndTheNameStayInTheirBoxesAndTakingTheSizingOffLeavesEveryRowAtOne", "a redraw blows away the reason typed for the sizing"],
+  [path.join(ROOT, 'public', 'construct.js'), "    if (!on && pricedLadder) tnTypedLadder = { key: aimKey, raw: pricedLadder.map(() => '1') };", "",
+    "theReasonAndTheNameStayInTheirBoxesAndTakingTheSizingOffLeavesEveryRowAtOne", "taking the sizing off leaves the old multipliers in the boxes"],
+  [path.join(ROOT, 'public', 'construct.js'), "    tnCopyNameTyped = { set: chosen.id, name };", "",
+    "theReasonAndTheNameStayInTheirBoxesAndTakingTheSizingOffLeavesEveryRowAtOne", "the name saved under is blown away by the redraw after the save"],
+  [path.join(ROOT, 'public', 'construct.js'), "  s4RenameWire(chosen, name, after);\n", "",
+    "everyStage4RecordSetBoxCarriesTheCampaignTickAndTheDelete", "the Rename beside every delete does nothing"],
+  [path.join(ROOT, 'lib', 'stages.js'), "  const name = String(raw ?? '').trim();\n  if (!name) throw new Error('a record set needs a name \u2014 the box is empty');", "  const name = String(raw ?? '').trim().slice(0, 80);\n  if (!name) throw new Error('a record set needs a name \u2014 the box is empty');",
+    "renamingASetIsTheOwnersAndCarriesToItsChildren", "a rename keeps only the first 80 characters of the name typed"],
+  [path.join(ROOT, 'lib', 'stages.js'), "      for (const k of ['from', 'copiedFrom', 'standsOn']) if (x[k] && x[k].id === doc.id) { x[k].name = name; named = true; }", "",
+    "aSetSavedUnderANewNameCarriesWhatIsTickedAndTheLooksTheDataHasHad", "the sets that name a renamed Stage 4 set go on naming it by its old name"],
+  [path.join(ROOT, 'lib', 'stages.js'), "    all = theirs;\n", "",
+    "aSetSavedUnderANewNameCarriesWhatIsTickedAndTheLooksTheDataHasHad", "a set saved under a new name shows no scans until it is scanned again, though its trades were scanned"],
+  [path.join(ROOT, 'public', 'construct.js'), "      try { localStorage.setItem(TN_PICK_KEY, pick); localStorage.setItem(TN_WINDOWS_KEY, JSON.stringify(newest.windows || [])); } catch (_) { /* private window */ }\n      return drawTune();", "      return;",
+    "aSetUnderScanTargetComesUpWithTheSurvivorAndWindowsItsResultsRead", "a set comes up under scan target with its kept results hidden behind choices nobody made"],
 ];
 
 const only = process.argv[2] || '';
