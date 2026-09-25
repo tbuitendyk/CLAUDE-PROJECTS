@@ -2697,7 +2697,19 @@ const GUARDS = [
   [path.join(ROOT, "public", "trade.html"), "      <div class=\"row\" style=\"margin-top:.5rem\"><button id=\"saveRouting\">Save routing</button></div>", "      <div class=\"row\" style=\"margin-top:.5rem\"></div><button id=\"saveRouting\">Save routing</button>",
     "aBookShowsOneStateBadgeAndSaveRoutingHasItsOwnRow", "Save routing loses its row of its own"],  // THE ENGINE CARD'S PRICE LINE (3.262.2)
   [path.join(ROOT, "public", "setup.html"), "    if (!coins.length) return '<span class=\"muted\">no coin followed \u2014 no plan waiting or open</span>';", "",
-    "theEngineCardSaysWhatItsPricesMean", "an engine with no plan shows its prices as a fault again"],
+    "theEngineCardSaysWhatItsPricesMean", "an engine with no plan shows its prices as a fault again"],  // SET UP A TRADING ENGINE (3.263.0)
+  [path.join(ROOT, "lib", "live", "enginesetup.js"), "    const open = before;", "    const open = true;",
+    "aChecklistOpensEachStepOnlyWhenTheOneBeforeIsDone", "every step is open at once, whatever the one before it says"],
+  [path.join(ROOT, "lib", "live", "enginesetup.js"), "  mustBeOpen(rec, stepId);\n  const t = (step.ticks || []).find((x) => x.id === tickId);", "  const t = (step.ticks || []).find((x) => x.id === tickId);",
+    "aChecklistOpensEachStepOnlyWhenTheOneBeforeIsDone", "a locked step takes ticks"],
+  [path.join(ROOT, "lib", "live", "enginesetup.js"), "  if (taken) { const e = new Error(`there is already a setup for an engine called", "  if (false) { const e = new Error(`there is already a setup for an engine called",
+    "aChecklistOpensEachStepOnlyWhenTheOneBeforeIsDone", "two checklists for one engine"],
+  [path.join(ROOT, "lib", "live", "enginesetup.js"), "    rec.ticks[stepId] = {};\n", "",
+    "aChecklistOpensEachStepOnlyWhenTheOneBeforeIsDone", "ticks about one machine carry over to another"],
+  [path.join(ROOT, "lib", "live", "enginesetup.js"), "    if (step.writing) missing.push('this step is still being written');", "",
+    "aChecklistOpensEachStepOnlyWhenTheOneBeforeIsDone", "a step still being written reads as done"],
+  [path.join(ROOT, "public", "setup.html"), "    + esHtml()\n", "",
+    "theComputeTabOpensTheChecklistFromItsButton", "the setup is not on the Compute tab"],
 ];
 
 const only = process.argv[2] || '';
