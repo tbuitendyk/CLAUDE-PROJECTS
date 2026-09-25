@@ -2707,7 +2707,7 @@ const GUARDS = [
   [path.join(ROOT, "lib", "live", "enginesetup.js"), "    rec.ticks[stepId] = {};\n", "",
     "aChecklistOpensEachStepOnlyWhenTheOneBeforeIsDone", "ticks about one machine carry over to another"],
   [path.join(ROOT, "lib", "live", "enginesetup.js"), "    if (step.writing) missing.push('this step is still being written');", "",
-    "aChecklistOpensEachStepOnlyWhenTheOneBeforeIsDone", "a step still being written reads as done"],
+    "stepTwoLetsTheSystemInWithAKeyAndASignIn", "a step still being written reads as done"],  // re-aimed 3.265.1: step 2 is written now, so step 3 is the step still being written that a test opens
   [path.join(ROOT, "public", "setup.html"), "    + esHtml()\n", "",
     "theComputeTabOpensTheChecklistFromItsButton", "the setup is not on the Compute tab"],  // THE ENGINE RECORD'S TWO NAMES (3.263.1)
   [path.join(ROOT, "public", "setup.html"), "<span class=\"muted\">short name \u2014 letters, digits, dashes</span>", "<span class=\"muted\">record id</span>",
