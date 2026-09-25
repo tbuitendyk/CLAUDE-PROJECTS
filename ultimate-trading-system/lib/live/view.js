@@ -593,6 +593,18 @@ function setupStatus(setup, file = null) {
         mark: (marks.find((m) => m.planId === x.plan.planId) || null),
       })).sort((a, b) => String(b.chunk_start).localeCompare(String(a.chunk_start))),
     };
+    // VERBOSE (owner, 2026-09-25): the tick as saved on Setup detail, whether the
+    // engine has taken it yet, and every hourly check of the trail it wrote down
+    // for this setup's positions, newest first
+    const vr = mirror.verbose.get(setup.id) || null;
+    out.engine.verbose = { on: setup.verbose === true, engineHas: vr ? vr.on === true : false, since: vr ? vr.utc : null };
+    const planOf = new Map(out.engine.plans.map((p) => [p.planId, p]));
+    out.engine.trailChecks = scoped.filter((e) => e.event === 'TRAIL_CHECK' && e.setup_id === setup.id).slice(-48).reverse().map((e) => ({
+      hour_utc: Number.isFinite(e.hour) ? new Date(e.hour).toISOString() : null,
+      plan_entry_utc: (planOf.get(e.plan_id) || {}).entry_utc || null, side: (planOf.get(e.plan_id) || {}).side || null,
+      hourBest: e.hourBest ?? null, best: e.best ?? null, armAt: e.armAt ?? null, armed: e.armed === true, want: e.want ?? null,
+      was: e.was ?? null, stop: e.stop ?? null, moved: e.moved === true, why: e.why || null,
+    }));
   }
   out.liveStatus = mirror ? engineNextActivity(out, setup, Date.now(), out.engine) : nextActivity(out, setup, Date.now());
   out.pending = pendingDecision(setup, logged, Date.now());

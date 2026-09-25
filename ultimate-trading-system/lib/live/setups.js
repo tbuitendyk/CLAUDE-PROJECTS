@@ -138,6 +138,8 @@ function validateOperational(s) {
       }
     }
   }
+  // Verbose on Setup detail: every hourly trail check written down by the engine, or not
+  if (s.verbose != null && typeof s.verbose !== 'boolean') errors.push('verbose: ticked or not (true or false)');
   for (const k of ['executionTargetRef', 'keyRef', 'provenanceRef']) {
     if (s[k] != null && typeof s[k] !== 'string') errors.push(`${k}: must be a string or null`);
   }
@@ -306,7 +308,7 @@ function tradableSetups() { return readSetups().setups.filter((x) => !x.__proble
 // Update MUTABLE fields only. Any attempt to change an identity/evidence field
 // is an error, not a merge — silence here would be how a live setup's meaning
 // drifts (the point-4 immutability promise).
-const MUTABLE = new Set(['name', 'clipUsd', 'stopPct', 'feePerLeg', 'executionTargetRef', 'keyRef', 'trainPolicy']);
+const MUTABLE = new Set(['name', 'clipUsd', 'stopPct', 'feePerLeg', 'executionTargetRef', 'keyRef', 'trainPolicy', 'verbose']);
 
 // The live-executability gate, shared by the transition door AND updateSetup. It
 // answers "may this setup honestly TRADE in state `to`?": the geometry must be one

@@ -63,7 +63,10 @@ function startEngineWork() {
   // committee is trained there, never on the thread that answers the pages.
   // It sends nothing twice, so running it often costs a check, not a decision.
   const asked = new Map();
+  const askedVerbose = new Map();
   const tick = () => {
+    // Verbose as the owner ticked it on Setup detail, carried to the engine that writes the checks down
+    link.syncVerbose(targets.listEngines(), reg.listSetups(), askedVerbose).catch(() => {});
     // a stopped or retired setup's plans still waiting on its engine are taken back
     link.cancelLeftovers(targets.listEngines(), reg.listSetups(), asked).then((done) => {
       if (!done.length) return;

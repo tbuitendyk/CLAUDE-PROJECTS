@@ -51,10 +51,13 @@ async function health(target) {
 async function postPlan(target, plan) { return call(target, 'POST', '/plans', plan, 8000); }
 async function cancelPlan(target, planId, why, { entriesOnly = false } = {}) { return call(target, 'POST', `/plans/${encodeURIComponent(planId)}/cancel`, { why, entriesOnly }, 8000); }
 async function engineState(target) { return call(target, 'GET', '/state', null, 8000); }
+async function setVerbose(target, setupId, on) { return call(target, 'POST', `/setups/${encodeURIComponent(setupId)}/verbose`, { on: on === true }, 8000); }
 
 // ---- THE ENGINE'S WORDS, AGAIN IN THE WORDS THE TRADE TAB READS -------------
 const sideOf = (call) => (call === 1 ? 'LONG' : call === -1 ? 'SHORT' : 'FLAT');
 function translate(rec, plans) {
+  // Verbose on or off for a setup, as the engine recorded it
+  if (rec.type === 'verbose' && rec.setupId) return [{ event: 'VERBOSE_SET', setup_id: rec.setupId, on: rec.on === true, utc: rec.utc, ts: rec.ts / 1000, engine: true }];
   const plan = rec.planId ? plans.get(rec.planId) : null;
   const base = plan ? { setup_id: plan.setupId, chunk_start: plan.chunkStart || new Date(plan.entryTs).toISOString(), utc: rec.utc, ts: rec.ts / 1000, engine: true, plan_id: rec.planId } : null;
   if (rec.type === 'plan' && rec.plan) {
@@ -69,11 +72,13 @@ function translate(rec, plans) {
   }
   if (!base) return [];
   if (rec.type === 'note') {
-    const map = { 'levels set': 'LEVELS_SET', 'level reached': 'LEVEL_REACHED', 'stop moved': 'STOP_MOVED', 'trail armed': 'TRAIL_ARMED', expired: 'PLAN_EXPIRED', skipped: 'PLAN_SKIPPED', failed: 'PLAN_FAILED', cancelled: 'PLAN_CANCELLED' };
+    const map = { 'levels set': 'LEVELS_SET', 'level reached': 'LEVEL_REACHED', 'stop moved': 'STOP_MOVED', 'trail armed': 'TRAIL_ARMED', expired: 'PLAN_EXPIRED', skipped: 'PLAN_SKIPPED', failed: 'PLAN_FAILED', cancelled: 'PLAN_CANCELLED', 'trail check': 'TRAIL_CHECK' };
     const ev = map[rec.what];
     if (!ev) return [];
     const keep = {};
     for (const k of ['ref', 'buy', 'sell', 'level', 'side', 'stop', 'best', 'reason', 'price']) if (rec[k] !== undefined) keep[k] = rec[k];
+    // every hourly check of the trail, for a setup with Verbose ticked
+    if (ev === 'TRAIL_CHECK') for (const k of ['hour', 'hourBest', 'armAt', 'armed', 'armedBefore', 'want', 'was', 'moved', 'why']) if (rec[k] !== undefined) keep[k] = rec[k];
     if (ev === 'LEVELS_SET' && plan) keep.end_utc = new Date(plan.entryTs + plan.cell.tHours * 3600000).toISOString();
     return [{ event: ev, ...base, ...keep }];
   }
@@ -109,6 +114,7 @@ class Mirror {
     this.plans = new Map();
     this.states = new Map();
     this.marks = new Map();
+    this.verbose = new Map();       // setupId -> { on, utc }: Verbose as the engine last recorded it
     this.lastHealth = null;
     this.status = { following: false, since: null, lastRecordAt: null, why: 'not started' };
     this.req = null;
@@ -129,6 +135,7 @@ class Mirror {
   take(rec, write = true) {
     if (rec.type === 'plan' && rec.plan) this.plans.set(rec.plan.planId, rec.plan);
     if (rec.type === 'state' && rec.planId) this.states.set(rec.planId, { state: rec.state, ledger: rec.ledger, utc: rec.utc });
+    if (rec.type === 'verbose' && rec.setupId) this.verbose.set(rec.setupId, { on: rec.on === true, utc: rec.utc || null });
     if (!write) return;
     fs.appendFileSync(this.rawFile, `${JSON.stringify(rec)}\n`);
     for (const ev of translate(rec, this.plans)) fs.appendFileSync(this.eventsFile, `${JSON.stringify(ev)}\n`);
@@ -229,6 +236,34 @@ async function cancelLeftovers(engines, setups, asked = new Map(), now = Date.no
   return out;
 }
 
+// ---- VERBOSE, AS THE OWNER TICKED IT --------------------------------------
+//
+// Verbose is ticked on Setup detail and kept on the setup; the engine keeps its
+// own copy, because it is the engine that writes the checks down. Each minute
+// every setup on an engine whose tick differs from the engine's record is sent
+// again -- so a tick made while the engine was not answering reaches it the
+// moment it answers -- and never asked twice inside a minute. A stopped setup
+// is included: its open positions still trail.
+const VERBOSE_AGAIN_MS = 60000;
+async function syncVerbose(engines, setups, asked = new Map(), now = Date.now()) {
+  const out = [];
+  for (const t of engines) {
+    const m = mirrorFor(t);
+    for (const s of setups.filter((x) => x.executionTargetRef === t.id)) {
+      const want = s.verbose === true;
+      const has = (m.verbose.get(s.id) || {}).on === true;
+      if (want === has) continue;
+      const key = `${t.id}|${s.id}|${want}`;
+      if (asked.has(key) && now - asked.get(key) < VERBOSE_AGAIN_MS) continue;
+      asked.set(key, now);
+      // eslint-disable-next-line no-await-in-loop
+      const r = await setVerbose(t, s.id, want);
+      out.push({ engine: t.id, setup: s.id, on: want, ok: !!r.ok, why: r.ok ? null : (r.why || (r.json && (r.json.problems || []).join('; ')) || `the engine answered ${r.status}`) });
+    }
+  }
+  return out;
+}
+
 const mirrors = new Map();
 function mirrorFor(target) {
   if (!mirrors.has(target.id)) mirrors.set(target.id, new Mirror(target));
@@ -243,4 +278,4 @@ function followAll(list) {
   for (const t of list) mirrorFor(t).start();
 }
 
-module.exports = { call, health, postPlan, cancelPlan, cancelLeftovers, engineState, translate, Mirror, mirrorFor, followAll, MIRROR_DIR };
+module.exports = { call, health, postPlan, cancelPlan, cancelLeftovers, engineState, setVerbose, syncVerbose, translate, Mirror, mirrorFor, followAll, MIRROR_DIR };

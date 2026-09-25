@@ -14,6 +14,8 @@
 //   POST /keys/:account     { apiKey, secret } stored encrypted; the answer is the same
 //                           present / missing line, never the key
 //   POST /keys/:account/delete  the keys taken away
+//   POST /setups/:id/verbose  { on } -- every hourly trail check of this setup's
+//                           plans written down, or not (Verbose on Setup detail)
 //   GET  /journal?since=N   the record, numbered lines from N
 //   GET  /events?since=N    the same, then every new line as it is written and
 //                           the live figures of open positions (server-sent events)
@@ -42,7 +44,13 @@ function makeServer({ runner, journal, health, keystore = null, checkKey = null 
     const u = new URL(req.url, 'http://engine');
     try {
       if (req.method === 'GET' && u.pathname === '/health') return send(res, 200, health());
-      if (req.method === 'GET' && u.pathname === '/state') return send(res, 200, { plans: runner.view(), journalN: journal.n });
+      if (req.method === 'GET' && u.pathname === '/state') return send(res, 200, { plans: runner.view(), journalN: journal.n, verbose: Object.fromEntries(runner.verbose || []) });
+      const vm = /^\/setups\/([^/]+)\/verbose$/.exec(u.pathname);
+      if (req.method === 'POST' && vm) {
+        const b = await body(req, 4096);
+        const out = runner.setVerbose(decodeURIComponent(vm[1]), b.on === true);
+        return send(res, out.ok ? 200 : 400, out);
+      }
       if (req.method === 'POST' && u.pathname === '/plans') {
         const out = runner.addPlan(await body(req));
         return send(res, out.ok ? 200 : 400, out);

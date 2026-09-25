@@ -230,6 +230,92 @@ module.exports = {
     }
   },
 
+  // VERBOSE (item 6, 3.262.0): the tick on Setup detail reaches the engine,
+  // which then writes down every hourly check of the trail -- the hour, its
+  // best, the best so far, where it arms, where the trail would put the stop,
+  // the stop after and why -- and the Trade tab's one path shows them; with the
+  // tick off, the checks are not written and the trail trades exactly the same
+  async verboseWritesDownEveryHourlyCheckOfTheTrailAndOnlyWhenTicked() {
+    const { Journal } = require('../engine/journal');
+    const { Runner } = require('../engine/runner');
+    const { SimulatedExchange } = require('../engine/venues/simulated');
+    const { makeServer } = require('../engine/api');
+    const view = require('../lib/live/view');
+    const H = 3600000;
+    const edir = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-v-'));
+    const oldDecisions = process.env.GC_LIVE_DECISIONS;
+    process.env.GC_LIVE_DECISIONS = path.join(edir, 'decisions');
+    const t0 = Date.UTC(2026, 8, 26, 1);
+    let now = t0 - 60000;
+    const market = {
+      followed: new Set(), books: new Map(), trades: new Map(),
+      follow(x) { market.followed = new Set(x); }, book: (x) => market.books.get(x) || null, trade: (x) => market.trades.get(x) || null,
+      filtersOf: async () => ({ tickSize: 0.01, stepSize: 0.001, minQty: 0.001, minNotional: 5 }), hourOpenOf: async () => null, minutes: async () => [], status: () => ({ connected: true }),
+    };
+    const journal = new Journal(path.join(edir, 'journal.jsonl'));
+    const runner = new Runner({ journal, market, venues: { simulated: new SimulatedExchange({ market, feePerLeg: 0.001, now: () => now }) }, now: () => now });
+    const server = makeServer({ runner, journal, health: () => ({ ok: true, realOrders: 'off' }) });
+    await new Promise((r) => server.listen(0, '127.0.0.1', r));
+    const target = targets.saveEngine({ ...ENGINE, id: 'verbose-engine', name: 'Verbose engine', localPort: server.address().port, isDefault: false });
+    const m = link.mirrorFor(target);
+    const cell = { entry: 'breakout', gate: 'active', dMult: 0.75, tHours: 65, trailMult: 1, armMult: 0.5 };
+    const setup = { id: 'setup-v', name: 'LTC verbose', state: 'paper', executionTargetRef: 'verbose-engine', tradedPair: 'LTCUSDT', clipUsd: 100, trainPolicy: { mode: 'rolling' }, verbose: true,
+      configSnapshot: { branch: { geometry: 'daily-4d', band: 5 }, cell, combo: { trade: 'LTCUSDT' } } };
+    const plan = { planId: 'setup-v|2026-09-22T00:00:00.000Z', setupId: 'setup-v', mode: 'simulated', symbol: 'LTCUSDT', chunkStart: '2026-09-22T00:00:00.000Z', entryTs: t0, call: 1, cell, bandPct: 5, size: { quoteUsd: 100 }, feePerLeg: 0.001 };
+    const waitFor = async (fn) => { for (let i = 0; i < 100 && !fn(); i++) await new Promise((r) => setTimeout(r, 20)); };
+    const print = (price, ts) => { now = ts; market.books.set('LTCUSDT', { bids: [[price - 0.05, 50]], asks: [[price, 50]], ts }); market.trades.set('LTCUSDT', { price, ts }); runner.onTrade({ symbol: 'LTCUSDT', price, ts }); };
+    try {
+      m.start();
+      // the tick reaches the engine, once
+      const asked = new Map();
+      const sent = await link.syncVerbose([target], [setup], asked, now);
+      assert.deepStrictEqual(sent.map((x) => [x.setup, x.on, x.ok]), [['setup-v', true, true]]);
+      assert.strictEqual(runner.verbose.get('setup-v'), true);
+      await waitFor(() => (m.verbose.get('setup-v') || {}).on === true);
+      assert.deepStrictEqual(await link.syncVerbose([target], [setup], asked, now), [], 'the engine has it: nothing asked again');
+      // a position opens at the buying level and the trail is checked at the end of every whole hour
+      assert.ok((await link.postPlan(target, plan)).ok);
+      runner.onKline({ symbol: 'LTCUSDT', openTime: t0, open: 70 });
+      print(72.7, t0 + 60000);
+      await waitFor(() => runner.plans.get(plan.planId).state.phase === 'open');
+      const entry = runner.plans.get(plan.planId).state.entry;
+      print(75, t0 + H + 60000);          // hour 1: best 75, past where the trail arms (2.5% above the fill)
+      print(74.8, t0 + 2 * H + 60000);    // hour 2 begins: hour 1 is checked
+      now = t0 + 4 * H + 60000; runner.tick(); // hour 2 checked; hour 3 saw no trade
+      now = t0 + 5 * H + 60000; runner.tick();
+      await waitFor(() => view.setupStatus(setup).engine.trailChecks.length >= 3);
+      const st = view.setupStatus(setup);
+      assert.deepStrictEqual(st.engine.verbose, { on: true, engineHas: true, since: st.engine.verbose.since });
+      const [h3, h2, h1] = st.engine.trailChecks;
+      assert.strictEqual(h1.hour_utc, new Date(t0 + H).toISOString());
+      assert.deepStrictEqual([h1.hourBest, h1.best, h1.armed, h1.moved, h1.why], [75, 75, true, true, 'armed this hour, and the stop moved to where the trail puts it']);
+      assert.ok(Math.abs(h1.armAt - entry * 1.025) < 1e-9 && Math.abs(h1.want - 75 * 0.95) < 1e-9 && Math.abs(h1.stop - 75 * 0.95) < 1e-9, JSON.stringify(h1));
+      assert.ok(Math.abs(h1.was - 70 * (1 - 0.0375)) < 1e-9, 'the stop before was the level on the other side');
+      assert.deepStrictEqual([h2.hourBest, h2.best, h2.moved, h2.why], [74.8, 75, false, 'not moved: where the trail would put the stop is not tighter than the stop already is']);
+      assert.deepStrictEqual([h3.hourBest, h3.moved, h3.why], [null, false, 'no printed trade in this hour, so there was nothing to check']);
+      assert.deepStrictEqual([h1.plan_entry_utc, h1.side], [new Date(t0).toISOString(), 'LONG']);
+      // off: the tick is carried the same way, and nothing more is written
+      const off = { ...setup, verbose: false };
+      assert.deepStrictEqual((await link.syncVerbose([target], [off], asked, now)).map((x) => [x.on, x.ok]), [[false, true]]);
+      const before = journal.readAll ? [...journal.readAll()].filter((r) => r.what === 'trail check').length : null;
+      now = t0 + 6 * H + 60000; runner.tick();
+      const afterN = journal.readAll ? [...journal.readAll()].filter((r) => r.what === 'trail check').length : null;
+      assert.strictEqual(afterN, before, 'with Verbose off the checks are not written');
+      await waitFor(() => (m.verbose.get('setup-v') || {}).on === false);
+      assert.deepStrictEqual(view.setupStatus(off).engine.verbose.on, false);
+      // a restart remembers it
+      const again = new Runner({ journal, market, venues: { simulated: new SimulatedExchange({ market, feePerLeg: 0.001, now: () => now }) }, now: () => now });
+      again.recover();
+      assert.strictEqual(again.verbose.get('setup-v'), false);
+    } finally {
+      m.stop();
+      server.close();
+      targets.deleteEngine('verbose-engine', []);
+      if (oldDecisions === undefined) delete process.env.GC_LIVE_DECISIONS; else process.env.GC_LIVE_DECISIONS = oldDecisions;
+      fs.rmSync(edir, { recursive: true, force: true });
+    }
+  },
+
   // S5 AND THE LINK: a setup on an engine goes to paper only while the engine
   // answers through its link, and never to live while real orders are off
   aSetupOnTheEngineIsGatedOnTheLinkAndOnRealOrders() {

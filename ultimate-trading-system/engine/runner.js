@@ -36,6 +36,19 @@ class Runner {
     this.accounts = accounts;       // (account) -> a reader, or throws when no key is stored
     this.facts = new Map();         // `${account}|${symbol}` -> { at, fee, rate, why }
     this.fetchingFacts = new Set();
+    // VERBOSE, PER SETUP (owner, 2026-09-25): a setup whose Verbose is ticked
+    // on Setup detail has every hourly trail check written down. Kept in the
+    // journal, so a restart remembers it; off until the web box says on.
+    this.verbose = new Map();       // setupId -> true / false
+  }
+
+  setVerbose(setupId, on) {
+    if (typeof setupId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/.test(setupId)) return { ok: false, problems: ['setupId: required'] };
+    const want = on === true;
+    if ((this.verbose.get(setupId) === true) === want) return { ok: true, setupId, on: want, already: true };
+    this.verbose.set(setupId, want);
+    this.write({ type: 'verbose', setupId, on: want });
+    return { ok: true, setupId, on: want };
   }
 
   // ---- the journal ----
@@ -55,6 +68,7 @@ class Runner {
       if (rec.type === 'plan' && rec.plan) this.plans.set(rec.plan.planId, { plan: rec.plan, state: P.newState(rec.plan), ledger: emptyLedger() });
       else if (rec.type === 'state' && this.plans.has(rec.planId)) { const r = this.plans.get(rec.planId); r.state = rec.state; r.ledger = rec.ledger || r.ledger; }
       else if (rec.type === 'order' && rec.order) lastOrder.set(rec.planId, rec.order);
+      else if (rec.type === 'verbose' && rec.setupId) this.verbose.set(rec.setupId, rec.on === true);
     }
     for (const [id, r] of this.plans) {
       // AN ORDER LEFT IN FLIGHT BY A RESTART is sent again under its own id: the
@@ -171,6 +185,8 @@ class Runner {
     const before = `${r.state.phase}|${r.state.stop}|${r.state.armed}`;
     const acts = P.step(r.state, r.plan, ev);
     for (const a of acts) {
+      // a check written out for Verbose is kept only for a setup that has it ticked
+      if (a.kind === 'note' && a.verbose && this.verbose.get(r.plan.setupId) !== true) continue;
       if (a.kind === 'note') this.write({ type: 'note', planId: id, setupId: r.plan.setupId, mode: r.plan.mode, ...a, kind: undefined });
       else if (a.kind === 'order') this.send(r, a);
     }

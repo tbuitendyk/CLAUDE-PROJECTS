@@ -322,6 +322,14 @@ const TH={
   engBest:'the best price since the position opened, in quote currency (USDT): the highest for a LONG, the lowest for a SHORT, as the trail counts it — whole hours after the entry hour. "—" means no position has opened, or the plan has no trailing stop.',
   engTrail:'whether the trailing stop has armed: armed once the best price has moved far enough in the position’s favour. "—" means no position has opened, or the plan has no trailing stop.',
   engSize:'the money the position opens with, in US DOLLARS of notional: the clip × the field’s size on this call × the conviction multiplier for the members agreeing. Hover a figure for its three factors.',
+  tcHour:'the whole hour this check was made for, UTC: the trail is checked once at the end of every whole hour after the hour the position opened in.',
+  tcPlan:'the entry hour of the position checked (UTC) and its side.',
+  tcHourBest:'the best price printed in that hour for the position — the highest for a LONG, the lowest for a SHORT. — means no trade printed in the hour.',
+  tcBest:'the best price since the position opened, counting this hour.',
+  tcArm:'where the trail arms: the price the best must reach, arm × band away from the price the position opened at, in its favour.',
+  tcWant:'where the trail would put the stop this hour: trail × band behind the best so far. — means the trail has not armed.',
+  tcStop:'the stop after this check, green when it moved, with what it was. The stop only ever tightens.',
+  tcWhy:'why the stop moved, or did not, in words.',
   engMoney:'in US dollars, after both legs’ fees: REALIZED on a closed position (banked), or what an open one would make or lose if closed at the price now (not banked). "—" means no position.',
 };
 // th(label, key) — a heading always carries its own description.
@@ -378,6 +386,30 @@ function pendingHtml(p, next, engineName){
       ${tile('Opens (UTC)','pendOpens',p.traded?at(p.entry_utc):'nothing opens',p.traded?'':'muted')}
     </div>
     <div style="font-size:.85rem;margin-top:.5rem">${how}${eng}</div></div>`;
+}
+// EVERY HOURLY CHECK OF THE TRAIL (owner, 2026-09-25: "a verbose flag that can
+// be turned-on and off at will on set-ups so that trailing stop adjustments can
+// be logged and confirmed"). Written down by the engine for a setup whose
+// Verbose is ticked on Setup detail, newest first, and drawn under the engine's
+// plans by this one path for both books.
+function trailChecksHtml(e){
+  const v=e.verbose||{};
+  const rows=e.trailChecks||[];
+  if(!v.on&&!rows.length) return '';
+  const said=v.on
+    ?(v.engineHas?'<span class="pos">Verbose is on</span>: the engine writes down every hourly check of the trail'
+                 :'<span class="warn">Verbose is ticked and the engine has not taken it yet</span>: it is sent again every minute until it does')
+    :(v.engineHas?'<span class="warn">Verbose is off and the engine has not taken that yet</span>'
+                 :'Verbose is off: these are the checks written down while it was on');
+  return `<div class="panel"><div class="k">Trail checks <span style="text-transform:none;letter-spacing:0">— ${said}</span></div>
+    <table style="margin-top:.4rem"><thead><tr>${th('hour (UTC)','tcHour')}${th('position of','tcPlan')}${th('hour’s best','tcHourBest')}${th('best so far','tcBest')}${th('arms at','tcArm')}${th('trail would put the stop at','tcWant')}${th('stop','tcStop')}${th('why','tcWhy','text-align:left')}</tr></thead><tbody>
+    ${rows.length?rows.map(r=>`<tr><td style="white-space:nowrap">${esc(String(r.hour_utc||'').slice(0,16).replace('T',' '))}</td>
+      <td style="white-space:nowrap">${esc(String(r.plan_entry_utc||'').slice(0,16).replace('T',' '))}${r.side?` <span class="${r.side==='LONG'?'pos':'neg'}">${r.side}</span>`:''}</td>
+      <td>${px(r.hourBest)}</td><td>${px(r.best)}</td><td>${px(r.armAt)}</td><td>${px(r.want)}</td>
+      <td class="${r.moved?'pos':''}" style="white-space:nowrap">${px(r.stop)}${r.moved&&r.was!=null?` <span class="muted">(was ${px(r.was)})</span>`:''}</td>
+      <td style="text-align:left" class="muted">${esc(r.why||'')}</td></tr>`).join('')
+      :'<tr><td colspan="8" class="empty">no check yet — one is written at the end of every whole hour a position with a trailing stop is open</td></tr>'}
+    </tbody></table></div>`;
 }
 function enginePlansHtml(e){
   const link=e.link&&e.link.following?'<span class="pos">following the engine</span>':`<span class="neg">not following the engine</span> <span class="muted">(${esc((e.link&&e.link.why)||'not started')})</span>`;
@@ -874,6 +906,11 @@ async function drawDetail(){
           </select></label>
         <label class="muted" title="frozen at: the members are trained on everything whose outcome had closed by 00:00 UTC on this date">date (UTC) <input id="trainAt" type="date" value="${s.trainPolicy&&s.trainPolicy.mode==='frozen'?new Date(s.trainPolicy.throughMs).toISOString().slice(0,10):new Date().toISOString().slice(0,10)}" ${s.trainPolicy&&s.trainPolicy.mode==='frozen'?'':'disabled'}></label>
       </div>
+      <!-- VERBOSE (owner, 2026-09-25): every hourly check of the trailing stop
+           written down by the engine and shown on LIVE, on or off at any time. -->
+      <div class="row" style="margin-top:.5rem">
+        <label class="muted" title="when ticked, the engine writes down every hourly check of this book's trailing stop — the hour's best price, where the trail would put the stop, whether it moved and why — shown on LIVE under The engine's plans. On or off at any time; it changes nothing about the trading."><input type="checkbox" id="verboseIn" ${s.verbose?'checked':''}> Verbose</label>
+      </div>
       <div class="row" style="margin-top:.5rem"><button id="saveCfg">Save</button></div>
       <!-- THE TWO FIELDS THE SCREEN DEMANDED AND DID NOT OFFER. Going live is
            refused without a sub-account key, and refused if the box does not
@@ -934,7 +971,7 @@ async function drawDetail(){
     // profile on whatever it had, which is what an empty box means everywhere
     // else on this row.
     const feeRaw=$('#feeIn').value.trim();
-    const body={clipUsd,stopPct};
+    const body={clipUsd,stopPct,verbose:$('#verboseIn').checked};
     if(feeRaw!=='') body.feePerLeg=Number(feeRaw)/100;
     // not set stays not set; rolling needs nothing more; frozen needs its date
     const train=$('#trainIn').value;
@@ -1131,6 +1168,7 @@ async function drawLive(){
       })()}
     </div>
     ${st.engine?enginePlansHtml(st.engine):''}
+    ${st.engine?trailChecksHtml(st.engine):''}
     <div class="panel"><div class="k">Open positions ${isP?paperBadge:''}</div>
       <table style="margin-top:.4rem"><thead><tr>${th('entry','entryUtc')}${th('side','side')}${th('qty','qty')}${th('entry $','entryPx')}${th('mark','markPx')}${th('unreal $','unreal')}${th('exit due','exitDue')}</tr></thead><tbody>
       ${openHere.length?openHere.map(p=>`<tr>

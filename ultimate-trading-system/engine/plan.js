@@ -166,15 +166,31 @@ const hourOf = (plan, ts) => Math.floor((ts - plan.entryTs) / HOUR_MS);
 const betterThan = (dir, a, b) => (b == null ? true : (dir === 1 ? a > b : a < b));
 
 // THE END OF AN HOUR: the lab's trail step for the bar just finished, when it
-// was a whole hour after the entry hour and saw at least one price
+// was a whole hour after the entry hour and saw at least one price.
+//
+// EVERY CHECK IS ALSO WRITTEN OUT, as a 'trail check' note marked verbose
+// (owner, 2026-09-25: "a verbose flag that can be turned-on and off at will on
+// set-ups so that trailing stop adjustments can be logged and confirmed"): the
+// hour, its best price, the best since the entry, where the trail arms, where
+// it would put the stop, the stop before and after, and why it moved or did
+// not. The runner keeps it only for a setup whose Verbose is ticked; nothing
+// here changes what the trail does.
 function endOfHour(state, plan, ts) {
   const acts = [];
-  if (state.trail == null || !state.hourSeen || state.curHour == null || state.curHour <= state.openHour) return acts;
+  if (state.trail == null || state.curHour == null || state.curHour <= state.openHour) return acts;
+  const hour = plan.entryTs + state.curHour * HOUR_MS;
+  const armAt = state.dir === 1 ? state.entry * (1 + state.arm) : state.entry * (1 - state.arm);
+  const was = state.stop;
+  if (!state.hourSeen) {
+    acts.push(note('trail check', { verbose: true, hour, hourBest: null, best: state.ext, armAt, armed: state.armed, armedBefore: state.armed, want: null, was, stop: state.stop, moved: false, why: 'no printed trade in this hour, so there was nothing to check', ts }));
+    return acts;
+  }
   if (state.hourBest != null && betterThan(state.dir, state.hourBest, state.ext)) state.ext = state.hourBest;
   const wasArmed = state.armed;
-  if (state.armed || (state.dir === 1 ? state.ext >= state.entry * (1 + state.arm) : state.ext <= state.entry * (1 - state.arm))) {
+  let want = null;
+  if (state.armed || (state.dir === 1 ? state.ext >= armAt : state.ext <= armAt)) {
     state.armed = true;
-    const want = state.dir === 1 ? state.ext * (1 - state.trail) : state.ext * (1 + state.trail);
+    want = state.dir === 1 ? state.ext * (1 - state.trail) : state.ext * (1 + state.trail);
     const next = state.stop == null ? want : (state.dir === 1 ? Math.max(state.stop, want) : Math.min(state.stop, want));
     if (next !== state.stop) {
       state.stop = next;
@@ -184,6 +200,11 @@ function endOfHour(state, plan, ts) {
     }
   }
   if (!wasArmed && state.armed) acts.push(note('trail armed', { best: state.ext, ts }));
+  const moved = state.stop !== was;
+  const why = !state.armed ? 'not armed: the best price since the entry has not reached where the trail arms'
+    : moved ? (wasArmed ? 'moved: where the trail puts the stop is tighter than the stop was' : 'armed this hour, and the stop moved to where the trail puts it')
+      : (wasArmed ? 'not moved: where the trail would put the stop is not tighter than the stop already is' : 'armed this hour; where the trail would put the stop is not tighter than the stop already is');
+  acts.push(note('trail check', { verbose: true, hour, hourBest: state.hourBest, best: state.ext, armAt, armed: state.armed, armedBefore: wasArmed, want, was, stop: state.stop, moved, why, ts }));
   return acts;
 }
 function rollTo(state, plan, ts) {
