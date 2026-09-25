@@ -206,6 +206,12 @@ let cEng = null;             // the trading engine records, with whether each an
 let cErrEng = null;
 let cEngEdit = null;         // the engine record being changed in the form, or null for a new one
 let cEngTyped = {};          // what is typed in the form, kept across the thirty-second redraw
+let cEs = null;              // the engine setups: the template and one checklist per engine (owner, 2026-09-25)
+let cErrEs = null;
+let cEsTyped = '';           // the name typed for a new engine, kept across the redraw
+let cEsOpen = false;         // the setup area open or closed: this viewer's own, remembered in the browser
+let cEsSel = null;           // which engine's checklist is shown
+try { cEsOpen = localStorage.getItem('setup-es-open') === '1'; cEsSel = localStorage.getItem('setup-es-sel') || null; } catch (_) { /* a private window: closed, newest */ }
 let aAcc = null;             // the account's exchange records, and which fee is the system default
 let aErr = null;             // why they could not be read, when they could not
 let aTr = null;              // the trading accounts, the engines, and what each engine says of their keys (loop of 2026-09-25)
@@ -437,7 +443,8 @@ async function loadCompute() {
   const a = getJson('svc/api/compute').then((d) => { cLoads = d; cErrLoads = null; }, (e) => { cErrLoads = e.message; });
   const b = getJson('api/compute-config').then((d) => { cCfg = d; cErrCfg = null; }, (e) => { cErrCfg = e.message; });
   const c = getJson('api/live/engines').then((d) => { cEng = d; cErrEng = null; }, (e) => { cErrEng = e.message; });
-  await Promise.all([a, b, c]);
+  const d = getJson('api/live/engine-setups').then((x) => { cEs = x; cErrEs = null; }, (e) => { cErrEs = e.message; });
+  await Promise.all([a, b, c, d]);
 }
 
 function svcCard(u) {
@@ -526,6 +533,7 @@ function engineHtml() {
     + '<p class="note">The program on the trading box that carries out Paper Books and Live Trading for this system, '
     + 'beside the old order program, which it never touches. This machine reaches it through a tunnel of its own. '
     + 'A new setup runs on the engine ticked for new setups; a setup already running stays where it is.</p>'
+    + esHtml()
     + ((cEng.engines || []).length ? (cEng.engines || []).map(engineCard).join('') : '<p class="note">no engine record yet</p>')
     + '<div class="tile">'
     + '<div class="k" style="margin-bottom:.35rem">' + (ed ? 'Changing ' + esc(ed.name) : 'A new engine record') + '</div>'
@@ -547,7 +555,110 @@ function engineHtml() {
     + '<p class="note" style="margin-top:.4rem">Sending the engine to the trading box and opening the tunnel are not done from this page yet.</p>'
     + '</div></div>';
 }
+// ---- SETTING UP A TRADING ENGINE, STEP BY STEP (owner, 2026-09-25) ---------
+// "somehow the user has to be able to go from NOTHING provisioned with NO
+// ACCESS by the system to provisioned with the current trading engine service
+// installed and active". A checklist, one per engine, opened and closed by the
+// button in this section: each step's guidance, the choices it asks for and the
+// ticks that say it is done; a step opens when every one of the step before it
+// is. The steps are the service's template (lib/live/enginesetup.js), drawn as
+// they are, so the two cannot say different things.
+function currentEs() {
+  const setups = (cEs && cEs.setups) || [];
+  return setups.find((x) => x.id === cEsSel) || setups[setups.length - 1] || null;
+}
+function esProgress(x) {
+  const n = (x.steps || []).findIndex((st) => !st.done);
+  return n < 0 ? 'every step done' : 'step ' + (n + 1) + ' of ' + (x.steps || []).length;
+}
+function esSetupHtml(s, t) {
+  const ch = s.choices || {};
+  const shows = (b) => Object.entries(b.when || {}).every(([k, v]) => ch[k] === v || (b.ifUnset && ch[k] == null));
+  const asked = (c) => !c.when || Object.entries(c.when).every(([k, v]) => ch[k] === v);
+  const blocks = t.steps.map((step, i) => {
+    const st = (s.steps || [])[i] || {};
+    const tag = st.done ? '<span class="pos">done</span>' : st.open ? '<span class="warn">to do</span>' : '<span class="muted">opens when step ' + i + ' is done</span>';
+    const head = '<div class="row" style="align-items:baseline;margin-top:.8rem"><b>Step ' + (i + 1) + ' — ' + esc(step.title) + '</b>' + tag + '</div>';
+    if (!st.open) return head;
+    if (step.writing) return head + '<p class="note" style="margin:.2rem 0 0">This step is still being written.</p>';
+    const guide = (step.guidance || []).filter(shows).map((b) => (b.heading ? '<div class="k" style="margin-top:.55rem">' + esc(b.heading) + '</div>' : '')
+      + b.paras.map((p) => '<p style="margin:.3rem 0;font-size:.82rem;line-height:1.45;max-width:60rem">' + esc(p) + '</p>').join('')).join('');
+    const choices = (step.choices || []).filter(asked).map((c) => '<div class="row" style="margin-top:.55rem">'
+      + '<span class="muted" style="font-size:.8rem">' + esc(c.label) + '</span>'
+      + c.options.map((o) => '<label class="c"><input type="radio" name="es-' + esc(step.id) + '-' + esc(c.id) + '" data-es-choice="' + esc(step.id) + '|' + esc(c.id) + '" value="' + esc(o.value) + '"' + (ch[c.id] === o.value ? ' checked' : '') + '> ' + esc(o.label) + '</label>').join('')
+      + (c.clears && ch[c.id] ? '<span class="note">changing this clears the ticks below: they were about the other machine</span>' : '')
+      + '</div>').join('');
+    const tk = (s.ticks || {})[step.id] || {};
+    const ticks = (step.ticks || []).map((x) => '<div class="row" style="margin-top:.3rem"><label class="c"><input type="checkbox" data-es-tick="' + esc(step.id) + '|' + esc(x.id) + '"' + (tk[x.id] ? ' checked' : '') + '> ' + esc(x.label) + '</label></div>').join('');
+    return head + guide + choices + (ticks ? '<div style="margin-top:.45rem">' + ticks + '</div>' : '');
+  }).join('');
+  return '<div style="border-top:1px solid var(--line);margin-top:.7rem">' + blocks + '</div>'
+    + '<div class="row" style="margin-top:.9rem"><button id="esDelete" class="danger" title="takes this checklist away; nothing on any machine is touched">Delete this setup</button></div>';
+}
+function esHtml() {
+  let body = '';
+  if (cEsOpen) {
+    if (!cEs) body = '<p class="note neg">the trading service did not answer, so the setups cannot be shown' + (cErrEs ? ' — ' + esc(cErrEs) : '') + '</p>';
+    else {
+      const setups = cEs.setups || [];
+      const sel = currentEs();
+      body = (setups.length
+        ? '<div class="row"><label class="c" title="one checklist per engine: the one shown below"><span class="muted">engine being set up</span><select id="esSel">'
+          + setups.map((x) => '<option value="' + esc(x.id) + '"' + (sel && x.id === sel.id ? ' selected' : '') + '>' + esc(x.name) + ' — ' + esProgress(x) + '</option>').join('') + '</select></label></div>'
+        : '<p class="note" style="margin:0">no engine is being set up yet: name the engine this is for, and start its setup</p>')
+        + '<div class="row" style="margin-top:.5rem"><label class="c" title="what you want to call the engine this checklist sets up; one checklist per engine"><span class="muted">name for the new engine</span><input id="esName" value="' + esc(cEsTyped) + '" style="width:16rem"></label></div>'
+        + '<div class="row" style="margin-top:.5rem"><button id="esStart">Start its setup</button><span id="esMsg" class="note"></span></div>'
+        + (sel ? esSetupHtml(sel, cEs.template) : '');
+    }
+  }
+  return '<div class="row" style="margin-top:.4rem"><button id="esToggle" aria-expanded="' + cEsOpen + '" title="opens and closes the checklist that takes an engine from nothing to installed and running, one step at a time">' + (cEsOpen ? '▾' : '▸') + ' Set up a trading engine</button></div>'
+    + (cEsOpen ? '<div class="tile" style="margin:.5rem 0 .8rem">' + body + '</div>' : '');
+}
+async function esReload() {
+  try { cEs = await getJson('api/live/engine-setups'); cErrEs = null; } catch (e) { cErrEs = e.message; }
+  drawCompute();
+}
+async function esPost(what, body) {
+  const sel = currentEs();
+  if (!sel) return;
+  try { await postJson('api/live/engine-setups/' + encodeURIComponent(sel.id) + '/' + what, body); }
+  catch (e) { alert('Not saved — ' + e.message); }
+  await esReload();
+}
+function wireEs() {
+  const tg = $('#esToggle');
+  if (tg) tg.onclick = () => { cEsOpen = !cEsOpen; try { localStorage.setItem('setup-es-open', cEsOpen ? '1' : '0'); } catch (_) { /* not remembered */ } drawCompute(); };
+  const nm = $('#esName');
+  if (nm) nm.oninput = () => { cEsTyped = nm.value; };
+  const sl = $('#esSel');
+  if (sl) sl.onchange = () => { cEsSel = sl.value; try { localStorage.setItem('setup-es-sel', cEsSel); } catch (_) { /* not remembered */ } drawCompute(); };
+  const st = $('#esStart');
+  if (st) st.onclick = async () => {
+    const msg = $('#esMsg');
+    st.disabled = true;
+    msg.innerHTML = 'starting…';
+    try {
+      const got = await postJson('api/live/engine-setups', { name: $('#esName').value.trim() });
+      cEsSel = got.setup.id;
+      cEsTyped = '';
+      try { localStorage.setItem('setup-es-sel', cEsSel); } catch (_) { /* not remembered */ }
+      await esReload();
+    } catch (e) { msg.innerHTML = '<span class="neg">not started — ' + esc(e.message) + '</span>'; st.disabled = false; }
+  };
+  document.querySelectorAll('[data-es-choice]').forEach((r) => { r.onchange = () => { const [step, choice] = r.dataset.esChoice.split('|'); esPost('choice', { step, choice, value: r.value }); }; });
+  document.querySelectorAll('[data-es-tick]').forEach((c) => { c.onchange = () => { const [step, tick] = c.dataset.esTick.split('|'); esPost('tick', { step, tick, on: c.checked }); }; });
+  const del = $('#esDelete');
+  if (del) del.onclick = async () => {
+    const sel = currentEs();
+    if (!sel || !confirm('Delete the setup for "' + sel.name + '"?\n\nThe checklist is taken away. Nothing on any machine is touched.')) return;
+    try { await postJson('api/live/engine-setups/' + encodeURIComponent(sel.id) + '/delete', {}); cEsSel = null; }
+    catch (e) { alert('Not deleted — ' + e.message); }
+    await esReload();
+  };
+}
+
 function wireEngine() {
+  wireEs();
   for (const [sel, key] of [['#engId', 'id'], ['#engName', 'name'], ['#engHost', 'host'], ['#engUser', 'user'], ['#engPort', 'enginePort'], ['#engLocal', 'localPort']]) {
     const el = $(sel);
     if (el) el.oninput = () => { cEngTyped[key] = el.value; };

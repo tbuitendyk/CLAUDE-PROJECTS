@@ -127,6 +127,18 @@ function installLiveRoutes(app, { csrfGuard }) {
       res.json({ ok: true, ...out });
     } catch (e) { res.status(e.code === 'IN_USE' ? 409 : e.code === 'NOT_FOUND' ? 404 : 500).json({ error: e.message }); }
   });
+  // SETTING UP A TRADING ENGINE, STEP BY STEP (owner, 2026-09-25): the
+  // checklist on Setup > Compute, one per engine -- the template and each
+  // checklist with where it stands (lib/live/enginesetup.js)
+  const es = require('./enginesetup');
+  const esSend = (res, fn) => { try { res.json({ ok: true, setup: fn() }); } catch (e) { res.status(e.status || 500).json({ error: e.message }); } };
+  app.get('/api/live/engine-setups', (req, res) => {
+    try { res.json({ template: es.TEMPLATE, setups: es.list() }); } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.post('/api/live/engine-setups', csrfGuard, (req, res) => esSend(res, () => es.create((req.body || {}).name)));
+  app.post('/api/live/engine-setups/:id/choice', csrfGuard, (req, res) => esSend(res, () => { const b = req.body || {}; return es.setChoice(String(req.params.id), String(b.step || ''), String(b.choice || ''), String(b.value || '')); }));
+  app.post('/api/live/engine-setups/:id/tick', csrfGuard, (req, res) => esSend(res, () => { const b = req.body || {}; return es.setTick(String(req.params.id), String(b.step || ''), String(b.tick || ''), b.on === true); }));
+  app.post('/api/live/engine-setups/:id/delete', csrfGuard, (req, res) => { try { res.json(es.remove(String(req.params.id))); } catch (e) { res.status(e.status || 500).json({ error: e.message }); } });
   // the decisions the producer made for engine setups, newest last: what it did on each run
   app.get('/api/live/engine-produce', (req, res) => {
     try {
