@@ -374,7 +374,17 @@ function decisionEntryUtc(chunkStartIso, entryOffsetH) {
   return new Date(t + entryOffsetH * 3600000).toISOString();
 }
 
-function setupStatus(setup, file = journalFile()) {
+// A SETUP ON THE NEW TRADING ENGINE (loop of 2026-09-25) is read from the
+// engine's record as this machine keeps it (lib/live/enginelink.js), written in
+// the same words the old order program's record uses -- so both books, and both
+// kinds of setup, are drawn by this one path
+function engineOf(setup) {
+  try { const t = require('./targets').resolveForSetup(setup); return t && t.kind === 'engine' ? t : null; } catch (_) { return null; }
+}
+function setupStatus(setup, file = null) {
+  const eng = file == null ? engineOf(setup) : null;
+  const mirror = eng ? require('./enginelink').mirrorFor(eng) : null;
+  if (file == null) file = mirror ? mirror.eventsFile : journalFile();
   const { present, events, dropped, unterminated } = readJournal(file);
   const epoch = setup.runEpochUtc ? Date.parse(setup.runEpochUtc) : null;
   const scoped = epoch
@@ -425,6 +435,33 @@ function setupStatus(setup, file = journalFile()) {
     runEpochUtc: setup.runEpochUtc || null,
     ...book,
   };
+  if (mirror) {
+    // THE LIVE FIGURES: the price now from the engine's latest mark on this
+    // setup's open positions, and each plan where the engine says it stands --
+    // the levels it waits at, the stop now, the best price, the trail armed or not
+    const marks = mirror.marksOf(setup.id).sort((a, b) => b.ts - a.ts);
+    if (marks.length) {
+      out.markPrice = marks[0].price;
+      out.markUtc = new Date(marks[0].ts).toISOString();
+      const unreal = (p) => (p.entry_price != null && p.qty != null ? (out.markPrice - p.entry_price) * p.qty * (p.side === 'SHORT' ? -1 : 1) : null);
+      const sum = (arr) => Math.round(arr.reduce((a, p) => a + (unreal(p) || 0), 0) * 1e4) / 1e4;
+      out.unrealizedPnl = sum((out.openPositions || []).filter((p) => !p.paper));
+      out.paperUnrealizedPnl = sum((out.openPositions || []).filter((p) => p.paper));
+    }
+    out.engine = {
+      target: eng.id, name: eng.name || eng.id, link: mirror.status, lastHealth: mirror.lastHealth,
+      plans: mirror.plansOf(setup.id).map((x) => ({
+        planId: x.plan.planId, chunk_start: x.plan.chunkStart, entry_utc: new Date(x.plan.entryTs).toISOString(), call: x.plan.call,
+        phase: x.state ? x.state.phase : 'sent', reason: x.state ? x.state.reason : null, ref: x.state ? x.state.ref : null,
+        buy: x.state && x.state.rails && x.state.sides.includes(1) ? x.state.rails.buy : null,
+        sell: x.state && x.state.rails && x.state.sides.includes(-1) ? x.state.rails.sell : null,
+        stop: x.state ? x.state.stop : null, best: x.state ? x.state.ext : null, armed: x.state ? !!x.state.armed : false,
+        end_utc: x.state ? new Date(x.state.endTs).toISOString() : null, size: x.plan.size || null,
+        pnl: x.ledger ? x.ledger.pnlUsd : null,
+        mark: (marks.find((m) => m.planId === x.plan.planId) || null),
+      })).sort((a, b) => String(b.chunk_start).localeCompare(String(a.chunk_start))),
+    };
+  }
   out.liveStatus = nextActivity(out, setup, Date.now());
   return out;
 }

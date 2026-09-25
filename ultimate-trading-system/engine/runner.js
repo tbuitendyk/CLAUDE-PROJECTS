@@ -191,7 +191,7 @@ class Runner {
       r.ledger.exit = leg;
       r.ledger.pnlUsd = closedMoney(r);
     }
-    this.write({ type: 'fill', planId: id, setupId: r.plan.setupId, mode: a.mode, purpose: a.purpose, side: a.side, why: a.why, ...leg });
+    this.write({ type: 'fill', planId: id, setupId: r.plan.setupId, mode: a.mode, purpose: a.purpose, side: a.side, why: a.why, ...leg, ...(a.purpose === 'exit' ? { pnlUsd: r.ledger.pnlUsd } : {}) });
     this.feed(id, { type: 'filled', purpose: a.purpose, price: res.price, qty: res.qty, ts: res.ts });
     return res;
   }

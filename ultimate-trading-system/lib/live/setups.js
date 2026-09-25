@@ -333,10 +333,26 @@ function openPositionsFor(setupId) {
 
 function liveGateErrors(s, to) {
   const errs = [];
-  const le = liveExecutable(s.configSnapshot);
-  if (!le.ok) errs.push(...le.errors);
   let target = null;
   try { target = resolveForSetup(s); } catch (e) { errs.push(e.message); }
+  // THE NEW TRADING ENGINE (loop of 2026-09-25) carries out every trade shape
+  // the lab prices -- breakout, the active gate, a trailing stop, an arm -- so
+  // the old order program's shape door does not apply to a setup on it. What
+  // applies instead: the engine must be answering through its link, and real
+  // orders are refused while they are switched off on it (S5).
+  if (target && target.kind === 'engine') {
+    const mirror = require('./enginelink').mirrorFor(target);
+    const h = mirror.lastHealth;
+    const fresh = h && Date.now() - Date.parse(h.at) < 60000;
+    if (!fresh) errs.push(`the trading engine ${target.name || target.id} does not answer through its link yet (${mirror.status.why || 'no word from it in the last minute'})`);
+    if (to === 'live' && !(fresh && h.health && h.health.realOrders === 'on')) errs.push(`real orders are switched off on the trading engine ${target.name || target.id}`);
+    if (to === 'live' && !(typeof s.keyRef === 'string' && s.keyRef.trim())) {
+      errs.push('a LIVE setup needs its own sub-account keyRef so its balance and borrow pool never mingle with another setup (set keyRef first)');
+    }
+    return errs;
+  }
+  const le = liveExecutable(s.configSnapshot);
+  if (!le.ok) errs.push(...le.errors);
   if (target && !targetServes(target, s.tradedPair)) {
     errs.push(`symbol ${s.tradedPair}: target '${target.id}' serves ${JSON.stringify(target.symbols)} — not this pair`);
   }
@@ -492,6 +508,6 @@ function setRunEpoch(id, utc = new Date().toISOString()) {
 module.exports = {
   createSetup, getSetup, listSetups, readSetups, tradableSetups, setupProblems,
   setupFee, feeIsInherited,
-  updateSetup, transition, deleteDraft, setRunEpoch,
+  updateSetup, transition, deleteDraft, setRunEpoch, liveGateErrors,
   STATES, TRANSITIONS, MIN_STOP_PCT, setupsDir,
 };

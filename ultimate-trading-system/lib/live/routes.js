@@ -47,7 +47,86 @@ function summarize(s) {
   };
 }
 
+// ---- THE NEW TRADING ENGINE (loop of 2026-09-25) --------------------------
+//
+// Its record is the owner's, created and edited on Setup > Compute (RULE FIVE);
+// the link to it and the decisions for the setups that run on it are started
+// here, when the service starts and whenever an engine record changes.
+const ENGINE_PRODUCE_EVERY_MS = 60000;
+let produceRunning = null;
+function startEngineWork() {
+  const targets = require('./targets');
+  const link = require('./enginelink');
+  link.followAll(targets.listEngines());
+  // THE DECISIONS: once a minute, if any setup on an engine is in paper or live
+  // state, the producer runs as a child of its own (engine-produce.js) -- the
+  // committee is trained there, never on the thread that answers the pages.
+  // It sends nothing twice, so running it often costs a check, not a decision.
+  const tick = () => {
+    if (produceRunning) return;
+    const engines = new Set(targets.listEngines().map((t) => t.id));
+    const due = reg.listSetups().some((s) => (s.state === 'paper' || s.state === 'live') && engines.has(s.executionTargetRef));
+    if (!due) return;
+    const { execFile } = require('child_process');
+    produceRunning = execFile(process.execPath, [path.join(__dirname, '..', '..', 'engine-produce.js')], { cwd: path.join(__dirname, '..', '..'), timeout: 20 * 60000, maxBuffer: 1 << 20 }, (err, stdout, stderr) => {
+      produceRunning = null;
+      const line = { at: new Date().toISOString(), ok: !err, out: String(stdout || '').trim().slice(-4000), err: String(stderr || '').trim().slice(-2000) };
+      try { fs.mkdirSync(path.join(__dirname, '..', '..', 'data', 'live'), { recursive: true }); fs.appendFileSync(path.join(__dirname, '..', '..', 'data', 'live', 'engine-produce.jsonl'), `${JSON.stringify(line)}\n`); } catch (_) { /* the record of runs is best effort; each decision is written by the child itself */ }
+    });
+  };
+  if (!startEngineWork.timer && process.env.NODE_ENV !== 'test' && !process.env.GC_NO_ENGINE_PRODUCE) {
+    startEngineWork.timer = setInterval(tick, ENGINE_PRODUCE_EVERY_MS);
+    startEngineWork.timer.unref();
+  }
+}
+
 function installLiveRoutes(app, { csrfGuard }) {
+  startEngineWork();
+
+  // every engine record, with whether it answers through its link and what it says of itself
+  app.get('/api/live/engines', async (req, res) => {
+    try {
+      const targets = require('./targets');
+      const link = require('./enginelink');
+      const setups = reg.listSetups();
+      const engines = await Promise.all(targets.listEngines().map(async (t) => {
+        const m = link.mirrorFor(t);
+        const h = await link.health(t);
+        return {
+          id: t.id, name: t.name, host: t.host, user: t.user, enginePort: t.enginePort, localPort: t.localPort, isDefault: !!t.isDefault, note: t.note || '',
+          answers: h.answers, why: h.why || null, ms: h.ms, health: h.health || null,
+          link: m.status, recordsKept: m.n,
+          setups: setups.filter((s) => s.executionTargetRef === t.id && s.state !== 'retired').map((s) => ({ id: s.id, name: s.name, state: s.state })),
+        };
+      }));
+      res.json({ engines, default: (targets.defaultEngine() || {}).id || null });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.post('/api/live/engines', csrfGuard, (req, res) => {
+    try {
+      const targets = require('./targets');
+      const saved = targets.saveEngine(req.body || {});
+      require('./enginelink').followAll(targets.listEngines());
+      res.json({ ok: true, engine: saved });
+    } catch (e) { res.status(e.code === 'BAD_ENGINE' ? 400 : 500).json({ error: e.message }); }
+  });
+  app.post('/api/live/engines/:id/delete', csrfGuard, (req, res) => {
+    try {
+      const targets = require('./targets');
+      const out = targets.deleteEngine(String(req.params.id), reg.listSetups());
+      require('./enginelink').followAll(targets.listEngines());
+      res.json({ ok: true, ...out });
+    } catch (e) { res.status(e.code === 'IN_USE' ? 409 : e.code === 'NOT_FOUND' ? 404 : 500).json({ error: e.message }); }
+  });
+  // the decisions the producer made for engine setups, newest last: what it did on each run
+  app.get('/api/live/engine-produce', (req, res) => {
+    try {
+      const f = path.join(__dirname, '..', '..', 'data', 'live', 'engine-produce.jsonl');
+      const lines = fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').slice(-20).map((l) => { try { return JSON.parse(l); } catch (_) { return null; } }).filter(Boolean) : [];
+      res.json({ runs: lines, running: !!produceRunning });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   app.get('/api/live/setups', (req, res) => {
     try { res.json({ setups: reg.listSetups().map(summarize) }); }
     catch (e) { res.status(500).json({ error: e.message }); }
@@ -195,7 +274,7 @@ function installLiveRoutes(app, { csrfGuard }) {
       const t = require('./targets').listTargets();
       res.json({
         targets: Object.values(t).map((x) => ({
-          id: x.id, kind: x.kind, note: x.note || '', symbols: x.symbols || null,
+          id: x.id, kind: x.kind, note: x.note || '', symbols: x.symbols || null, name: x.name || null, isDefault: !!x.isDefault,
         })),
       });
     } catch (e) { res.status(500).json({ error: e.message }); }

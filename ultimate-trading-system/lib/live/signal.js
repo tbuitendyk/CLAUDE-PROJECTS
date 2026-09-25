@@ -268,7 +268,7 @@ async function computePreview(setup, now) {
 }
 
 module.exports = {
-  computeSignal, computeSignalForChunk, computePreview,
+  computeSignal, computeSignalForChunk, computePreview, prepare, missingFeatureCandle,
   actionableChunk, previewableChunk, chooseEntryOpen,
   decideFor, ENTRY_FRESH_H,
 };

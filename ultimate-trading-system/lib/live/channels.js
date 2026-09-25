@@ -105,7 +105,11 @@ function activate(greenlightId, channel, { by = OWNER_ID, clipUsd, name, trainPo
     }
   }
   if (!s) {
+    // A NEW SETUP RUNS ON THE TRADING ENGINE ticked default on Setup > Compute
+    // (loop of 2026-09-25); with no engine on record it runs where it always did
+    const eng = require('./targets').defaultEngine();
     const made = gl.shuttle(greenlightId, {
+      executionTargetRef: eng ? eng.id : null,
       name: name || `${g.configSnapshot.combo.trade} ${g.target} ${channel}`,
       // clip is operational (point 20), not part of the frozen snapshot; the
       // $10 default matches the pilot's clip and is editable on Setup detail.

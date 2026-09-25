@@ -66,4 +66,84 @@ function resolveForSetup(setup) {
   return t;
 }
 
-module.exports = { listTargets, getTarget, resolveForSetup, targetServes, targetsFile, BUILTIN };
+// ---- THE NEW TRADING ENGINE AS A TARGET (loop of 2026-09-25) ----------------
+//
+// The engine that carries out Paper Books and Live Trading for this system runs
+// on the trading box beside the old order program. Where it is and how this
+// machine reaches it is a record the owner creates and edits on Setup >
+// Compute (RULE FIVE: nothing about the link stays written into code). The web
+// box reaches the engine's loopback port through its own SSH tunnel, so the
+// record says both ends: the box and its user, the engine's port there, and the
+// port the tunnel opens here.
+const ENGINE_ID_RE = /^[a-z0-9][a-z0-9-]{1,29}$/;
+const HOST_RE = /^[A-Za-z0-9.-]{1,253}$/;
+const USER_RE = /^[a-z_][a-z0-9_-]{0,31}$/;
+const isPort = (n) => Number.isInteger(n) && n >= 1024 && n <= 65535;
+
+function engineProblems(r) {
+  const out = [];
+  const x = r || {};
+  if (typeof x.id !== 'string' || !ENGINE_ID_RE.test(x.id)) out.push('id: 2 to 30 of a-z, 0-9 and -, starting with a letter or digit');
+  if (x.id === 'mx-1') out.push('id: mx-1 is the old order program and is not an engine');
+  if (typeof x.name !== 'string' || !x.name.trim() || x.name.length > 60) out.push('name: 1 to 60 characters');
+  if (typeof x.host !== 'string' || !HOST_RE.test(x.host)) out.push('host: the trading box\'s address');
+  if (typeof x.user !== 'string' || !USER_RE.test(x.user)) out.push('user: the account this machine signs in to the trading box as');
+  if (!isPort(x.enginePort)) out.push('enginePort: the port the engine listens on, on the trading box itself (1024-65535)');
+  if (!isPort(x.localPort)) out.push('localPort: the port the tunnel opens on this machine (1024-65535)');
+  if (x.localPort === 8094 || x.localPort === 8095) out.push('localPort: 8094 and 8095 are this system\'s own services');
+  return out;
+}
+
+function storedTargets() {
+  try { const j = JSON.parse(fs.readFileSync(targetsFile(), 'utf8')); return j && typeof j === 'object' && !Array.isArray(j) ? j : {}; } catch (_) { return {}; }
+}
+function writeTargets(obj) {
+  fs.mkdirSync(path.dirname(targetsFile()), { recursive: true });
+  const tmp = `${targetsFile()}.tmp${process.pid}`;
+  fs.writeFileSync(tmp, JSON.stringify(obj, null, 1));
+  fs.renameSync(tmp, targetsFile());
+}
+
+// every engine record, in the shape the screens read
+function listEngines() {
+  return Object.values(storedTargets()).filter((t) => t && t.kind === 'engine');
+}
+function defaultEngine() {
+  const all = listEngines();
+  return all.find((t) => t.isDefault) || (all.length === 1 ? all[0] : null);
+}
+
+// create or change an engine record; the one ticked default is the one new setups go to
+function saveEngine(rec) {
+  const r = {
+    id: String((rec || {}).id || '').trim(), kind: 'engine', name: String((rec || {}).name || '').trim(),
+    host: String((rec || {}).host || '').trim(), user: String((rec || {}).user || '').trim(),
+    enginePort: Number((rec || {}).enginePort), localPort: Number((rec || {}).localPort),
+    isDefault: !!(rec || {}).isDefault, symbols: null, note: typeof (rec || {}).note === 'string' ? rec.note.slice(0, 200) : '',
+  };
+  const problems = engineProblems(r);
+  const all = storedTargets();
+  for (const t of Object.values(all)) {
+    if (t && t.kind === 'engine' && t.id !== r.id && Number(t.localPort) === r.localPort) problems.push(`localPort: ${r.localPort} is already the tunnel port of ${t.id}`);
+  }
+  if (problems.length) { const e = new Error(problems.join('; ')); e.code = 'BAD_ENGINE'; throw e; }
+  if (r.isDefault) for (const t of Object.values(all)) if (t && t.kind === 'engine') t.isDefault = false;
+  all[r.id] = r;
+  writeTargets(all);
+  return r;
+}
+
+// an engine record goes only when no setup names it
+function deleteEngine(id, setups = []) {
+  const all = storedTargets();
+  if (!all[id] || all[id].kind !== 'engine') { const e = new Error(`no engine called ${id}`); e.code = 'NOT_FOUND'; throw e; }
+  const users = setups.filter((s) => s.executionTargetRef === id && s.state !== 'retired');
+  if (users.length) { const e = new Error(`${users.length} setup(s) run on ${id} (${users.map((s) => s.name || s.id).join(', ')}) -- move or retire them first`); e.code = 'IN_USE'; throw e; }
+  delete all[id];
+  writeTargets(all);
+  return { deleted: id };
+}
+
+const isEngine = (t) => !!t && t.kind === 'engine';
+
+module.exports = { listTargets, getTarget, resolveForSetup, targetServes, targetsFile, BUILTIN, listEngines, defaultEngine, saveEngine, deleteEngine, engineProblems, isEngine };

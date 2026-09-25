@@ -301,7 +301,7 @@ function listGreenlights() {
 
 // THE SHUTTLE (point 4): greenlight -> new draft setup, snapshot + provenance
 // riding along. The greenlight record keeps the reverse link.
-function shuttle(greenlightId, { name, clipUsd, stopPct = null, feePerLeg, by = 'owner', channel = null, trainPolicy = null } = {}) {
+function shuttle(greenlightId, { name, clipUsd, stopPct = null, feePerLeg, by = 'owner', channel = null, trainPolicy = null, executionTargetRef = null } = {}) {
   const gl = getGreenlight(greenlightId);
   if (!gl) { const e = new Error(`no such greenlight ${greenlightId}`); e.code = 'NOT_FOUND'; throw e; }
   if (gl.revoked) { const e = new Error('this config was nuked back to not-greenlighted'); e.code = 'REVOKED'; throw e; }
@@ -317,6 +317,8 @@ function shuttle(greenlightId, { name, clipUsd, stopPct = null, feePerLeg, by = 
     clipUsd,
     trainPolicy,
     stopPct,
+    // where it runs: the trading engine ticked default on Setup > Compute, or the old order program
+    executionTargetRef,
     // The fee the board was found under, unless the owner names another. A
     // profile that trades at a different cost than its evidence was scored at
     // is not trading the thing that was greenlighted, so this defaults rather

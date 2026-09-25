@@ -202,6 +202,10 @@ let cLoads = null;           // last reading from the small always-up program
 let cCfg = null;             // last reading from the trading service
 let cErrLoads = null;
 let cErrCfg = null;
+let cEng = null;             // the trading engine records, with whether each answers (loop of 2026-09-25)
+let cErrEng = null;
+let cEngEdit = null;         // the engine record being changed in the form, or null for a new one
+let cEngTyped = {};          // what is typed in the form, kept across the thirty-second redraw
 let aAcc = null;             // the account's exchange records, and which fee is the system default
 let aErr = null;             // why they could not be read, when they could not
 let vTimer = null;           // the five-second re-read, armed only while Version shows
@@ -306,7 +310,8 @@ function drawAccount() {
 async function loadCompute() {
   const a = getJson('svc/api/compute').then((d) => { cLoads = d; cErrLoads = null; }, (e) => { cErrLoads = e.message; });
   const b = getJson('api/compute-config').then((d) => { cCfg = d; cErrCfg = null; }, (e) => { cErrCfg = e.message; });
-  await Promise.all([a, b]);
+  const c = getJson('api/live/engines').then((d) => { cEng = d; cErrEng = null; }, (e) => { cErrEng = e.message; });
+  await Promise.all([a, b, c]);
 }
 
 function svcCard(u) {
@@ -340,6 +345,108 @@ function svcCard(u) {
     + '</div>';
 }
 
+// ---- THE TRADING ENGINE (loop of 2026-09-25) --------------------------------
+// The program on the trading box that carries out Paper Books and Live Trading
+// for this system. Its record -- where it is, how this machine reaches it, and
+// whether new setups run on it -- is the owner's, made and changed here (RULE
+// FIVE: nothing about the link stays written into code). What it says of itself
+// is read live through the link each time this tab refreshes.
+function engineCard(e) {
+  const h = e.health || {};
+  const feeds = (h.feeds || []).map((f) => (f.connected ? '<span class="pos">prices arriving</span>' : '<span class="neg">prices not arriving</span>')).join(' ') || '<span class="muted">—</span>';
+  const said = e.answers
+    ? '<span class="pos">answers</span> <span class="muted">in ' + e.ms + ' ms · release ' + esc(h.release || '?') + '</span>'
+    : '<span class="neg">does not answer</span> <span class="muted">(' + esc(e.why || 'no reason given') + ')</span>';
+  const link = e.link && e.link.following
+    ? '<span class="pos">following its record</span> <span class="muted">since ' + esc(String(e.link.since || '').slice(11, 19)) + ' UTC</span>'
+    : '<span class="neg">not following its record</span> <span class="muted">(' + esc((e.link && e.link.why) || 'not started') + ')</span>';
+  return '<div class="tile" style="margin-bottom:.55rem">'
+    + '<div class="row" style="align-items:baseline"><b>' + esc(e.name) + '</b><span class="note">' + esc(e.id) + '</span>'
+    + (e.isDefault ? '<span class="note pos">new setups run on this engine</span>' : '') + '<span class="spacer"></span>' + said + '</div>'
+    + '<div class="row" style="align-items:baseline; margin-top:.35rem; gap:1.2rem">'
+    + '<span><span class="k">trading box</span> <b>' + esc(e.user) + '@' + esc(e.host) + '</b></span>'
+    + '<span><span class="k">engine port there</span> <b>' + e.enginePort + '</b></span>'
+    + '<span><span class="k">tunnel port here</span> <b>' + e.localPort + '</b></span>'
+    + '</div>'
+    + '<div class="row" style="align-items:baseline; margin-top:.35rem; gap:1.2rem">'
+    + '<span><span class="k">prices</span> ' + feeds + '</span>'
+    + '<span><span class="k">plans held</span> <b>' + (h.plans ? h.plans.held + ' (' + h.plans.active + ' open or waiting)' : '—') + '</b></span>'
+    + '<span><span class="k">real orders</span> <b>' + esc(h.realOrders || '—') + '</b></span>'
+    + '<span><span class="k">the link</span> ' + link + ' <span class="muted">· ' + e.recordsKept + ' lines kept</span></span>'
+    + '</div>'
+    + '<div class="row" style="align-items:baseline; margin-top:.35rem"><span class="k">setups on it</span> <span class="note">'
+    + (e.setups.length ? e.setups.map((s) => esc(s.name || s.id) + ' (' + esc(s.state) + ')').join(', ') : 'none') + '</span></div>'
+    + '<div class="row" style="margin-top:.5rem"><button data-engedit="' + esc(e.id) + '">Change this record</button>'
+    + '<button data-engdel="' + esc(e.id) + '" class="danger" title="takes the record away; refused while any setup runs on it">Delete the engine record</button></div>'
+    + '</div>';
+}
+function engineHtml() {
+  if (!cEng) return '<div class="panel"><h3 style="margin-top:0">The trading engine</h3><p class="note neg">the trading service did not answer, so the engine records cannot be shown' + (cErrEng ? ' — ' + esc(cErrEng) : '') + '</p></div>';
+  const ed = cEngEdit ? (cEng.engines || []).find((x) => x.id === cEngEdit) || null : null;
+  // WHAT IS TYPED OUTLIVES THE REDRAW: this tab reads everything again every
+  // thirty seconds, and a form that emptied itself under the owner's fingers
+  // would make every record a race
+  const v = (k, d) => esc(k in cEngTyped ? cEngTyped[k] : (ed ? ed[k] : d));
+  return '<div class="panel"><h3 style="margin-top:0">The trading engine</h3>'
+    + '<p class="note">The program on the trading box that carries out Paper Books and Live Trading for this system, '
+    + 'beside the old order program, which it never touches. This machine reaches it through a tunnel of its own. '
+    + 'A new setup runs on the engine ticked for new setups; a setup already running stays where it is.</p>'
+    + ((cEng.engines || []).length ? (cEng.engines || []).map(engineCard).join('') : '<p class="note">no engine record yet</p>')
+    + '<div class="tile">'
+    + '<div class="k" style="margin-bottom:.35rem">' + (ed ? 'Changing ' + esc(ed.name) : 'A new engine record') + '</div>'
+    + '<div class="row" style="align-items:flex-end">'
+    + '<label class="f" title="a short name for the record: letters, digits and dashes">record id<input id="engId" value="' + v('id', '') + '" ' + (ed ? 'disabled' : '') + ' style="width:9rem"></label>'
+    + '<label class="f" title="what you want to see on screen for this engine">name<input id="engName" value="' + v('name', '') + '" style="width:14rem"></label>'
+    + '<label class="f" title="the trading box&#39;s address">trading box address<input id="engHost" value="' + v('host', '') + '" style="width:26rem"></label>'
+    + '<label class="f" title="the account this machine signs in to the trading box as">sign in as<input id="engUser" value="' + v('user', '') + '" style="width:7rem"></label>'
+    + '</div>'
+    + '<div class="row" style="align-items:flex-end; margin-top:.5rem">'
+    + '<label class="f" title="the port the engine listens on, on the trading box itself">engine port there<input id="engPort" type="number" min="1024" max="65535" value="' + v('enginePort', 18095) + '" style="width:7rem"></label>'
+    + '<label class="f" title="the port the tunnel opens on this machine">tunnel port here<input id="engLocal" type="number" min="1024" max="65535" value="' + v('localPort', 18095) + '" style="width:7rem"></label>'
+    + '<label class="c"><input type="checkbox" id="engDefault"' + (('isDefault' in cEngTyped ? cEngTyped.isDefault : (ed ? ed.isDefault : true)) ? ' checked' : '') + '> new setups run on this engine</label>'
+    + '</div>'
+    + '<div class="row" style="margin-top:.5rem"><button id="engSave" class="pri">Save the engine record</button>'
+    + (ed ? '<button id="engNew">Start a new record instead</button>' : '') + '<span id="engMsg" class="note"></span></div>'
+    + '<p class="note" style="margin-top:.4rem">Sending the engine to the trading box and opening the tunnel are not done from this page yet.</p>'
+    + '</div></div>';
+}
+function wireEngine() {
+  for (const [sel, key] of [['#engId', 'id'], ['#engName', 'name'], ['#engHost', 'host'], ['#engUser', 'user'], ['#engPort', 'enginePort'], ['#engLocal', 'localPort']]) {
+    const el = $(sel);
+    if (el) el.oninput = () => { cEngTyped[key] = el.value; };
+  }
+  const df = $('#engDefault');
+  if (df) df.onchange = () => { cEngTyped.isDefault = df.checked; };
+  document.querySelectorAll('[data-engedit]').forEach((b) => { b.onclick = () => { cEngEdit = b.dataset.engedit; cEngTyped = {}; drawCompute(); }; });
+  document.querySelectorAll('[data-engdel]').forEach((b) => {
+    b.onclick = async () => {
+      if (!confirm('Delete the engine record "' + b.dataset.engdel + '"?\n\nRefused while any setup runs on it. The engine on the trading box is not touched.')) return;
+      try { await postJson('api/live/engines/' + encodeURIComponent(b.dataset.engdel) + '/delete', {}); cEngEdit = null; }
+      catch (e) { alert('Not deleted — ' + e.message); }
+      refreshCompute(true);
+    };
+  });
+  const nw = $('#engNew');
+  if (nw) nw.onclick = () => { cEngEdit = null; cEngTyped = {}; drawCompute(); };
+  const sv = $('#engSave');
+  if (sv) sv.onclick = async () => {
+    const msg = $('#engMsg');
+    sv.disabled = true;
+    msg.innerHTML = 'saving…';
+    try {
+      const got = await postJson('api/live/engines', {
+        id: cEngEdit || $('#engId').value.trim(), name: $('#engName').value.trim(), host: $('#engHost').value.trim(), user: $('#engUser').value.trim(),
+        enginePort: Number($('#engPort').value), localPort: Number($('#engLocal').value), isDefault: $('#engDefault').checked,
+      });
+      cEngEdit = got.engine.id;
+      cEngTyped = {};
+      await refreshCompute(true);
+      const m2 = $('#engMsg');
+      if (m2) m2.innerHTML = '<span class="pos">saved</span>';
+    } catch (e) { msg.innerHTML = '<span class="neg">not saved — ' + esc(e.message) + '</span>'; sv.disabled = false; }
+  };
+}
+
 function drawCompute() {
   const m = cLoads && cLoads.machine;
   const roles = cCfg && cCfg.rolesOffered ? cCfg.rolesOffered.map((r) => {
@@ -365,6 +472,8 @@ function drawCompute() {
     + '<span class="note">chosen on each trading setup on the Trade tab — every setup names its own, '
     + 'so two setups can trade in two places. Nothing about it is set here.</span></div>'
     + '</div>'
+
+    + engineHtml()
 
     + '<div class="panel"><h3 style="margin-top:0">What it costs to trade</h3>'
     + (cCfg && cCfg.fee ? '<div class="row" style="align-items:baseline"><span class="k">in force</span>'
@@ -408,6 +517,7 @@ function drawCompute() {
     + '</div>';
 
   // wiring
+  wireEngine();
   const now = $('#cNow');
   if (now) now.onclick = () => refreshCompute(true);
   document.querySelectorAll('[data-role]').forEach((sel) => {

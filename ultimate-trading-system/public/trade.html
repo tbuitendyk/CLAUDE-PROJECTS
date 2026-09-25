@@ -296,6 +296,32 @@ const TH={
 // th(label, key) — a heading always carries its own description.
 const th=(label,key,style)=>`<th${style?` style="${style}"`:''}${TH[key]?` title="${esc(TH[key]).replace(/"/g,'&quot;')}"`:''}>${label}</th>`;
 
+// THE ENGINE'S PLANS (loop of 2026-09-25): a setup on the new trading engine
+// shows each decision as the engine carries it -- the levels it waits at, the
+// stop now, the best price since the entry, whether the trail has armed, the
+// size and its three factors, and the money. Drawn by the one path Paper Books
+// and Live Trading share; nothing here asks which book it is on.
+const PHASE_WORDS={waiting:'waiting for its entry hour',armed:'waiting for a level',entering:'opening',open:'open',exiting:'closing',closed:'closed',expired:'no level reached in the hold',skipped:'skipped',failed:'refused by the exchange',cancelled:'cancelled',sent:'sent to the engine'};
+const px=(v)=>v==null||!Number.isFinite(Number(v))?'—':Number(v).toFixed(4).replace(/\.?0+$/,'');
+function enginePlansHtml(e){
+  const link=e.link&&e.link.following?'<span class="pos">following the engine</span>':`<span class="neg">not following the engine</span> <span class="muted">(${esc((e.link&&e.link.why)||'not started')})</span>`;
+  const rows=(e.plans||[]).slice(0,12).map(p=>{
+    const sz=p.size||{};
+    const usd=p.pnl!=null?p.pnl:(p.mark?p.mark.openUsd:null);
+    return `<tr>
+      <td>${esc(String(p.entry_utc||'').slice(0,16).replace('T',' '))}</td>
+      <td class="${p.call===1?'pos':p.call===-1?'neg':'muted'}">${p.call===1?'LONG':p.call===-1?'SHORT':'no call'}</td>
+      <td style="text-align:left">${esc(PHASE_WORDS[p.phase]||p.phase)}${p.reason?` <span class="muted">— ${esc(p.reason)}</span>`:''}</td>
+      <td>${px(p.buy)}</td><td>${px(p.sell)}</td><td>${px(p.stop)}</td><td>${p.phase==='open'?px(p.best):'—'}</td>
+      <td>${p.phase==='open'||p.phase==='closed'?(p.armed?'<span class="pos">armed</span>':'not yet'):'—'}</td>
+      <td title="clip ${esc(sz.clipUsd)} x the field's size ${esc(sz.fieldSize)} x the conviction multiplier ${esc(sz.multiplier)} (${esc(sz.agree)} members agreeing)">${sz.quoteUsd==null?'—':'$'+Number(sz.quoteUsd).toFixed(2)}</td>
+      <td class="${cls(usd)}">${money(usd)}</td></tr>`;
+  }).join('');
+  return `<div class="panel"><div class="k">The engine's plans <span style="text-transform:none;letter-spacing:0">— ${esc(e.name)} · ${link}</span></div>
+    <table style="margin-top:.4rem"><thead><tr>${th('entry (UTC)','engEntry')}${th('call','engCall')}${th('where it stands','engPhase','text-align:left')}${th('buying level','engBuy')}${th('selling level','engSell')}${th('stop now','engStop')}${th('best price','engBest')}${th('trail','engTrail')}${th('size','engSize')}${th('money $','engMoney')}</tr></thead>
+    <tbody>${rows||'<tr><td colspan="10" class="empty">no plan sent to the engine yet</td></tr>'}</tbody></table></div>`;
+}
+
 // ONE cell renderer for every position table on this page, on BOTH the setup
 // path and the pilot path, so Paper Books and Live Trading cannot drift apart
 // (RULE TWO). Leads with WHEN THE TRADE OPENED, because that is the date a human
@@ -930,6 +956,7 @@ async function drawLive(){
     : '';
   const st=await api('api/live/setups/'+ch.setupId+'/status');
   if(st.error){ $('#view').innerHTML=`<div class="panel empty">${esc(st.error)}</div>`; return; }
+  window.__engineLive=!!(st.engine&&(st.engine.plans||[]).some(p=>['waiting','armed','entering','open','exiting'].includes(p.phase)));
   const isP=branch==='paper';
   const rp=isP?st.paperRealizedPnl:st.realizedPnl, up=isP?st.paperUnrealizedPnl:st.unrealizedPnl;
   // ONE SIDE'S BOOK, NOT BOTH. view.js returns openPositions as a MERGED array
@@ -994,6 +1021,7 @@ async function drawLive(){
             : paidPct==null ? '—' : paidPct.toFixed(3)+'%', over?'warn':(paidPct==null?'muted':''));
       })()}
     </div>
+    ${st.engine?enginePlansHtml(st.engine):''}
     <div class="panel"><div class="k">Open positions ${isP?paperBadge:''}</div>
       <table style="margin-top:.4rem"><thead><tr>${th('entry','entryUtc')}${th('side','side')}${th('qty','qty')}${th('entry $','entryPx')}${th('mark','markPx')}${th('unreal $','unreal')}${th('exit due','exitDue')}</tr></thead><tbody>
       ${openHere.length?openHere.map(p=>`<tr>
@@ -1143,6 +1171,9 @@ Promise.resolve(draw()).then(()=>restoreScroll(branch,sub));
 // already on screen, not a navigation, and yanking the view back would make the
 // screen unreadable while it is being read.
 setInterval(()=>{ if(sub==='dash'||sub==='live') draw(); }, 30000);
+// THE LIVE FIGURES AS THEY HAPPEN (loop of 2026-09-25): while the setup on view
+// runs on the trading engine, its page is read again every three seconds
+setInterval(()=>{ if(sub==='live' && window.__engineLive) draw(); }, 3000);
 </script>
 </body>
 </html>
