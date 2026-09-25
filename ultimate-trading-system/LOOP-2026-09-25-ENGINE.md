@@ -164,6 +164,35 @@ Mexico City.
 - D8. The engine starts with real orders OFF and this release refuses a
   config asking for them at start: there is no live module in it yet.
 
+- D9. The web box follows each engine's stream and writes each line again in
+  the Trade tab's own words, so a setup on the engine and a setup on the old
+  order program are drawn by the one path, on both books (3.254.0).
+- D10. A setup on the engine gets the engine's own "what happens next": the
+  decision once the feature window closes, the levels at the entry hour, an
+  armed plan waiting until its hold ends, each open position's close. It was
+  first drawn from the old program's hourly schedule, which is not what the
+  engine does (3.255.0).
+- D11. A setup that is stopped or retired takes no new entry: each minute the
+  web box takes back every plan of it still waiting on the engine, entries only,
+  so an open position still closes by its stop or its hold -- the old program's
+  rule, kept (3.255.0).
+
+## Found and fixed after a deploy
+
+- 3.254.0 shipped the engine form on Setup > Compute with captions over their
+  boxes; the Compute tab's own rule is inline, and the whole suite caught it
+  after the deploy. It shipped the engine's plans table with ten headings and no
+  description on any of them (the page's heading check trusts its helper, so it
+  could not see it); the render caught it. Both fixed in 3.254.1, with a test
+  that reads this table's keys.
+
+## Found and left for the owner (RULE ZERO: not mine to fix)
+
+- The Trade tab's "fee" heading and Construct's "returnPct" heading are drawn
+  through the heading helper with no entry in the key, so neither carries a
+  description on screen. The fix is one entry each, and a test that holds every
+  key the helpers are handed to the dictionary. Not touched.
+
 ## Parked
 
 - P1 (08:10 UTC). Installing the engine on the trading box -- node from
@@ -172,3 +201,12 @@ Mexico City.
   (S1) -- was refused by the session's permission layer ("Blocked by
   classifier"). Everything that does not need it continues: the web box side,
   Setup, the producer, the tests. The owner decides: run the deploy, or allow it.
+- P2 (08:55 UTC). The probe (item 8): its first half, read-only requests to
+  the exchange made with the trading account's keys from the trading box, was
+  refused by the session's permission layer before anything was written or run.
+  Its order tests need the same access and were not attempted. Read without
+  keys, from the old order program itself (unchanged, sha256 65d077efe8ec00c3):
+  it never lists open orders, past orders or trades, looks up only its own
+  orders by its own client ids, and its reconcile reads only the coin -- so the
+  order tests' last condition holds. Whether and how the probe runs is the
+  owner's decision.
