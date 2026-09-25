@@ -233,3 +233,54 @@ module.exports.aRejectedOrderAppearsInTheSetupsIncidents = function () {
       'each incident must carry the executor\'s own detail, not just its name');
   });
 };
+
+// THE DECISION WAITING TO OPEN (item 7, 3.258.0): the newest decision whose
+// entry hour has not come, the last line written for its period, and in words
+// what it does -- or that there is no trade, and why
+module.exports.thePendingDecisionIsTheNewestWhoseEntryHourHasNotCome = function () {
+  const H = 3600000;
+  const day = (d) => Date.UTC(2026, 8, d);
+  const setup = { id: 's', configSnapshot: { branch: { geometry: 'daily-4d', band: 5 }, cell: { entry: 'breakout', gate: 'active', dMult: 0.75, tHours: 65 } } };
+  const size = { clipUsd: 100, fieldSize: 1, multiplier: 1.25, agree: 3, sizingOn: true, quoteUsd: 125 };
+  const rec = (d, o = {}) => ({ chunk_start: new Date(day(d)).toISOString(), side: 'LONG', per_member: [1, 1, 1, -1], band_pct: 5, produced_utc: new Date(day(d + 4) + 60000).toISOString(),
+    field: { sign: 1, agreement: 92.1, certainty: 85.2, size: 1, why: 'sized: certainty 85 on the rung ×1' }, clip_usd: 125, ...o });
+  const now = day(26) + 30 * 60000; // 00:30 on the 26th: the window of the 22nd opens at 01:00
+  // the 21st's opened yesterday; the 22nd's is waiting; its last line carries the engine's answer
+  const p = view.pendingDecision(setup, [rec(21), rec(22, { engine: { ok: false, traded: true, size } }), rec(22, { engine: { ok: true, traded: true, size, answer: { ok: true, phase: 'waiting' } } })], now);
+  assert.deepStrictEqual([p.chunk_start.slice(0, 10), p.entry_utc, p.side, p.traded, p.why], ['2026-09-22', '2026-09-26T01:00:00.000Z', 'LONG', true, null]);
+  assert.deepStrictEqual(p.members, { of: 4, up: 3, down: 1, agreeing: 3 });
+  assert.deepStrictEqual([p.field.size, p.quoteUsd, p.levelPct, p.holdHours, p.gate], [1, 125, 3.75, 65, 'active']);
+  assert.deepStrictEqual(p.engine, { taken: true, said: null });
+  // written down but not yet taken: says what the engine said
+  const q = view.pendingDecision(setup, [rec(22, { engine: { ok: false, traded: true, size, answer: 'nothing answers on the tunnel\'s port on this machine' } })], now);
+  assert.deepStrictEqual(q.engine, { taken: false, said: 'nothing answers on the tunnel\'s port on this machine' });
+  // no trade, and why: the field blocked it, the committee stood aside, or it sized to nothing
+  const blocked = view.pendingDecision(setup, [rec(22, { side: 'FLAT', field: { sign: 1, agreement: 40, certainty: 62, size: 0, why: 'blocked by minimum: certainty 62 < 70' }, engine: { ok: true, traded: false, why: 'the field blocked the call', answer: 'nothing to send' } })], now);
+  assert.deepStrictEqual([blocked.traded, blocked.why, blocked.engine, blocked.members.agreeing], [false, 'the field blocked the call by minimum: certainty 62 < 70', null, null]);
+  const aside = view.pendingDecision(setup, [rec(22, { side: 'FLAT', per_member: [1, -1, 0, 0], field: { sign: 1, size: 0, why: 'no call' }, engine: { ok: true, traded: false, why: 'the committee stood aside' } })], now);
+  assert.deepStrictEqual([aside.why, aside.members.up, aside.members.down], ['the committee stood aside', 1, 1]);
+  const none = view.pendingDecision(setup, [rec(22, { engine: { ok: true, traded: false, why: 'sized to nothing', size: { ...size, quoteUsd: 0 } } })], now);
+  assert.deepStrictEqual([none.traded, none.why], [false, 'sized to nothing']);
+  // an old order program's record, with no engine: its clip, and nothing asked of an engine
+  const old = view.pendingDecision(setup, [rec(22)], now);
+  assert.deepStrictEqual([old.quoteUsd, old.engine, old.traded], [125, null, true]);
+  // once the hour has come, nothing is waiting
+  assert.strictEqual(view.pendingDecision(setup, [rec(22)], day(26) + 1 * H), null);
+  assert.strictEqual(view.pendingDecision(setup, [], now), null);
+};
+
+// ...AND IT IS DRAWN FIRST ON LIVE, by the one path both books share, every
+// tile described
+module.exports.thePendingDecisionIsDrawnFirstOnLiveByTheOnePath = function () {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'trade.html'), 'utf8');
+  const fn = src.slice(src.indexOf('function pendingHtml('), src.indexOf('function enginePlansHtml('));
+  assert.ok(fn.length > 200, 'the panel has its renderer');
+  assert.ok(!/branch|isP\b|isPaper/.test(fn), 'nothing in the panel asks which book it is on');
+  const keys = [...fn.matchAll(/tile\('[^']+','([A-Za-z]+)'/g)].map((m) => m[1]);
+  assert.deepStrictEqual(keys, ['pendCall', 'pendMembers', 'pendField', 'pendRung', 'pendSize', 'pendOpens']);
+  const tileBlock = src.slice(src.indexOf('const TILE={'), src.indexOf('const tile=('));
+  for (const k of keys) assert.ok(new RegExp(`\\n  ${k}:'`).test(tileBlock), `tile ${k} carries a description`);
+  const live = src.slice(src.indexOf('async function drawLive('), src.indexOf('async function drawLive(') + 6000);
+  const at = live.indexOf('${pendingHtml(st.pending');
+  assert.ok(at > 0 && at < live.indexOf('Reproduce-check') && at < live.indexOf('<div class="grid"'), 'drawn above the check line and the money tiles');
+};
