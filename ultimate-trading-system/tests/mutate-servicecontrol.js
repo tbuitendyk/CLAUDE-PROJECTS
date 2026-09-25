@@ -2396,6 +2396,21 @@ const GUARDS = [
     'theWordListSeesEveryVisibleLabel', 'a heading handed to a helper is on the screen and on no list again'],
   [path.join(ROOT, 'tests', 'sweep-words.js'), '  const place = new Map([...headingPlaces(SRC, true), ...headingPlaces(body, false)]);', '  const place = new Map([...headingPlaces(body, false)]);',
     'theWordListSeesEveryVisibleLabel', 'a heading handed to a helper defined at the top of the file, as every table on Tune is, is on no list'],
+  // the four gaps no test saw (2026-09-25): the row cap, the gate taken from earlier chunks only, the redraw after a finished pass, the reserve look sentence
+  [path.join(ROOT, 'lib', 'stages.js'), "  const per = 2000;", "  const per = Infinity;",
+    "aSetTooBigForOneReplySendsTheCapAndSaysHowManyItKeptBack", "a set of any size goes out in one reply, and nothing says how many rows it holds"],
+  [path.join(ROOT, 'lib', 'bracketwork.js'), "      const yard = behind.length >= MIN_CHUNKS ? medianAbsMove(behind) : null;", "      const yard = behind.length >= MIN_CHUNKS ? medianAbsMove(rows.map((x) => (Array.isArray(x.backPct) ? x.backPct[i] : null)).filter((v) => v != null)) : null;",
+    "aChunksGateIsWorkedOutFromTheChunksBeforeItAndNothingAfter", "a chunk's gate is measured against a yardstick taken over the whole series, later chunks included"],
+  [path.join(ROOT, 'lib', 'bracketwork.js'), "      const m = Array.isArray(c.backPct) ? c.backPct[i] : null;\n      // the yardstick, off what came before and nothing else\n", "      const m = Array.isArray(c.backPct) ? c.backPct[i] : null;\n      if (m != null) behind.push(m);\n      // the yardstick, off what came before and nothing else\n",
+    "aChunksGateIsWorkedOutFromTheChunksBeforeItAndNothingAfter", "a chunk's own move is counted in the yardstick it is held up to"],
+  [path.join(ROOT, 'lib', 'bracketwork.js'), "    for (const c of rows) {", "    for (const c of rows.slice().reverse()) {",
+    "aChunksGateIsWorkedOutFromTheChunksBeforeItAndNothingAfter", "the chunks are walked from the newest back, so every chunk's yardstick is taken from the chunks after it"],
+  [path.join(ROOT, 'public', 'construct.js'), "        fRichWatching = false;           // the redraw re-enters fWire, and by then there is nothing to watch\n        drawFunnel();", "        fRichWatching = false;           // the redraw re-enters fWire, and by then there is nothing to watch",
+    "aFinishedPassDrawsTheFunnelAgainOnceTheWatchIsOver", "a finished pass keeps its answer on the walk and never draws it, so the Funnel goes on showing the count from before"],
+  [path.join(ROOT, 'public', 'construct.js'), "        fRichWatching = false;           // the redraw re-enters fWire, and by then there is nothing to watch\n        drawFunnel();", "        drawFunnel();\n        fRichWatching = false;           // the redraw re-enters fWire, and by then there is nothing to watch",
+    "aFinishedPassDrawsTheFunnelAgainOnceTheWatchIsOver", "the Funnel is drawn while the pass is still being watched, and the redraw starts a second watcher on a pass that has ended"],
+  [path.join(ROOT, 'lib', 'funnelverify.js'), "      parts.push(look > 1\n        ? `look ${look}: this window had been read ${look - 1} time(s) before, so it is no longer data nothing has seen and the floor below is the best case, not the strength`\n        : 'look 1: the first look at data nothing in the system has seen');", "      parts.push('look 1: the first look at data nothing in the system has seen');",
+    "aReserveSetThatPricesItsOwnSurvivorsSaysWhichLookItIs", "every reserve set a half-life rule prices for itself reads as the first look at data nothing has seen, however many came before"],
 ];
 
 const only = process.argv[2] || '';

@@ -2624,6 +2624,38 @@ module.exports = {
     } finally { f.cleanup(); }
   },
 
+  // A SET TOO BIG FOR ONE REPLY SENDS THE CAP AND SAYS HOW MANY IT KEPT BACK
+  // (owner order, 2026-09-25: "write tests for those four gaps"). Every row
+  // comes back (3.61.0), up to a cap that guards against a set nobody meant to
+  // cut; when it bites, the reply says so and the screen prints it. No fixture
+  // was big enough to reach it, so a cap of any size -- or none -- passed. A
+  // survivor whose setting has left the board is still sent, marked, so the
+  // fixture's four rows are joined by 2,100 of those to go past it.
+  async aSetTooBigForOneReplySendsTheCapAndSaysHowManyItKeptBack() {
+    const f = await unitFixture();
+    try {
+      const rule = { ranges: {}, allowed: {}, floors: {} };
+      const cut = await stages.cutFunnelSet(f.id, { unit: f.keys[0], rule });
+      const file = path.join(SETS_DIR, `${cut.id}.json`);
+      try {
+        const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+        const kept = doc.survivors.length;
+        for (let i = 0; i < 2100; i++) doc.survivors.push({ si: 100000 + i, label: `a setting no longer on the board ${i}` });
+        doc.counts.survivors = doc.survivors.length;
+        fs.writeFileSync(file, JSON.stringify(doc));
+        const out = await stages.funnelSetRows(cut.id, {});
+        assert.strictEqual(out.total, kept + 2100, 'the total is not every survivor the set holds');
+        assert.strictEqual(out.per, 2000, 'the cap on one reply is not 2,000 rows');
+        assert.strictEqual(out.rows.length, 2000, 'a set past the cap is sent whole, or cut short of it');
+        assert.strictEqual(out.clipped, out.total - 2000, 'the reply does not say how many rows it kept back');
+        // and the screen prints what was kept back, beside the most it draws at once
+        const ui = src('public/construct.js');
+        assert.ok(ui.includes('cd.clipped ? `<b class="neg">${Number(cd.clipped).toLocaleString()} are not shown</b>: this screen draws at most ${Number(cd.per).toLocaleString()} settings at once.` : \'\''),
+          'the screen does not say how many settings it is not showing');
+      } finally { try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ } }
+    } finally { f.cleanup(); }
+  },
+
   // A dial the rule pinned is the same on every row: said once above the table,
   // never repeated down a column of one repeated value.
   async aDialTheRuleFixedIsSaidOnceAboveTheStageFourTable() {
@@ -2982,6 +3014,47 @@ module.exports = {
   // of the pass, the watcher says so and keeps asking, and the pass's own
   // answer is what ends the watch. Then every watcher on the screen is held to
   // the one helper, and the line that claimed nothing had been written is gone.
+  // A FINISHED PASS DRAWS THE FUNNEL AGAIN (owner order, 2026-09-25: "write
+  // tests for those four gaps"). The pass's answer -- how many settings, and
+  // whether they match what the sweep stored -- is kept on the walk and reaches
+  // the screen only through the redraw, made once the watch is over so the
+  // redraw finds nothing left to watch. The only check was a search for a
+  // redraw anywhere in the file, which two newer redraws satisfied; the tests
+  // that run the watcher stubbed the redraw and never counted it.
+  async aFinishedPassDrawsTheFunnelAgainOnceTheWatchIsOver() {
+    const page = src('public/construct.js');
+    const lift = (head, end) => {
+      const at = page.indexOf(head);
+      assert.ok(at > 0, `${head} is gone`);
+      return page.slice(at, page.indexOf(end, at) + end.length);
+    };
+    const draws = [];
+    const build = new Function('replies', 'draws', `
+      ${lift('function fCpuWords(cpu) {', '\n}\n')}
+      ${lift('const fAcrossWords = (units, onUnit)', '\n')}
+      ${lift('const fStoppingWords = (run)', '\n')}
+      const fRebuildSay = () => {};
+      const api = async () => { if (!replies.length) throw new Error('the test ran out of replies'); return replies.shift(); };
+      let ticks = 0;
+      const setTimeout = (fn) => { if (++ticks > 200) throw new Error('the watcher never ended'); fn(); };
+      let fRichWatching = false;
+      let fHoldSeen = null;
+      let fHoldAsked = null;
+      const fSave = () => {};
+      const drawFunnel = () => { draws.push(fRichWatching ? 'drawn while still watching' : 'drawn'); };
+      ${lift('async function fAskThrough(path, say) {', '\n}\n')}
+      ${lift('async function fRichWatch(st) {', '\n}\n')}
+      return fRichWatch;
+    `);
+    const st = { set: 's3-test' };
+    await build([
+      { done: 10, of: 20, cpu: { busy: 0.5, cores: 8 } },
+      { result: { settings: 20, proof: { ran: true, checked: 20, differed: 0 } } },
+    ], draws)(st);
+    assert.deepStrictEqual(draws, ['drawn'], 'a finished pass does not draw the Funnel again once, after its watch is over, so its answer never reaches the screen');
+    assert.strictEqual(st.rebuiltSaid, 'done for 20 setting(s); all 20 match what the sweep stored', 'the answer the redraw carries');
+  },
+
   async theWatcherAsksAgainWhenTheServiceMissesAnAnswer() {
     const page = src('public/construct.js');
     const lift = (head, end) => {

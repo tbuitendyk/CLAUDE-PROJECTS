@@ -269,6 +269,46 @@ function anExtrasBandIsAMultipleOfTheUsualOutcomeMove() {
   assert.throws(() => bw.markExtraGates(chunks(), [0]), /above nought/);
 }
 
+// A CHUNK'S GATE IS WORKED OUT FROM THE CHUNKS BEFORE IT AND NOTHING AFTER
+// (owner order, 2026-09-25: "write tests for those four gaps"). The yardstick
+// trails, and the test below it said so without checking it: it ran the gate
+// twice on the same chunks and rebuilt the yardstick in the test instead of
+// reading the library's. So a yardstick taken over every chunk, or a chunk's
+// own move counted before its threshold, or the chunks walked backwards, all
+// passed. This cuts the series short -- the chunks it keeps must be gated
+// exactly as in the whole series -- and holds every gate to the rule itself: the
+// chunk's look-back move against the multiple of the median of the moves
+// strictly before it, once there are enough of them.
+function aChunksGateIsWorkedOutFromTheChunksBeforeItAndNothingAfter() {
+  const bw = require('../lib/bracketwork');
+  const { medianAbsMove } = require('../lib/windowmove');
+  const { MIN_CHUNKS } = require('../lib/pipeline');
+  // a coin that is calm, then five times wilder, then calmer again
+  const scale = (i) => (i < 120 ? 1 : (i < 240 ? 5 : 2));
+  const series = () => Array.from({ length: 360 }, (_, i) => ({
+    startTs: i, diffPct: 8 * ((i % 2) ? 1 : -1), label: ((i % 2) ? 1 : -1),
+    backPct: [scale(i) * (((i % 7) - 3) || 0.5)],
+  }));
+  const full = series();
+  bw.markExtraGates(full, [150]);
+  assert.ok(full.some((c) => c.extraOn[0]) && full.some((c) => !c.extraOn[0]), 'the gate opens somewhere and shuts somewhere, or this proves nothing');
+  // cut short anywhere, what is kept is gated exactly as in the whole series
+  for (const k of [60, 130, 250]) {
+    const part = series().slice(0, k);
+    bw.markExtraGates(part, [150]);
+    assert.deepStrictEqual(part.map((c) => c.extraOn[0]), full.slice(0, k).map((c) => c.extraOn[0]),
+      `cut at chunk ${k}, a gate before the cut changed: it was worked out from chunks after it`);
+  }
+  // and each gate is the rule itself, off the moves strictly before the chunk
+  const seen = [];
+  full.forEach((c, i) => {
+    const yard = seen.length >= MIN_CHUNKS ? medianAbsMove(seen) : null;
+    const want = yard > 0 && Math.abs(c.backPct[0]) > yard * 1.5;
+    assert.strictEqual(c.extraOn[0], want, `chunk ${i}: the gate is not the chunk's own move against 1.5 times the median of the moves before it`);
+    seen.push(c.backPct[0]);
+  });
+}
+
 // THE YARDSTICK TRAILS, AND THAT IS THE WHOLE POINT (3.201.0, owner: "trailing").
 //
 // It was one median over the train stretch, held still for train, test, held
@@ -690,6 +730,7 @@ module.exports = {
   theSplitIsTheOwnersChoiceAndRidesOnEveryRecord,
   anExtrasBandIsAMultipleOfTheUsualOutcomeMove,
   theExtrasScaleIsMeasuredOnTheTrainStretchAlone,
+  aChunksGateIsWorkedOutFromTheChunksBeforeItAndNothingAfter,
   theLiveConfigurationCarriesWhatAWalkSetAdded,
   theLivePathBuildsMarksAndTrainsTheExtraMember,
   aUnitWithNoExtraIsByteForByteWhatItWasBefore,

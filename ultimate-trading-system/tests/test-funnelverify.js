@@ -663,6 +663,24 @@ module.exports = {
     assert.strictEqual(block.split('NOISE IS PROFITING').length - 1, 1, 'and it is said once, there');
   },
 
+  // A RESERVE SET THAT PRICES ITS OWN SURVIVORS SAYS WHICH LOOK IT IS (owner
+  // order, 2026-09-25: "write tests for those four gaps"). A set read off the
+  // unit's reserve board says which reserve set of the rule it is; one with no
+  // board -- a half-life rule's, which prices its own survivors -- counts its
+  // looks in its own words, and nothing read that sentence: every look could
+  // have read as the first.
+  aReserveSetThatPricesItsOwnSurvivorsSaysWhichLookItIs() {
+    const rules = V.declareRules({ kind: 'scrambles', k: 10, barPct: 80 });
+    const list = rows(2, 10);
+    const base = { rules, stretch: 'reserve', footing: { ok: true, had: 2 }, looks: { unstamped: 1 }, read: V.heldBackRead(list, CONTROLS), copies: V.copiesRead(list, rules), survivors: V.perSurvivor(list, rules), sanity: V.sanity(list, list, rules), lineA: V.lineA(list, rules), lineB: V.lineB(list, 2, rules) };
+    const first = V.buildBlock({ ...base, look: 1 }).verdict.sentence;
+    const third = V.buildBlock({ ...base, look: 3 }).verdict.sentence;
+    assert.ok(first.includes('look 1: the first look at data nothing in the system has seen'), first);
+    assert.ok(third.includes('look 3: this window had been read 2 time(s) before, so it is no longer data nothing has seen and the floor below is the best case, not the strength'), third);
+    assert.ok(!third.includes('the first look at data nothing in the system has seen'), 'a third look still reads as the first');
+    assert.ok(!/reserve board/.test(first + third), 'a set that priced its own survivors says it was read off a board');
+  },
+
   theSentencePrintsNegativeMoneyTheWayThePageDoes() {
     const rules = V.declareRules({ kind: 'scrambles', k: 10, barPct: 80 });
     const list = rows(2, 10).map((r) => ({ ...r, avgHold: -2 }));
