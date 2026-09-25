@@ -103,3 +103,16 @@ module.exports = {
     assert.deepStrictEqual(all.results.map((r) => r.setup), ['setup-e']);
   },
 };
+
+// A MARKET ENTRY'S PLAN CARRIES THE SETUP'S STOP % (item 5, 3.259.0); a
+// breakout's carries none, its stop being the level on the other side
+module.exports.aMarketEntrysPlanCarriesTheSetupsStopPct = function () {
+  const target = { startTs: day(22) };
+  const decision = { call: 1, perMember: [1, 1, 1, -1], membersCall: 1, field: null };
+  const setupOf = (entry, stopPct) => ({ id: 's', state: 'paper', clipUsd: 100, stopPct,
+    configSnapshot: { combo: { trade: 'LTCUSDT' }, cell: { entry, gate: 'directional', dMult: entry === 'breakout' ? 0.75 : null, tHours: 65, trailMult: null, armMult: null }, branch: { band: 5, geometry: 'daily-4d' }, configVersion: 'v1' } });
+  const plan = (entry, stopPct) => planFor({ setup: setupOf(entry, stopPct), greenlight: null, target, geo: GEO, decision, feePerLeg: 0.00125, now: day(26) });
+  assert.strictEqual(plan('market', 0.11).stopPct, 0.11);
+  assert.strictEqual(plan('market', null).stopPct, null);
+  assert.strictEqual(plan('breakout', 0.11).stopPct, null);
+};

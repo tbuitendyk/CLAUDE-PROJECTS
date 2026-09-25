@@ -380,3 +380,49 @@ module.exports.aTakeBackForEntriesOnlyLeavesAnOpenPositionAlone = function () {
   const closing = P.step(open, plan, { type: 'cancel', why: 'taken back by the owner', ts: plan.entryTs + 180000 });
   assert.ok(open.phase === 'exiting' && closing.some((a) => a.kind === 'order' && a.purpose === 'exit' && a.type === 'market'), 'a plain take-back closes it at the market');
 };
+
+// A MARKET ENTRY'S STOP (item 5, 3.259.0): the setup's Stop % against the
+// price it opened at, reached only when a printed trade goes PAST it -- Tune's
+// own boundary -- and booked at the stop; a trail tightens it with the trail's
+// own boundary; a breakout plan keeps the level on the other side
+module.exports.aMarketEntrysStopIsItsStopPctAndIsReachedOnlyPastIt = function () {
+  const t0 = Date.UTC(2026, 8, 26, 1);
+  const plan = { planId: 'm', setupId: 's', mode: 'simulated', symbol: 'LTCUSDT', entryTs: t0, call: 1, cell: { entry: 'market', gate: 'directional', tHours: 65, trailMult: null, armMult: null }, bandPct: 5, size: { quoteUsd: 100 }, stopPct: 0.05 };
+  const open = (p, price, dir = 1) => {
+    const st = P.newState(p);
+    P.step(st, p, { type: 'ref', price, ts: p.entryTs });
+    P.step(st, p, { type: 'filled', purpose: 'enter', price, qty: 100 / price, ts: p.entryTs + 1000 });
+    assert.strictEqual(st.dir, dir);
+    return st;
+  };
+  const long = open(plan, 70);
+  assert.deepStrictEqual([long.stop, long.stopStrict], [66.5, true], '5% below the price it opened at');
+  P.step(long, plan, { type: 'price', price: 66.5, ts: t0 + 2 * H });
+  assert.strictEqual(long.phase, 'open', 'a print exactly at the stop does not reach it: the worst price must go past it');
+  const acts = P.step(long, plan, { type: 'price', price: 66.49, ts: t0 + 2 * H + 1000 });
+  const exit = acts.find((a) => a.kind === 'order');
+  assert.deepStrictEqual([long.phase, exit.purpose, exit.atLevel, exit.why], ['exiting', 'exit', 66.5, 'stop'], 'past it: closed, booked at the stop');
+  const short = open({ ...plan, call: -1 }, 70, -1);
+  assert.strictEqual(short.stop, 73.5);
+  P.step(short, { ...plan, call: -1 }, { type: 'price', price: 73.5, ts: t0 + 2 * H });
+  assert.strictEqual(short.phase, 'open');
+  // no Stop %, no stop
+  assert.strictEqual(open({ ...plan, stopPct: null }, 70).stop, null);
+  // a trail tightens it from there, and its stop is reached AT it
+  const tp = { ...plan, cell: { ...plan.cell, trailMult: 1, armMult: 0.5 } };
+  const tr = open(tp, 70);
+  P.step(tr, tp, { type: 'price', price: 73, ts: t0 + H + 10000 });
+  P.step(tr, tp, { type: 'price', price: 72, ts: t0 + 2 * H + 10000 });
+  assert.deepStrictEqual([tr.armed, Number(tr.stop.toFixed(4)), tr.stopStrict], [true, 69.35, false], 'armed past 71.75, stop 5% behind the best of 73');
+  P.step(tr, tp, { type: 'price', price: tr.stop, ts: t0 + 2 * H + 20000 });
+  assert.strictEqual(tr.phase, 'exiting', 'the trail\'s stop is reached at it');
+  // a breakout plan keeps the level on the other side, whatever Stop % says
+  const bp = { ...plan, cell: { entry: 'breakout', gate: 'active', dMult: 0.75, tHours: 65, trailMult: null, armMult: null } };
+  const b = P.newState(bp);
+  P.step(b, bp, { type: 'ref', price: 70, ts: t0 });
+  P.step(b, bp, { type: 'price', price: 72.7, ts: t0 + 60000 });
+  P.step(b, bp, { type: 'filled', purpose: 'enter', price: 72.625, qty: 1.37, ts: t0 + 61000 });
+  assert.deepStrictEqual([b.fixedStop, b.stop, b.stopStrict], [null, 70 * (1 - 0.0375), false]);
+  // a Stop % outside (0, 1) is refused with the plan, in words
+  assert.deepStrictEqual(P.planProblems({ ...plan, stopPct: 1.2 }), ['stopPct: a fraction of the price the position opened at, above 0 and below 1, or none']);
+};

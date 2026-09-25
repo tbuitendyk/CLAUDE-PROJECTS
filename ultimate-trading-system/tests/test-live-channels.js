@@ -167,3 +167,25 @@ module.exports.aNewSetupRunsOnTheEngineTickedForNewSetupsAndOtherwiseWhereItAlwa
     fs.rmSync(dir, { recursive: true, force: true });
   }
 };
+
+// THE STOP PICKED ON TUNE (item 5, 3.259.0): a market-entry configuration's
+// book starts with it in Stop % at Activate, still editable after; a breakout
+// configuration's gets nothing, its stop being the level on the other side
+module.exports.activateBringsTheStopPickedOnTuneIntoStopPct = function () {
+  const src = aStage4Source();
+  src.stop = { stopPct: 0.11, why: 'the tightest that lost no winner', at: '2026-09-25T00:00:00.000Z', by: 'owner' };
+  const g = gl.greenlightFromStage4(src, { name: 'stop config', why: 'the tuned stop rides along' });
+  assert.strictEqual(g.configSnapshot.cell.entry, 'market');
+  assert.strictEqual(ch.tunedStopOf(g), 0.11);
+  const p = ch.activate(g.id, 'paper');
+  assert.strictEqual(reg.getSetup(p.id).stopPct, 0.11, 'the paper book starts with the stop picked on Tune');
+  // still editable, and a re-activation keeps what the owner set
+  reg.updateSetup(p.id, { stopPct: 0.08 }, 'owner');
+  ch.deactivate(g.id, 'paper');
+  ch.activate(g.id, 'paper');
+  assert.strictEqual(reg.getSetup(p.id).stopPct, 0.08, 'the owner\'s edit stands');
+  // a breakout configuration, or one with no stop, gets none
+  assert.strictEqual(ch.tunedStopOf({ ...g, configSnapshot: { ...g.configSnapshot, cell: { ...g.configSnapshot.cell, entry: 'breakout' } } }), null);
+  assert.strictEqual(ch.tunedStopOf({ ...g, frozen: { stop: { stopPct: null } } }), null);
+  assert.strictEqual(ch.tunedStopOf({ ...g, frozen: null }), null);
+};
