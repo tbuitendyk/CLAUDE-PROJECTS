@@ -345,3 +345,13 @@ module.exports.theEngineCardSaysWhatItsPricesMean = function () {
   assert.strictEqual(feedsOf({ feeds: [{ connected: false, symbols: ['LTCUSDT'] }] }, esc), '<span class="neg">not arriving for LTCUSDT</span>');
   assert.ok(!/prices arriving|prices not arriving/.test(fn), 'the caption says prices; the value does not say it again');
 };
+
+// THE ENGINE RECORD'S TWO NAMES SAY WHICH IS WHICH ON THE SCREEN (3.263.1):
+// visible labels and an example in each box, never hover text alone
+module.exports.theEngineRecordFormSaysWhichNameIsWhich = function () {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
+  assert.ok(/<span class="muted">short name — letters, digits, dashes<\/span><input id="engId"[^>]*placeholder="mx-engine-2"/.test(src), 'the short name says so, with an example');
+  assert.ok(/<span class="muted">descriptive name — what you see on screen<\/span><input id="engName"[^>]*placeholder="Mexico engine 2"/.test(src), 'the descriptive name says so, with an example');
+  assert.ok(!/>record id</.test(src), 'the old label is gone');
+  assert.throws(() => targets.saveEngine({ ...ENGINE, id: '', name: '' }), /short name: 2 to 30 .*descriptive name: 1 to 60/, 'a refusal names the two fields the same way');
+};

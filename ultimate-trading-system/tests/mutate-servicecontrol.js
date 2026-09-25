@@ -2709,7 +2709,9 @@ const GUARDS = [
   [path.join(ROOT, "lib", "live", "enginesetup.js"), "    if (step.writing) missing.push('this step is still being written');", "",
     "aChecklistOpensEachStepOnlyWhenTheOneBeforeIsDone", "a step still being written reads as done"],
   [path.join(ROOT, "public", "setup.html"), "    + esHtml()\n", "",
-    "theComputeTabOpensTheChecklistFromItsButton", "the setup is not on the Compute tab"],
+    "theComputeTabOpensTheChecklistFromItsButton", "the setup is not on the Compute tab"],  // THE ENGINE RECORD'S TWO NAMES (3.263.1)
+  [path.join(ROOT, "public", "setup.html"), "<span class=\"muted\">short name \u2014 letters, digits, dashes</span>", "<span class=\"muted\">record id</span>",
+    "theEngineRecordFormSaysWhichNameIsWhich", "the short name is labelled record id again, and nothing on screen says which name is which"],
 ];
 
 const only = process.argv[2] || '';
