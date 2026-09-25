@@ -830,10 +830,10 @@ function drawCompute() {
   const roles = cCfg && cCfg.rolesOffered ? cCfg.rolesOffered.map((r) => {
     const cur = cCfg.roles[r.key] || {};
     const opts = cCfg.platforms.map((p) => '<option value="' + esc(p.id) + '"' + (cur.inForce === p.id ? ' selected' : '') + '>' + esc(p.label) + '</option>').join('');
-    return '<div class="row" style="margin:.3rem 0">'
+    return '<div class="row" style="margin:.3rem 0; min-height:1.9rem">'
       + '<label class="c"><b style="min-width:11rem">' + esc(r.label) + '</b><span class="muted">runs on</span>'
       + '<select data-role="' + esc(r.key) + '">' + opts + '</select></label>'
-      + (cCfg.platforms.length === 1 ? '<span class="note">only this machine exists to point at yet — more appear here when they are registered</span>' : '')
+      + (cCfg.platforms.length === 1 ? '<span class="note" style="flex:1; min-width:16rem">only this machine exists to point at yet — more appear here when they are registered</span>' : '')
       + '</div>';
   }).join('') : '<p class="note neg">the trading service did not answer, so the choices cannot be shown' + (cErrCfg ? ' — ' + esc(cErrCfg) : '') + '</p>';
 
@@ -846,8 +846,10 @@ function drawCompute() {
 
     + '<div class="panel"><h3 style="margin-top:0">Where each part runs</h3>'
     + roles
-    + '<div class="row" style="align-items:baseline; margin:.3rem 0"><b style="min-width:11rem">trading platform</b>'
-    + '<span class="note">chosen on each trading setup on the Trade tab — every setup names its own, '
+    // ONE ROW SHAPE FOR ALL THREE (owner, 2026-09-25): the same height, the
+    // same letters and the note starting where "runs on" starts
+    + '<div class="row" style="margin:.3rem 0; min-height:1.9rem; gap:.35rem"><b style="min-width:11rem; font-size:.8rem">trading platform</b>'
+    + '<span class="note" style="flex:1; min-width:16rem">chosen on each trading setup on the Trade tab — every setup names its own, '
     + 'so two setups can trade in two places. Nothing about it is set here.</span></div>'
     + '</div>'
 
