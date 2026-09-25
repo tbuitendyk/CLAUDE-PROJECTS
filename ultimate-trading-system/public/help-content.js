@@ -1315,7 +1315,7 @@ window.HELP = {
         what: 'Which survivor is taken forward. By depth is the survivor most surrounded by neighbouring settings that survived too, chosen without looking at any money; naming one records it as your own pick.',
         more: 'A neighbouring setting is one notch up or down on one dial that has an order, every other dial the same, on the board the rule was cut from; a notch off the end of what the sweep tried counts as one that did not survive. By depth takes the survivor with the largest share of its neighbouring settings surviving too; among equals the one with more of them; among those the first in the set\'s own order. Both ways are written on the record: which way, the survivor, and how many of its neighbouring settings survived. The money beside each survivor is shown so you know what you are choosing; the choice by depth never reads it.',
       },
-      gl4Name: { what: 'What you want to see on screen for this configuration. Required.' },
+      gl4Name: { what: 'What you want to see on screen for this configuration, up to 100 characters. Required.' },
       gl4Why: { what: 'Why this survivor is being taken forward. Required, and kept forever with the record.' },
       gl4Go: {
         what: 'Writes the record: the set, the verdict that stood, the survivor and how it was chosen, and the frozen settings with the way its members agree exactly as the survivor carries it. Does not start any trading.',

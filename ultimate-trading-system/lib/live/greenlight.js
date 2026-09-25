@@ -209,6 +209,8 @@ function greenlightFromStage4(src, { by = 'owner', why, name } = {}) {
 // came out of it, so editing it from one config's screen would either move that
 // config to a different campaign or rename the campaign for everything under it.
 // Neither is a rename. Everything else on a greenlight is evidence and is frozen.
+// the longest name a config takes; every deployment it is carried to takes the same (lib/live/setups.js)
+const NAME_MAX = 100;
 function validName(name) {
   // A NAME IS TEXT THE OWNER TYPED. This coerced whatever it was given, so an
   // object became the name "[object Object]" and a number became "7" — neither
@@ -220,7 +222,8 @@ function validName(name) {
   }
   const n = name.trim();
   if (!n) throw new Error('a config needs a NAME — something you will recognise on screen');
-  if (n.length > 60) throw new Error('name: 60 characters or fewer');
+  // 100 CHARACTERS (3.252.2, owner 2026-09-25: "make the Greenlight name field 100 characters")
+  if (n.length > NAME_MAX) throw new Error(`name: ${NAME_MAX} characters or fewer`);
   return n;
 }
 
@@ -362,7 +365,7 @@ function revoke(greenlightId, { by = 'owner' } = {}) {
 }
 
 module.exports = {
-  relabel, validName,
+  relabel, validName, NAME_MAX,
   getGreenlight, listGreenlights, shuttle, revoke, glDir,
   greenlightFromStage4, configFromStage4, stage4Refusal, notYetStartable,
 };

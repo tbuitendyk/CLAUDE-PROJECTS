@@ -181,3 +181,21 @@ module.exports.aBreakoutSurvivorIsGreenlightedAsPricedAndCannotBeStartedUntilThe
     assert.strictEqual(reg.getSetup(setup.id).state, 'draft', `${to}: still a draft`);
   }
 };
+
+// A CONFIG'S NAME TAKES 100 CHARACTERS (3.252.2, owner 2026-09-25: "make the
+// Greenlight name field 100 characters"), and so does every deployment a
+// rename carries it to -- a setup that took only 80 would refuse the rename.
+module.exports.aConfigNameTakesAHundredCharactersEverywhereItIsCarried = function () {
+  const n100 = 'N'.repeat(100);
+  assert.strictEqual(gl.NAME_MAX, 100);
+  const rec = gl.greenlightFromStage4(stage4Src(), { name: n100, why: 'x' });
+  assert.strictEqual(rec.name, n100, 'a hundred characters, kept whole');
+  let threw = null;
+  try { gl.greenlightFromStage4(stage4Src(), { name: `${n100}N`, why: 'x' }); } catch (e) { threw = e; }
+  assert.ok(threw && /name: 100 characters or fewer/.test(threw.message), threw && threw.message);
+  const { setup } = gl.shuttle(rec.id, { name: rec.name, clipUsd: 100, trainPolicy: { mode: 'rolling' } });
+  assert.strictEqual(setup.name, n100, 'the deployment takes the whole name');
+  const renamed = gl.relabel(rec.id, { name: 'R'.repeat(100) });
+  assert.deepStrictEqual(renamed.renamedSetups, [setup.id], 'a rename reaches it');
+  assert.strictEqual(reg.getSetup(setup.id).name, 'R'.repeat(100));
+};

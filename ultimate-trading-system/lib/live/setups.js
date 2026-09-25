@@ -97,11 +97,13 @@ function atomicWrite(file, obj) {
 
 // Validate the OPERATIONAL fields (the mutable surface + identity basics).
 // configSnapshot validity is configschema's job.
+const SETUP_NAME_MAX = 100;
 function validateOperational(s) {
   const errors = [];
   if (!ID_RE.test(String(s.id || ''))) errors.push('id: 3-41 chars, [a-z0-9-], starts alphanumeric');
   if (typeof s.ownerId !== 'string' || !s.ownerId.trim()) errors.push('ownerId: required (point 10 prep)');
-  if (typeof s.name !== 'string' || !s.name.trim() || s.name.length > 80) errors.push('name: 1-80 chars');
+  // as long as the config's own name, which a rename carries here (3.252.2: 100, owner 2026-09-25)
+  if (typeof s.name !== 'string' || !s.name.trim() || s.name.length > SETUP_NAME_MAX) errors.push(`name: 1-${SETUP_NAME_MAX} chars`);
   if (!STATES.includes(s.state)) errors.push(`state: must be one of ${STATES}`);
   if (!Number.isFinite(s.clipUsd) || s.clipUsd <= 0) errors.push('clipUsd: must be a positive dollar notional');
   if (s.feePerLeg != null) {

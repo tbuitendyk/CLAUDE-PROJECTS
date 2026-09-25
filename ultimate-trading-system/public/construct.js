@@ -4371,7 +4371,7 @@ function glStage4PanelHtml(list, chosen, d) {
           ${(d.survivors || []).map((x) => `<option value="${esc(x.label)}">${esc(x.label)}${x.nearby ? ` - ${x.nearby.survived} of ${x.nearby.of} neighbouring settings survived` : ''}${x.halfLife == null ? '' : ` - half-life ${x.halfLife} months${x.retrained == null ? '' : ` - retrained ${money(x.retrained)}`}`}${x.held == null ? '' : ` - held-back ${money(x.held)}`}${x.reserve == null ? '' : ` - reserve ${money(x.reserve)}`}</option>`).join('')}</select></label>
       </div>
       <div class="row" style="margin-top:.4rem;align-items:flex-end">
-        <label class="f" style="flex:1" title="what you want to see on screen for this configuration">name<input id="gl4Name" style="width:100%" placeholder="e.g. XRP weekly, depth pick"></label>
+        <label class="f" style="flex:1" title="what you want to see on screen for this configuration, up to 100 characters">name<input id="gl4Name" maxlength="100" style="width:100%" placeholder="e.g. XRP weekly, depth pick"></label>
         <label class="f" style="flex:2" title="the reasoning that cleared it. Required, kept forever with the record.">why — the decision record (required)<input id="gl4Why" style="width:100%" placeholder="e.g. held set PASS; reserve set PASS on the first look; other units 8 of 9 positive"></label>
       </div>
       <div class="row">
