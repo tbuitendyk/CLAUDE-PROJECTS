@@ -576,7 +576,7 @@ module.exports = {
     // THE STOP FORCED ONTO A SURVIVOR (3.145.0, owner order: "a pop-up message when setting a custom stop % about
     // applying to the 'live' system which is obviously not true"): the presses record the stop on the survivor
     // picked and scan it as one row; nothing on the panel claims to write a live engine or a trading machine
-    const tunePanel = ui.slice(ui.indexOf('Protective stop tuner — on the captured trades'), ui.indexOf('Conviction sizing — bet more when more members agree?'));
+    const tunePanel = ui.slice(ui.indexOf('Protective stop tuner — on the captured trades'), ui.indexOf('Conviction sizing — change order sizing based on member agreement'));
     assert.ok(!/LIVE engine|live rule|live engine|risk parameter|F1's|lab rate/.test(tunePanel), 'the stop panel still claims to write a live engine');
     assert.ok(!/stop-apply|fixed-stop|data-stop|LIVE engine|currently applied on the trading machine|Apply to the live rule/.test(ui), 'the page still writes, reads or names the older pilot stop');
     assert.ok(/Force a \$\{v\.toFixed\(2\)\}% protective stop onto the survivor \$\{stopLabel\} of \$\{chosen\.name\}\?/.test(ui), 'the apply prompt does not name the survivor');
@@ -841,8 +841,8 @@ module.exports = {
   theSizingControlsLiveInTheConvictionPanelAndBothPanelsAskForTheTargetChosen() {
     const ui = src('public/construct.js');
     const draw = ui.slice(ui.indexOf('async function drawTune('));
-    const stopPanel = draw.slice(draw.indexOf('Protective stop tuner — on the captured trades, loses no winner'), draw.indexOf('Conviction sizing — bet more when more members agree?'));
-    const convPanel = draw.slice(draw.indexOf('Conviction sizing — bet more when more members agree?'), draw.indexOf('function tnNotRunHtml('));
+    const stopPanel = draw.slice(draw.indexOf('Protective stop tuner — on the captured trades, loses no winner'), draw.indexOf('Conviction sizing — change order sizing based on member agreement'));
+    const convPanel = draw.slice(draw.indexOf('Conviction sizing — change order sizing based on member agreement'), draw.indexOf('function tnNotRunHtml('));
     for (const id of ['sizingWhy', 'sizingApply', 'sizingOff']) {
       assert.ok(!stopPanel.includes(`id="${id}"`), `${id} is still drawn in the protective stop tuner`);
       assert.ok(convPanel.includes(`id="${id}"`), `${id} is not drawn in the conviction sizing panel`);
@@ -1345,17 +1345,20 @@ module.exports = {
       // THE SIZING AS THE TAB SHOWS IT (3.249.0): the numbers the table was priced at, on the survivors it covers
       const members = stages.getSet(c.cut.id).capture.members;
       const ladder = Array.from({ length: members }, (_, i) => 0.5 + i / 10);
-      const asTab = stages.copyStage4Set(c.cut.id, { name: `${src0.name} as the tab`, stops: false, sizing: true, ladder, pick: 'all' });
+      const asTab = stages.copyStage4Set(c.cut.id, { name: `${src0.name} as the tab`, stops: false, sizing: true, ladder, pick: 'all', why: 'my own reason' });
       copies.push(asTab.id);
       const tabDoc = stages.getSet(asTab.id);
       const capLabels = stages.getSet(c.cut.id).capture.rows.map((r) => r.label);
       assert.ok(capLabels.length > 1 && capLabels.every((L) => JSON.stringify(((tabDoc.stopChoices[L] || {}).sizing || {}).ladder) === JSON.stringify(ladder)), 'every captured survivor carries the table\'s numbers');
       assert.deepStrictEqual([asTab.ladder, tabDoc.copiedFrom.ladder, asTab.sizing], [ladder, ladder, capLabels.length], 'the reply and the record say which numbers travelled');
+      // THE REASON IS THE OWNER'S, NEVER THE SOFTWARE'S (3.251.2)
+      assert.ok(capLabels.every((L) => tabDoc.stopChoices[L].sizing.why === 'my own reason'), 'every survivor carries the reason typed in the box, word for word');
       assert.strictEqual(fs.readFileSync(file, 'utf8'), before, 'and the set it was saved from is still not touched');
       const onePick = stages.copyStage4Set(c.cut.id, { name: `${src0.name} one survivor`, stops: false, sizing: true, ladder, pick: capLabels[1] });
       copies.push(onePick.id);
       const oneDoc = stages.getSet(onePick.id);
       assert.deepStrictEqual([oneDoc.stopChoices[capLabels[1]].sizing.ladder, oneDoc.stopChoices[depth].sizing.ladder], [ladder, src0.stopChoices[depth].sizing.ladder], 'the survivor the table covers carries its numbers, any other the sizing on record');
+      assert.strictEqual(oneDoc.stopChoices[capLabels[1]].sizing.why, ((src0.stopChoices[capLabels[1]] || {}).sizing || {}).why || '', 'with nothing typed, the reason the owner gave that survivor, or none -- never words the software wrote');
       assert.ok(/give one multiplier for each agreement count/.test(refusal(c.cut.id, { name: `${src0.name} short`, sizing: true, ladder: [1], pick: 'all' })), 'a table of the wrong length is refused');
       // A COPY HAS ITS FAMILY'S SCANS ON THE SAME TRADES (3.251.1, owner 2026-09-25:
       // "the existing protective stop tuner and conviction sizing sections should be loaded with the selections and results")
@@ -1499,7 +1502,7 @@ module.exports = {
     const ui = src('public/construct.js');
     const fn = ui.slice(ui.indexOf('function tnCopyPanelHtml('), ui.indexOf('function tnSizingChoiceHtml('));
     assert.ok(fn.length > 0, 'a top-level helper draws it');
-    assert.ok(ui.indexOf("${isSet ? tnCopyPanelHtml(chosen, busy, copySizingWords, copyNameInBox) : ''}") > ui.indexOf('Conviction sizing — bet more when more members agree?'), 'after the conviction sizing panel');
+    assert.ok(ui.indexOf("${isSet ? tnCopyPanelHtml(chosen, busy, copySizingWords, copyNameInBox) : ''}") > ui.indexOf('Conviction sizing — change order sizing based on member agreement'), 'after the conviction sizing panel');
     const rows = [...fn.matchAll(/<div class="row"([^>]*)>([\s\S]*?)<\/div>/g)].map((m) => ({ attrs: m[1], body: m[2] }));
     const tickRow = rows.find((r) => r.body.includes('id="tnCopyName"'));
     assert.ok(tickRow && /align-items:flex-end/.test(tickRow.attrs), 'the name and the ticks bottom-align');
@@ -1510,7 +1513,7 @@ module.exports = {
     assert.ok(btnRow && !btnRow.body.includes('<input'), 'the press in a row of its own');
     const help = src('public/help-content.js');
     for (const id of ['tnCopyName', 'tnCopyStops', 'tnCopySizing', 'tnCopy']) assert.ok(new RegExp(`\\n\\s+${id}: \\{`).test(help), `${id} has a help entry`);
-    assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(chosen\.id\)\}\/copy`, \{ name, stops, sizing, \.\.\.\(sizing && pricedLadder \? \{ ladder: pricedLadder, pick: tnPickVal \} : \{\}\) \}/.test(ui), 'the press sends the name, the two ticks, and with the sizing ticked the numbers the table was priced at');
+    assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(chosen\.id\)\}\/copy`, \{ name, stops, sizing, \.\.\.\(sizing && pricedLadder \? \{ ladder: pricedLadder, pick: tnPickVal, why: sizeWhy\(\) \} : \{\}\) \}/.test(ui), 'the press sends the name, the two ticks, and with the sizing ticked the numbers the table was priced at and the reason typed in the box');
     // WHAT THE SIZING TICK CARRIES IS SAID IN NUMBERS UNDER THE TICKS (3.249.0)
     const sayAt = fn.indexOf('id="tnCopySizingSay"');
     assert.ok(sayAt > fn.indexOf('id="tnCopySizing"') && sayAt < fn.indexOf('id="tnCopy"'), 'the line saying which multipliers travel sits under the ticks, above the press');
@@ -1594,5 +1597,11 @@ module.exports = {
     assert.ok(block.includes("newest.survivor === 'all' ? 'all' : (newest.survivor === (chosen.pick || {}).label ? 'depth' : newest.survivor)"), 'the survivor the newest kept result read, by depth when that is who it was');
     assert.ok(block.includes('localStorage.setItem(TN_PICK_KEY, pick); localStorage.setItem(TN_WINDOWS_KEY, JSON.stringify(newest.windows || []));') && block.includes('return drawTune();'), 'set as the choice, and the tab drawn with it');
     assert.ok(/for \(const m of familyOf\(t\.doc\)\)/.test(src('lib/stages.js')), 'the service hands a copy the scans of its family on the same trades');
+    // WITH THE SETTINGS SAVED ON IT (3.251.2, owner 2026-09-25: "load the half-life table with the settings that were saved on it")
+    assert.ok(/^let tnLoadSavedFor = null;/m.test(ui) && block.includes('tnLoadSavedFor = chosen.id;'), 'a set come up is marked to load what is saved on it, through the redraw');
+    const load = tune.slice(tune.indexOf('if (isSet && tnLoadSavedFor === chosen.id) {'), tune.indexOf('if (isSet && tnLoadSavedFor === chosen.id) {') + 600);
+    assert.ok(load.includes('JSON.stringify(ladderOnRecord) !== JSON.stringify(pricedLadder)') && load.includes('raw: ladderOnRecord.map(String)'), 'the saved multipliers go in the boxes when the table was priced at others');
+    assert.ok(tune.indexOf('const ladderOnRecord = ') < tune.indexOf('if (isSet && tnLoadSavedFor === chosen.id) {') && tune.indexOf('const pricedLadder = ') < tune.indexOf('if (isSet && tnLoadSavedFor === chosen.id) {'), 'once both are known');
+    assert.ok(tune.includes("'these are the numbers saved on this set; the table was priced at others - press Recompute to price them'"), 'and the line under the table says which numbers they are');
   },
 };

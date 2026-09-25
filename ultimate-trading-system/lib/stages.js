@@ -10819,6 +10819,7 @@ function copyStage4Set(setId, asked = {}) {
   // those numbers; any other survivor carries what is on record.
   const cap0 = sizing && asked.ladder != null ? captureOnSet(src) : null;
   const table = cap0 ? { ladder: ladderAsked(asked, Math.max(1, Number(cap0.members) || 1)), labels: new Set(sizedLabelsOf(src, cap0, asked.pick)) } : null;
+  const whyTyped = typeof asked.why === 'string' ? asked.why.trim().slice(0, 300) : '';
   const seq = seqFor(4);
   const id = `s4-${Date.now().toString(36)}-${seq}`;
   const at = new Date().toISOString();
@@ -10834,7 +10835,12 @@ function copyStage4Set(setId, asked = {}) {
     const c = (src.stopChoices || {})[L] || null;
     const mine = {};
     if (stops && c && Object.prototype.hasOwnProperty.call(c, 'stopPct')) for (const f of ['stopPct', 'why', 'at', 'by']) if (f in c) mine[f] = c[f];
-    if (table && table.labels.has(L)) mine.sizing = { on: true, ladder: table.ladder.slice(), clipUsd: require('./paper').NOTIONAL, why: `the numbers the conviction table on Tune was priced at, carried when ${src.name} was saved as ${name}`, at, by: 'owner' };
+    // THE REASON IS THE OWNER'S, NEVER THE SOFTWARE'S (3.251.2, owner 2026-09-25:
+    // "DON'T WRITE CODE THAT OVERWRITES USER COMMENTS! ... JUST DON'T!"): the
+    // reason typed in the box on Tune, else the reason the owner gave this
+    // survivor on the set saved from, else none. 3.249.0 wrote a sentence of its
+    // own here, and Tune then showed it in the owner's reason box.
+    if (table && table.labels.has(L)) mine.sizing = { on: true, ladder: table.ladder.slice(), clipUsd: require('./paper').NOTIONAL, why: whyTyped || (c && c.sizing && c.sizing.why) || '', at, by: 'owner' };
     else if (sizing && c && c.sizing) mine.sizing = JSON.parse(JSON.stringify(c.sizing));
     if (Object.keys(mine).length) choices[L] = mine;
   }

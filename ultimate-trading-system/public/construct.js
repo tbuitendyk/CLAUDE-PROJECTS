@@ -3312,6 +3312,7 @@ const TN_WINDOWS = [['train', 'tnWinTrain', 'training'], ['test', 'tnWinTest', '
 const TN_CAPTURED_KEY = 'cx-tune-captured';
 let tnTypedLadder = null;          // multipliers typed on Tune and not yet priced: { key: set|survivor|windows, raw } (3.249.0)
 let tnLastTarget = null;           // the set under scan target the last time the tab was drawn (3.251.1)
+let tnLoadSavedFor = null;         // a set just come up under scan target, whose saved multipliers go in the boxes (3.251.2)
 let tnSizingWhyTyped = null;       // the reason typed for the sizing and not yet recorded: { set, text } (3.250.1)
 let tnCopyNameTyped = null;        // the name in the save box, typed or saved: { set, name } (3.250.1)
 // REBUILT ON FIRST OPEN (3.235.0, owner 2026-09-23: "rebuilding on first
@@ -3555,6 +3556,7 @@ async function drawTune() {
   // A survivor or window chosen after that is never changed back.
   if (isSet && tnLastTarget !== chosen.id) {
     tnLastTarget = chosen.id;
+    tnLoadSavedFor = chosen.id;
     const shown = [stop, conv].some((x) => x && ['done', 'running', 'error'].includes(x.status));
     const newest = [stop, conv].filter((x) => x && x.status === 'idle' && x.last).map((x) => x.last)
       .sort((a, b) => String(b.finishedUtc || '').localeCompare(String(a.finishedUtc || '')))[0] || null;
@@ -3618,6 +3620,20 @@ async function drawTune() {
   // member that agreed, and wrote it over whatever the survivors carried.
   const pricedLadder = conv.status === 'done' && Array.isArray(conv.ladder) ? conv.ladder : null;
   const noTableWhy = 'no conviction table is priced on what is chosen under Tuning targets: Apply records the numbers the table was priced at, so run the conviction sweep on it first';
+  // THE SET COMES UP WITH THE SETTINGS SAVED ON IT (3.251.2, owner 2026-09-25:
+  // "When a tuning target is selected on the tune tab, then load the half-life
+  // table with the settings that were saved on it"): the multiplier boxes were
+  // filled with whatever numbers the kept table was priced at -- for a set saved
+  // under a new name, its family's -- so a set saved at other numbers came up
+  // showing somebody else's. When the survivors chosen carry one saved set of
+  // multipliers and the table was priced at others, the boxes show the saved
+  // ones and say the table was priced at others.
+  if (isSet && tnLoadSavedFor === chosen.id) {
+    tnLoadSavedFor = null;
+    if (ladderOnRecord && pricedLadder && ladderOnRecord.length === pricedLadder.length && JSON.stringify(ladderOnRecord) !== JSON.stringify(pricedLadder)) {
+      tnTypedLadder = { key: `${chosen.id}|${tnPickVal}|${tnWins.join(',')}`, raw: ladderOnRecord.map(String) };
+    }
+  }
   // WHAT THE SAVE UNDER A NEW NAME CARRIES WHEN THE SIZING IS TICKED (3.249.0):
   // the numbers the table was priced at, on the survivors that table covers,
   // and the sizing on record on every other survivor -- said in numbers
@@ -3687,7 +3703,7 @@ async function drawTune() {
     <div id="stopOut">${stop.status === 'done' ? renderStopResult(stop) : stop.status === 'running' ? '<p class="note">running…</p>' : stop.status === 'error' ? `<p class="warn">last scan failed: ${esc(stop.error || '')}</p>` : stop.status === 'unread' ? '<p class="warn">the result kept for this could not be read from the box</p>' : isSet ? tnNotRunHtml(stop, 'Tune protective stop') : ''}</div>
   </div>
   <div class="panel">
-    <h3 style="margin-top:0">Conviction sizing — bet more when more members agree?</h3>
+    <h3 style="margin-top:0">Conviction sizing — change order sizing based on member agreement</h3>
     <p class="note">Prices a multiplier for each count of members agreeing, on top of each trade's own size, as a pure $
       overlay on the same captured trades, against a shuffled-assignment chance check and exposure-honest metrics. The
       declared ladder (one clip a member that agreed) until you type your own numbers down the rows and press Recompute;
@@ -3906,7 +3922,7 @@ function renderStopResult(s) {
     const carried = [stops ? 'its protective stops' : '', sizing ? `its conviction sizing: ${copySizingWords}` : ''].filter(Boolean);
     if (!confirm(`Save ${chosen.name} under the name ${name}?\n\nThe copy carries ${carried.length ? carried.join(' and ') : 'neither the protective stops nor the conviction sizing'}. ${chosen.name} itself is not touched. Nothing is applied to any trading machine.`)) return;
     cpy.disabled = true;
-    const out = await tryPost(`api/funnel/set/${encodeURIComponent(chosen.id)}/copy`, { name, stops, sizing, ...(sizing && pricedLadder ? { ladder: pricedLadder, pick: tnPickVal } : {}) }, 'The scan target box on Tune lists the sets whose trades are captured.');
+    const out = await tryPost(`api/funnel/set/${encodeURIComponent(chosen.id)}/copy`, { name, stops, sizing, ...(sizing && pricedLadder ? { ladder: pricedLadder, pick: tnPickVal, why: sizeWhy() } : {}) }, 'The scan target box on Tune lists the sets whose trades are captured.');
     if (!out) { cpy.disabled = false; return; }
     const s = out.set || {};
     // the name saved stays in the box (3.250.1)
@@ -3980,9 +3996,12 @@ function renderStopResult(s) {
   const aimKey = isSet ? `${chosen.id}|${tnPickVal}|${tnWins.join(',')}` : '';
   const onTyped = () => {
     const same = pricedLadder && JSON.stringify(typedLadder()) === JSON.stringify(pricedLadder);
+    const saved = !same && ladderOnRecord && JSON.stringify(typedLadder()) === JSON.stringify(ladderOnRecord);
     tnTypedLadder = same || !aimKey ? null : { key: aimKey, raw: multBoxes().map((el) => el.value) };
     const msg = $('#convRecomputeMsg');
-    if (msg) msg.textContent = same ? 'prices the same trades again at the numbers in the boxes above' : 'the numbers in the boxes are not priced yet — press Recompute, then apply them';
+    if (msg) msg.textContent = same ? 'prices the same trades again at the numbers in the boxes above'
+      : saved ? 'these are the numbers saved on this set; the table was priced at others - press Recompute to price them'
+        : 'the numbers in the boxes are not priced yet — press Recompute, then apply them';
     const ap = $('#sizingApply');
     if (ap && !sizeHeld) { ap.disabled = !same; ap.title = same ? '' : 'press Recompute to price the numbers in the boxes before applying them'; }
     tnCopyHold(same);
