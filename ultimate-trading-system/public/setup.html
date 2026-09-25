@@ -212,6 +212,9 @@ let cEsTyped = '';           // the descriptive name typed for another engine, k
 let cEsTypedShort = '';      // its short name, likewise
 let cEsTypedFix = '';        // the short name typed for a checklist started without one
 let cEsNew = false;          // the boxes for another engine's setup shown or not
+let cEsField = {};           // step 2's boxes as typed, kept across the redraw until signed in with
+let cEsReplace = false;      // the key file box opened again to replace a kept one
+let cEsKeyTyped = '';        // a key file being pasted, kept across the redraw until it is saved
 let cEsOpen = false;         // the setup area open or closed: this viewer's own, remembered in the browser
 let cEsSel = null;           // which engine's checklist is shown
 try { cEsOpen = localStorage.getItem('setup-es-open') === '1'; cEsSel = localStorage.getItem('setup-es-sel') || null; } catch (_) { /* a private window: closed, newest */ }
@@ -403,8 +406,8 @@ function drawAccount() {
     : '')
     + inForce
     + (aAcc ? '<div class="panel" style="padding-bottom:.2rem"><h3 style="margin-top:0">Where this account trades</h3>'
-      + '<p class="note">One exchange record for each venue this account trades on. Only Binance is supported today, '
-      + 'and more appear here on their own when they are.</p></div>' + rows : '')
+      + '<p class="note">One exchange record for each venue this account trades on (for example Binance). '
+      + 'More appear here on their own as the system comes to support them.</p></div>' + rows : '')
     + tradingAccountsHtml()
     + '<div class="panel"><div class="empty">The rest of the settings that belong to the whole account '
     + '&mdash; who you are, where alerts are sent &mdash; will live here. Settings that '
@@ -577,6 +580,39 @@ function esProgress(x) {
   const n = (x.steps || []).findIndex((st) => !st.done);
   return n < 0 ? 'every step done' : 'step ' + (n + 1) + ' of ' + (x.steps || []).length;
 }
+// STEP 2'S KEY AND SIGN-IN (owner, 2026-09-25): the key this system makes or
+// the key file it is given -- only its public half and fingerprint are ever
+// on screen -- the machine's address and account, and the sign-in, in words
+function esAccessHtml(s, step) {
+  const ch = s.choices || {};
+  if (!ch.keyHow) return '';
+  const k = s.key && s.key.how === ch.keyHow ? s.key : null;
+  const f = (s.fields || {})[step.id] || {};
+  const typed = (fid) => (cEsField[s.id + '|' + fid] != null ? cEsField[s.id + '|' + fid] : (f[fid] || ''));
+  const box = 'width:100%;max-width:60rem;font-family:monospace;font-size:.74rem';
+  let key = '';
+  if (ch.keyHow === 'made') {
+    key = k
+      ? '<div class="k" style="margin-top:.6rem">the public half — copy it onto the machine</div>'
+        + '<textarea id="esPub" readonly rows="2" style="' + box + '">' + esc(k.publicKey) + '</textarea>'
+        + '<div class="row" style="margin-top:.3rem"><button id="esPubCopy">Copy the public half</button><button id="esKeyMake">Make a new key</button><span class="note">fingerprint ' + esc(k.fingerprint || '—') + '</span></div>'
+      : '<div class="row" style="margin-top:.6rem"><button id="esKeyMake">Make this engine\'s key</button></div>';
+  } else {
+    key = k && !cEsReplace
+      ? '<div class="row" style="margin-top:.6rem"><span class="note">a key file is kept, and never shown again — fingerprint ' + esc(k.fingerprint || '—') + '</span></div>'
+        + '<div class="row" style="margin-top:.3rem"><button id="esKeyReplace">Replace the key file</button></div>'
+      : '<div class="k" style="margin-top:.6rem">the private key file</div>'
+        + '<textarea id="esKeyText" rows="5" spellcheck="false" autocomplete="off" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" style="' + box + '">' + esc(cEsKeyTyped) + '</textarea>'
+        + '<div class="row" style="margin-top:.3rem"><button id="esKeySave">Save the key file</button></div>';
+  }
+  const boxes = '<div class="row" style="margin-top:.6rem">' + (step.fields || []).map((x) => '<label class="c"><span class="muted">' + esc(x.label) + '</span><input data-es-field="' + esc(x.id) + '" value="' + esc(typed(x.id)) + '" placeholder="' + esc(x.placeholder || '') + '" style="width:' + esc(x.width || '12rem') + '"></label>').join('') + '</div>';
+  const sgn = ((s.checks || {})[step.id] || {}).signedIn || null;
+  const said = !sgn ? '' : (sgn.ok ? '<span class="pos">' + esc(sgn.said) + '</span>' + (sgn.machine ? ' · the machine\'s identity ' + esc(sgn.machine) : '') : '<span class="neg">' + esc(sgn.why) + '</span>')
+    + ' <span class="muted">(' + esc(String(sgn.at || '').slice(0, 16).replace('T', ' ')) + ' UTC)</span>';
+  const tryRow = '<div class="row" style="margin-top:.5rem"><button id="esSignIn"' + (k ? '' : ' disabled') + '>Try signing in</button><span id="esSignMsg" class="note">' + (k ? said : (ch.keyHow === 'file' ? 'save the key file first' : 'make this engine\'s key first')) + '</span></div>';
+  const checks = (step.checks || []).map((c) => { const v = ((s.checks || {})[step.id] || {})[c.id] || null; return '<div class="row" style="margin-top:.3rem"><label class="c"><input type="checkbox" disabled' + (v && v.ok ? ' checked' : '') + '> ' + esc(c.label) + '</label><span class="note">ticked by this system when it signs in</span></div>'; }).join('');
+  return key + boxes + tryRow + checks;
+}
 function esSetupHtml(s, t) {
   const ch = s.choices || {};
   const shows = (b) => Object.entries(b.when || {}).every(([k, v]) => ch[k] === v || (b.ifUnset && ch[k] == null));
@@ -592,11 +628,11 @@ function esSetupHtml(s, t) {
     const choices = (step.choices || []).filter(asked).map((c) => '<div class="row" style="margin-top:.55rem">'
       + '<span class="muted" style="font-size:.8rem">' + esc(c.label) + '</span>'
       + c.options.map((o) => '<label class="c"><input type="radio" name="es-' + esc(step.id) + '-' + esc(c.id) + '" data-es-choice="' + esc(step.id) + '|' + esc(c.id) + '" value="' + esc(o.value) + '"' + (ch[c.id] === o.value ? ' checked' : '') + '> ' + esc(o.label) + '</label>').join('')
-      + (c.clears && ch[c.id] ? '<span class="note">changing this clears the ticks below: they were about the other machine</span>' : '')
+      + (c.clearsNote && ch[c.id] ? '<span class="note">' + esc(c.clearsNote) + '</span>' : '')
       + '</div>').join('');
     const tk = (s.ticks || {})[step.id] || {};
     const ticks = (step.ticks || []).map((x) => '<div class="row" style="margin-top:.3rem"><label class="c"><input type="checkbox" data-es-tick="' + esc(step.id) + '|' + esc(x.id) + '"' + (tk[x.id] ? ' checked' : '') + '> ' + esc(x.label) + '</label></div>').join('');
-    return head + guide + choices + (ticks ? '<div style="margin-top:.45rem">' + ticks + '</div>' : '');
+    return head + guide + choices + (step.panel === 'access' ? esAccessHtml(s, step) : '') + (ticks ? '<div style="margin-top:.45rem">' + ticks + '</div>' : '');
   }).join('');
   return '<div style="border-top:1px solid var(--line);margin-top:.7rem">' + blocks + '</div>'
     + '<div class="row" style="margin-top:.9rem"><button id="esDelete" class="danger" title="takes this checklist away; nothing on any machine is touched">Delete this setup</button></div>';
@@ -662,6 +698,55 @@ function wireEs() {
   if (sh) sh.oninput = () => { cEsTypedShort = sh.value; };
   const fx = $('#esShortFix');
   if (fx) fx.oninput = () => { cEsTypedFix = fx.value; };
+  // step 2
+  const esUrl = (sel, what) => 'api/live/engine-setups/' + encodeURIComponent(sel.id) + '/' + what;
+  document.querySelectorAll('[data-es-field]').forEach((i) => { i.oninput = () => { const sel = currentEs(); if (sel) cEsField[sel.id + '|' + i.dataset.esField] = i.value; }; });
+  const kt = $('#esKeyText');
+  if (kt) kt.oninput = () => { cEsKeyTyped = kt.value; };
+  const km = $('#esKeyMake');
+  if (km) km.onclick = async () => {
+    const sel = currentEs();
+    if (!sel) return;
+    if (sel.key && !confirm('Make a new key?\n\nThe old one stops working here: copy the new public half onto the machine again.')) return;
+    km.disabled = true;
+    try { await postJson(esUrl(sel, 'key/make'), {}); } catch (e) { alert('No key made — ' + e.message); }
+    await esReload();
+  };
+  const pc = $('#esPubCopy');
+  if (pc) pc.onclick = async () => {
+    const t = $('#esPub');
+    try { await navigator.clipboard.writeText(t.value); } catch (_) { t.select(); try { document.execCommand('copy'); } catch (__) { /* selected for a manual copy */ } }
+    pc.textContent = 'Copied';
+  };
+  const kr = $('#esKeyReplace');
+  if (kr) kr.onclick = () => { cEsReplace = true; drawCompute(); };
+  const ks = $('#esKeySave');
+  if (ks) ks.onclick = async () => {
+    const sel = currentEs();
+    if (!sel) return;
+    ks.disabled = true;
+    const text = cEsKeyTyped;
+    try { await postJson(esUrl(sel, 'key/file'), { text }); cEsReplace = false; cEsKeyTyped = ''; }
+    catch (e) { alert('Not saved — ' + e.message); }
+    await esReload();
+  };
+  const si = $('#esSignIn');
+  if (si) si.onclick = async () => {
+    const sel = currentEs();
+    if (!sel) return;
+    si.disabled = true;
+    $('#esSignMsg').innerHTML = 'signing in…';
+    try {
+      // the two boxes are saved first, when they changed
+      for (const i of document.querySelectorAll('[data-es-field]')) {
+        const cur = ((sel.fields || {}).access || {})[i.dataset.esField] || '';
+        if (i.value.trim() !== cur) await postJson(esUrl(sel, 'field'), { step: 'access', field: i.dataset.esField, value: i.value.trim() });
+      }
+      await postJson(esUrl(sel, 'signin'), {});
+      for (const k of Object.keys(cEsField)) if (k.startsWith(sel.id + '|')) delete cEsField[k];
+    } catch (e) { alert('Not signed in — ' + e.message); }
+    await esReload();
+  };
   const nt = $('#esNewToggle');
   if (nt) nt.onclick = () => { cEsNew = !cEsNew; drawCompute(); };
   const fs = $('#esShortSave');

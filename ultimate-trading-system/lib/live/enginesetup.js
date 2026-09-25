@@ -14,13 +14,17 @@
 //
 // The checklists themselves are kept on this machine, one file each, so they
 // follow the owner to any device and each finished one stays as the record of
-// how its engine was set up. Nothing here reaches any machine yet: the steps
-// that will are still being written. No AI anywhere.
+// how its engine was set up. The one thing here that reaches a machine is step
+// 2's sign-in: the key it makes or is given, and the sign-in it tries with it.
+// No AI anywhere.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { execFile } = require('child_process');
 
 const DIR = () => process.env.GC_ENGINE_SETUPS_DIR || path.join(__dirname, '..', '..', 'data', 'live', 'engine-setups');
+// each engine's sign-in key, in a folder of its own that only this service can read
+const KEYS_DIR = () => process.env.GC_ENGINE_KEYS_DIR || path.join(__dirname, '..', '..', 'data', 'live', 'engine-keys');
 const ID_RE = /^es-[a-z0-9]{6,12}-[0-9a-f]{6}$/;
 const NAME_MAX = 60;
 // the engine record's own rule for a short name (lib/live/targets.js), so the
@@ -40,10 +44,10 @@ const TEMPLATE = {
       guidance: [
         { paras: [
           'The trading engine is the program that carries out Paper Books and Live Trading: it watches the price, opens and closes positions, and writes everything down. It needs a machine to run on — a rented server, or this computer — and this system links to it.',
-          'Whatever it runs on needs three things: a fixed public IP address, because Binance keys are locked to one address and this system refuses a key that is not; power and internet around the clock, because a plan waiting or a position open needs it watching prices; and a country where Binance serves you and you are allowed to use it.',
+          'Whatever it runs on needs three things: a fixed public IP address, because an exchange\'s trading keys are locked to one address and this system refuses a key that is not; power and internet around the clock, because a plan waiting or a position open needs it watching prices; and a country where your exchange serves you and you are allowed to use it.',
         ] },
         { when: { where: 'server' }, ifUnset: true, heading: 'A rented server', paras: [
-          'Any cloud provider will do. Pick a country where Binance serves you and you are allowed to use it: the engine running today is on AWS in Mexico City. Binance\'s servers are in Tokyo, so nearer is quicker, but for trades decided once a day a fraction of a second hardly matters.',
+          'Any cloud provider will do. Pick a country where your exchange serves you and you are allowed to use it: the engine running today is on AWS in Mexico City. An exchange\'s servers sit in one place (Binance\'s, for example, are in Tokyo), so nearer is quicker, but for trades decided once a day a fraction of a second hardly matters.',
           'The smallest size is plenty: 1 CPU, 1 GB of memory and 10 GB of disk, running Debian 12 or 13, or Ubuntu 24.04. The engine is held to 300 MB of memory and half a CPU.',
           'Ask the provider for a fixed public IP address for it. On AWS that is an Elastic IP.',
         ] },
@@ -57,18 +61,47 @@ const TEMPLATE = {
         { when: { where: 'local', os: 'windows' }, paras: ['Windows: in its power settings, set sleep to never while it is plugged in.'] },
       ],
       choices: [
-        { id: 'where', label: 'Where it runs', clears: true, options: [{ value: 'server', label: 'a rented server' }, { value: 'local', label: 'this computer' }] },
+        { id: 'where', label: 'Where it runs', clears: true, clearsNote: 'changing this clears the ticks below, and any sign-in in step 2: they were about the other machine', options: [{ value: 'server', label: 'a rented server' }, { value: 'local', label: 'this computer' }] },
         { id: 'os', label: 'Its operating system', when: { where: 'local' }, options: [{ value: 'linux', label: 'Linux' }, { value: 'mac', label: 'Mac' }, { value: 'windows', label: 'Windows' }] },
       ],
       ticks: [
-        { id: 'binance', label: 'Binance serves me there, and I may use it there' },
+        { id: 'binance', label: 'My exchange serves me there, and I may use it there' },
         { id: 'ip', label: 'It has a fixed public IP address' },
         { id: 'on', label: 'It will be on and online around the clock' },
         { id: 'size', label: 'It meets the size above' },
       ],
     },
+    {
+      id: 'access',
+      title: 'Let the system in',
+      guidance: [
+        { paras: [
+          'This system signs in to the machine to install the engine and keep it running, the way you would sign in yourself: with a key. Choose how it gets one, give it the machine\'s address and the account to sign in as, and press Try signing in. The step is done when it has signed in.',
+        ] },
+        { when: { keyHow: 'made' }, ifUnset: true, heading: 'With a key this system makes', paras: [
+          'Press Make this engine\'s key. The system keeps the private half to itself and never shows it; you copy the public half, shown below, onto the machine.',
+          'A machine you are about to rent: most providers ask for a key when the machine is made. Give it the public half there (on AWS, import it as a key pair and choose it when you launch).',
+          'A machine you already have: sign in to it yourself and add the public half as a new line at the end of ~/.ssh/authorized_keys of the account this system signs in as. On AWS, EC2 Instance Connect opens a terminal on the machine in your browser.',
+        ] },
+        { when: { keyHow: 'file' }, ifUnset: true, heading: 'With a key file you already have', paras: [
+          'Paste the private key file the provider gave you when the machine was made: it starts with -----BEGIN and ends with PRIVATE KEY-----. The system keeps it to itself and never shows it again, only its fingerprint. A key file locked with a passphrase cannot be used.',
+        ] },
+        { when: { where: 'local' }, heading: 'This computer', paras: [
+          'How this system reaches a computer at home without opening it to the internet is still being worked out. This step can be finished for a rented server today.',
+        ] },
+      ],
+      choices: [
+        { id: 'keyHow', label: 'How this system signs in', clears: true, clearsNote: 'changing this throws away the key and the sign-in made the other way', options: [{ value: 'made', label: 'with a key this system makes' }, { value: 'file', label: 'with a key file you already have' }] },
+      ],
+      fields: [
+        { id: 'host', label: 'the machine\'s address', placeholder: 'ec2-203-0-113-7.compute.amazonaws.com', width: '31rem' },
+        { id: 'user', label: 'sign in as', placeholder: 'admin', width: '8rem' },
+      ],
+      // the key controls and the sign-in, drawn by the page for this step
+      panel: 'access',
+      checks: [{ id: 'signedIn', label: 'This system signed in to the machine' }],
+    },
     // the steps still being written: a title each, and nothing to tick yet
-    { id: 'access', title: 'Let the system in', writing: true },
     { id: 'check', title: 'Check the machine', writing: true },
     { id: 'install', title: 'Install the engine', writing: true },
     { id: 'link', title: 'Link it to this system', writing: true },
@@ -93,6 +126,9 @@ function stepsOf(setup) {
     if (step.writing) missing.push('this step is still being written');
     for (const c of choicesAsked(step, choices)) if (!choices[c.id]) missing.push(`choose ${c.label.toLowerCase()}`);
     for (const t of step.ticks || []) if (ticks[t.id] !== true) missing.push(`tick "${t.label}"`);
+    if (step.panel === 'access' && choices.keyHow && !(setup.key && setup.key.how === choices.keyHow)) missing.push(choices.keyHow === 'file' ? 'save the key file' : 'make this engine\'s key');
+    for (const f of step.fields || []) if (!(((setup.fields || {})[step.id] || {})[f.id])) missing.push(`fill in ${f.label}`);
+    for (const c of step.checks || []) if (!((((setup.checks || {})[step.id] || {})[c.id] || {}).ok)) missing.push(c.id === 'signedIn' ? 'press Try signing in, and sign in' : c.label.toLowerCase());
     const open = before;
     const done = open && missing.length === 0;
     out.push({ id: step.id, open, done, missing });
@@ -179,8 +215,9 @@ function mustBeOpen(rec, stepId) {
   if (!stepsOf(rec)[i].open) { const e = new Error(`step ${i + 1} opens when step ${i} is done`); e.status = 400; throw e; }
 }
 
-// A CHOICE. Changing where the engine runs clears the step's ticks and the
-// choices that hang off it: they were about the other machine.
+// A CHOICE. Changing where the engine runs clears the step's ticks, the
+// choices that hang off it and every sign-in after it: they were about the
+// other machine.
 function setChoice(id, stepId, choiceId, value) {
   const rec = read(id);
   const step = stepOf(stepId);
@@ -197,6 +234,11 @@ function setChoice(id, stepId, choiceId, value) {
   if (rec.choices[choiceId] !== value && c.clears) {
     for (const other of step.choices || []) if (other.when && Object.keys(other.when).includes(choiceId)) delete rec.choices[other.id];
     rec.ticks[stepId] = {};
+    // a check this system made from here on was made the other way, or on the other machine
+    const at = TEMPLATE.steps.indexOf(step);
+    if (rec.checks) for (const later of TEMPLATE.steps.slice(at)) delete rec.checks[later.id];
+    // a different way of signing in: the key made the other way goes
+    if (step.panel === 'access') dropKey(rec);
   }
   rec.choices[choiceId] = value;
   rec.updatedUtc = new Date().toISOString();
@@ -220,7 +262,148 @@ function remove(id) {
   const f = fileOf(id);
   if (!fs.existsSync(f)) { const e = new Error(`no engine setup ${id}`); e.status = 404; throw e; }
   fs.unlinkSync(f);
+  // deleting a checklist deletes every file it owns: its key goes with it
+  fs.rmSync(keyDirOf(id), { recursive: true, force: true });
   return { ok: true, id };
 }
 
-module.exports = { TEMPLATE, stepsOf, list: () => list().map(withSteps), get: (id) => withSteps(read(id)), create, setShortName, setChoice, setTick, remove, DIR };
+// ---- STEP 2: THE KEY AND THE SIGN-IN -----------------------------------------
+// The private half of a key is written once, to this engine's own folder, and
+// never read back to any page, answer or log: only its public half and its
+// fingerprint leave this machine. The sign-in runs the machine's own ssh.
+let run = (cmd, args, timeoutMs) => new Promise((resolve) => {
+  execFile(cmd, args, { timeout: timeoutMs, maxBuffer: 1 << 20 }, (err, stdout, stderr) => resolve({ code: err ? (typeof err.code === 'number' ? err.code : 1) : 0, killed: !!(err && err.killed), missing: !!(err && err.code === 'ENOENT'), stdout: String(stdout || ''), stderr: String(stderr || '') }));
+});
+function keyDirOf(id) { fileOf(id); return path.join(KEYS_DIR(), id); }
+const bad = (m, status = 400) => { const e = new Error(m); e.status = status; throw e; };
+function dropKey(rec) {
+  delete rec.key;
+  for (const f of ['key', 'key.pub', 'known_hosts']) fs.rmSync(path.join(keyDirOf(rec.id), f), { force: true });
+}
+async function fingerprintOf(pubFile) {
+  const r = await run('ssh-keygen', ['-l', '-f', pubFile], 10000);
+  const m = /(SHA256:[A-Za-z0-9+/=]+)/.exec(r.stdout);
+  return m ? m[1] : null;
+}
+function freshDir(id) {
+  const dir = keyDirOf(id);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  fs.chmodSync(dir, 0o700);
+  return dir;
+}
+const toolMissing = () => bad('this machine has no ssh-keygen to make or read a key with', 500);
+
+// with a key this system makes: a new pair, the private half kept here
+async function makeKey(id) {
+  const rec = read(id);
+  mustBeOpen(rec, 'access');
+  if (rec.choices.keyHow !== 'made') bad('choose "with a key this system makes" first');
+  dropKey(rec);
+  const dir = freshDir(id);
+  const r = await run('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-C', `uts ${rec.shortName || rec.id}`, '-f', path.join(dir, 'key')], 20000);
+  if (r.missing) toolMissing();
+  if (r.code !== 0) bad(`the key could not be made: ${(r.stderr || r.stdout).trim().split('\n').pop() || 'no reason given'}`, 500);
+  const publicKey = fs.readFileSync(path.join(dir, 'key.pub'), 'utf8').trim();
+  rec.key = { how: 'made', publicKey, fingerprint: await fingerprintOf(path.join(dir, 'key.pub')), at: new Date().toISOString() };
+  if (rec.checks) delete rec.checks.access;
+  rec.updatedUtc = new Date().toISOString();
+  write(rec);
+  return withSteps(rec);
+}
+
+// with a key file the owner already has: kept here, and checked to be one
+async function saveKeyFile(id, text) {
+  const rec = read(id);
+  mustBeOpen(rec, 'access');
+  if (rec.choices.keyHow !== 'file') bad('choose "with a key file you already have" first');
+  const t = String(text == null ? '' : text).replace(/\r\n/g, '\n').trim();
+  if (t.length > 20000 || !/^-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(t) || !/-----END [A-Z ]*PRIVATE KEY-----$/.test(t)) bad('that is not a private key file: it starts with -----BEGIN and ends with PRIVATE KEY-----');
+  dropKey(rec);
+  const dir = freshDir(id);
+  const kf = path.join(dir, 'key');
+  fs.writeFileSync(kf, `${t}\n`, { mode: 0o600 });
+  fs.chmodSync(kf, 0o600);
+  // the public half, worked out from the file: a file that cannot give one is not kept
+  const r = await run('ssh-keygen', ['-y', '-P', '', '-f', kf], 10000);
+  if (r.missing) { fs.rmSync(kf, { force: true }); toolMissing(); }
+  if (r.code !== 0 || !/^(ssh-|ecdsa-)/.test(r.stdout.trim())) {
+    fs.rmSync(kf, { force: true });
+    bad(/passphrase/i.test(r.stderr) ? 'the key file is locked with a passphrase, which this system cannot type: use a key file without one, or let the system make a key' : 'the key file could not be read as a key');
+  }
+  const publicKey = r.stdout.trim();
+  fs.writeFileSync(path.join(dir, 'key.pub'), `${publicKey}\n`);
+  rec.key = { how: 'file', publicKey, fingerprint: await fingerprintOf(path.join(dir, 'key.pub')), at: new Date().toISOString() };
+  if (rec.checks) delete rec.checks.access;
+  rec.updatedUtc = new Date().toISOString();
+  write(rec);
+  return withSteps(rec);
+}
+
+// the machine's address and the account to sign in as; a change asks for a new sign-in
+const HOST_RE = /^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/;
+const USER_RE = /^[a-z_][a-z0-9_.-]{0,31}$/;
+function setField(id, stepId, fieldId, value) {
+  const rec = read(id);
+  const step = stepOf(stepId);
+  mustBeOpen(rec, stepId);
+  const f = (step.fields || []).find((x) => x.id === fieldId);
+  if (!f) bad(`step "${step.title}" has no box ${fieldId}`);
+  const v = String(value == null ? '' : value).trim();
+  if (fieldId === 'host' && !HOST_RE.test(v)) bad('the machine\'s address: a name like ec2-203-0-113-7.compute.amazonaws.com, or an address like 203.0.113.7');
+  if (fieldId === 'user' && !USER_RE.test(v)) bad('sign in as: the account\'s name on the machine, like admin or ubuntu');
+  rec.fields = rec.fields || {};
+  const before = (rec.fields[stepId] || {})[fieldId];
+  rec.fields[stepId] = { ...(rec.fields[stepId] || {}), [fieldId]: v };
+  if (before !== v && rec.checks) delete rec.checks[stepId];
+  rec.updatedUtc = new Date().toISOString();
+  write(rec);
+  return withSteps(rec);
+}
+
+// the sign-in, in words: what the machine said, or why it would not have us
+function signInWords(r, user) {
+  const e = `${r.stderr}\n${r.stdout}`;
+  if (r.killed) return 'the machine did not answer within 25 seconds';
+  if (/Permission denied/i.test(e)) return `the machine refused the key: add the public half to ~/.ssh/authorized_keys of ${user} on it`;
+  if (/Could not resolve hostname|Name or service not known/i.test(e)) return 'no machine answers to that address';
+  if (/timed out/i.test(e)) return 'the machine did not answer on port 22: is it running, and does its firewall let SSH in from this system?';
+  if (/Connection refused/i.test(e)) return 'the machine refused the connection on port 22: its SSH server is not running';
+  if (/REMOTE HOST IDENTIFICATION HAS CHANGED|Host key verification failed/i.test(e)) return 'the machine at that address is not the one this system signed in to before: its identity has changed. Nothing was sent to it';
+  const last = e.trim().split('\n').filter((l) => l && !/^Warning: /.test(l)).pop();
+  return last ? `the sign-in did not work: ${last}` : 'the sign-in did not work, and gave no reason';
+}
+async function signIn(id) {
+  const rec = read(id);
+  mustBeOpen(rec, 'access');
+  const f = (rec.fields || {}).access || {};
+  if (!rec.key) bad(rec.choices.keyHow === 'file' ? 'save the key file first' : 'make this engine\'s key first');
+  if (!f.host || !f.user) bad('fill in the machine\'s address and sign in as first');
+  const dir = keyDirOf(id);
+  const args = ['-F', '/dev/null', '-i', path.join(dir, 'key'), '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'PasswordAuthentication=no',
+    '-o', 'StrictHostKeyChecking=accept-new', '-o', `UserKnownHostsFile=${path.join(dir, 'known_hosts')}`, '-o', 'ConnectTimeout=12', '-o', 'LogLevel=ERROR',
+    `${f.user}@${f.host}`, 'echo UTS-SIGNED-IN; uname -sm; id -un'];
+  const r = await run('ssh', args, 25000);
+  if (r.missing) bad('this machine has no ssh to sign in with', 500);
+  const ok = r.code === 0 && /UTS-SIGNED-IN/.test(r.stdout);
+  const lines = r.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+  const at = new Date().toISOString();
+  let machine = null;
+  if (ok) {
+    const k = await run('ssh-keygen', ['-l', '-f', path.join(dir, 'known_hosts')], 10000);
+    const m = /(SHA256:[A-Za-z0-9+/=]+)/.exec(k.stdout);
+    machine = m ? m[1] : null;
+  }
+  rec.checks = rec.checks || {};
+  rec.checks.access = { signedIn: ok
+    ? { ok: true, at, said: `signed in as ${lines[2] || f.user} on ${f.host}: ${lines[1] || 'the machine did not say what it is'}`, machine }
+    : { ok: false, at, why: signInWords(r, f.user) } };
+  rec.updatedUtc = at;
+  write(rec);
+  return withSteps(rec);
+}
+
+module.exports = {
+  TEMPLATE, stepsOf, list: () => list().map(withSteps), get: (id) => withSteps(read(id)), create, setShortName, setChoice, setTick, remove, DIR,
+  makeKey, saveKeyFile, setField, signIn, signInWords, KEYS_DIR,
+  _setRunner: (fn) => { run = fn; },
+};

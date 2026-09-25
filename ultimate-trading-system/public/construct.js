@@ -325,7 +325,7 @@ const COL = {
   // column, it would silently replace that screen's hover text with this
   // one. The key is internal and nobody can see it; the label is what the
   // rule is about.
-  pair: 'the Binance symbol, hourly candles.',
+  pair: 'the pair\'s symbol on the exchange the candles come from (for example Binance), hourly candles.',
   months: 'how many whole months of hourly candles are cached on this box for the coin.',
   from: 'first cached month, YYYY-MM.',
   to: 'the newest hourly candle on file, YYYY-MM-DD-HH:00:00 UTC, by the hour it opened. Refresh brings it to the most recent closed hour.',

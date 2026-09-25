@@ -140,6 +140,13 @@ function installLiveRoutes(app, { csrfGuard }) {
   app.post('/api/live/engine-setups/:id/choice', csrfGuard, (req, res) => esSend(res, () => { const b = req.body || {}; return es.setChoice(String(req.params.id), String(b.step || ''), String(b.choice || ''), String(b.value || '')); }));
   app.post('/api/live/engine-setups/:id/tick', csrfGuard, (req, res) => esSend(res, () => { const b = req.body || {}; return es.setTick(String(req.params.id), String(b.step || ''), String(b.tick || ''), b.on === true); }));
   app.post('/api/live/engine-setups/:id/delete', csrfGuard, (req, res) => { try { res.json(es.remove(String(req.params.id))); } catch (e) { res.status(e.status || 500).json({ error: e.message }); } });
+  // step 2: the machine's address and account, the key, and the sign-in. A key
+  // file that arrives is written to the engine's own folder and never echoed.
+  const esSendAsync = async (res, fn) => { try { res.json({ ok: true, setup: await fn() }); } catch (e) { res.status(e.status || 500).json({ error: e.message }); } };
+  app.post('/api/live/engine-setups/:id/field', csrfGuard, (req, res) => esSend(res, () => { const b = req.body || {}; return es.setField(String(req.params.id), String(b.step || ''), String(b.field || ''), b.value); }));
+  app.post('/api/live/engine-setups/:id/key/make', csrfGuard, (req, res) => esSendAsync(res, () => es.makeKey(String(req.params.id))));
+  app.post('/api/live/engine-setups/:id/key/file', csrfGuard, (req, res) => esSendAsync(res, () => es.saveKeyFile(String(req.params.id), (req.body || {}).text)));
+  app.post('/api/live/engine-setups/:id/signin', csrfGuard, (req, res) => esSendAsync(res, () => es.signIn(String(req.params.id))));
   // the decisions the producer made for engine setups, newest last: what it did on each run
   app.get('/api/live/engine-produce', (req, res) => {
     try {
