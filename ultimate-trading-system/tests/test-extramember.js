@@ -283,11 +283,14 @@ function aChunksGateIsWorkedOutFromTheChunksBeforeItAndNothingAfter() {
   const bw = require('../lib/bracketwork');
   const { medianAbsMove } = require('../lib/windowmove');
   const { MIN_CHUNKS } = require('../lib/pipeline');
-  // a coin that is calm, then five times wilder, then calmer again
+  // a coin that is calm, then five times wilder, then calmer again. The moves
+  // are spread over sixty-one sizes, not a handful: seven repeated sizes put
+  // every yardstick, right or wrong, between the same two moves, so a gate
+  // worked out from the wrong chunks opened on exactly the same chunks.
   const scale = (i) => (i < 120 ? 1 : (i < 240 ? 5 : 2));
   const series = () => Array.from({ length: 360 }, (_, i) => ({
     startTs: i, diffPct: 8 * ((i % 2) ? 1 : -1), label: ((i % 2) ? 1 : -1),
-    backPct: [scale(i) * (((i % 7) - 3) || 0.5)],
+    backPct: [scale(i) * (0.5 + ((i * 37) % 61) / 20) * ((i % 3) ? 1 : -1)],
   }));
   const full = series();
   bw.markExtraGates(full, [150]);
@@ -307,6 +310,16 @@ function aChunksGateIsWorkedOutFromTheChunksBeforeItAndNothingAfter() {
     assert.strictEqual(c.extraOn[0], want, `chunk ${i}: the gate is not the chunk's own move against 1.5 times the median of the moves before it`);
     seen.push(c.backPct[0]);
   });
+  // AND ONE CHUNK THAT TELLS THE FAULTS APART. Twelve moves of 1 and 2 put the
+  // yardstick at 1.5 and the bar at 2.25, so a move of 2.3 clears it. Count
+  // the chunk's own move, or take the yardstick over the whole series, and the
+  // median is 2, the bar is 3, and the gate stays shut; walk the chunks from
+  // the newest back and nothing is behind it at all.
+  const tell = Array.from({ length: MIN_CHUNKS }, (_, i) => ({ startTs: i, diffPct: 1, label: 1, backPct: [(i % 2) ? 2 : 1] }));
+  tell.push({ startTs: MIN_CHUNKS, diffPct: 1, label: 1, backPct: [2.3] });
+  bw.markExtraGates(tell, [150]);
+  assert.strictEqual(tell[MIN_CHUNKS].extraOn[0], true,
+    'a move of 2.3 against a bar of 1.5 x 1.5 = 2.25 left the gate shut: the yardstick was taken from more than the moves before the chunk');
 }
 
 // THE YARDSTICK TRAILS, AND THAT IS THE WHOLE POINT (3.201.0, owner: "trailing").
