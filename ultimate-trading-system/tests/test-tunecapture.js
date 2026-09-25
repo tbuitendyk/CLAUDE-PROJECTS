@@ -377,12 +377,13 @@ module.exports = {
       assert.deepStrictEqual({ window: ht.window, of: ht.of, withATuning: ht.withATuning, priced: ht.priced, why: ht.why, captured: !!(ht.capture && ht.capture.at), sizing: !!(hrow && hrow.sizing && hrow.sizing.on), stop: hrow ? hrow.stop : undefined, frozen: hs.stopChoices[depthLabel].sizing.on },
         { window: 'held', of: hs.block.survivors.rows.length, withATuning: 1, priced: 1, why: null, captured: true, sizing: true, stop: null, frozen: true });
       const readAt = hs.block.survivors.rows.find((x) => x.label === depthLabel);
-      // 3.156.0: a sizing and no stop leaves the reading PLAIN -- the sizing bets up to one
-      // clip a member and everything it would be compared with bets one, so it is recorded,
-      // never substituted
-      assert.deepStrictEqual({ readInto: hrow.readInto, stops: ht.withAStop, into: ht.readInto }, { readInto: false, stops: 0, into: 0 }, 'a sizing is read into nothing');
-      assert.strictEqual(cents(readAt.money), cents(hrow.plainUsd), 'the reading reads the survivor at its own money');
-      assert.strictEqual(cents(hrow.plainUsd), cents(capR.survivors.find((x) => x.label === depthLabel).money.hold), "which is the record's own");
+      // THE SIZING ON THE RECORD IS READ, THE NULL SETS STAY AT SIZING 1 (3.250.0,
+      // owner 2026-09-25: "I SAID THAT WE *USE* THE SIZING ON THE RECORD AND WE CAN
+      // COMPARE WITH SIZING 1 ON THE NULL SETS"). 3.156.0 had left it out.
+      assert.deepStrictEqual({ readInto: hrow.readInto, stops: ht.withAStop, sizings: ht.withASizing, into: ht.readInto }, { readInto: true, stops: 0, sizings: 1, into: 1 }, 'a sizing on record is read into the reading');
+      assert.strictEqual(cents(readAt.money), cents(hrow.tunedUsd), 'the reading reads the survivor at its money under the sizing');
+      assert.ok(Number.isFinite(hrow.taken) && hrow.taken <= hrow.trades && readAt.trades === hrow.taken, 'over the trades the sizing takes');
+      assert.strictEqual(cents(hrow.plainUsd), cents(capR.survivors.find((x) => x.label === depthLabel).money.hold), "and the money without it is the record's own");
       assert.strictEqual(cents(hrow.stopUsd), cents(hrow.flatUsd), 'with no stop on record the stop money is the plain money');
       assert.ok(hrow.tunedUsd !== hrow.plainUsd && hrow.clipsPerTrade > 1, 'and the sizing is worked out beside it, at more than one clip a trade');
       // the reading and the picture price at the record's own dollars (lib/paper.js NOTIONAL), not the scans' $10 clip
@@ -391,14 +392,19 @@ module.exports = {
       assert.strictEqual(cents(hrow.tunedUsd), cents(pw.tunedUsd), 'tuned is what the picture works out for the same window');
       assert.strictEqual(hrow.trades, pw.trades, 'over the same captured trades');
       assert.strictEqual(hrow.differs, 0, "the capture's plain re-pricing is the reading to the cent");
-      assert.ok(/read at its money under that stop/.test(ht.reads) && /the sizing is never in the money column/.test(ht.reads), ht.reads);
+      assert.ok(/read at its money under them/.test(ht.reads) && /the null sets are read at sizing 1, one clip a trade/.test(ht.reads), ht.reads);
       assert.strictEqual(stages.setSizingChoice(c.cut.id, { pick: 'depth', on: false, why: '' }).sizing, null, 'taken off again');
       assert.deepStrictEqual(await stages.tunedOfRule(stages.getSet(c.cut.id), [depthLabel]), {}, 'a survivor with no tuning on record is not worked out');
       // and a press with nothing on record prices nothing again, and says so
       stages.judgeStart(c.cut.id, 'held', { barPct: 100 });
       await settle(() => stages.judgeStatus(c.cut.id, 'held'), 'the held read with the tuning taken off');
-      const ht2 = newest(c.cut.id, 'held').block.tuned;
+      const plainBlock = newest(c.cut.id, 'held').block;
+      const ht2 = plainBlock.tuned;
       assert.deepStrictEqual({ withATuning: ht2.withATuning, rows: ht2.rows.length, why: ht2.why, capture: ht2.capture }, { withATuning: 0, rows: 0, why: stages.TUNED_NONE, capture: null });
+      // the sized read against the plain one: the null sets the same, the rule's money moved by the one survivor's sizing
+      assert.deepStrictEqual(hs.block.copies.copyMeans, plainBlock.copies.copyMeans, 'the null sets are at sizing 1 whatever the survivors carry');
+      const n = hs.block.survivors.rows.length;
+      assert.strictEqual(cents(hs.block.copies.real - plainBlock.copies.real), cents((hrow.tunedUsd - hrow.plainUsd) / n), 'the rule\'s own money reads the sized survivor, and the rest at their own');
       // a re-capture keeps the looks already counted
       stages.tuneCaptureStart(c.cut.id);
       await settle(() => stages.tuneCaptureStatus(c.cut.id), 'the second capture');
