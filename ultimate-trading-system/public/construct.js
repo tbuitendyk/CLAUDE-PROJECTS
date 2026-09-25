@@ -2639,7 +2639,7 @@ function vTunedNoteHtml(t) {
   const cap = t.capture ? ` (captured ${esc(String(t.capture.at || '').slice(0, 10))})` : '';
   const body = t.why
     ? `<b class="warn">${esc(t.why)}</b>`
-    : `${t.withAStop} of them carry a stop and ${t.readInto} are read above at their money under it, worked out off their captured trades${cap} at the record's own $${Number(t.clipUsd) || 0} a trade; the money without it, and the money the sizing would have made, are in the table below${(t.notCaptured || []).length ? ` · ${t.notCaptured.length} with a tuning but no captured trades on this window, read plain` : ''}`;
+    : `${t.readInto} of them are read above at their money under their tunings, worked out off their captured trades${cap} at the record's own $${Number(t.clipUsd) || 0} a trade; the money without them is in the table below${(t.notCaptured || []).length ? ` · ${t.notCaptured.length} with a tuning but no captured trades on this window, read plain` : ''}`;
   return `<p class="note"><b>The tunings applied on Tune:</b> ${t.withATuning} of ${t.of} survivors carry a stop or a sizing · ${body}${vSizingWordsHtml(t)} · ${esc(t.reads || '')}${vDiffersWords(t)}</p>`;
 }
 // THE CONVICTION SIZING THIS SET FROZE, IN NUMBERS (3.249.0, owner 2026-09-25:
@@ -2647,7 +2647,7 @@ function vTunedNoteHtml(t) {
 // held tab is not"). The table says "by conviction" whatever the multipliers,
 // so two held sets frozen at different numbers read alike; the multipliers,
 // and what they made on this window against the same trades without them, are
-// said here. The money column above stays one clip a trade (3.156.0).
+// said here. Since 3.250.0 the money column above reads the sizing too.
 function vSizingWordsHtml(t) {
   const rows = ((t && t.rows) || []).filter((x) => x.sizing && x.sizing.on);
   if (!rows.length) return '';
@@ -2683,9 +2683,9 @@ function vSurvivorsTableHtml(b, stretch) {
     <th title="as stored on the record: how far its ${stretchPlain(stretch)} money sits above the typical copy, over the population spread">lead</th>
     <th title="read here: of the copies kept, how many its ${stretchPlain(stretch)} money beats by at least a cent, against the same bar as the set">beats N of K</th>
     <th title="this survivor's own reading against its own copies at the same bar. It never picks a survivor and never gates the set.">own verdict</th>
-    ${tunedOn ? `<th title="the stop and the sizing frozen on this survivor when this set was written. The money column reads it under its stop; the sizing is never in that column.">tunings</th>
+    ${tunedOn ? `<th title="the stop and the sizing frozen on this survivor when this set was written. The note above the table says which of them the money column reads: since 3.250.0, both.">tunings</th>
     <th title="its money on the ${stretchPlain(stretch)} window with no tuning at all, as the record priced it, in the same dollars">without them $</th>
-    <th title="what the same trades would have made with the sizing on top as well: up to one clip a member that agreed, so up to that many times the money and that many times the money at risk. It is in no average and in no comparison on this screen, because everything it would be compared with bets one clip.">with the sizing $</th>
+    <th title="what the same trades made with the stop and the sizing on record: each trade at its own size times the multiplier of its row, a multiplier of 0 leaving it out. Since 3.250.0 this is the money the reading reads for the survivor; the null sets stay at sizing 1, one clip a trade.">with the sizing $</th>
     <th title="the clips a trade the sizing would deploy on average, against one clip everywhere else">clips a trade</th>
     <th title="trades the frozen stop closed early, of those priced">stopped</th>` : ''}
     ${priced ? `<th title="trades closed by the stop on the ${stretchPlain(stretch)} window, from the pricing this block came from">stopped out</th>
