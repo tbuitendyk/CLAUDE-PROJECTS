@@ -155,3 +155,167 @@ module.exports = {
     assert.ok(threw && /mode: must be one of simulated \/ live -- a plan without one is refused, never taken as live/.test(threw.message), threw && threw.message);
   },
 };
+
+// ---- THE ENGINE RUNNING: a plan through the simulated exchange, on a market
+// scripted here (no network), every step written down -------------------------
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+function fakeMarket() {
+  const m = {
+    followed: new Set(), books: new Map(), trades: new Map(), opens: new Map(), mins: [],
+    follow(s) { m.followed = new Set(s); },
+    book: (s) => m.books.get(s) || null,
+    trade: (s) => m.trades.get(s) || null,
+    filtersOf: async () => ({ tickSize: 0.01, stepSize: 0.001, minQty: 0.001, minNotional: 5, baseAsset: 'LTC', quoteAsset: 'USDT' }),
+    hourOpenOf: async (s, t) => m.opens.get(`${s}|${t}`) ?? null,
+    minutes: async () => m.mins,
+    status: () => ({ feed: 'fake', connected: true }),
+  };
+  return m;
+}
+const settle = () => new Promise((r) => setTimeout(r, 20));
+
+module.exports.aPlanRunsThroughTheSimulatedExchangeAndEveryStepIsWrittenDown = async function () {
+  const { Journal } = require('../engine/journal');
+  const { Runner } = require('../engine/runner');
+  const { SimulatedExchange } = require('../engine/venues/simulated');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-'));
+  const t0 = Date.UTC(2026, 8, 26, 1);   // the entry hour
+  let now = t0 - 60000;
+  const market = fakeMarket();
+  const journal = new Journal(path.join(dir, 'journal.jsonl'));
+  const sim = new SimulatedExchange({ market, feePerLeg: 0.001, now: () => now });
+  const runner = new Runner({ journal, market, venues: { simulated: sim }, now: () => now });
+  const plan = {
+    planId: 'setup-a|2026-09-22', setupId: 'setup-a', mode: 'simulated', symbol: 'LTCUSDT', entryTs: t0, call: 1,
+    cell: { entry: 'breakout', gate: 'active', dMult: 0.75, tHours: 65, trailMult: 1.5, armMult: 0.5 }, bandPct: 5,
+    size: { quoteUsd: 100 }, feePerLeg: 0.001, walletStartUsd: 1000,
+  };
+  // S5: a live plan is refused on an engine with real orders off
+  const live = runner.addPlan({ ...plan, planId: 'x', mode: 'live' });
+  assert.ok(!live.ok && live.problems.some((p) => /real orders are switched off on this engine/.test(p)), JSON.stringify(live));
+  assert.deepStrictEqual(runner.addPlan(plan).ok, true);
+  assert.deepStrictEqual(runner.addPlan(plan).already, true, 'the same plan twice is the same plan');
+  assert.ok(market.followed.has('LTCUSDT'), 'the engine follows the symbol a plan is on');
+  // the entry hour opens at 70.00: levels at 72.625 and 67.375
+  now = t0;
+  runner.onKline({ symbol: 'LTCUSDT', openTime: t0, open: 70 });
+  let st = runner.plans.get(plan.planId).state;
+  assert.deepStrictEqual([st.phase, st.rails.buy, st.rails.sell], ['armed', 70 * 1.0375, 70 * 0.9625]);
+  // the book the fill will walk, and a print that reaches the buying level
+  market.books.set('LTCUSDT', { bids: [[72.6, 1], [72.5, 5]], asks: [[72.7, 0.5], [72.8, 5]], ts: now });
+  market.trades.set('LTCUSDT', { price: 72.63, ts: now });
+  now = t0 + 10 * 60000;
+  market.books.get('LTCUSDT').ts = now;
+  runner.onTrade({ symbol: 'LTCUSDT', price: 72.63, ts: now });
+  await settle();
+  st = runner.plans.get(plan.planId).state;
+  const led = runner.plans.get(plan.planId).ledger;
+  assert.strictEqual(st.phase, 'open');
+  // 100 / 72.7 = 1.375 (to the step); 0.5 at 72.7 and 0.875 at 72.8
+  assert.strictEqual(led.entry.qty, 1.375);
+  assert.ok(Math.abs(led.entry.price - (0.5 * 72.7 + 0.875 * 72.8) / 1.375) < 1e-12, `${led.entry.price}`);
+  assert.deepStrictEqual(led.entry.against.levels, [[72.7, 0.5], [72.8, 0.875]], 'the fill records the levels it took');
+  assert.strictEqual(st.stop, 70 * 0.9625, 'the other level is the stop');
+  // the next whole hour runs to 76.5 (past arm at +2.5%): at its end the stop follows 7.5% behind
+  now = t0 + H + 60000;
+  runner.onTrade({ symbol: 'LTCUSDT', price: 76.5, ts: now });
+  now = t0 + 2 * H + 1000;
+  runner.tick();
+  st = runner.plans.get(plan.planId).state;
+  assert.deepStrictEqual([st.armed, st.stop], [true, 76.5 * 0.925], 'armed and ratcheted at the hour\'s end');
+  // a print through the stop closes it; the exit walks the bids
+  market.books.set('LTCUSDT', { bids: [[70.7, 0.4], [70.6, 5]], asks: [[70.8, 5]], ts: now });
+  runner.onTrade({ symbol: 'LTCUSDT', price: 70.7, ts: now });
+  await settle();
+  st = runner.plans.get(plan.planId).state;
+  assert.deepStrictEqual([st.phase, st.reason], ['closed', 'trailing stop']);
+  const x = runner.plans.get(plan.planId).ledger;
+  const exitPrice = (0.4 * 70.7 + 0.975 * 70.6) / 1.375;
+  assert.ok(Math.abs(x.exit.price - exitPrice) < 1e-12);
+  const want = 1.375 * (exitPrice - x.entry.price) - x.entry.feeUsd - x.exit.feeUsd;
+  assert.ok(Math.abs(x.pnlUsd - want) < 1e-9, `${x.pnlUsd} vs ${want}`);
+  assert.ok(!market.followed.has('LTCUSDT'), 'a closed plan is no longer followed');
+  // everything written down, in order
+  const kinds = journal.since(1, 1000).map((r) => r.type === 'note' ? `note:${r.what}` : r.type);
+  for (const k of ['plan', 'note:levels set', 'note:level reached', 'order', 'fill', 'note:opened', 'note:trail armed', 'note:stop moved', 'note:closing', 'note:closed']) assert.ok(kinds.includes(k), `${k} is in the record: ${kinds.join(' ')}`);
+  // A RESTART READS IT ALL BACK
+  const again = new Runner({ journal: new Journal(path.join(dir, 'journal.jsonl')), market: fakeMarket(), venues: { simulated: sim }, now: () => now });
+  assert.strictEqual(again.recover(), 1);
+  const r2 = again.plans.get(plan.planId);
+  assert.deepStrictEqual([r2.state.phase, r2.ledger.pnlUsd], ['closed', x.pnlUsd], 'the same plan, where it ended, with its money');
+  fs.rmSync(dir, { recursive: true, force: true });
+};
+
+// A PLAN WHOSE HOUR BEGAN BEFORE IT ARRIVED: its reference is asked of the
+// exchange; if a level was already reached, it is skipped in words, never
+// entered late as though it were the same trade
+module.exports.aLatePlanIsSkippedWhenALevelWasAlreadyReached = async function () {
+  const { Journal } = require('../engine/journal');
+  const { Runner } = require('../engine/runner');
+  const { SimulatedExchange } = require('../engine/venues/simulated');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-'));
+  const t0 = Date.UTC(2026, 8, 26, 1);
+  let now = t0 + 30 * 60000;
+  const market = fakeMarket();
+  market.opens.set(`LTCUSDT|${t0}`, 70);
+  market.mins = [{ ts: t0 + 5 * 60000, open: 70, high: 72.9, low: 69.9, close: 72 }];
+  const journal = new Journal(path.join(dir, 'journal.jsonl'));
+  const runner = new Runner({ journal, market, venues: { simulated: new SimulatedExchange({ market, feePerLeg: 0.001 }) }, now: () => now });
+  const base = { setupId: 's', mode: 'simulated', symbol: 'LTCUSDT', entryTs: t0, call: -1, cell: { entry: 'breakout', gate: 'active', dMult: 0.75, tHours: 65, trailMult: null, armMult: null }, bandPct: 5, size: { quoteUsd: 100 } };
+  runner.addPlan({ ...base, planId: 'late-1' });
+  runner.tick();
+  await settle(); await settle();
+  const st = runner.plans.get('late-1').state;
+  assert.strictEqual(st.phase, 'skipped');
+  assert.ok(/late: the price reached a level at 01:05 UTC, before the plan reached the engine/.test(st.reason), st.reason);
+  // no level reached yet: the late plan is armed on the hour's opening price
+  market.mins = [{ ts: t0 + 5 * 60000, open: 70, high: 71, low: 69.5, close: 70.5 }];
+  runner.addPlan({ ...base, planId: 'late-2' });
+  runner.tick();
+  await settle(); await settle();
+  assert.deepStrictEqual([runner.plans.get('late-2').state.phase, runner.plans.get('late-2').state.ref], ['armed', 70]);
+  fs.rmSync(dir, { recursive: true, force: true });
+};
+
+// THE WEBSOCKET CLIENT against a server on this machine: the upgrade checked,
+// text messages read whole, a ping answered with a pong
+module.exports.theWebsocketClientReadsMessagesAndAnswersPings = async function () {
+  const net = require('net');
+  const crypto = require('crypto');
+  const { WebSocketClient } = require('../engine/ws');
+  let pong = null;
+  const server = net.createServer((sock) => {
+    let buf = Buffer.alloc(0);
+    let up = false;
+    sock.on('data', (c) => {
+      buf = Buffer.concat([buf, c]);
+      if (!up) {
+        const end = buf.indexOf('\r\n\r\n');
+        if (end < 0) return;
+        const key = /Sec-WebSocket-Key: (.+)\r\n/.exec(buf.slice(0, end).toString())[1];
+        buf = buf.slice(end + 4);
+        up = true;
+        const acc = crypto.createHash('sha1').update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest('base64');
+        sock.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${acc}\r\n\r\n`);
+        const frame = (op, text) => { const p = Buffer.from(text); return Buffer.concat([Buffer.from([0x80 | op, p.length]), p]); };
+        sock.write(frame(1, '{"data":{"e":"trade"}}'));
+        sock.write(frame(9, 'hi'));
+        return;
+      }
+      if (buf.length >= 2 && (buf[0] & 0x0f) === 0xA) {
+        const len = buf[1] & 0x7f; const mask = buf.slice(2, 6);
+        pong = Buffer.from(buf.slice(6, 6 + len).map((x, i) => x ^ mask[i % 4])).toString();
+      }
+    });
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const ws = new WebSocketClient(`ws://127.0.0.1:${server.address().port}/stream?streams=x`);
+  const got = await new Promise((resolve, reject) => { ws.on('message', resolve); ws.on('error', reject); ws.connect(); });
+  await settle(); await settle();
+  assert.strictEqual(got, '{"data":{"e":"trade"}}');
+  assert.strictEqual(pong, 'hi', 'the ping is answered with its own payload');
+  ws.close(); server.close();
+};

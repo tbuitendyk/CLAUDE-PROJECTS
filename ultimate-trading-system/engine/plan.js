@@ -45,6 +45,10 @@ const HOUR_MS = 3600000;
 const ENTRIES = ['breakout', 'market'];
 const GATES = ['active', 'directional'];
 const MODES = ['simulated', 'live'];
+// the phases a plan ends in: nothing happens to it after one of these
+const TERMINAL = ['closed', 'expired', 'skipped', 'failed', 'cancelled'];
+// the phases the engine must keep watching prices for
+const WATCHING = ['waiting', 'armed', 'entering', 'open', 'exiting'];
 
 // A plan the engine can carry out, or the reasons it cannot, in words.
 function planProblems(plan) {
@@ -199,7 +203,14 @@ function follow(state, plan, price, ts) {
 function step(state, plan, ev) {
   const acts = [];
   const t = ev.type;
-  if (['closed', 'expired', 'skipped', 'failed'].includes(state.phase)) return acts;
+  if (TERMINAL.includes(state.phase)) return acts;
+  if (t === 'cancel') {
+    // the owner took the plan back: nothing open is simply ended; an open position is closed at the market
+    if (state.phase === 'waiting' || state.phase === 'armed') { state.phase = 'cancelled'; state.reason = ev.why || 'cancelled'; acts.push(note('cancelled', { reason: state.reason, ts: ev.ts })); }
+    else if (state.phase === 'open') return closeOrder(state, plan, null, ev.why || 'cancelled', null, ev.ts);
+    else if (state.phase === 'entering') state.cancelAfterEntry = ev.why || 'cancelled';
+    return acts;
+  }
   if (t === 'ref') {
     if (state.phase !== 'waiting') return acts;
     if (!(Number.isFinite(ev.price) && ev.price > 0)) return acts;
@@ -251,6 +262,7 @@ function step(state, plan, ev) {
       state.phase = 'open';
       state.inFlight = null;
       acts.push(note('opened', { side: dir === 1 ? 'LONG' : 'SHORT', price: ev.price, qty: ev.qty, stop: state.stop, ts: ev.ts }));
+      if (state.cancelAfterEntry) return acts.concat(closeOrder(state, plan, null, state.cancelAfterEntry, null, ev.ts));
       return acts;
     }
     state.exit = ev.price;
@@ -278,4 +290,4 @@ function labMoney(state, notional, feePerLeg) {
   return state.dir === 1 ? notional * (state.exit / state.entry - 1) - trip : notional * (1 - state.exit / state.entry) - trip;
 }
 
-module.exports = { planProblems, newState, step, sidesOf, labMoney, hourOf, HOUR_MS, ENTRIES, GATES, MODES };
+module.exports = { planProblems, newState, step, sidesOf, labMoney, hourOf, HOUR_MS, ENTRIES, GATES, MODES, TERMINAL, WATCHING };
