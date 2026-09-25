@@ -1701,9 +1701,19 @@ module.exports.everyStage4RecordSetBoxCarriesTheCampaignTickAndTheDelete = funct
   // the Funnel's box sits in the title row, which already carries its own delete
   assert.ok(/<\/select><\/label>\$\{s4CampTickHtml\(\)\}`;/.test(body('function fCutPickBox(')), 'the Funnel\'s box carries the tick');
   assert.ok(/s4CampList\(d\.cuts \|\| \[\], st\.cut\)/.test(body('function fCutPickBox(')), 'and keeps the set open listed');
-  // the delete: its own row, the button alone, the Funnel's words, the one flow
+  // the delete: its own row, Rename before it (3.251.0), the Funnel's words, the one flow
   const del = body('function s4DeleteRowHtml(');
-  assert.ok(/<div class="row"><button class="danger s4Delete"[^>]*>Delete Stage 4 record set…<\/button><\/div>/.test(del), 'a row holding the one button');
+  assert.ok(/<div class="row"><button class="s4Rename"[^>]*>Rename<\/button><button class="danger s4Delete"[^>]*>Delete Stage 4 record set…<\/button><\/div>/.test(del), 'a row holding Rename and then the delete, and nothing else');
+  // RENAME (3.251.0, owner 2026-09-25: "you need to have a Rename button before the Delete Stage 4 record set... on each tab that button occurs")
+  const ren = body('function s4RenameWire(');
+  assert.ok(ren.includes("prompt(`Rename ${name || chosen} to:`, name || '')") && ren.includes('tryPost(`api/stageset/${encodeURIComponent(chosen)}/name`, { name: typed.trim() }'), 'offered with the set\'s own name, sent whole to the rename every record set has');
+  assert.ok(/s4RenameWire\(chosen, name, after\);/.test(body('function s4DeleteWire(')), 'every box that carries the delete carries the Rename');
+  for (const [head, list] of [['async function drawJudge(', 'sets'], ['async function drawHistory(', 'hSets'], ['async function drawTune(', 'tnSets'], ['async function drawGreenlight(', 'glSets']]) {
+    assert.ok(new RegExp(`s4DeleteWire\\([a-zA-Z]+, [^\\n]*\\(${list}\\.find\\(`).test(page.slice(page.indexOf(head), page.indexOf('\nasync function ', page.indexOf(head) + 10))), `${head} hands the Rename the chosen set's own name`);
+  }
+  const title = page.slice(page.indexOf('function fTitle('), page.indexOf('function fTitle(') + 4000);
+  assert.ok(title.indexOf('class="s4Rename"') > 0 && title.indexOf('class="s4Rename"') < title.indexOf('id="fCutDelete"'), 'the Funnel\'s Rename sits before its delete');
+  assert.ok(/s4RenameWire\(st\.cut, /.test(page.slice(page.indexOf('function fWireCut('), page.indexOf('function fWireCut(') + 1500)), 'and is wired with the set the Funnel has chosen');
   assert.ok(/>Delete Stage 4 record set…<\/button>/.test(page.slice(page.indexOf('id="fCutDelete"'), page.indexOf('id="fCutDelete"') + 600)), 'the same words as the Funnel\'s');
   assert.ok(/deleteSetFlow\(chosen\)/.test(body('function s4DeleteWire(')), 'the one delete flow');
   // every tab reads the campaign, narrows through the helper, and wires both

@@ -2475,12 +2475,30 @@ function s4CampWire(redraw) {
     el.onchange = () => { try { localStorage.setItem(S4_CAMP_KEY, el.checked ? '1' : '0'); } catch (_) { /* private window */ } redraw(); };
   });
 }
-// the press, in a row of its own under the box (RULE FOUR-A), the same words as the Funnel's
+// the presses, in a row of their own under the box (RULE FOUR-A): Rename first,
+// then the delete in the Funnel's words (3.251.0, owner 2026-09-25: "you need to
+// have a Rename button before the Delete Stage 4 record set... on each tab that
+// button occurs so the selected record set can be renamed")
 function s4DeleteRowHtml(chosen) {
-  return `<div class="row"><button class="danger s4Delete" ${chosen ? '' : 'disabled'} title="permanently deletes the Stage 4 record set chosen in the box above. A rule takes the held and reserve sets read from it along; every read of the held-back or reserve window that goes is written onto a set of the same family and still counts as a look. Refused while the set is being worked on, or while a greenlight written from it stands. Nothing is deleted until the set's id is typed back.">Delete Stage 4 record set…</button></div>`;
+  return `<div class="row"><button class="s4Rename" ${chosen ? '' : 'disabled'} title="renames the Stage 4 record set chosen in the box above to the name you type, whole, nothing cut or added. The sets that name it -- the held and reserve sets read from it and the sets saved from it -- carry the new name.">Rename</button><button class="danger s4Delete" ${chosen ? '' : 'disabled'} title="permanently deletes the Stage 4 record set chosen in the box above. A rule takes the held and reserve sets read from it along; every read of the held-back or reserve window that goes is written onto a set of the same family and still counts as a look. Refused while the set is being worked on, or while a greenlight written from it stands. Nothing is deleted until the set's id is typed back.">Delete Stage 4 record set…</button></div>`;
 }
-function s4DeleteWire(chosen, after) {
+// the name typed is the name: offered with the set's own, sent whole
+function s4RenameWire(chosen, name, after) {
   if (!chosen) return;
+  document.querySelectorAll('.s4Rename').forEach((b) => {
+    b.onclick = async () => {
+      const typed = prompt(`Rename ${name || chosen} to:`, name || '');
+      if (typed === null || !typed.trim() || typed.trim() === name) return;
+      b.disabled = true;
+      const out = await tryPost(`api/stageset/${encodeURIComponent(chosen)}/name`, { name: typed.trim() }, 'The Stage 4 record set box lists the sets on this box.');
+      b.disabled = false;
+      if (out) after(out);
+    };
+  });
+}
+function s4DeleteWire(chosen, after, name = '') {
+  if (!chosen) return;
+  s4RenameWire(chosen, name, after);
   document.querySelectorAll('.s4Delete').forEach((b) => {
     b.onclick = async () => {
       b.disabled = true;
@@ -2900,7 +2918,7 @@ async function drawJudge(stretch) {
     drawJudge(stretch);
   };
   s4CampWire(() => drawJudge(stretch));
-  s4DeleteWire(chosen, () => drawJudge(stretch));
+  s4DeleteWire(chosen, () => drawJudge(stretch), (sets.find((x) => x.id === chosen) || {}).name);
   const btn = $('#vRead');
   if (btn && chosen && d && !d.refused) btn.onclick = async () => {
     // a press that PRICES is said before it starts: the reserve window is the one look at data nothing has seen
@@ -3223,7 +3241,7 @@ async function drawHistory() {
     drawHistory();
   };
   s4CampWire(drawHistory);
-  s4DeleteWire(hChosen, drawHistory);
+  s4DeleteWire(hChosen, drawHistory, (hSets.find((x) => x.id === hChosen) || {}).name);
   // the half-life run: the ticks are remembered, the press sends them, started and polled
   for (const m of H_HALF_LIVES) {
     const box = $(`#hHl${m}`);
@@ -3983,7 +4001,7 @@ function renderStopResult(s) {
     drawTune();
   };
   s4CampWire(drawTune);
-  s4DeleteWire(tnChosen, drawTune);
+  s4DeleteWire(tnChosen, drawTune, (tnSets.find((x) => x.id === tnChosen) || {}).name);
   const tnb = $('#tnCapture');
   // the completion typed above the press: its line follows the box, and nothing else is drawn again (3.237.0)
   const tnFillBox = $('#tnFill');
@@ -4327,7 +4345,7 @@ async function drawGreenlight() {
     drawGreenlight();
   };
   s4CampWire(drawGreenlight);
-  s4DeleteWire(glChosen, drawGreenlight);
+  s4DeleteWire(glChosen, drawGreenlight, (glSets.find((x) => x.id === glChosen) || {}).name);
   // the drill-down: the survivor the pick names, its own lines under the picture;
   // the table of every survivor picks it too, and sorts (3.247.0)
   const pk = $('#gl4Pick');
@@ -9405,6 +9423,7 @@ function fTitle(d, st, name, away, open) {
   return `<div class="row" style="align-items:flex-end">
       ${fUnitPicker(d)}
       ${fCutPickBox(d, st)}
+      <button class="s4Rename" ${chosen ? '' : 'disabled'} title="renames the Stage 4 record set chosen beside this to the name you type, whole, nothing cut or added.">Rename</button>
       <button id="fCutDelete" class="danger" ${chosen ? '' : 'disabled'}
         title="permanently deletes the Stage 4 record set chosen beside this, and nothing else. Its parent stage 3 set, and the stage 2 and stage 1 sets above that, cannot be deleted while a set cut from them is still here — so this is what clears the way.">Delete Stage 4 record set…</button>
       ${away == null ? '' : putAwayBtn('ffold', 1, !away, chosen
@@ -9886,6 +9905,8 @@ function fWireCut(d, st, cd) {
   // WIRED BEFORE THE EARLY RETURN, with the two pickers. A set that will not
   // OPEN is exactly the one most likely to want deleting, and a control drawn
   // above a panel that never rendered has to be wired above it too.
+  // the Rename beside it (3.251.0): the press every Stage 4 record set box carries
+  if (st.cut && st.cut !== F_NEW) s4RenameWire(st.cut, ((d.cuts || []).find((c) => c.id === st.cut) || {}).name, () => drawFunnel());
   const dl = $('#fCutDelete');
   if (dl && st.cut && st.cut !== F_NEW) {
     dl.onclick = async () => {

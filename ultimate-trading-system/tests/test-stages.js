@@ -578,6 +578,10 @@ module.exports = {
       assert.throws(() => stages.setSetName(ids[0], 's1 #TAKEN'), /already exists/, 'a name another set has, in any case, is refused');
       assert.throws(() => stages.setSetName(ids[0], '   '), /needs a name/, 'an empty box is refused');
       assert.strictEqual(stages.setSetName(ids[0], 'Second pass').name, 'Second pass', 'a set may keep its own name');
+      // THE NAME TYPED IS THE NAME, WHOLE (3.251.0): nothing cut at 80 characters
+      const long = `Second pass ${'x'.repeat(100)} the end`;
+      assert.strictEqual(stages.setSetName(ids[0], long).name, long, 'a long name is kept to its last character');
+      stages.setSetName(ids[0], 'Second pass');
       assert.throws(() => stages.setSetName('no-such-set', 'x'), /unknown record set/);
       mk(ids[3], { stage: 1, name: 'S1 #taken', status: 'running' });
       assert.throws(() => stages.setSetName(ids[3], 'anything'), /still being written/, 'a set being written keeps its name until it lands');

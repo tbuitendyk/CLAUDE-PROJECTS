@@ -5769,7 +5769,10 @@ function stage4WorkOn(ids) {
 function setSetName(id, raw) {
   const doc = getSet(String(id || ''));
   if (!doc) throw new Error('unknown record set');
-  const name = String(raw ?? '').trim().slice(0, 80);
+  // THE NAME TYPED IS THE NAME, WHOLE (3.251.0): the owner's order for names
+  // (3.234.4: "just let the user name things please!") -- this cut every rename
+  // at 80 characters without a word, and the owner's Stage 4 names run to that
+  const name = String(raw ?? '').trim();
   if (!name) throw new Error('a record set needs a name — the box is empty');
   if (doc.status === 'running') throw new Error('the record set is still being written — rename it after it finishes');
   if (tallyRun && !tallyRun.error && tallyRun.id === doc.id) {
@@ -5792,6 +5795,21 @@ function setSetName(id, raw) {
     child.parent.name = name;
     saveSet(child);
     childrenRenamed.push(child.id);
+  }
+  // AND EVERY STAGE 4 SET THAT NAMES THIS ONE (3.251.0, RULE NINE): the held and
+  // reserve sets read from a rule, the sets saved from it, the half-life sets
+  // built from it, and the reserve sets that stand on a held set. A set's own
+  // name is its own and does not change.
+  if (doc.stage === 4) {
+    for (const row of listFunnelSets()) {
+      if (row.id === doc.id) continue;
+      const x = getSet(row.id);
+      if (!x) continue;
+      let named = false;
+      for (const k of ['from', 'copiedFrom', 'standsOn']) if (x[k] && x[k].id === doc.id) { x[k].name = name; named = true; }
+      if (x.derived && x.derived.from === doc.id) { x.derived.fromName = name; named = true; }
+      if (named) { saveSet(x); childrenRenamed.push(x.id); }
+    }
   }
   return { id: doc.id, name, was, nameEditedAt: doc.nameEditedAt, childrenRenamed };
 }
