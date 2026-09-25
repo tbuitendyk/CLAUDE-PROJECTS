@@ -2683,7 +2683,19 @@ const GUARDS = [
   [path.join(ROOT, "lib", "live", "enginelink.js"), "cancelled: 'PLAN_CANCELLED', 'trail check': 'TRAIL_CHECK' };", "cancelled: 'PLAN_CANCELLED' };",
     "verboseWritesDownEveryHourlyCheckOfTheTrailAndOnlyWhenTicked", "the checks the engine wrote never reach LIVE"],
   [path.join(ROOT, "public", "trade.html"), "    const body={clipUsd,stopPct,verbose:$('#verboseIn').checked};", "    const body={clipUsd,stopPct};",
-    "theConfigEditorOffersMembersTrainAndVerbose", "the Verbose tick is never saved"],
+    "theConfigEditorOffersMembersTrainAndVerbose", "the Verbose tick is never saved"],  // THE PIPELINE IN THIS CONFIG'S TERMS, ONE BADGE, A BUTTON'S OWN ROW (3.262.1)
+  [path.join(ROOT, "lib", "live", "anatomy.js"), "  if (c.entry === 'breakout') {\n    return [", "  if (false) {\n    return [",
+    "thePipelineSaysHowThisConfigOpensAndCloses", "a breakout config is described as a market entry again"],
+  [path.join(ROOT, "lib", "live", "anatomy.js"), "      ...entryExitWords(cfg, opts, entryH, bandPct),", "",
+    "thePipelineSaysHowThisConfigOpensAndCloses", "the pipeline says nothing of how a position opens and closes"],
+  [path.join(ROOT, "lib", "live", "anatomy.js"), "    ? 'Whichever a printed trade reaches first opens the position, whichever way the committee called: LONG at the buying level, SHORT at the selling level.'", "    ? 'Only the level on the side of the call can open it: the buying level for a LONG call, the selling level for a SHORT one.'",
+    "thePipelineSaysHowThisConfigOpensAndCloses", "an active gate is described as a directional one"],
+  [path.join(ROOT, "lib", "live", "routes.js"), "words: ch.statusLine([{ channel: c, state: s.state, open }]), ", "",
+    "aBookShowsOneStateBadgeAndSaveRoutingHasItsOwnRow", "each book's badge falls back to the raw state word"],
+  [path.join(ROOT, "public", "trade.html"), "      <b style=\"font-size:1rem\">${esc(s.name)}</b>\n", "      <b style=\"font-size:1rem\">${esc(s.name)}</b> ${branch==='paper'?paperBadge:''}\n",
+    "aBookShowsOneStateBadgeAndSaveRoutingHasItsOwnRow", "Setup detail shows two paper badges again"],
+  [path.join(ROOT, "public", "trade.html"), "      <div class=\"row\" style=\"margin-top:.5rem\"><button id=\"saveRouting\">Save routing</button></div>", "      <div class=\"row\" style=\"margin-top:.5rem\"></div><button id=\"saveRouting\">Save routing</button>",
+    "aBookShowsOneStateBadgeAndSaveRoutingHasItsOwnRow", "Save routing loses its row of its own"],
 ];
 
 const only = process.argv[2] || '';

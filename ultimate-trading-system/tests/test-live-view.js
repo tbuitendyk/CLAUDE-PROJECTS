@@ -337,3 +337,37 @@ module.exports.theConfigEditorOffersMembersTrainAndVerbose = function () {
   assert.ok(/body\.trainPolicy=\{mode:'frozen',throughMs:Date\.parse\(day\+'T00:00:00Z'\)\}/.test(detail), 'frozen at is saved at 00:00 UTC of its date');
   assert.ok(/id="verboseIn"/.test(detail) && /verbose:\$\('#verboseIn'\)\.checked/.test(detail), 'Verbose is a tick saved with the clip');
 };
+
+// THE PIPELINE'S ENTRY AND EXIT IN THIS CONFIG'S OWN TERMS (3.262.1): a
+// breakout is two levels and a stop on the far side, a market entry is an
+// order at the hour's open -- never "a market order at the hourly OPEN" and
+// "a pure time exit" for everything
+module.exports.thePipelineSaysHowThisConfigOpensAndCloses = function () {
+  const an = require('../lib/live/anatomy');
+  const [e1, x1] = an.entryExitWords({ cell: { entry: 'breakout', gate: 'active', dMult: 0.75, tHours: 65, trailMult: 1.5, armMult: 0.5 } }, {}, 97, 5);
+  assert.ok(/^5\. ENTRY — breakout, gate active: at 01:00 UTC, 97h after the window starts, a buying level and a selling level are set 3\.75% either side/.test(e1), e1);
+  assert.ok(/Whichever a printed trade reaches first opens the position/.test(e1) && /If none is reached within 65h, nothing opens/.test(e1));
+  assert.ok(/^6\. EXIT — the stop is the level on the other side\. Once the best price since the entry has gone 2\.5% its way \(arm 0\.5 × the 5% band\), the stop follows 7\.5% \(trail 1\.5 × band\)/.test(x1), x1);
+  const [e2] = an.entryExitWords({ cell: { entry: 'breakout', gate: 'directional', dMult: 0.75, tHours: 65, trailMult: null } }, {}, 97, 5);
+  assert.ok(/Only the level on the side of the call can open it/.test(e2));
+  const [e3, x3] = an.entryExitWords({ cell: { entry: 'market', gate: 'directional', tHours: 137, trailMult: null } }, { stopPct: 0.11 }, 97, 1.69);
+  assert.ok(/^5\. ENTRY — market: a market order in the called direction at the opening price of 01:00 UTC/.test(e3));
+  assert.ok(/^6\. EXIT — a stop 11% against the price it opened at \(Stop %\), reached when a printed trade goes past it\. Whatever is still open 137h after 01:00 UTC/.test(x3), x3);
+  for (const w of [e1, x1, e2, e3, x3]) assert.ok(!/\bcell\b/.test(w) && !/pure time exit/.test(w), `no forbidden word, no old claim: ${w}`);
+  const steps = an.describeAnatomy(require('./fixtures-setup').aSetupConfig(), { stopPct: 0.11 }).pipeline;
+  assert.ok(steps.some((s) => /^5\. ENTRY — market:/.test(s)) && steps.some((s) => /^6\. EXIT — a stop 11%/.test(s)), 'the pipeline carries them');
+};
+
+// ONE BADGE FOR WHERE A BOOK STANDS, AND A BUTTON IN A ROW OF ITS OWN (3.262.1)
+module.exports.aBookShowsOneStateBadgeAndSaveRoutingHasItsOwnRow = function () {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'trade.html'), 'utf8');
+  const detail = src.slice(src.indexOf('async function drawDetail('), src.indexOf('async function drawLive('));
+  const at = detail.indexOf('<b style="font-size:1rem">${esc(s.name)}</b>');
+  const head = detail.slice(at, detail.indexOf('<div class="spacer">', at));
+  assert.ok(!/paperBadge/.test(head) && /bookWords\(ch,s\)/.test(head), 'Setup detail: one badge, in the status words');
+  const setups = src.slice(src.indexOf('async function drawSetups('), src.indexOf('async function drawDash('));
+  assert.ok(!/paperBadge/.test(setups) && /bookWords\(chanOf\(meta\[s\.id\]\),s\)/.test(setups), 'Setups: one badge, in the status words');
+  assert.ok(/<div class="row" style="margin-top:\.5rem"><button id="saveRouting">Save routing<\/button><\/div>/.test(detail), 'Save routing has a row of its own');
+  const routes = fs.readFileSync(path.join(__dirname, '..', 'lib', 'live', 'routes.js'), 'utf8');
+  assert.ok(/words: ch\.statusLine\(\[\{ channel: c, state: s\.state, open \}\]\)/.test(routes), 'each book\'s words come from the one status vocabulary');
+};
