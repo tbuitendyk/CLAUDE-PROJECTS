@@ -865,6 +865,8 @@ module.exports = {
       assert.strictEqual(dry.readings.ride.length, 1);
       assert.strictEqual(dry.looks.rides, 1, 'the ride is a look');
       assert.ok(dry.looks.what.some((w) => /held-back ride was worked out 1 time\(s\)/.test(w)), dry.looks.what.join(' | '));
+      // a set nothing was saved from counts its own ride once, never again as another set's (3.251.4)
+      assert.ok(!dry.looks.what.some((w) => /sets saved from the same original/.test(w)), dry.looks.what.join(' | '));
       await pressed(doc.id);
       const b = blockOf(doc.id);
       assert.strictEqual(b.looks.rides, 1, 'and the block stamped after it counts it');
@@ -1370,6 +1372,9 @@ module.exports.thePictureIsReadOffTheSetsAndPricesNothing = async function () {
     const ui = src('public/construct.js');
     assert.ok(/^function glPictureHtml\(/m.test(ui) && /^function glOneHtml\(/m.test(ui), 'top-level helpers');
     assert.ok(ui.includes('${glPictureHtml(d)}'), 'drawn under the chosen set');
+    // what the live executor does not do yet is said above the pick, for the survivor picked (3.252.0)
+    assert.ok(ui.includes('<p class="note" id="gl4NotYet"${glNotYetOf(d, \'depth\').length ? \'\' : \' hidden\'}>'), 'said above the pick');
+    assert.ok(ui.includes('if (ny) { const list = glNotYetOf(gl4, picked); ny.innerHTML = glNotYetHtml(list); ny.hidden = !list.length; }'), 'and said again for the survivor picked');
     for (const w of ['<span>train</span>', '<span>test</span>', '<span>held</span>', '<span>reserve</span>', '<span>The picture through every period</span>']) assert.ok(ui.includes(w), `${w} is on the page`);
     // the pick draws the one survivor, and marks it in the table of every survivor (3.247.0)
     assert.ok(/pk\.addEventListener\('change', \(\) => \{ picked = pk\.value; drawRows\(\); drawOne\(\); \}\)/.test(ui), 'the pick draws the one survivor');

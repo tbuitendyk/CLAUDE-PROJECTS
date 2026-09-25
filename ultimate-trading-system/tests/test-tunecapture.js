@@ -903,6 +903,37 @@ module.exports = {
       try { fset.deleteField(field.id, field.id); } catch (_) { /* never written */ }
     }
   },
+  // THE GREENLIGHT READS THE GATE THE SURVIVOR WAS PRICED UNDER (3.252.1,
+  // owner 2026-09-25, on Greenlight: 'refused: constructed config failed the
+  // shared vocabulary: field.gate: "undefined" is not a way to read the field'
+  // -- then "fix it GO NOW!"). A unit row keeps the gate's money under `field`;
+  // the source rebuilds the gate off the row's own six dials and the run's
+  // silent multiple, and it is the stage 3 record's own gate, field by field.
+  async theGreenlightReadsTheGateTheSurvivorWasPricedUnder() {
+    const fset = require('../lib/fieldset');
+    const fg = require('../lib/fieldgate');
+    const field = fabricatedField();
+    let c = null;
+    try {
+      c = await chain('tune greenlight gate test', { fieldId: field.id, fieldRead: 'agreement', fieldAgreeMin: '30', fieldRungs: '50:1,100:2', fieldSilent: '0.5' });
+      await gated(c);
+      const held = stages.judgeSetsOf(c.cut.id, 'held')[0];
+      // held alone stands on a layout that keeps no reserve
+      const s3file = path.join(SETS_DIR, `${c.s3}.json`);
+      const s3 = JSON.parse(fs.readFileSync(s3file, 'utf8'));
+      s3.params.windowLayout = 'split70';
+      fs.writeFileSync(s3file, JSON.stringify(s3));
+      const src = await stages.stage4GreenlightSource(held.id, { pick: 'depth' });
+      const rec = rowstore.readAll(c.s3, 'records').find((r) => r.trade === G.PLANT && r.label === src.survivor.label);
+      assert.ok(rec && rec.field && rec.field.read, 'the stage 3 record keeps the gate the setting was priced under');
+      assert.ok(src.survivor.field && src.survivor.field.read == null, 'the row keeps the gate\'s money, not the gate');
+      assert.deepStrictEqual(src.survivor.fieldGate, fg.gateRecord(rec.field), 'the gate handed to the greenlight is the record\'s own');
+      assert.strictEqual(src.survivor.fieldGate.silent, 0.5, 'with the run\'s silent multiple');
+    } finally {
+      if (c) c.cleanup();
+      try { fset.deleteField(field.id, field.id); } catch (_) { /* never written */ }
+    }
+  },
   // THE FIELD COMPLETION BOX (3.237.0, owner 2026-09-23: "THE TRAIN AREA OF THE
   // HISTORY HAS NO *COMPLETELY INFORMED BY HISTORY* FIELD UNTIL THE NUMBER OF
   // DAYS HAVE BEEN SCANNED THAT CORRESPOND TO ITS SIZE", and "a compromise that
@@ -1292,8 +1323,9 @@ module.exports = {
       // what was done with the original: its held-back row shown on the Funnel, and a ride worked out on Held (3.251.4)
       stages.recordHeldBackLook(c.cut.id, ['rows']);
       const withRide = stages.getSet(c.cut.id);
-      withRide.readings = { held: { others: [], dropped: [], ride: [{ id: `${c.cut.id}-held-r1`, at: new Date().toISOString(), look: 1 }] } };
+      withRide.readings = { held: { others: [], dropped: [], ride: [{ id: `${c.cut.id}-held-r1`, at: new Date().toISOString(), look: 1 }] }, reserve: { others: [], dropped: [], ride: [{ id: `${c.cut.id}-reserve-r1`, at: new Date().toISOString(), look: 1 }] } };
       withRide.heldBackReadAt = withRide.heldBackReadAt || new Date().toISOString();
+      withRide.reserveReadAt = withRide.reserveReadAt || new Date().toISOString();
       fs.writeFileSync(file, JSON.stringify(withRide));
       const before = fs.readFileSync(file, 'utf8');
       const src0 = stages.getSet(c.cut.id);
@@ -1344,6 +1376,10 @@ module.exports = {
       assert.ok(vdry.looks.what.includes('the held-back ride was worked out 1 time(s) on Held on the sets saved from the same original, each a stamped look'), `the original's ride still counts as a look: ${vdry.looks.what.join(' | ')}`);
       assert.ok(vdry.looks.what.includes('the sets saved from the same original showed their held-back row on the Funnel 1 time(s), each a counted look'), `and the original's held-back row on the Funnel: ${vdry.looks.what.join(' | ')}`);
       assert.ok(vdry.looks.what.includes('the Stage 4 record set has not shown its held-back row on the Funnel since it went behind a tick'), 'the copy itself has not');
+      // and on Reserve the same: no ride of its own, the original's counted as a look at the reserve window
+      const rdry = await stages.judgeDry(neither.out.id, 'reserve');
+      assert.deepStrictEqual([rdry.readings.ride.length, rdry.looks.rides, rdry.readAt], [0, 0, null], 'no reserve ride and no first reserve read of its own');
+      assert.ok(rdry.looks.what.includes('the reserve ride was worked out 1 time(s) on Reserve on the sets saved from the same original, each a stamped look'), rdry.looks.what.join(' | '));
       stages.judgeStart(neither.out.id, 'held', { barPct: 100 });
       await settle(() => stages.judgeStatus(neither.out.id, 'held'), 'the held read of the copy');
       const hs = stages.judgeSetsOf(neither.out.id, 'held')[0];
