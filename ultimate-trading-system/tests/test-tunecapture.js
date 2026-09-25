@@ -1480,13 +1480,13 @@ module.exports = {
     const ui = src('public/construct.js');
     const fn = ui.slice(ui.indexOf('function tnCopyPanelHtml('), ui.indexOf('function tnSizingChoiceHtml('));
     assert.ok(fn.length > 0, 'a top-level helper draws it');
-    assert.ok(ui.indexOf("${isSet ? tnCopyPanelHtml(chosen, busy, copySizingWords) : ''}") > ui.indexOf('Conviction sizing — bet more when more members agree?'), 'after the conviction sizing panel');
+    assert.ok(ui.indexOf("${isSet ? tnCopyPanelHtml(chosen, busy, copySizingWords, copyNameInBox) : ''}") > ui.indexOf('Conviction sizing — bet more when more members agree?'), 'after the conviction sizing panel');
     const rows = [...fn.matchAll(/<div class="row"([^>]*)>([\s\S]*?)<\/div>/g)].map((m) => ({ attrs: m[1], body: m[2] }));
     const tickRow = rows.find((r) => r.body.includes('id="tnCopyName"'));
     assert.ok(tickRow && /align-items:flex-end/.test(tickRow.attrs), 'the name and the ticks bottom-align');
     assert.ok(tickRow.body.includes('id="tnCopyStops"') && tickRow.body.includes('id="tnCopySizing"') && !tickRow.body.includes('<button'), 'the two ticks beside the name, and no button with them');
     assert.ok(/<label class="c"[^>]*><input type="checkbox" id="tnCopyStops" checked>/.test(fn) && /<label class="c"[^>]*><input type="checkbox" id="tnCopySizing" checked>/.test(fn), 'the house tick, ticked to start: the set as it stands');
-    assert.ok(/value="\$\{esc\(cand\.name\)\}"/.test(tickRow.body) && !/maxlength/.test(tickRow.body), 'filled with the name of the set, and nothing cut');
+    assert.ok(/value="\$\{esc\(nameInBox == null \? cand\.name : nameInBox\)\}"/.test(tickRow.body) && !/maxlength/.test(tickRow.body), 'filled with the name in the box, or the set\'s own, and nothing cut');
     const btnRow = rows.find((r) => r.body.includes('id="tnCopy"'));
     assert.ok(btnRow && !btnRow.body.includes('<input'), 'the press in a row of its own');
     const help = src('public/help-content.js');
@@ -1527,5 +1527,34 @@ module.exports = {
     // the copy is the set Held opens next
     assert.ok(tune.includes('try { localStorage.setItem(JUDGE_SET_KEY.held, s.id); } catch (_) { /* private window */ }'), 'the copy is the set chosen on Held');
     assert.ok(tune.includes('It is in the scan target box, and it is the set chosen on Held.'), 'and the line under the press says so, and no longer claims Reserve and Greenlight');
+  },
+
+  // WHAT A BOX HOLDS OUTLIVES A REDRAW, AND TAKING THE SIZING OFF LEAVES EVERY
+  // ROW AT 1 (3.250.1, owner 2026-09-25: "if a reason is given for the sizing
+  // then keep it in the box until either (a) a new conviction sizing is applied
+  // or (b) take the sizing off is used or (c) a different record set is
+  // displayed", "use of the take the sizing off button should set all units to
+  // 1", and "if save under a new name is used then leave that name in the box").
+  theReasonAndTheNameStayInTheirBoxesAndTakingTheSizingOffLeavesEveryRowAtOne() {
+    const ui = src('public/construct.js');
+    const at = ui.indexOf('async function drawTune(');
+    const tune = ui.slice(at, ui.indexOf('\nasync function ', at + 10));
+    assert.ok(/^let tnSizingWhyTyped = null;/m.test(ui) && /^let tnCopyNameTyped = null;/m.test(ui), 'held outside the draw, so a redraw cannot forget them');
+    // the reason: typed stays; with nothing typed, the reason on record for what is chosen, all survivors included
+    assert.ok(tune.includes('value="${esc(sizingWhyInBox)}"'), 'the reason box shows what is kept');
+    assert.ok(tune.includes('const sizingWhyInBox = tnSizingWhyTyped ? tnSizingWhyTyped.text : whyOnRecord;'), 'what was typed, else the reason on record');
+    assert.ok(/const whyOnRecord = rowsSized\.map\(sizingOf\)/.test(tune), 'the reason on record is read off every survivor chosen, so all survivors shows it too');
+    assert.ok(tune.includes('swBox.oninput = () => { tnSizingWhyTyped = { set: chosen.id, text: swBox.value }; };'), 'typing keeps it');
+    // (a) and (b): a press records it or takes the sizing off, and the kept text goes; (c) another set clears it
+    const press = tune.slice(tune.indexOf('const sizing = async (on) => {'), tune.indexOf("const szOn = $('#sizingApply');"));
+    assert.ok(press.indexOf('tnSizingWhyTyped = null;') > press.indexOf('if (!out) return;'), 'cleared only once the press is recorded');
+    assert.ok(tune.includes('if (tnSizingWhyTyped && (!isSet || tnSizingWhyTyped.set !== chosen.id)) tnSizingWhyTyped = null;'), 'another set clears it');
+    // taking the sizing off leaves every row at 1
+    assert.ok(press.includes("if (!on && pricedLadder) tnTypedLadder = { key: aimKey, raw: pricedLadder.map(() => '1') };"), 'the multiplier boxes read 1 on every row after the sizing is taken off');
+    assert.ok(tune.includes("'none — ×1 on every row, each trade at its own size alone'"), 'and the line under the presses says so');
+    // the name: saved or typed, it stays; another set clears it
+    assert.ok(tune.includes("const copyNameInBox = tnCopyNameTyped ? tnCopyNameTyped.name : (isSet ? chosen.name : '');") && tune.includes('tnCopyPanelHtml(chosen, busy, copySizingWords, copyNameInBox)'), 'the name box shows what is kept');
+    assert.ok(tune.includes('cnBox.oninput = () => { tnCopyNameTyped = { set: chosen.id, name: cnBox.value }; };') && tune.includes('tnCopyNameTyped = { set: chosen.id, name };'), 'typed or saved, it is kept');
+    assert.ok(tune.includes('if (tnCopyNameTyped && (!isSet || tnCopyNameTyped.set !== chosen.id)) tnCopyNameTyped = null;'), 'another set clears it');
   },
 };

@@ -3293,6 +3293,8 @@ const TN_WINDOWS = [['train', 'tnWinTrain', 'training'], ['test', 'tnWinTest', '
 // set under scan target and forgets it. A capture that failed moves nothing.
 const TN_CAPTURED_KEY = 'cx-tune-captured';
 let tnTypedLadder = null;          // multipliers typed on Tune and not yet priced: { key: set|survivor|windows, raw } (3.249.0)
+let tnSizingWhyTyped = null;       // the reason typed for the sizing and not yet recorded: { set, text } (3.250.1)
+let tnCopyNameTyped = null;        // the name in the save box, typed or saved: { set, name } (3.250.1)
 // REBUILT ON FIRST OPEN (3.235.0, owner 2026-09-23: "rebuilding on first
 // open"): what this visit to the page has already started again, so a set is
 // rebuilt once when opened and a refusal is never pressed over and over
@@ -3588,6 +3590,21 @@ async function drawTune() {
     : allSized.length
       ? `the sizing on record, ${allSame ? `${ladderWords(sizingOf(allSized[0]).ladder)}, on ${allSized.length} of ${allRows.length} survivors` : `on ${allSized.length} of ${allRows.length} survivors, not all at the same numbers`} — no conviction table is priced on what is chosen`
       : 'nothing: no survivor carries a sizing on record and no conviction table is priced on what is chosen';
+  // WHAT A BOX HOLDS OUTLIVES A REDRAW (3.250.1, owner 2026-09-25: "if a reason is
+  // given for the sizing then keep it in the box until either (a) a new
+  // conviction sizing is applied or (b) take the sizing off is used or (c) a
+  // different record set is displayed -- that text should remain in the box when
+  // the setting is active, nuking it is dumb", and "if save under a new name is
+  // used then leave that name in the box"). What was typed stays for this set
+  // until a press records it or takes the sizing off; with nothing typed the
+  // reason box shows the reason on record for what is chosen -- on all survivors
+  // too, where it used to be blank. A different set clears both.
+  if (tnSizingWhyTyped && (!isSet || tnSizingWhyTyped.set !== chosen.id)) tnSizingWhyTyped = null;
+  if (tnCopyNameTyped && (!isSet || tnCopyNameTyped.set !== chosen.id)) tnCopyNameTyped = null;
+  const whyOnRecord = rowsSized.map(sizingOf).filter(Boolean)
+    .sort((a, b) => String(b.at || '').localeCompare(String(a.at || ''))).map((z) => z.why || '')[0] || '';
+  const sizingWhyInBox = tnSizingWhyTyped ? tnSizingWhyTyped.text : whyOnRecord;
+  const copyNameInBox = tnCopyNameTyped ? tnCopyNameTyped.name : (isSet ? chosen.name : '');
   $('#view').innerHTML = `
   ${busy ? `<div class="panel warn">A heavy scan is running (${esc(String(busy))}) — one at a time; both launchers are disabled until it lands (scans run minutes and cannot be aborted mid-flight).</div>` : ''}
   ${tnCapturePanelHtml(tnSets, tnChosen, tnd)}
@@ -3643,19 +3660,19 @@ async function drawTune() {
          the stop's are: the reason box, its two buttons in a row of their own,
          what is on record under them, then the scan. -->
     <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
-      <label class="f" title="why you applied the conviction sizing to the survivor picked under Tuning targets, or to every survivor when all survivors are chosen, or took it off. Saved with the choice on each of them.">your reason for the sizing<input id="sizingWhy" type="text" maxlength="300" placeholder="why size by conviction, or why not" value="${esc(onRecord && onRecord.sizing ? onRecord.sizing.why || '' : '')}" style="width:48rem"></label>
+      <label class="f" title="why you applied the conviction sizing to the survivor picked under Tuning targets, or to every survivor when all survivors are chosen, or took it off. Saved with the choice on each of them.">your reason for the sizing<input id="sizingWhy" type="text" maxlength="300" placeholder="why size by conviction, or why not" value="${esc(sizingWhyInBox)}" style="width:48rem"></label>
     </div>
     <div class="row">
       <button id="sizingApply" ${sizeHeld || !pricedLadder ? `disabled title="${esc(sizeHeldWhy || noTableWhy)}"` : 'title="records on the survivor picked under Tuning targets -- or on every captured survivor when all survivors are chosen -- that its trades are sized by conviction: each trade at its own size times the multiplier of its row in the table below, the numbers the table was last priced at. A held set or a reserve set read after this freezes the choice, and a greenlight carries it. Nothing is applied to any trading machine."'}>Apply the conviction sizing</button>
       <button id="sizingOff" ${sizeHeld || !sizedOnRecord.length ? `disabled title="${esc(sizeHeldWhy || 'no sizing is on record for what is chosen under Tuning targets')}"` : 'title="records that the survivor picked under Tuning targets -- or every captured survivor when all survivors are chosen -- is NOT sized by conviction: each trade at its own size alone"'}>Take the sizing off</button>
     </div>
     ${isSet && !sizeHeld && !pricedLadder ? `<div class="note" style="margin-bottom:.4rem">${esc(noTableWhy)}.</div>` : ''}
-    ${stopLabel ? `<div class="note" style="margin-bottom:.4rem">sizing on record for <b>${esc(stopLabel)}</b>: ${onRecord && onRecord.sizing ? `<b>by conviction</b> at the $${Number(onRecord.sizing.clipUsd) || 0} clip, ${esc(ladderWords(onRecord.sizing.ladder))}${onRecord.sizing.why ? ` — ${esc(onRecord.sizing.why)}` : ''} (${esc(String(onRecord.sizing.at || '').slice(0, 10))})` : 'none — each trade at its own size alone'}</div>`
+    ${stopLabel ? `<div class="note" style="margin-bottom:.4rem">sizing on record for <b>${esc(stopLabel)}</b>: ${onRecord && onRecord.sizing ? `<b>by conviction</b> at the $${Number(onRecord.sizing.clipUsd) || 0} clip, ${esc(ladderWords(onRecord.sizing.ladder))}${onRecord.sizing.why ? ` — ${esc(onRecord.sizing.why)}` : ''} (${esc(String(onRecord.sizing.at || '').slice(0, 10))})` : 'none — ×1 on every row, each trade at its own size alone'}</div>`
     : (isSet && tnPickVal === 'all' ? `<div class="note" style="margin-bottom:.4rem">sizing on record: <b>${sizedOnRecord.length} of ${rowsSized.length}</b> captured survivors by conviction${ladderOnRecord ? `, all at ${esc(ladderWords(ladderOnRecord))}` : (sizedOnRecord.length ? ', not all at the same numbers' : '')}</div>` : '')}
     <div class="row"><button id="convRun" class="pri" ${busy ? 'disabled' : ''}>Run conviction sweep</button></div>
     <div id="convOut">${conv.status === 'done' ? renderConvResult(conv) : conv.status === 'running' ? '<p class="note">running…</p>' : conv.status === 'error' ? `<p class="warn">last sweep failed: ${esc(conv.error || '')}</p>` : conv.status === 'unread' ? '<p class="warn">the result kept for this could not be read from the box</p>' : isSet ? tnNotRunHtml(conv, 'Run conviction sweep') : ''}</div>
   </div>
-  ${isSet ? tnCopyPanelHtml(chosen, busy, copySizingWords) : ''}
+  ${isSet ? tnCopyPanelHtml(chosen, busy, copySizingWords, copyNameInBox) : ''}
 `;
   // THE SIZING ON RECORD, AS A GREEN LINE at the top of the conviction panel (3.154.0,
 // owner order): the same green as the stop tuner's "your choice" row, drawn only
@@ -3677,7 +3694,7 @@ function tnNotRunHtml(x, press) {
 // tuning", then "populate with the current S4 name ... with one or two of the
 // current settings on the tab ... tick boxes"). What each tick would carry is
 // read off the set and said above the ticks, so nothing about it is a guess.
-function tnCopyPanelHtml(cand, busy, sizingWords) {
+function tnCopyPanelHtml(cand, busy, sizingWords, nameInBox) {
   const rows = cand.rows || [];
   const stops = rows.filter((r) => r.stop && Object.prototype.hasOwnProperty.call(r.stop, 'stopPct')).length;
   const sized = rows.filter((r) => r.stop && r.stop.sizing && r.stop.sizing.on).length;
@@ -3691,7 +3708,7 @@ function tnCopyPanelHtml(cand, busy, sizingWords) {
       of them.</p>
     <div class="note" style="margin-bottom:.4rem">on record on <b>${esc(cand.name)}</b>: a protective stop, or no stop chosen on purpose, for <b>${stops} of ${rows.length}</b> captured survivors; the conviction sizing on <b>${sized} of ${rows.length}</b></div>
     <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
-      <label class="f" title="the name the copy is saved under: filled with the name of the set under Tuning targets, to change. Names are unique across every set on this box.">new name<input id="tnCopyName" type="text" value="${esc(cand.name)}" style="width:32rem"></label>
+      <label class="f" title="the name the copy is saved under: filled with the name of the set under Tuning targets, to change; a name typed or saved stays here until another set is chosen. Names are unique across every set on this box.">new name<input id="tnCopyName" type="text" value="${esc(nameInBox == null ? cand.name : nameInBox)}" style="width:32rem"></label>
       <label class="c" title="ticked, the copy carries the protective stop on record for each survivor, or the no stop chosen on purpose, with its reason; unticked, the copy carries no choice about the stop"><input type="checkbox" id="tnCopyStops" checked> with its protective stops</label>
       <label class="c" title="ticked, the copy carries the conviction sizing: the numbers the conviction table below was priced at on the survivors that table covers, and the sizing on record on every other survivor, as the line under this says; unticked, every trade of the copy is taken at its own size alone"><input type="checkbox" id="tnCopySizing" checked> with its conviction sizing</label>
     </div>
@@ -3823,8 +3840,19 @@ function renderStopResult(s) {
       ? `Apply the conviction sizing to ${who} of ${chosen.name}?\n\nThis records that each trade is sized at its own size times the multiplier of its row: ${ladderWords(pricedLadder)}. The next held set or reserve set read from the rule freezes it, and a greenlight carries it. Nothing is applied to any trading machine.`
       : `Take the conviction sizing off ${who} of ${chosen.name}?\n\nThis records that each trade is taken at its own size alone.`)) return;
     const out = await tryPost(`api/funnel/set/${encodeURIComponent(chosen.id)}/sizing-choice`, { pick: tnPickVal, on, why: sizeWhy(), ...(on && pricedLadder ? { ladder: pricedLadder } : {}) }, 'The Stage 4 record set under Tuning targets lists what is captured.');
-    if (out) drawTune();
+    if (!out) return;
+    // recorded, the reason shows as the one on record; taken off, there is none
+    tnSizingWhyTyped = null;
+    // TAKEN OFF, EVERY ROW READS x1 (3.250.1, owner 2026-09-25: "use of the take
+    // the sizing off button should set all units to 1"): each trade at its own
+    // size alone is a multiplier of 1 on every row, and the boxes say so
+    if (!on && pricedLadder) tnTypedLadder = { key: aimKey, raw: pricedLadder.map(() => '1') };
+    drawTune();
   };
+  const swBox = $('#sizingWhy');
+  if (swBox && isSet) swBox.oninput = () => { tnSizingWhyTyped = { set: chosen.id, text: swBox.value }; };
+  const cnBox = $('#tnCopyName');
+  if (cnBox && isSet) cnBox.oninput = () => { tnCopyNameTyped = { set: chosen.id, name: cnBox.value }; };
   const szOn = $('#sizingApply');
   if (szOn) szOn.onclick = () => { if (pricedLadder) sizing(true); };
   const szOff = $('#sizingOff');
@@ -3842,6 +3870,8 @@ function renderStopResult(s) {
     const out = await tryPost(`api/funnel/set/${encodeURIComponent(chosen.id)}/copy`, { name, stops, sizing, ...(sizing && pricedLadder ? { ladder: pricedLadder, pick: tnPickVal } : {}) }, 'The scan target box on Tune lists the sets whose trades are captured.');
     if (!out) { cpy.disabled = false; return; }
     const s = out.set || {};
+    // the name saved stays in the box (3.250.1)
+    tnCopyNameTyped = { set: chosen.id, name };
     // THE COPY IS THE SET HELD OPENS NEXT (3.249.0, owner 2026-09-25: "the held
     // tab is not [reflecting the new conviction sizing]"): Held kept the set
     // picked there last, and the copy's name differed from its sibling's by one
