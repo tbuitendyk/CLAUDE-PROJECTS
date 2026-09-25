@@ -538,8 +538,11 @@ function engineHtml() {
     + '<div class="tile">'
     + '<div class="k" style="margin-bottom:.35rem">' + (ed ? 'Changing ' + esc(ed.name) : 'A new engine record') + '</div>'
     + '<div class="row">'
-    + '<label class="c" title="a short name for the record: letters, digits and dashes"><span class="muted">record id</span><input id="engId" value="' + v('id', '') + '" ' + (ed ? 'disabled' : '') + ' style="width:9rem"></label>'
-    + '<label class="c" title="what you want to see on screen for this engine"><span class="muted">name</span><input id="engName" value="' + v('name', '') + '" style="width:14rem"></label>'
+    // WHICH IS WHICH, ON THE SCREEN ITSELF (owner, 2026-09-25: "can't tell from
+    // the first two fields which is the short name and which is the descriptive
+    // name" -- the words were hover text, and it did not reach the screen)
+    + '<label class="c"><span class="muted">short name — letters, digits, dashes</span><input id="engId" value="' + v('id', '') + '" placeholder="mx-engine-2" ' + (ed ? 'disabled' : '') + ' style="width:9rem"></label>'
+    + '<label class="c"><span class="muted">descriptive name — what you see on screen</span><input id="engName" value="' + v('name', '') + '" placeholder="Mexico engine 2" style="width:14rem"></label>'
     + '</div>'
     + '<div class="row" style="margin-top:.5rem">'
     + '<label class="c" title="the trading box&#39;s address"><span class="muted">trading box address</span><input id="engHost" value="' + v('host', '') + '" style="width:26rem"></label>'

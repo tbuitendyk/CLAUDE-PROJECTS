@@ -83,9 +83,9 @@ const isPort = (n) => Number.isInteger(n) && n >= 1024 && n <= 65535;
 function engineProblems(r) {
   const out = [];
   const x = r || {};
-  if (typeof x.id !== 'string' || !ENGINE_ID_RE.test(x.id)) out.push('id: 2 to 30 of a-z, 0-9 and -, starting with a letter or digit');
-  if (x.id === 'mx-1') out.push('id: mx-1 is the old order program and is not an engine');
-  if (typeof x.name !== 'string' || !x.name.trim() || x.name.length > 60) out.push('name: 1 to 60 characters');
+  if (typeof x.id !== 'string' || !ENGINE_ID_RE.test(x.id)) out.push('short name: 2 to 30 of a-z, 0-9 and -, starting with a letter or digit');
+  if (x.id === 'mx-1') out.push('short name: mx-1 is the old order program and is not an engine');
+  if (typeof x.name !== 'string' || !x.name.trim() || x.name.length > 60) out.push('descriptive name: 1 to 60 characters');
   if (typeof x.host !== 'string' || !HOST_RE.test(x.host)) out.push('host: the trading box\'s address');
   if (typeof x.user !== 'string' || !USER_RE.test(x.user)) out.push('user: the account this machine signs in to the trading box as');
   if (!isPort(x.enginePort)) out.push('enginePort: the port the engine listens on, on the trading box itself (1024-65535)');
