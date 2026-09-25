@@ -1,8 +1,8 @@
 {
-  "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html — so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "66437cfab7b0eb4e1c96c8af86fefa96953c1689",
-  "subject": "Held and Reserve: a set chosen opens on its own pass criteria, and no other set's job writes into it (3.251.3)",
-  "capturedAt": "2026-09-25T06:02:01Z",
+  "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html \u2014 so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
+  "commit": "7cc6575cf7db75b12dc562f94b979389ead0ce3a",
+  "subject": "Held and Reserve: a set saved under a new name shows only what was done with it (3.251.4)",
+  "capturedAt": "2026-09-25T06:30:17Z",
   "files": {
     "public/construct.js": {
       "sha256": "ef45392f25b7d4c5505fa9956b164ed75176cc5778942e6985a8e1a0f05e2af3",
