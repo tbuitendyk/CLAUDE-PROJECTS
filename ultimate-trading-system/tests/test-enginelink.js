@@ -179,7 +179,7 @@ module.exports = {
     const target = targets.saveEngine({ ...ENGINE, id: 'draw-engine', name: 'Draw engine', localPort: server.address().port, isDefault: false });
     const m = link.mirrorFor(target);
     const cell = { entry: 'breakout', gate: 'active', dMult: 0.75, tHours: 65, trailMult: 1.5, armMult: 0.5 };
-    const setup = { id: 'setup-draw', name: 'LTC on the engine', state: 'paper', executionTargetRef: 'draw-engine', tradedPair: 'LTCUSDT', clipUsd: 100,
+    const setup = { id: 'setup-draw', name: 'LTC on the engine', state: 'paper', executionTargetRef: 'draw-engine', tradedPair: 'LTCUSDT', clipUsd: 100, trainPolicy: { mode: 'rolling' },
       configSnapshot: { branch: { geometry: 'daily-4d', band: 5 }, cell, combo: { trade: 'LTCUSDT' } } };
     const plan = (chunk, entryTs) => ({ planId: `setup-draw|${chunk}`, setupId: 'setup-draw', mode: 'simulated', symbol: 'LTCUSDT', chunkStart: chunk, entryTs, call: 1, cell, bandPct: 5, size: { quoteUsd: 100 }, feePerLeg: 0.001 });
     try {
@@ -201,6 +201,9 @@ module.exports = {
       assert.ok(!whats.some((w) => /Recompute this profile/.test(w)), `the old order program's schedule is not this setup's: ${whats.join(' | ')}`);
       assert.strictEqual(whats[0], 'Decide the next period (LONG / SHORT / no call)');
       assert.ok(/before 01:00 UTC/.test(st.liveStatus.items[0].why) && /Draw engine/.test(st.liveStatus.items[0].why), st.liveStatus.items[0].why);
+      // until Members train is chosen, the book says it is waiting for it, and why nothing is decided
+      const unset = view.setupStatus({ ...setup, trainPolicy: undefined });
+      assert.ok(/^waiting for Members train: choose rolling or frozen at in the Config editor on Setup detail/.test(unset.liveStatus.items[0].why), unset.liveStatus.items[0].why);
       const lv = st.liveStatus.items.find((it) => /^Set the levels for the LONG call of 2026-09-23/.test(it.what));
       assert.ok(lv && lv.whenUtc === new Date(t0 + 24 * 3600000).toISOString() && / 3\.75% either side of that hour's opening price/.test(lv.why), JSON.stringify(lv));
       const close = st.liveStatus.items.find((it) => /^Close the LONG position of 2026-09-26 01:00/.test(it.what));

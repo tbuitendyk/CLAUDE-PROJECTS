@@ -412,8 +412,8 @@ function rollPoints(input, dials, R, outcomeOf, K, throughDay) {
 
 // THE BUILD, one coin and shape, every decision day in order.
 //
-//   decisionTs[i]  the instant decision i is taken (the first candle of its
-//                  fill window, as windowmove.decisionAt gives it)
+//   decisionTs[i]  the instant decision i is taken (where its window ends,
+//                  as windowmove.decisionAt gives it)
 //   closeTs[i]     the instant its chunk closes (startTs + exitOffsetH)
 //   out[i]         the chunk's own outcome, entry to exit, in percent
 //   moves[h][i]    the move over look-back h (hours) into decision i, in

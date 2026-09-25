@@ -61,27 +61,22 @@ module.exports = {
       assert.deepStrictEqual(wm.ts, built.map((c) => c.startTs), `${key}: the decisions are not the sweep's own chunks`);
       for (let i = 0; i < wm.ts.length; i++) {
         const first = map.get(wm.ts[i]);
-        // THE READING ENDS WHERE THE DECISION IS TAKEN: the OPEN of the first
-        // candle of the fill (owner's choice, 2026-09-17). On the four daily
-        // shapes the fill is one candle, so that is the entry candle's open and
-        // nothing about them changes. On Weekly 8-day the fill is a six-hour
-        // Tuesday average whose middle is the nominal entry, so half of it had
-        // not happened when the decision was taken -- the reading now ends at
-        // the first candle of that window instead.
-        const decideAt = wm.ts[i] + (g.labelMode === 'windows' ? TUE_OFFSET_H : g.entryOffsetH) * HOUR;
-        const decidePrice = map.get(decideAt).open;
-        if (g.labelMode === 'points') assert.strictEqual(built[i].c1, decidePrice, `${key}: a daily shape decides and fills at the same open`);
+        // THE READING ENDS WHERE THE WINDOW ENDS (owner, 2026-09-25): 00:00 on
+        // the daily shapes, Tuesday 00:00 on Weekly 8-day, at the last price of
+        // the hour before -- the close of the 23:00 candle -- so everything the
+        // decision reads is known before the trade opens.
+        const decideAt = wm.ts[i] + g.featureHours * HOUR;
+        assert.strictEqual(decideAt, wm.ts[i] + (g.labelMode === 'windows' ? TUE_OFFSET_H : g.entryOffsetH - 1) * HOUR, `${key}: the window ends at 00:00`);
+        const decidePrice = map.get(decideAt - HOUR).close;
         const want = ((decidePrice - first.open) / first.open) * 100;
-        assert.ok(Math.abs(wm.move[i] - want) < 1e-3, `${key} decision ${i}: move ${wm.move[i]} is not first-open-to-decision-open ${want}`);
-        // AND THE FILL IS UNTOUCHED. The whole point of the change is that the
-        // trade still fills across the six hours; only the READING moved. If
-        // c1 ever became the decision price, the trade would have changed and
-        // everything priced downstream of it with it.
-        if (g.labelMode === 'windows') {
-          assert.notStrictEqual(built[i].c1, decidePrice, `${key}: the fill must still be the six-hour average, not the decision open`);
-          const notThis = ((built[i].c1 - first.open) / first.open) * 100;
-          assert.ok(Math.abs(wm.move[i] - notThis) > 1e-6, `${key} decision ${i}: the reading still ends at the fill price, which is half unknown when the decision is taken`);
-        }
+        assert.ok(Math.abs(wm.move[i] - want) < 1e-3, `${key} decision ${i}: move ${wm.move[i]} is not first-open-to-window-end ${want}`);
+        // AND THE FILL IS UNTOUCHED: the trade still opens at its entry hour --
+        // one candle's open on the daily shapes, the six-hour Tuesday average on
+        // the weekly -- and the reading never ends at the fill price, which is
+        // not known when the decision is taken
+        if (g.labelMode === 'points') assert.strictEqual(built[i].c1, map.get(wm.ts[i] + g.entryOffsetH * HOUR).open, `${key}: a daily shape fills at its entry candle's open`);
+        const notThis = ((built[i].c1 - first.open) / first.open) * 100;
+        assert.ok(Math.abs(wm.move[i] - notThis) > 1e-6, `${key} decision ${i}: the reading ends at the fill price`);
         // and NOT from the first candle's close, which on these candles differs
         const notClose = ((decidePrice - first.close) / first.close) * 100;
         assert.ok(Math.abs(wm.move[i] - notClose) > 1e-6, `${key} decision ${i}: reads the first candle's close`);
@@ -109,8 +104,8 @@ module.exports = {
       }
       let checked = 0;
       for (let i = 0; i < wm.periods; i++) {
-        const decideAt = wm.ts[i] + (g.labelMode === 'windows' ? TUE_OFFSET_H : g.entryOffsetH) * HOUR;
-        const decidePrice = map.get(decideAt).open;
+        const decideAt = wm.ts[i] + g.featureHours * HOUR;
+        const decidePrice = map.get(decideAt - HOUR).close;
         for (const h of [24, 72, 336]) {
           const back = map.get(decideAt - h * HOUR);
           const got = wm.moves[String(h)][i];
@@ -162,8 +157,8 @@ module.exports = {
     assert.deepStrictEqual(st.gap, g);
   },
 
-  // C1.3: nothing after a decision's open can move its reading. The same is
-  // what makes the reading usable live.
+  // C1.3: nothing from a decision's moment on can move its reading. The same
+  // is what makes the reading usable live.
   // NOTHING AFTER THE DECISION MOVES THE READING -- on EVERY shape now, not
   // only a daily one (3.159.0). This ran on daily-3d alone, and Weekly 8-day
   // would have failed it: its reading ended at a six-hour average whose second
@@ -176,9 +171,11 @@ module.exports = {
       const a = mapOf(24 * (key === 'weekly-8d' ? 400 : 90));
       const wa = windowMoves(a, key, [48]);
       const k = Math.min(20, Math.max(3, Math.floor(wa.periods / 3)));
-      const cut = wa.ts[k] + (g.labelMode === 'windows' ? TUE_OFFSET_H : g.entryOffsetH) * HOUR;
+      // every candle from the decision moment on -- 00:00, where the window ends -- is rewritten
+      const cut = wa.ts[k] + g.featureHours * HOUR;
+      assert.strictEqual(cut, wa.ts[k] + (g.labelMode === 'windows' ? TUE_OFFSET_H : g.entryOffsetH - 1) * HOUR);
       const b = new Map();
-      for (const [ts, c] of a) b.set(ts, ts > cut ? { ...c, open: c.open * 3, close: c.close * 3, high: c.high * 3, low: c.low * 3 } : c);
+      for (const [ts, c] of a) b.set(ts, ts >= cut ? { ...c, open: c.open * 3, close: c.close * 3, high: c.high * 3, low: c.low * 3 } : c);
       const wb = windowMoves(b, key, [48]);
       for (let i = 0; i <= k; i++) {
         assert.strictEqual(wb.ts[i], wa.ts[i], `${key}: the decisions moved`);
@@ -192,7 +189,10 @@ module.exports = {
       // Only a window straddling the cut can differ, and which index straddles
       // depends on the shape. Naming one passed on daily-3d and failed on
       // daily-1d, where the test was right and the naming was wrong.
-      const bit = wa.move.slice(k + 1).some((v, i) => v !== wb.move[k + 1 + i]);
+      // (on daily-1d the next decision's own window starts exactly at the cut and
+      // lies wholly inside it, so its 48-hour look-back is the window that straddles)
+      const bit = wa.move.slice(k + 1).some((v, i) => v !== wb.move[k + 1 + i])
+        || wa.moves['48'].slice(k + 1).some((v, i) => v !== wb.moves['48'][k + 1 + i]);
       assert.ok(bit, `${key}: no later decision read differently, so this test cannot catch anything`);
     }
   },

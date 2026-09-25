@@ -14,6 +14,22 @@ const { GEOMETRIES } = require('../dataset');
 const feats = require('../features');
 const bracketLib = require('../bracket');
 
+// THE STAGE ENGINE'S AGREEMENT, in words (3.91.0): how the members are
+// weighed, what is enough, and the two extras, read from lib/agreement.js
+// rather than typed here so the words cannot drift from the arithmetic. One
+// function for the tested configuration and the pipeline both, so the row a
+// screen shows is words, never an object it cannot print.
+function agreementWords(a) {
+  if (!a) return null;
+  const { RULE_WORDS, READS_NO_BAR } = require('../agreement');
+  const what = RULE_WORDS[a.rule] || a.rule;
+  const bar = a.rule === 'field' ? 'no bar: the field\'s own sign is the call, and the members are not read'
+    : READS_NO_BAR.has(a.rule) ? 'no bar: the winning side is taken whatever its margin'
+    : (a.bar === 'own' ? `enough when it reaches what this committee itself reached on its test slice at strictness ${a.pct}%` : `enough at ${a.pct}% of ${a.rule === 'voices' ? 'the independent voices' : a.rule === 'families' ? 'the kinds of evidence' : 'the members'}`);
+  const extras = [a.rule === 'voices' ? `two members count as one voice when they agree ${a.copy}% of the time` : null, a.both ? 'the winning side must hold at least one member of each kind' : null, a.persist ? `the same call must have stood for ${a.persist} moment(s) before it is acted on` : null, a.plateau != null ? `a plateau casts its one vote when ${a.plateau}% of its trained members call the same side` : null].filter(Boolean);
+  return `${what}; ${bar}${extras.length ? `; ${extras.join('; ')}` : ''}`;
+}
+
 // The tested configuration, in the owner's terms.
 function describeConfig(cfg, opts = {}) {
   const geo = GEOMETRIES[cfg.branch.geometry] || {};
@@ -32,14 +48,12 @@ function describeConfig(cfg, opts = {}) {
     // reading its own look-back and marked at its own band. The band is a
     // MULTIPLE of what this coin usually moves over the outcome window, never
     // a percent of price, and it is named for what it is.
-    extras: (Array.isArray(cfg.extras) ? cfg.extras : []).map((e) => ({
-      lookbackHours: e.lookbackHours, bandTimesUsualMove: e.bandPct / 100,
-    })),
+    extras: (Array.isArray(cfg.extras) ? cfg.extras : []).map((e) => `${e.lookbackHours}h look-back, band ${e.bandPct / 100}× the usual move`),
     committeeStage: cfg.stage,
     quorum: cfg.cell.quorum,
     // a stage-engine configuration agrees by its own rule, not a quorum (3.91.0)
     engine: cfg.engine,
-    agreement: cfg.agreement || null,
+    agreement: agreementWords(cfg.agreement),
     // a record's half-life, in months, when it carries one (3.95.0)
     halfLifeMonths: cfg.training && cfg.training.halfLife ? (cfg.training.halfLifeMonths || Math.round(cfg.training.halfLife / 30.4375)) : null,
     entry: cfg.cell.entry,
@@ -80,17 +94,7 @@ function describeAnatomy(cfg, opts = {}) {
   // THE STAGE ENGINE'S AGREEMENT, in words (3.91.0): how the members are
   // weighed, what is enough, and the two extras, read from lib/agreement.js
   // rather than typed here so the words cannot drift from the arithmetic.
-  const a = cfg.agreement || null;
-  const agreeWords = () => {
-    if (!a) return null;
-    const { RULE_WORDS, READS_NO_BAR } = require('../agreement');
-    const what = RULE_WORDS[a.rule] || a.rule;
-    const bar = a.rule === 'field' ? 'no bar: the field\'s own sign is the call, and the members are not read'
-      : READS_NO_BAR.has(a.rule) ? 'no bar: the winning side is taken whatever its margin'
-      : (a.bar === 'own' ? `enough when it reaches what this committee itself reached on its test slice at strictness ${a.pct}%` : `enough at ${a.pct}% of ${a.rule === 'voices' ? 'the independent voices' : a.rule === 'families' ? 'the kinds of evidence' : 'the members'}`);
-    const extras = [a.rule === 'voices' ? `two members count as one voice when they agree ${a.copy}% of the time` : null, a.both ? 'the winning side must hold at least one member of each kind' : null, a.persist ? `the same call must have stood for ${a.persist} moment(s) before it is acted on` : null, a.plateau != null ? `a plateau casts its one vote when ${a.plateau}% of its trained members call the same side` : null].filter(Boolean);
-    return `${what}; ${bar}${extras.length ? `; ${extras.join('; ')}` : ''}`;
-  };
+  const agreeWords = () => agreementWords(cfg.agreement);
 
   return {
     pipeline: [
@@ -138,7 +142,7 @@ function describeAnatomy(cfg, opts = {}) {
       quorum: cfg.cell.quorum,
       members: members.length,
       engine: cfg.engine,
-      agreement: a,
+      agreement: cfg.agreement || null,
       rule: agreeWords(),
       dormantBandPct: bandPct,
       extras: extras.map((e) => ({ lookbackHours: e.lookbackHours, bandTimesUsualMove: e.bandPct / 100 })),
@@ -148,4 +152,4 @@ function describeAnatomy(cfg, opts = {}) {
   };
 }
 
-module.exports = { describeConfig, describeAnatomy };
+module.exports = { agreementWords, describeConfig, describeAnatomy };

@@ -63,7 +63,8 @@ function tradeOf(geometry, decisionTs) {
     const startTs = decisionTs - TUE_OFFSET_H * HOUR_MS;
     return { mode: 'windows', startTs, entryTs: startTs + TUE_OFFSET_H * HOUR_MS, entryHours: LABEL_HOURS, exitTs: startTs + THU_OFFSET_H * HOUR_MS, exitHours: LABEL_HOURS };
   }
-  const startTs = decisionTs - geo.entryOffsetH * HOUR_MS;
+  // the decision is taken where the window ends (lib/windowmove.js decisionAt)
+  const startTs = decisionTs - geo.featureHours * HOUR_MS;
   return { mode: 'points', startTs, entryTs: startTs + geo.entryOffsetH * HOUR_MS, entryHours: 1, exitTs: startTs + geo.exitOffsetH * HOUR_MS, exitHours: 1 };
 }
 // the price the lab measures from or to, or null while the candles are not on file

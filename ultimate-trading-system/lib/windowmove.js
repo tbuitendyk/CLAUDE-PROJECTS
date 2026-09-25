@@ -43,15 +43,15 @@
 // lower c1 reads BETTER -- manufacturing "a big fall is followed by a rise"
 // out of the two sharing one number.
 //
-// So the decision is taken at the FIRST CANDLE OF THE FILL WINDOW, at its open
-// (owner's choice, 2026-09-17), and the fill stays exactly as it was. On the
-// daily shapes that is the same candle and the same open as before.
+// So the decision is taken where the window ENDS (owner, 2026-09-25): 00:00
+// UTC on the daily shapes, Tuesday 00:00 on the weekly, at the last price of
+// the hour before it -- the close of the 23:00 candle. Everything a decision
+// reads is then known the moment the day ends, before the trade opens at its
+// entry hour; the fill stays exactly as it was.
 function decisionAt(map, startTs, geo) {
-  const { TUE_OFFSET_H } = require('./dataset');
-  const hours = geo.labelMode === 'windows' ? TUE_OFFSET_H : geo.entryOffsetH;
-  const ts = startTs + hours * 3600000;
-  const c = map.get(ts);
-  return { ts, price: c && c.open > 0 ? c.open : null };
+  const ts = startTs + geo.featureHours * 3600000;
+  const c = map.get(ts - 3600000);
+  return { ts, price: c && c.close > 0 ? c.close : null };
 }
 
 // A MOVE OVER ANY LOOK-BACK, not only the one the chunk shape happens to use

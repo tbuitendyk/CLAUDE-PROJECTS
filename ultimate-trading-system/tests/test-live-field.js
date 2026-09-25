@@ -329,9 +329,11 @@ module.exports.theFieldReachesTheLastDecisionTheCandlesReach = function () {
     map.set(ts, { ts, open: p, high: p + 1, low: p - 1, close: p + 0.2, quoteVolume: 1000 });
   }
   assert.strictEqual([...map.keys()].pop(), lastCandle);
-  const decisionOn20th = Date.UTC(2026, 8, 20, 1);
+  // the window of the newest decision ends at 00:00 on the 21st, and its price
+  // is the close of the 23:00 candle on the 20th -- the last candle on file
+  const decisionOn20th = Date.UTC(2026, 8, 21, 0);
   const dials = { windowDays: 30, halfLifeDays: 10, floor: 0.05, bands: [0.5, 1], lookbackHours: [24, 48], evidenceCap: 10, leastEvidence: 1, copies: 4 };
-  for (const [geometry, lastStart] of [['daily-3d', Date.UTC(2026, 8, 17)], ['daily-4d', Date.UTC(2026, 8, 16)]]) {
+  for (const [geometry, lastStart] of [['daily-3d', Date.UTC(2026, 8, 18)], ['daily-4d', Date.UTC(2026, 8, 17)]]) {
     const geo = GEOMETRIES[geometry];
     const closed = wm.windowMoves(map, geometry, [24], {});
     const kept = wm.windowMoves(map, geometry, [24], { keepUnclosed: true });

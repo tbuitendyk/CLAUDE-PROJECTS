@@ -392,7 +392,14 @@ function engineNextActivity(st, setup, nowMs, eng) {
   const plans = ((eng && eng.plans) || []).slice().sort((a, b) => String(a.entry_utc).localeCompare(String(b.entry_utc)));
   const sideOf = (c) => (c === 1 ? 'LONG' : c === -1 ? 'SHORT' : 'no call');
   const items = [];
-  if (st.state === 'paper' || st.state === 'live') {
+  // A BOOK THAT CANNOT TRAIN ITS MEMBERS DECIDES NOTHING, and says so here
+  // rather than failing where nobody looks
+  let untrained = false;
+  try { require('./trainpolicy').resolveFreeze(setup, nowMs); } catch (_) { untrained = true; }
+  if ((st.state === 'paper' || st.state === 'live') && untrained) {
+    items.push({ what: 'Decide the next period (LONG / SHORT / no call)', whenUtc: null,
+      why: 'waiting for Members train: choose rolling or frozen at in the Config editor on Setup detail and press Save. Nothing is decided until it is set.' });
+  } else if (st.state === 'paper' || st.state === 'live') {
     items.push({ what: 'Decide the next period (LONG / SHORT / no call)', whenUtc: iso(nextEval),
       why: `this machine decides once the ${geo.featureHours || '?'}h feature window closes at ${hh(closeHourUtc)} UTC and that hour's candle is in, `
         + `and sends the plan to ${name} before ${hh(entryHourUtc)} UTC; a period the committee stands aside is written down and nothing is sent.` });

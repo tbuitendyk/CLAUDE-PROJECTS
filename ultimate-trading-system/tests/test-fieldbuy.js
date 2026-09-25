@@ -15,10 +15,11 @@ const fb = require('../lib/fieldbuy');
 const ROOT = path.join(__dirname, '..');
 const CACHE = path.join(ROOT, 'data', 'cache');
 const HOUR = 3_600_000;
-const D = Date.UTC(2026, 8, 21, 1);                 // the newest daily-3d decision: 01:00 UTC on the 21st
-const START = D - 73 * HOUR;                        // its chunk started at 00:00 on the 18th
+const D = Date.UTC(2026, 8, 21, 0);                 // the newest daily-3d decision: 00:00 UTC on the 21st, where its window ends
+const START = D - 72 * HOUR;                        // its chunk started at 00:00 on the 18th
+const ENTRY = START + 73 * HOUR;                    // its trade opens at 01:00 on the 21st
 const EXIT = START + 114 * HOUR;                    // and exits at 18:00 on the 22nd
-const D4 = Date.UTC(2026, 8, 21, 1);                // a daily-4d decision the same morning (start 00:00 on the 17th)
+const D4 = Date.UTC(2026, 8, 21, 0);                // a daily-4d decision the same morning (start 00:00 on the 17th)
 const COINS = ['ZZZBAUSDT', 'ZZZBBUSDT', 'ZZZBCUSDT', 'ZZZBDUSDT', 'ZZZBEUSDT', 'ZZZBFUSDT', 'ZZZBGUSDT', 'ZZZBHUSDT', 'ZZZBIUSDT', 'ZZZBJUSDT', 'ZZZBKUSDT'];
 const made = { fields: [], buys: [] };
 
@@ -101,7 +102,7 @@ module.exports.theBuyIsFixedAsPressedAndItsPriceMovesUntilTheExitCandleIsOnFile 
   assert.strictEqual(buy.rows[0].coin, COINS[9], 'the daily-4d pair scored highest');
   const first = buy.rows.find((r) => r.coin === COINS[0]);
   assert.deepStrictEqual({ mode: first.mode, startTs: first.startTs, entryTs: first.entryTs, exitTs: first.exitTs, entryHours: first.entryHours, exitHours: first.exitHours },
-    { mode: 'points', startTs: START, entryTs: D, exitTs: EXIT, entryHours: 1, exitHours: 1 }, 'the trade opens at the decision candle and exits 114 hours after the chunk started');
+    { mode: 'points', startTs: START, entryTs: ENTRY, exitTs: EXIT, entryHours: 1, exitHours: 1 }, 'the trade opens at 01:00, an hour after the decision, and exits 114 hours after the chunk started');
   assert.strictEqual(first.entryPrice, 101, 'the open of the 01:00 candle on the decision day');
   // running: the newest candle on file (05:00, close 105.25) and the move in the field's direction
   const rowOf = (out, coin) => out.rows.find((x) => x.coin === coin);
