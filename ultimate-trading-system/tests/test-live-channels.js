@@ -137,3 +137,33 @@ module.exports.nukeRefusesWhileBusyThenRevokesAndBlocksReuse = function () {
   try { ch.activate(g.id, 'paper'); } catch (e) { err2 = e; }
   assert.strictEqual(err2 && err2.code, 'REVOKED');
 };
+
+// S12 AND THE TICK ON SETUP > COMPUTE: with no engine on record a new setup
+// runs where it always did; with an engine ticked "new setups run on this
+// engine", a new setup names that engine -- and only a setup that names it is
+// ever sent to it
+module.exports.aNewSetupRunsOnTheEngineTickedForNewSetupsAndOtherwiseWhereItAlwaysDid = function () {
+  const targets = require('../lib/live/targets');
+  const link = require('../lib/live/enginelink');
+  const saved = { t: process.env.GC_TARGETS_FILE, m: process.env.GC_ENGINE_MIRROR };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-ch-engine-'));
+  process.env.GC_TARGETS_FILE = path.join(dir, 'targets.json');
+  process.env.GC_ENGINE_MIRROR = path.join(dir, 'mirror');
+  try {
+    const plain = ch.activate(mkGreenlight().id, 'paper');
+    assert.ok(!reg.getSetup(plain.id).executionTargetRef, 'no engine on record: the setup runs where it always did');
+    targets.saveEngine({ id: 'ch-engine', name: 'Channel engine', host: 'engine.example', user: 'admin', enginePort: 18095, localPort: 18097, isDefault: true });
+    const g = mkGreenlight();
+    let err = null;
+    try { ch.activate(g.id, 'paper'); } catch (e) { err = e; }
+    assert.ok(err && /the trading engine Channel engine does not answer through its link yet/.test(err.message), err && err.message);
+    link.mirrorFor(targets.getTarget('ch-engine')).lastHealth = { at: new Date().toISOString(), health: { realOrders: 'off' } };
+    const onEngine = ch.activate(mkGreenlight().id, 'paper');
+    assert.strictEqual(reg.getSetup(onEngine.id).executionTargetRef, 'ch-engine', 'the new setup names the engine ticked for new setups');
+    assert.ok(!reg.getSetup(plain.id).executionTargetRef, 'a setup already running stays where it is');
+  } finally {
+    link.followAll([]);
+    for (const [k, v] of [['GC_TARGETS_FILE', saved.t], ['GC_ENGINE_MIRROR', saved.m]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+};

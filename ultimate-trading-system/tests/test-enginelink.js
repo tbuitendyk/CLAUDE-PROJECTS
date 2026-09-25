@@ -206,6 +206,7 @@ module.exports = {
       const close = st.liveStatus.items.find((it) => /^Close the LONG position of 2026-09-26 01:00/.test(it.what));
       assert.ok(close && close.whenUtc === new Date(t0 + 65 * 3600000).toISOString() && /unless a printed trade reaches the stop first \(now 67\.375\)/.test(close.why), JSON.stringify(close));
       assert.strictEqual(st.liveStatus.nextExitUtc, new Date(t0 + 65 * 3600000).toISOString());
+      assert.deepStrictEqual(await link.cancelLeftovers([target], [setup], new Map(), now), [], 'a setup on paper keeps its plans');
       // the setup stops: only the plan that has not opened is taken back
       const stopped = { ...setup, state: 'stopped' };
       const asked = new Map();
