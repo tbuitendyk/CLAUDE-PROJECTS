@@ -479,7 +479,16 @@ function svcCard(u) {
 // is read live through the link each time this tab refreshes.
 function engineCard(e) {
   const h = e.health || {};
-  const feeds = (h.feeds || []).map((f) => (f.connected ? '<span class="pos">prices arriving</span>' : '<span class="neg">prices not arriving</span>')).join(' ') || '<span class="muted">—</span>';
+  // THE PRICES, IN WHAT THEY MEAN (owner, 2026-09-25: "prices prices not
+  // arriving"). The engine opens Binance's price stream only for the coins it
+  // holds a plan waiting or open on, so with none it follows nothing and
+  // nothing arrives -- that is not a fault and is not painted as one. Red only
+  // when it is following a coin and the prices are not coming.
+  const feeds = (h.feeds || []).map((f) => {
+    const coins = Array.isArray(f.symbols) ? f.symbols : [];
+    if (!coins.length) return '<span class="muted">no coin followed — no plan waiting or open</span>';
+    return f.connected ? '<span class="pos">arriving for ' + esc(coins.join(', ')) + '</span>' : '<span class="neg">not arriving for ' + esc(coins.join(', ')) + '</span>';
+  }).join(' ') || '<span class="muted">—</span>';
   const said = e.answers
     ? '<span class="pos">answers</span> <span class="muted">in ' + e.ms + ' ms · release ' + esc(h.release || '?') + '</span>'
     : '<span class="neg">does not answer</span> <span class="muted">(' + esc(e.why || 'no reason given') + ')</span>';
