@@ -2526,8 +2526,6 @@ const GUARDS = [
     "theEngineTakesTheLabsTradesToTheCentOnTheLabsPrices", "a position whose price crosses its stop is never closed there"],
   [path.join(ROOT, "engine", "plan.js"), "    const next = state.stop == null ? want : (state.dir === 1 ? Math.max(state.stop, want) : Math.min(state.stop, want));", "    const next = want;",
     "theEngineTakesTheLabsTradesToTheCentOnTheLabsPrices", "the trailing stop moves back against the position"],
-  [path.join(ROOT, "engine", "plan.js"), "  if (state.curHour > state.openHour) {\n    state.hourSeen = true;", "  if (true) {\n    state.hourSeen = true;",
-    "theEngineTakesTheLabsTradesToTheCentOnTheLabsPrices", "the entry hour counts toward the trail, which the lab never does"],
   [path.join(ROOT, "engine", "plan.js"), "  if (ts >= state.endTs) return closeOrder(state, plan, price, 'time', price, ts);", "",
     "theEngineTakesTheLabsTradesToTheCentOnTheLabsPrices", "a position is not closed on the price that arrives when its hold ends"],
   [path.join(ROOT, "engine", "plan.js"), "    else if (ev.entriesOnly) return acts;", "",

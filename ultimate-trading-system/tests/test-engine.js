@@ -74,6 +74,9 @@ const CELLS = [
   { name: 'breakout directional, a stop that stays', cell: { entry: 'breakout', gate: 'directional', dMult: 0.5, tHours: 41, trailMult: null, armMult: null }, band: 4 },
   { name: 'breakout active, a trail armed at once', cell: { entry: 'breakout', gate: 'active', dMult: 1.0, tHours: 89, trailMult: 0.5, armMult: 0 }, band: 3 },
   { name: 'breakout directional, a tight trail armed late', cell: { entry: 'breakout', gate: 'directional', dMult: 0.25, tHours: 41, trailMult: 0.5, armMult: 1.0 }, band: 6 },
+  // a trail wider than the other level is from the entry: the stop stays at the other level until the trail
+  // passes it, and never moves back -- the one kind where the ratchet's floor decides the trade
+  { name: 'breakout active, a wide trail that must not loosen the stop', cell: { entry: 'breakout', gate: 'active', dMult: 0.5, tHours: 65, trailMult: 2.0, armMult: 0 }, band: 5 },
   { name: 'market', cell: { entry: 'market', gate: 'directional', dMult: null, tHours: 65, trailMult: null, armMult: null }, band: 5 },
 ];
 
