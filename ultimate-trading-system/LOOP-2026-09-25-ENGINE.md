@@ -133,8 +133,42 @@ Mexico City.
 
 ## Decisions
 
-(one line each, as they are made)
+- D1. The engine watches the price and sends a market order the moment a
+  printed trade reaches a level, on every venue; a venue module may later hold
+  such an order natively behind the same action, chosen from what the probe
+  shows (owner's "two limit orders": an order that waits for a level is a
+  stop-type order; a plain limit on the wrong side fills at once).
+- D2. The trail moves once an hour, exactly as the lab bars it: the stop is
+  checked against every printed price, and at the end of each whole hour after
+  the entry hour that hour's best price is taken and the stop ratcheted. What
+  trades is what was measured; S3 holds it to the cent for five kinds of trade,
+  including a trail armed at once (arm 0), which a per-print trail would not match.
+- D3. The engine is Node with no packages at all (its own websocket client and
+  HTTPS request on Node's TLS): nothing reaches the trading box that was not
+  written here.
+- D4. A plan whose entry hour began before it reached the engine is armed on
+  that hour's opening price (asked of the exchange) unless the price has
+  already reached a level since, in which case it is skipped and the gap
+  written down; a market entry more than five minutes late is skipped. Never
+  entered late as though it were the same trade.
+- D5. Live figures of open positions (price now, money open, stop, best price)
+  are sent to followers as they change and are not written to the record; the
+  record holds every event that changes something.
+- D6. S6 is read as the owner's item 5 words (D17 of the read-back): an order
+  wakes when a printed trade reaches its level, and the market fill then walks
+  the live book for its size. A book that cannot fill the whole size in its top
+  20 levels refuses the order rather than inventing a price.
+- D7. Borrowing on a paper short is charged by the hour at the rate the venue
+  quotes; until the venue module has read it (it needs the account's key), each
+  hour is recorded as unpriced, and the screen says so. Never a guessed rate.
+- D8. The engine starts with real orders OFF and this release refuses a
+  config asking for them at start: there is no live module in it yet.
 
 ## Parked
 
-(with the reason, as they arise)
+- P1 (08:10 UTC). Installing the engine on the trading box -- node from
+  Debian's packages, a system user of its own, its code in /opt/uts-engine, a
+  systemd service, and the before/after fingerprints of the old order program
+  (S1) -- was refused by the session's permission layer ("Blocked by
+  classifier"). Everything that does not need it continues: the web box side,
+  Setup, the producer, the tests. The owner decides: run the deploy, or allow it.
