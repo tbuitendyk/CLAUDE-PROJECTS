@@ -1350,14 +1350,35 @@ module.exports = {
       // deleting a copy deletes its captured trades and leaves the original's
       stages.deleteSet(both.out.id, both.out.id);
       assert.ok(!fs.existsSync(stages.captureFile(both.out.id)) && fs.existsSync(stages.captureFile(c.cut.id)), 'the copy\'s capture goes with it');
-      // A RULE TAKES ITS HELD SETS WITH IT, AND THEIR LOOKS STAY (3.249.0)
+      // REFUSED WHERE A DELETE WOULD LOSE EVIDENCE (3.249.0)
+      const delRefusal = (id) => { try { stages.deleteSet(id); } catch (e) { return e.message; } return null; };
+      const os = require('os');
+      const gdir = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-del-gl-'));
+      const prevG = process.env.GC_GREENLIGHTS_DIR;
+      process.env.GC_GREENLIGHTS_DIR = gdir;
+      try {
+        const gl = { id: 'gl-deltest-1', createdUtc: new Date().toISOString(), seq: 1, name: 'a standing greenlight', sourceSet: { id: hs.id, name: hs.name }, revoked: false };
+        fs.writeFileSync(path.join(gdir, 'gl-deltest-1.json'), JSON.stringify(gl));
+        assert.ok(/greenlight a standing greenlight was written from .* and is still greenlighted/.test(delRefusal(neither.out.id) || ''), 'a rule whose held set a standing greenlight came from is kept');
+        assert.ok(/still greenlighted/.test(delRefusal(hs.id) || ''), 'and so is that held set');
+        fs.writeFileSync(path.join(gdir, 'gl-deltest-1.json'), JSON.stringify({ ...gl, revoked: true }));
+        assert.strictEqual(stages.deleteSet(neither.out.id).preview, true, 'a greenlight nuked no longer holds it');
+      } finally {
+        if (prevG === undefined) delete process.env.GC_GREENLIGHTS_DIR; else process.env.GC_GREENLIGHTS_DIR = prevG;
+        fs.rmSync(gdir, { recursive: true, force: true });
+      }
+      const fakeId = `s4-${Date.now().toString(36)}-deltest`;
+      fs.writeFileSync(path.join(SETS_DIR, `${fakeId}.json`), JSON.stringify({ id: fakeId, seq: 0, stage: 4, kind: 'reserve', status: 'done', name: `reserve set of ${neither.doc.name}`, createdAt: new Date().toISOString(), from: { id: neither.out.id, name: neither.doc.name }, standsOn: { id: hs.id, name: hs.name }, parent: neither.doc.parent, block: { at: new Date().toISOString(), look: 1 } }));
+      assert.ok(/stands on .* delete that reserve set first/.test(delRefusal(hs.id) || ''), 'a held set a reserve set stands on is kept');
+      // A RULE TAKES ITS HELD AND RESERVE SETS WITH IT, AND THEIR LOOKS STAY (3.249.0)
       const look = stages.deleteSet(neither.out.id);
-      assert.deepStrictEqual([look.preview, look.alsoDeletes.map((x) => x.id), look.readsKept, look.readsKeptOn], [true, [hs.id], 1, src0.name], 'the preview names the held set that goes and where its look is kept');
+      assert.deepStrictEqual([look.preview, look.alsoDeletes.map((x) => x.id).sort(), look.readsKept, look.readsKeptOn], [true, [hs.id, fakeId].sort(), 2, src0.name], 'the preview names the held and reserve sets that go and where their looks are kept');
       stages.deleteSet(neither.out.id, neither.out.id);
-      assert.ok(!stages.getSet(hs.id), 'the held set read from it went with it');
+      assert.ok(!stages.getSet(hs.id) && !stages.getSet(fakeId), 'the held and reserve sets read from it went with it');
       assert.strictEqual(stages.getSet(again.id).copiedFrom.id, c.cut.id, 'the set saved from the deleted copy now names the set that copy was saved from');
       const famAfter = stages.familyReadsOf(stages.getSet(again.id), 'held');
       assert.deepStrictEqual([famAfter.stamped, famAfter.gone.map((g) => g.id)], [heldReads + 1, [hs.id]], 'the deleted held set is still a look on the family');
+      assert.deepStrictEqual(stages.familyReadsOf(stages.getSet(again.id), 'reserve').gone.map((g) => g.id), [fakeId], 'and the deleted reserve set a look on the reserve window');
       assert.strictEqual((stages.getSet(c.cut.id).deletedReads.held || []).length, 1, 'written onto the original, which stays');
     } finally {
       for (const id of copies.slice().reverse()) {
@@ -1467,5 +1488,34 @@ module.exports = {
     assert.ok(/\$\{esc\(sizingWords \|\| ''\)\}/.test(fn), 'and it prints the words worked out on the tab');
     const srv = src('server.js');
     assert.ok(srv.includes("app.post('/api/funnel/set/:id/copy'") && /stages\.copyStage4Set\(req\.params\.id, req\.body \|\| \{\}\)/.test(srv), 'the route is served');
+  },
+
+  // APPLY RECORDS ONLY NUMBERS PRICED, AND TYPED NUMBERS OUTLIVE A REDRAW
+  // (3.249.0, owner 2026-09-25: "the apply button in tune WAS used the first
+  // time and it blew away the multiplier settings i had put on the records").
+  // With no conviction table priced on what is chosen, Apply is held and says
+  // why -- it used to write the declared ladder over whatever the survivors
+  // carried. Numbers typed and not priced are put back after every redraw, and
+  // the save under a new name waits for them as Apply does; the copy it makes
+  // is the set chosen on Held.
+  applyRecordsOnlyNumbersPricedAndTypedNumbersOutliveARedraw() {
+    const ui = src('public/construct.js');
+    const at = ui.indexOf('async function drawTune(');
+    const tune = ui.slice(at, ui.indexOf('\nasync function ', at + 10));
+    assert.ok(tune.includes('<button id="sizingApply" ${sizeHeld || !pricedLadder ? `disabled title="${esc(sizeHeldWhy || noTableWhy)}"`'), 'Apply is held with no table priced on what is chosen, and says why');
+    assert.ok(tune.includes("${isSet && !sizeHeld && !pricedLadder ? `<div class=\"note\" style=\"margin-bottom:.4rem\">${esc(noTableWhy)}.</div>` : ''}"), 'and the reason is a line on the screen, not hover text alone');
+    assert.ok(!/the declared ladder, one clip a member that agreed'\}/.test(tune) && tune.includes('if (szOn) szOn.onclick = () => { if (pricedLadder) sizing(true); };'), 'nothing falls back to the declared ladder');
+    assert.ok(tune.indexOf('const pricedLadder = ') < tune.indexOf("$('#view').innerHTML"), 'the numbers priced are known before the page is drawn');
+    // typed numbers kept for the same set, survivor and windows, and put back
+    assert.ok(/const aimKey = isSet \? `\$\{chosen\.id\}\|\$\{tnPickVal\}\|\$\{tnWins\.join\(','\)\}` : '';/.test(tune), 'kept for what is chosen');
+    assert.ok(tune.includes('tnTypedLadder = same || !aimKey ? null : { key: aimKey, raw: multBoxes().map((el) => el.value) };'), 'typing keeps them until they are priced');
+    assert.ok(/if \(tnTypedLadder && tnTypedLadder\.key === aimKey && multBoxes\(\)\.length === tnTypedLadder\.raw\.length\) \{\s*multBoxes\(\)\.forEach\(\(el, i\) => \{ el\.value = tnTypedLadder\.raw\[i\]; \}\);\s*onTyped\(\);/.test(tune), 'a redraw puts them back and says they are not priced');
+    assert.ok(/^let tnTypedLadder = null;/m.test(ui), 'held outside the draw, so a draw cannot forget them');
+    // the save waits for them with the sizing ticked, and says which numbers travel
+    assert.ok(tune.includes('const held = !!(pricedLadder && tick && tick.checked && !same);'), 'the save holds while the boxes are unpriced and the sizing is ticked');
+    assert.ok(/tnCopyHold\(same\);/.test(tune), 'and follows every keystroke');
+    // the copy is the set Held opens next
+    assert.ok(tune.includes('try { localStorage.setItem(JUDGE_SET_KEY.held, s.id); } catch (_) { /* private window */ }'), 'the copy is the set chosen on Held');
+    assert.ok(tune.includes('It is in the scan target box, and it is the set chosen on Held.'), 'and the line under the press says so, and no longer claims Reserve and Greenlight');
   },
 };

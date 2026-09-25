@@ -6519,11 +6519,11 @@ theStageHeadingsFollowTheOwnersTruthTableRowForRow() {
       assert.strictEqual(stages.getSet(busy).heldBackLooks, undefined, 'a refusal wrote a look');
 
       // VERIFY COUNTS THEM, the way it counts a scan on Tune
-      const seen = stages.verifyLooksOf({ parent: { id }, steps: [1, 2], backSteps: [1] }, null, 0);
+      const seen = stages.verifyLooksOf({ parent: { id }, steps: [1, 2], backSteps: [1] }, null, { sets: [], gone: [], own: 0, family: 0, stamped: 0 });
       assert.strictEqual(seen.boardLooks, 4);
       assert.ok(seen.what.some((w) => w === 'Boards showed the held-back columns of S3 #tick 4 time(s), each a counted look'), seen.what.join(' | '));
       assert.strictEqual(seen.unstamped, 4, 'the walk\'s own looks are no longer counted');
-      const none = stages.verifyLooksOf({ parent: { id: busy }, steps: [], backSteps: [] }, null, 0);
+      const none = stages.verifyLooksOf({ parent: { id: busy }, steps: [], backSteps: [] }, null, { sets: [], gone: [], own: 0, family: 0, stamped: 0 });
       assert.strictEqual(none.boardLooks, 0);
       assert.ok(none.what.some((w) => w === 'Boards has not shown the held-back columns of S3 #busy since they went behind a tick'), none.what.join(' | '));
 

@@ -571,7 +571,7 @@ module.exports = {
     const ui = src2('public/construct.js');
     assert.ok(/id="hHlBuild"/.test(ui) && /id="hHlName"/.test(ui), 'the build row is on History');
     assert.ok(/half-life set from \$\{esc\(x\.derived\.fromName \|\| x\.derived\.from\)\}/.test(ui), 'Tune and Greenlight name a half-life set by its source');
-    assert.ok(/const rules = \(sets \|\| \[\]\)\.filter\(\(x\) => \(x\.kind \|\| 'funnel'\) === 'funnel'\);/.test(ui) && /\.filter\(\(x\) => \(x\.kind \|\| 'funnel'\) === 'funnel' && !x\.derived\);\n  const hChosen = hRememberedSet\(hSets\);/.test(ui), 'Held lists a half-life set as a rule of its own and History leaves it out');
+    assert.ok(/const rules = \(sets \|\| \[\]\)\.filter\(\(x\) => \(x\.kind \|\| 'funnel'\) === 'funnel'\);/.test(ui) && /\.filter\(\(x\) => \(x\.kind \|\| 'funnel'\) === 'funnel' && !x\.derived\);\n  await s4CampRead\(\);\n  const hSets = s4CampList\(hAll\);\n  const hChosen = hRememberedSet\(hSets\);/.test(ui), 'Held lists a half-life set as a rule of its own and History leaves it out');
     assert.ok(src2('server.js').includes("'/api/funnel/set/:id/halflife/build'"), 'the build is served');
   },
 

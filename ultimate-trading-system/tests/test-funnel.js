@@ -583,7 +583,7 @@ module.exports = {
     const settle = src.slice(src.indexOf('async function fSourceSettle('), src.indexOf('function fSourceHtml('));
     assert.ok(settle.includes("const usable = (x) => x.status === 'done' || x.status === 'incomplete';") && settle.includes('const next = sets.find(usable);'),
       'a source that is gone does not settle on a finished stage 3 set');
-    assert.ok(src.includes('async function drawFunnel() {\n  const src = await fSourceSettle();\n  try { return await fDrawView(); } finally { fSourcePut(fSourceHtml(src), src); }\n}'),
+    assert.ok(src.includes('async function drawFunnel() {\n  await s4CampRead();\n  const src = await fSourceSettle();\n  try { return await fDrawView(); } finally { fSourcePut(fSourceHtml(src), src); }\n}'),
       'the source box is not put on every view of the Funnel');
     // picking a saved filter puts it in force through the one door, and the
     // walk and Worth walking? are read again under it
@@ -5003,9 +5003,9 @@ module.exports.theStageFourTableKeepsTheHeldBackWindowBehindATick = function () 
   const look = s.slice(s.indexOf('function recordHeldBackLook(id, tables) {'), s.indexOf('\n}\n', s.indexOf('function recordHeldBackLook(id, tables) {')));
   assert.ok(look.includes('if (doc.stage !== 3 && doc.stage !== 4) throw new Error(') && look.includes("on: doc.stage === 4 ? 'Funnel' : 'Boards'"), 'a look on a Stage 4 record set is refused, or not said to be on the Funnel');
   // Verify counts the Stage 4 set's own looks instead of counting the table as one
-  const looks = stages.verifyLooksOf({ steps: [{}, {}], backSteps: [], heldBackLooks: [{ on: 'Funnel' }, { on: 'Funnel' }], parent: null }, {}, 0);
+  const looks = stages.verifyLooksOf({ steps: [{}, {}], backSteps: [], heldBackLooks: [{ on: 'Funnel' }, { on: 'Funnel' }], parent: null }, {}, { sets: [], gone: [], own: 0, family: 0, stamped: 0 });
   assert.ok(looks.what.some((w) => w === 'the Stage 4 record set showed its held-back row on the Funnel 2 time(s), each a counted look'), `Verify does not count the ticks on: ${JSON.stringify(looks.what)}`);
-  const none = stages.verifyLooksOf({ steps: [], backSteps: [], parent: null }, {}, 0);
+  const none = stages.verifyLooksOf({ steps: [], backSteps: [], parent: null }, {}, { sets: [], gone: [], own: 0, family: 0, stamped: 0 });
   assert.ok(none.what.some((w) => w === 'the Stage 4 record set has not shown its held-back row on the Funnel since it went behind a tick'), 'Verify still counts the table as a look');
   assert.ok(!none.what.includes('the cut view printed it once more'), 'Verify counts a look the screen no longer takes');
   // the help describes the tick

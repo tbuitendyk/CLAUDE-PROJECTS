@@ -1670,3 +1670,99 @@ module.exports.aCaptureWhosePickWasMadeTheOldWayIsChosenAgainAsTheSetIsOpened = 
     f.cleanup();
   }
 };
+
+// EVERY STAGE 4 RECORD SET BOX CARRIES THE SAME TWO THINGS (3.249.0, owner
+// 2026-09-25: "i need a way to: 1. DELETE stage 4 record sets -- they're
+// multiplying like rabbits 2. FILTER (with a checkbox beside all of the Stage
+// 4 record set selectors) on the currently selected campaign"). The tick sits
+// in the box's own row, bottom-aligned (RULE FOUR-A); the delete is a row of
+// its own under the box, in the Funnel's words; every tab reads the campaign
+// set on Sweep, narrows its list through the one helper and wires both.
+module.exports.everyStage4RecordSetBoxCarriesTheCampaignTickAndTheDelete = function () {
+  const page = src('public/construct.js');
+  const body = (head) => { const at = page.indexOf(head); assert.ok(at >= 0, `${head} is gone`); return page.slice(at, page.indexOf('\n}\n', at) + 3); };
+  // the box, its tick after it in the same row, and the delete row under the row
+  const rowOf = (fn, id) => {
+    const at = fn.indexOf(`<select id="${id}"`);
+    assert.ok(at > 0, `${id} is drawn`);
+    const open = fn.lastIndexOf('<div class="row"', at);
+    const close = fn.indexOf('</select></label>', at);
+    return { head: fn.slice(open, fn.indexOf('>', open) + 1), after: fn.slice(close, close + 60), rest: fn.slice(close) };
+  };
+  for (const [head, id] of [['function vSetBoxHtml(', 'vSet'], ['function hSetBoxHtml(', 'hSet'], ['function tnSetBoxHtml(', 'tnSet'], ['function glStage4PanelHtml(', 'gl4Set']]) {
+    const r = rowOf(body(head), id);
+    assert.ok(/align-items:flex-end/.test(r.head), `${id}: the row holding the box and its tick bottom-aligns`);
+    assert.ok(r.after.startsWith('</select></label>${s4CampTickHtml()}</div>'), `${id}: the tick sits beside the box, in its row`);
+    assert.ok(/^<\/select><\/label>\$\{s4CampTickHtml\(\)\}<\/div>\s*\$\{s4DeleteRowHtml\(chosen\)\}/.test(r.rest), `${id}: the delete is the row under it`);
+  }
+  // Tune's scan target box lists the same sets: the tick, and its delete is the capture box's
+  const tt = page.slice(page.indexOf('<select id="tuneTarget">'), page.indexOf('<select id="tuneTarget">') + 900);
+  assert.ok(/<\/select><\/label>\s*\$\{s4CampTickHtml\(\)\}/.test(tt), 'the scan target box carries the tick');
+  // the Funnel's box sits in the title row, which already carries its own delete
+  assert.ok(/<\/select><\/label>\$\{s4CampTickHtml\(\)\}`;/.test(body('function fCutPickBox(')), 'the Funnel\'s box carries the tick');
+  assert.ok(/s4CampList\(d\.cuts \|\| \[\], st\.cut\)/.test(body('function fCutPickBox(')), 'and keeps the set open listed');
+  // the delete: its own row, the button alone, the Funnel's words, the one flow
+  const del = body('function s4DeleteRowHtml(');
+  assert.ok(/<div class="row"><button class="danger s4Delete"[^>]*>Delete Stage 4 record set…<\/button><\/div>/.test(del), 'a row holding the one button');
+  assert.ok(/>Delete Stage 4 record set…<\/button>/.test(page.slice(page.indexOf('id="fCutDelete"'), page.indexOf('id="fCutDelete"') + 600)), 'the same words as the Funnel\'s');
+  assert.ok(/deleteSetFlow\(chosen\)/.test(body('function s4DeleteWire(')), 'the one delete flow');
+  // every tab reads the campaign, narrows through the helper, and wires both
+  // a renderer to the next one: drawTune declares helpers of its own at the left margin, so its body is not cut at the first closing brace there
+  const whole = (head) => { const at = page.indexOf(head); return page.slice(at, page.indexOf('\nasync function ', at + head.length)); };
+  for (const [head, list] of [['async function drawJudge(', 's4CampList(vRulesFor(all, stretch))'], ['async function drawHistory(', 's4CampList(hAll)'], ['async function drawTune(', "s4CampList(((await apiOr('api/funnel/sets'"], ['async function drawGreenlight(', "s4CampList(((await apiOr('api/funnel/sets'"]]) {
+    const fn = whole(head);
+    assert.ok(fn.includes('await s4CampRead();') && fn.includes(list), `${head} reads the campaign and narrows its list through the helper`);
+    assert.ok(/s4CampWire\(/.test(fn) && /s4DeleteWire\(/.test(fn), `${head} wires the tick and the delete`);
+  }
+  assert.ok(whole('async function drawTune(').includes("const stage4 = s4CampList(books.filter((b) => b.kind === 'stage4'));"), 'the scan targets are narrowed too');
+  assert.ok(body('async function drawFunnel(').includes('await s4CampRead();') && /s4CampWire\(drawFunnel\)/.test(body('function fWireCutPick(')), 'the Funnel reads the campaign and wires its tick');
+  // THE HELPER: one remembered setting, the campaign set on Sweep, and the open set kept
+  const a = page.indexOf('const S4_CAMP_KEY'); const b = page.indexOf('function s4CampTickHtml(');
+  let stored = '1';
+  const make = new Function('localStorage', 'apiOr', `${page.slice(a, b)}\nreturn { s4CampList, set: (v) => { s4CampNow = v; } };`);
+  const h = make({ getItem: () => stored }, null);
+  const sets = [{ id: 'a', campaign: 'C1' }, { id: 'b', campaign: 'C2' }, { id: 'c', campaign: null }];
+  h.set({ name: 'C1' });
+  assert.deepStrictEqual(h.s4CampList(sets).map((x) => x.id), ['a'], 'ticked: only the campaign set on Sweep');
+  assert.deepStrictEqual(h.s4CampList(sets, 'b').map((x) => x.id), ['a', 'b'], 'the set kept is kept whatever it is');
+  stored = '0';
+  assert.deepStrictEqual(h.s4CampList(sets).map((x) => x.id), ['a', 'b', 'c'], 'unticked: every set');
+  stored = '1'; h.set({ name: '' });
+  assert.deepStrictEqual(h.s4CampList(sets).map((x) => x.id), ['a', 'b', 'c'], 'no campaign set: nothing to narrow to');
+  // the sets listing and the scan targets carry the campaign, read off the stage 3 set
+  const srv = src('server.js');
+  assert.ok(/campaign: stages\.campaignOfSet\(d, camps\)/.test(srv), 'the sets listing carries each set\'s campaign');
+  assert.ok(/campaign: campaignOfSet\(d, camps\)/.test(src('lib/stages.js')), 'and so do the scan targets and the Funnel\'s cuts');
+};
+
+// THE CONVICTION SIZING A HELD SET FROZE, IN NUMBERS (3.249.0, owner 2026-09-25:
+// "the greenlight is reflecting the new conviction sizing this time, but the
+// held tab is not"). The table said "by conviction" whatever the multipliers.
+module.exports.heldSaysTheMultipliersEachHeldSetFrozeAndWhatTheyMade = function () {
+  const page = src('public/construct.js');
+  const at = page.indexOf('function vSizingWordsHtml(t) {');
+  const words = new Function('esc', 'money', `${page.slice(at, page.indexOf('\n}\n', at) + 3)}\nreturn vSizingWordsHtml;`)((t) => String(t), (v) => `$${Number(v).toFixed(2)}`);
+  const rows = [
+    { label: 'a', sizing: { on: true, ladder: [0.5, 1.5] }, tunedUsd: 10, plainUsd: 8, clipsPerTrade: 1 },
+    { label: 'b', sizing: { on: true, ladder: [0.5, 1.5] }, tunedUsd: 20, plainUsd: 16, clipsPerTrade: 1.2 },
+    { label: 'c', sizing: { on: true, ladder: [1, 0] }, tunedUsd: 5, plainUsd: 7, clipsPerTrade: 0.4 },
+    { label: 'd', sizing: null, tunedUsd: 99, plainUsd: 99, clipsPerTrade: null },
+  ];
+  const w = words({ rows });
+  assert.ok(w.includes('×0.5 · ×1.5 (1 to 2 agreeing) on 2 survivor(s); ×1 · ×0 (1 to 2 agreeing) on 1 survivor(s)'), `each set of multipliers, grouped: ${w}`);
+  assert.ok(w.includes('with the sizing $35.00 over those survivors, against $31.00 without them, 0.87 clips a trade on average'), `what they made against the same trades without them: ${w}`);
+  assert.strictEqual(words({ rows: [rows[3]] }), '', 'no sizing frozen, nothing said');
+  const note = page.slice(page.indexOf('function vTunedNoteHtml(t) {'), page.indexOf('function vSizingWordsHtml(t) {'));
+  assert.ok(/\$\{vSizingWordsHtml\(t\)\}/.test(note), 'the note under the tunings says it');
+};
+
+// A PRESS KEEPS THE SET IT READ (3.249.0, owner 2026-09-25: "why do i have to
+// push ... two times to get it to display"): the set is remembered before the
+// read starts, so the screen drawn when it lands is that set's.
+module.exports.aPressOnHeldOrReserveKeepsTheSetItRead = function () {
+  const page = src('public/construct.js');
+  const fn = page.slice(page.indexOf('async function drawJudge('), page.indexOf('async function vFollow('));
+  const keep = fn.indexOf('localStorage.setItem(JUDGE_SET_KEY[stretch], chosen)');
+  const post = fn.indexOf('tryPost(`api/funnel/set/${encodeURIComponent(chosen)}/judge/${stretch}`');
+  assert.ok(keep > 0 && post > keep, 'the set is remembered before the read is posted');
+};
