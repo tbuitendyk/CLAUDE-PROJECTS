@@ -86,6 +86,36 @@ function describeConfig(cfg, opts = {}) {
   };
 }
 
+// HOW A POSITION OPENS AND CLOSES, as the engine carries it out for THIS
+// configuration (engine/plan.js), in words (owner, 2026-09-25). The words these
+// replace said "a market order ... at the hourly OPEN" and "a pure time exit"
+// for every configuration -- written when the old order program could only
+// enter at the market, and never changed when breakout, gates and trailing
+// stops came to trade.
+function entryExitWords(cfg, opts, entryH, bandPct) {
+  const c = cfg.cell || {};
+  const hh = `${String(entryH % 24).padStart(2, '0')}:00 UTC`;
+  const pct = (m) => Math.round(Number(m) * bandPct * 1e4) / 1e4;
+  const t = c.tHours;
+  const trail = c.trailMult != null
+    ? ` Once the best price since the entry has gone ${pct(c.armMult || 0)}% its way (arm ${c.armMult ?? 0} × the ${bandPct}% band), the stop follows ${pct(c.trailMult)}% (trail ${c.trailMult} × band) behind the best price; it is moved at the end of every whole hour and only ever tightens.`
+    : '';
+  const hold = ` Whatever is still open ${t}h after ${hh} (${(t / 24).toFixed(1)} days) is closed at the market.`;
+  if (c.entry === 'breakout') {
+    return [
+      `5. ENTRY — breakout, gate ${c.gate}: at ${hh}, ${entryH}h after the window starts, a buying level and a selling level are set ${pct(c.dMult)}% either side of that hour's opening price (d ${c.dMult} × the ${bandPct}% band). ${c.gate === 'active'
+        ? 'Whichever a printed trade reaches first opens the position, whichever way the committee called: LONG at the buying level, SHORT at the selling level.'
+        : 'Only the level on the side of the call can open it: the buying level for a LONG call, the selling level for a SHORT one.'} The engine sends a market order the moment a printed trade reaches the level. If none is reached within ${t}h, nothing opens. Long = buy; short = borrow-and-sell on isolated margin.`,
+      `6. EXIT — the stop is the level on the other side.${trail || ' It does not move.'}${hold}`,
+    ];
+  }
+  const stopPct = Number(opts.stopPct) > 0 ? Math.round(Number(opts.stopPct) * 1e6) / 1e4 : null;
+  return [
+    `5. ENTRY — market: a market order in the called direction at the opening price of ${hh}, ${entryH}h after the window starts. Long = buy; short = borrow-and-sell on isolated margin.`,
+    `6. EXIT — ${stopPct != null ? `a stop ${stopPct}% against the price it opened at (Stop %), reached when a printed trade goes past it.` : (trail ? 'no stop until the trail arms.' : 'no stop.')}${trail}${hold}`,
+  ];
+}
+
 // How the decision is made: the pipeline, who votes and on what, how the
 // context assets enter, and the voting rule.
 function describeAnatomy(cfg, opts = {}) {
@@ -126,8 +156,7 @@ function describeAnatomy(cfg, opts = {}) {
       ...(cfg.field && cfg.field.gate ? [
         `4b. THE FIELD — the coin's own decision field, ${fieldWords(cfg.field).field}. T${fieldWords(cfg.field).gate.slice(1)}.`,
       ] : []),
-      `5. ENTRY — '${cfg.cell.entry}' algorithm with a '${cfg.cell.gate}' gate: a market order in the called direction at the hourly OPEN of window start +${entryH}h (${String(entryH % 24).padStart(2, '0')}:00 UTC). Long = buy; short = borrow-and-sell on isolated margin.`,
-      `6. EXIT — a market order exactly ${cfg.cell.tHours}h after entry (${(cfg.cell.tHours / 24).toFixed(1)} days later)${opts.stopPct ? `, or sooner if the ${(opts.stopPct * 100).toFixed(2)}% protective stop is hit` : '. No stop, no trail, no target: the tested cell is a pure time exit, so the hold length is the only exit knob'}.`,
+      ...entryExitWords(cfg, opts, entryH, bandPct),
     ],
     committee: members.map((m) => ({
       model: m.model === 'logreg' ? 'softmax logistic regression (lib/logreg.js, pure JS)' : m.model,
@@ -173,4 +202,4 @@ function describeAnatomy(cfg, opts = {}) {
   };
 }
 
-module.exports = { agreementWords, fieldWords, describeConfig, describeAnatomy };
+module.exports = { agreementWords, fieldWords, entryExitWords, describeConfig, describeAnatomy };

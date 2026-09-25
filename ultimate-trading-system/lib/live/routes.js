@@ -398,7 +398,9 @@ function installLiveRoutes(app, { csrfGuard }) {
               .filter((p) => (c === 'paper' ? !!p.paper : !p.paper)).length;
           } catch (_) { open = 0; }
           parts.push({ channel: c, state: s.state, open });
-          channels[c] = { setupId: s.id, state: s.state, open, runEpochUtc: s.runEpochUtc || null,
+          // this book alone, in the words of the Greenlights status column
+          // (owner, 2026-09-25: two "paper" badges side by side said nothing)
+          channels[c] = { setupId: s.id, state: s.state, open, words: ch.statusLine([{ channel: c, state: s.state, open }]), runEpochUtc: s.runEpochUtc || null,
             // Whether this channel could go REAL: presence only, never the value.
             // The screen used to grey out 'Activate real' for every config except
             // the built-in one, which told the owner nothing about what to DO. It

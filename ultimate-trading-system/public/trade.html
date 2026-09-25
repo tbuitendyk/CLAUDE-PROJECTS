@@ -261,6 +261,12 @@ function identLine(g){
 const IDENT_WHY='which config this is: its id (as the Greenlight tab on Construct lists it), the pair and chunk shape, its setting, and how its survivor was picked. The same line on every tab here, on both books.';
 const identSub=(g)=>`<div class="muted" style="font-size:.72rem;margin-top:.1rem;text-transform:none;letter-spacing:0" title="${IDENT_WHY}">${identLine(g)}</div>`;
 const identHtml=(g)=>`<b>${esc((g&&(g.name||g.id))||'—')}</b>${identSub(g)}`;
+// ONE BADGE FOR WHERE A BOOK STANDS (owner, 2026-09-25: "why two 'paper'
+// flags on the setup detail page at the top?"): the side badge and the raw
+// state both printed "paper". The book's own words from the configs list --
+// active paper, … deactivating, idle, as the status column on Greenlights
+// says them -- and the raw state only when the list does not have it.
+const bookWords=(ch,s)=>(ch&&ch.words)||(s&&s.state)||'—';
 
 // COLUMN KEYS. The owner's standing rule: every table gets a name and a key, and
 // the key defines every heading in plain words INCLUDING ITS UNITS — money and
@@ -274,7 +280,7 @@ const TH={
   why:'the reason recorded at greenlight time, in the words of whoever cleared it. It is the decision record and cannot be edited afterwards.',
   status:'plain-words state of this config across BOTH sides — which channels are active, and whether any position is open.',
   setup:'the channel this side runs the config through: one book per side, so a paper book and a live setup are separate rows.',
-  state:'draft (nothing runs), paper (books trades, places no orders, no money), live (real orders), stopped (no new entries, existing positions still exit), retired (finished).',
+  state:'where this book stands, in the words of the status column on Greenlights: active paper / active real = taking new entries; … deactivating = stopped, positions still closing out; idle = stopped and flat, or never run.',
   clip:'position size per entry in US DOLLARS of notional, not a share of anything. $100 means each entry opens about $100 of the pair.',
   stop:'the protective stop as a PERCENT move against the position. "—" means no fixed stop: the position rests on its scheduled exit alone.',
   created:'when this book was created, UTC. Not when it started trading — see state.',
@@ -723,9 +729,9 @@ async function drawSetups(){
   $('#view').innerHTML=`<div class="panel"><table><thead><tr>
     ${th('setup','setup')}${th('config','config','text-align:left')}${th('pair','pair')}${th('state','state')}${th('clip','clip')}${th('stop','stop')}${th('fee','fee')}${th('created','created')}</tr></thead><tbody>
     ${rows.map(s=>`<tr class="clickable" data-id="${s.id}">
-      <td>${esc(s.name)} ${branch==='paper'?paperBadge:''}</td>
+      <td>${esc(s.name)}</td>
       <td style="text-align:left">${identHtml(meta[s.id])}</td>
-      <td>${esc(s.tradedPair)}</td><td><span class="badge b-${s.state==='live'?'live':s.state==='paper'?'paper':s.state==='stopped'?'stopped':'idle'}">${s.state}</span></td>
+      <td>${esc(s.tradedPair)}</td><td><span class="badge b-${s.state==='live'?'live':s.state==='paper'?'paper':s.state==='stopped'?'stopped':'idle'}">${esc(bookWords(chanOf(meta[s.id]),s))}</span></td>
       <td>$${Number(s.clipUsd).toFixed(0)}</td>
       <td>${s.stopPct==null?'—':(s.stopPct*100).toFixed(2)+'%'}</td>
       <td class="${s.feeInherited?'muted':''}">${(s.feePerLeg*100).toFixed(3)}%</td>
@@ -846,8 +852,8 @@ async function drawDetail(){
   const active=s.state==='paper'||s.state==='live';
   $('#view').innerHTML=`
     <div class="panel"><div class="row">
-      <b style="font-size:1rem">${esc(s.name)}</b> ${branch==='paper'?paperBadge:''}
-      <span class="badge b-${s.state==='live'?'live':s.state==='paper'?'paper':'stopped'}">${s.state}</span>
+      <b style="font-size:1rem">${esc(s.name)}</b>
+      <span class="badge b-${s.state==='live'?'live':s.state==='paper'?'paper':'stopped'}" title="${esc(TH.state)}">${esc(bookWords(ch,s))}</span>
       <div class="spacer"></div>
       ${active?`<button id="deactBtn">Deactivate</button>`:`<button id="actBtn" class="pri">Activate ${branch}</button>`}
     </div>
@@ -938,8 +944,10 @@ async function drawDetail(){
             <option value="">— default (mx-1) —</option>
             ${(tg.targets||[]).map(t=>`<option value="${esc(t.id)}" ${s.executionTargetRef===t.id?'selected':''}>${esc(t.id)}${t.symbols?` — ${esc(t.symbols.join(', '))}`:''}</option>`).join('')}
           </select></label>
-        <button id="saveRouting">Save routing</button>
       </div>
+      <!-- A BUTTON GETS A ROW OF ITS OWN (RULE FOUR-A, owner 2026-09-25): it sat
+           at the end of the key and target row, against the fields. -->
+      <div class="row" style="margin-top:.5rem"><button id="saveRouting">Save routing</button></div>
       <p class="muted" style="font-size:.74rem;margin:.4rem 0 0">A change here is re-checked against the same gate that
         guards going live: the box must serve <b>${esc(s.tradedPair)}</b>, and a live setup must keep its own key.</p></div>
     ${(an&&an.anatomy)?`
