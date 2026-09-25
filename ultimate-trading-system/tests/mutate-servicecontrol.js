@@ -2695,7 +2695,9 @@ const GUARDS = [
   [path.join(ROOT, "public", "trade.html"), "      <b style=\"font-size:1rem\">${esc(s.name)}</b>\n", "      <b style=\"font-size:1rem\">${esc(s.name)}</b> ${branch==='paper'?paperBadge:''}\n",
     "aBookShowsOneStateBadgeAndSaveRoutingHasItsOwnRow", "Setup detail shows two paper badges again"],
   [path.join(ROOT, "public", "trade.html"), "      <div class=\"row\" style=\"margin-top:.5rem\"><button id=\"saveRouting\">Save routing</button></div>", "      <div class=\"row\" style=\"margin-top:.5rem\"></div><button id=\"saveRouting\">Save routing</button>",
-    "aBookShowsOneStateBadgeAndSaveRoutingHasItsOwnRow", "Save routing loses its row of its own"],
+    "aBookShowsOneStateBadgeAndSaveRoutingHasItsOwnRow", "Save routing loses its row of its own"],  // THE ENGINE CARD'S PRICE LINE (3.262.2)
+  [path.join(ROOT, "public", "setup.html"), "    if (!coins.length) return '<span class=\"muted\">no coin followed \u2014 no plan waiting or open</span>';", "",
+    "theEngineCardSaysWhatItsPricesMean", "an engine with no plan shows its prices as a fault again"],
 ];
 
 const only = process.argv[2] || '';

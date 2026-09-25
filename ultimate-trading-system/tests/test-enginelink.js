@@ -332,3 +332,16 @@ module.exports = {
     m.lastHealth = null;
   },
 };
+
+// THE ENGINE CARD'S PRICE LINE (3.262.2): no coin followed is said as such and
+// not painted as a fault; red only when a coin is followed and prices stop
+module.exports.theEngineCardSaysWhatItsPricesMean = function () {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
+  const fn = src.slice(src.indexOf('function engineCard('), src.indexOf('const said =', src.indexOf('function engineCard(')));
+  const feedsOf = new Function('h', 'esc', `${fn.slice(fn.indexOf('const feeds ='))}; return feeds;`);
+  const esc = (t) => String(t);
+  assert.strictEqual(feedsOf({ feeds: [{ connected: false, symbols: [] }] }, esc), '<span class="muted">no coin followed — no plan waiting or open</span>');
+  assert.strictEqual(feedsOf({ feeds: [{ connected: true, symbols: ['LTCUSDT'] }] }, esc), '<span class="pos">arriving for LTCUSDT</span>');
+  assert.strictEqual(feedsOf({ feeds: [{ connected: false, symbols: ['LTCUSDT'] }] }, esc), '<span class="neg">not arriving for LTCUSDT</span>');
+  assert.ok(!/prices arriving|prices not arriving/.test(fn), 'the caption says prices; the value does not say it again');
+};
