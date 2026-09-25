@@ -111,6 +111,7 @@ module.exports.stepTwoLetsTheSystemInWithAKeyAndASignIn = async function () {
   });
   const a = es.create('CDMX engine', 'cdmx-engine');
   refused(() => es.setChoice(a.id, 'access', 'keyHow', 'made'), /^step 2 opens when step 1 is done$/);
+  for (const fn of [() => es.makeKey(a.id), () => es.signIn(a.id)]) { let err = null; try { await fn(); } catch (e) { err = e; } assert.ok(err && /^step 2 opens when step 1 is done$/.test(err.message), `a locked step 2 makes no key and signs in nowhere: ${err && err.message}`); }
   es.setChoice(a.id, 'ready', 'where', 'server');
   for (const t of ['binance', 'ip', 'on', 'size']) es.setTick(a.id, 'ready', t, true);
   es.setChoice(a.id, 'access', 'keyHow', 'made');
