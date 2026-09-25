@@ -1357,6 +1357,18 @@ module.exports = {
       const oneDoc = stages.getSet(onePick.id);
       assert.deepStrictEqual([oneDoc.stopChoices[capLabels[1]].sizing.ladder, oneDoc.stopChoices[depth].sizing.ladder], [ladder, src0.stopChoices[depth].sizing.ladder], 'the survivor the table covers carries its numbers, any other the sizing on record');
       assert.ok(/give one multiplier for each agreement count/.test(refusal(c.cut.id, { name: `${src0.name} short`, sizing: true, ladder: [1], pick: 'all' })), 'a table of the wrong length is refused');
+      // A COPY HAS ITS FAMILY'S SCANS ON THE SAME TRADES (3.251.1, owner 2026-09-25:
+      // "the existing protective stop tuner and conviction sizing sections should be loaded with the selections and results")
+      const q = (id) => ({ setId: id, pick: 'all', windows: ['train', 'test'] });
+      const aimOf = (id) => stages.tuneScanAimOf(stages.captureTargetOf(q(id)));
+      assert.strictEqual(stages.tuneScanFor(q(asTab.id), 'conviction').status, 'idle', 'nothing kept anywhere yet');
+      stages.saveTuneScan(aimOf(c.cut.id), 'conviction', { status: 'done', finishedUtc: '2026-09-25T00:00:01Z', ladder: [1], marker: 'original' });
+      const onCopy = stages.tuneScanFor(q(asTab.id), 'conviction');
+      assert.deepStrictEqual([onCopy.status, onCopy.marker], ['done', 'original'], 'the copy is handed the scan its original read on the same trades');
+      assert.strictEqual(stages.tuneScanFor({ ...q(asTab.id), windows: ['test'] }, 'conviction').last.survivor, 'all', 'and on other windows it is told what that scan read');
+      stages.saveTuneScan(aimOf(asTab.id), 'conviction', { status: 'done', finishedUtc: '2026-09-25T00:00:02Z', ladder: [1], marker: 'own' });
+      assert.strictEqual(stages.tuneScanFor(q(asTab.id), 'conviction').marker, 'own', 'its own scans come first');
+      assert.strictEqual(stages.tuneScanFor(q(c.cut.id), 'conviction').marker, 'original', 'and the original keeps its own');
       // deleting a copy deletes its captured trades and leaves the original's
       stages.deleteSet(both.out.id, both.out.id);
       assert.ok(!fs.existsSync(stages.captureFile(both.out.id)) && fs.existsSync(stages.captureFile(c.cut.id)), 'the copy\'s capture goes with it');
@@ -1556,5 +1568,24 @@ module.exports = {
     assert.ok(tune.includes("const copyNameInBox = tnCopyNameTyped ? tnCopyNameTyped.name : (isSet ? chosen.name : '');") && tune.includes('tnCopyPanelHtml(chosen, busy, copySizingWords, copyNameInBox)'), 'the name box shows what is kept');
     assert.ok(tune.includes('cnBox.oninput = () => { tnCopyNameTyped = { set: chosen.id, name: cnBox.value }; };') && tune.includes('tnCopyNameTyped = { set: chosen.id, name };'), 'typed or saved, it is kept');
     assert.ok(tune.includes('if (tnCopyNameTyped && (!isSet || tnCopyNameTyped.set !== chosen.id)) tnCopyNameTyped = null;'), 'another set clears it');
+  },
+
+  // A SET COMES UP WITH ITS RESULTS (3.251.1, owner 2026-09-25: "when a stage 4
+  // with scan target is selected on tune the existing protective stop tuner and
+  // conviction sizing sections should be loaded with the selections and
+  // results"): the first draw of a set under scan target, with nothing kept on
+  // the survivor and windows remembered, takes the ones the newest kept result
+  // read and draws again; a choice made after that is never changed back.
+  aSetUnderScanTargetComesUpWithTheSurvivorAndWindowsItsResultsRead() {
+    const ui = src('public/construct.js');
+    const at = ui.indexOf('async function drawTune(');
+    const tune = ui.slice(at, ui.indexOf('\nasync function ', at + 10));
+    assert.ok(/^let tnLastTarget = null;/m.test(ui), 'the set drawn last is held outside the draw');
+    const block = tune.slice(tune.indexOf('if (isSet && tnLastTarget !== chosen.id) {'), tune.indexOf('if (!isSet) tnLastTarget = null;'));
+    assert.ok(block.length > 0 && block.indexOf('tnLastTarget = chosen.id;') > 0, 'only the first draw of a set, whichever way it came up');
+    assert.ok(block.includes("const shown = [stop, conv].some((x) => x && ['done', 'running', 'error'].includes(x.status));"), 'and only when neither scan has something to show');
+    assert.ok(block.includes("newest.survivor === 'all' ? 'all' : (newest.survivor === (chosen.pick || {}).label ? 'depth' : newest.survivor)"), 'the survivor the newest kept result read, by depth when that is who it was');
+    assert.ok(block.includes('localStorage.setItem(TN_PICK_KEY, pick); localStorage.setItem(TN_WINDOWS_KEY, JSON.stringify(newest.windows || []));') && block.includes('return drawTune();'), 'set as the choice, and the tab drawn with it');
+    assert.ok(/for \(const m of familyOf\(t\.doc\)\)/.test(src('lib/stages.js')), 'the service hands a copy the scans of its family on the same trades');
   },
 };

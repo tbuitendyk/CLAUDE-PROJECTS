@@ -3311,6 +3311,7 @@ const TN_WINDOWS = [['train', 'tnWinTrain', 'training'], ['test', 'tnWinTest', '
 // set under scan target and forgets it. A capture that failed moves nothing.
 const TN_CAPTURED_KEY = 'cx-tune-captured';
 let tnTypedLadder = null;          // multipliers typed on Tune and not yet priced: { key: set|survivor|windows, raw } (3.249.0)
+let tnLastTarget = null;           // the set under scan target the last time the tab was drawn (3.251.1)
 let tnSizingWhyTyped = null;       // the reason typed for the sizing and not yet recorded: { set, text } (3.250.1)
 let tnCopyNameTyped = null;        // the name in the save box, typed or saved: { set, name } (3.250.1)
 // REBUILT ON FIRST OPEN (3.235.0, owner 2026-09-23: "rebuilding on first
@@ -3544,6 +3545,26 @@ async function drawTune() {
     apiOr(`api/pilot/stopsweep?${scanQ}`, ({ status: 'unread' })),
     apiOr(`api/pilot/convictionsweep?${scanQ}`, ({ status: 'unread' })),
   ]) : [{ status: 'idle' }, { status: 'idle' }];
+  // A SET COMES UP WITH ITS RESULTS (3.251.1, owner 2026-09-25: "when a stage 4
+  // with scan target is selected on tune the existing protective stop tuner and
+  // conviction sizing sections should be loaded with the selections and
+  // results"): the first time a set is drawn under scan target -- picked in the
+  // box, handed over when its capture lands, or on coming to the tab -- if
+  // neither scan has a result on the survivor and windows remembered, they are
+  // set to the ones the newest kept result read, and the tab is drawn with it.
+  // A survivor or window chosen after that is never changed back.
+  if (isSet && tnLastTarget !== chosen.id) {
+    tnLastTarget = chosen.id;
+    const shown = [stop, conv].some((x) => x && ['done', 'running', 'error'].includes(x.status));
+    const newest = [stop, conv].filter((x) => x && x.status === 'idle' && x.last).map((x) => x.last)
+      .sort((a, b) => String(b.finishedUtc || '').localeCompare(String(a.finishedUtc || '')))[0] || null;
+    if (!shown && newest) {
+      const pick = newest.survivor === 'all' ? 'all' : (newest.survivor === (chosen.pick || {}).label ? 'depth' : newest.survivor);
+      try { localStorage.setItem(TN_PICK_KEY, pick); localStorage.setItem(TN_WINDOWS_KEY, JSON.stringify(newest.windows || [])); } catch (_) { /* private window */ }
+      return drawTune();
+    }
+  }
+  if (!isSet) tnLastTarget = null;
   // The prose and the dropdown are computed from the SAME resolved value, so
   // the sentence above the control can no longer describe a different target
   // from the one the launcher will actually use.

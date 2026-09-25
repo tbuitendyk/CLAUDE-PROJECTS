@@ -11212,8 +11212,27 @@ function tuneScanFor(query, tool, running = null) {
   if (running && running.tool === tool && running.aim && running.aim.setId === aim.setId && tuneScanKeyOf(running.aim) === tuneScanKeyOf(aim)) {
     return { status: 'running', aim, bookId: running.bookId || null, startedUtc: running.startedUtc || null };
   }
-  const all = readTuneScans(aim.setId).scans[tool] || {};
   const current = (r) => !!(r && r.aim && r.aim.captureAt === aim.captureAt);
+  // A SET SAVED UNDER A NEW NAME HAS THE SCANS OF ITS FAMILY ON THE SAME TRADES
+  // (3.251.1, owner 2026-09-25: "when a stage 4 with scan target is selected on
+  // tune the existing protective stop tuner and conviction sizing sections
+  // should be loaded with the selections and results"). A copy carries the
+  // captured trades of the set it was saved from, to the same capture, so a scan
+  // on either read the same trades; its own panels were empty until it was
+  // scanned again. Its own results come first; with none of its own on those
+  // trades, the newest of its family's on them stand in, each under the survivor
+  // and windows it read.
+  let all = readTuneScans(aim.setId).scans[tool] || {};
+  if (!Object.values(all).some(current)) {
+    const theirs = {};
+    for (const m of familyOf(t.doc)) {
+      if (m.id === aim.setId) continue;
+      for (const [k, r] of Object.entries(readTuneScans(m.id).scans[tool] || {})) {
+        if (current(r) && (!theirs[k] || String(r.finishedUtc || '') > String(theirs[k].finishedUtc || ''))) theirs[k] = r;
+      }
+    }
+    all = theirs;
+  }
   const mine = all[tuneScanKeyOf(aim)];
   // WHAT THE PANEL DRAWS, NOT THE WHOLE KEPT RESULT (3.242.3, owner: "roll ...
   // the Tune refusal into the next release"). The stop scan keeps its full
