@@ -1319,7 +1319,7 @@ window.HELP = {
       gl4Why: { what: 'Why this survivor is being taken forward. Required, and kept forever with the record.' },
       gl4Go: {
         what: 'Writes the record: the set, the verdict that stood, the survivor and how it was chosen, and the frozen settings with the way its members agree exactly as the survivor carries it. Does not start any trading.',
-        more: 'It refuses a set cut on all units together, a coin read on its own, and a survivor whose trade shape the live executor cannot carry. What it writes appears on the Trade tab on both sides but cannot be activated until the live path speaks the stage engine\'s way of agreeing.',
+        more: 'It refuses a set cut on all units together and a coin read on its own. What it writes appears on the Trade tab on both sides, and only a press of Activate paper or Activate real there starts it. A survivor priced with a shape the live executor does not do yet (breakout entry, the active gate, a trailing stop, an arm) is written exactly as it was priced, and the screen says so above the pick; on the Trade tab both presses refuse it, in words, until the live executor does it.',
       },
     },
   },

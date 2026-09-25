@@ -4201,9 +4201,18 @@ async function drawHelp() {
 // THE STAGE 4 DOOR ON GREENLIGHT (3.90.0): a Stage 4 record set whose verdict
 // stood, one survivor chosen by depth inside the rule or named, a name and a
 // why. The frozen configuration carries the agreement as the survivor carries
-// it, which no integer quorum expresses. Nothing here trades, and nothing built
-// from it can be put to work until the live path speaks that agreement.
+// it, which no integer quorum expresses. Nothing here trades: the config goes
+// to the Trade tab, and only a press of Activate paper or Activate real there
+// starts it -- which refuses, in words, a shape the live executor does not do
+// yet (3.252.0). This screen says so beside the pick, before the press.
 const GL_SET_KEY = 'cx-greenlight-set';
+// WHAT THE LIVE EXECUTOR DOES NOT DO YET for the survivor picked (3.252.0,
+// owner 2026-09-25: "i want to be able to promote a row to Trade based on the
+// current design"): never a refusal, only said, so the press is made knowing
+function glNotYetHtml(list) {
+  return list && list.length ? `<b class="warn">it goes to the Trade tab, and cannot be started there yet:</b> ${list.map(esc).join('; ')}` : '';
+}
+const glNotYetOf = (d, pick) => (!d ? [] : (pick == null || pick === 'depth' ? d.notYet : ((d.survivors || []).find((x) => x.label === pick) || {}).notYet) || []);
 function glRememberedSet(list) {
   let want = null;
   try { want = localStorage.getItem(GL_SET_KEY); } catch (_) { want = null; }
@@ -4345,8 +4354,8 @@ function glStage4PanelHtml(list, chosen, d) {
       passed on Held on a layout that keeps no reserve, held alone. One of its
       survivors is taken forward, chosen by how surrounded it is (the survivor with the most of its neighbouring settings
       surviving too, never the one with the most money) or named by you, and both are recorded. The frozen settings carry the
-      way its members agree exactly as the survivor does. Nothing here trades, and nothing built from it can be put to
-      work until the live path speaks that agreement.</p>
+      way its members agree exactly as the survivor does. Nothing here trades: the config goes to the Trade tab, and only a
+      press of Activate paper or Activate real there starts it.</p>
     <div class="row" style="align-items:flex-end">
       <label class="f" title="which held set or reserve set to take a survivor from, from every one on this box, newest first, with the verdict it carries. A rule is never greenlighted: the set a press made on Held or Reserve is.">Stage 4 record set<select id="gl4Set">${list.length
     ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors · ${x.judge && x.judge.block ? `${x.judge.block.pass ? 'PASS' : 'FAIL'} ${esc(String(x.judge.block.at || '').slice(0, 10))}` : 'no verdict'}${x.derived ? ` · half-life set from ${esc(x.derived.fromName || x.derived.from)}` : ''}</option>`).join('')
@@ -4354,6 +4363,7 @@ function glStage4PanelHtml(list, chosen, d) {
     ${s4DeleteRowHtml(chosen)}
     ${d ? `${rebuildLineHtml(d)}<p class="note"><b>${rebuildPrefix(d)}${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${esc(d.ruleSentence || '')} · ${(d.survivors || []).length} survivors${d.from ? ` · read from <b>${esc(d.from.name)}</b>` : ''}${d.standsOn ? ` · stands on ${esc(d.standsOn.name)}` : ''}
       · verdict ${d.gate ? `<b class="pos">stood (PASS, release ${esc(d.gate.release || '?')})</b>` : `<b class="neg">does not stand</b> - ${esc(d.standing || '')}`}${d.heldAlone && d.kind === 'held' ? ` · ${esc(d.heldAlone)}` : ''}${d.members ? ` · ${d.members} members as the stage 2 set trained them` : ''}${d.refused ? ` · <b class="warn">refused:</b> ${esc(d.refused)}` : ''}</p>
+      ${d.refused ? '' : `<p class="note" id="gl4NotYet"${glNotYetOf(d, 'depth').length ? '' : ' hidden'}>${glNotYetHtml(glNotYetOf(d, 'depth'))}</p>`}
       ${glPictureHtml(d)}
       ${d.refused ? '' : `<div class="row" style="align-items:flex-end">
         <label class="f" style="flex:1 1 auto;min-width:0" title="which survivor is taken forward. By depth is the survivor most surrounded by neighbouring settings that survived too, chosen without looking at money; naming one records it as your pick.">one survivor<select id="gl4Pick">
@@ -4427,7 +4437,11 @@ async function drawGreenlight() {
         drawOne();
       }; });
     };
-    const drawOne = () => { one.innerHTML = glOneHtml(gl4, picked); };
+    const drawOne = () => {
+      one.innerHTML = glOneHtml(gl4, picked);
+      const ny = $('#gl4NotYet');
+      if (ny) { const list = glNotYetOf(gl4, picked); ny.innerHTML = glNotYetHtml(list); ny.hidden = !list.length; }
+    };
     if (pk) pk.addEventListener('change', () => { picked = pk.value; drawRows(); drawOne(); });
     drawRows();
     drawOne();
@@ -4439,9 +4453,10 @@ async function drawGreenlight() {
     if (!name) { alert('name is required — what you want to see on screen.'); return; }
     if (!why) { alert('why is required — the decision record is the point.'); return; }
     const pick = $('#gl4Pick').value;
-    if (!confirm(`Greenlight ${pick === 'depth' ? `the survivor by depth (${gl4.depthPick ? gl4.depthPick.label : '?'})` : `the named survivor ${pick}`} of ${gl4.name}?\n\nNothing trades from this. It records the decision; the live path cannot yet put it to work.`)) return;
+    const ny = glNotYetOf(gl4, pick);
+    if (!confirm(`Greenlight ${pick === 'depth' ? `the survivor by depth (${gl4.depthPick ? gl4.depthPick.label : '?'})` : `the named survivor ${pick}`} of ${gl4.name}?\n\nNothing trades from this. It records the decision and puts the config on the Trade tab, where only a press of Activate paper or Activate real starts it.${ny.length ? `\n\nIt cannot be started there yet: ${ny.join('; ')}.` : ''}`)) return;
     const out = await tryPost('api/live/greenlight', { source: 'stage4', setId: glChosen, pick, why, name });
-    if (out) { alert(`Greenlighted: ${out.greenlight.id}\n\nIt is on the Trade tab, both sides, and cannot be activated until the live path speaks the stage engine's agreement.`); drawGreenlight(); }
+    if (out) { alert(`Greenlighted: ${out.greenlight.id}\n\nIt is on the Trade tab, on Paper Books and on Live Trading.${(out.notYet || []).length ? `\n\nIt cannot be started on either yet: ${out.notYet.join('; ')}.` : ''}`); drawGreenlight(); }
   };
 }
 

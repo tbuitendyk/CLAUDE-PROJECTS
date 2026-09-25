@@ -100,16 +100,13 @@ module.exports.aStage4GreenlightFreezesTheSurvivorsAgreementNotAQuorum = functio
   assert.deepStrictEqual([named.pick.deviance, named.pick.nearby, named.pick.tied], [1, { survived: 0, of: 2 }, null], 'a named pick records how surrounded it is, and no tie');
 };
 
-// REFUSED IN WORDS: no verdict, a single coin, a trade shape the executor
-// cannot carry, no members, no band; and a stage-engine configuration cannot
-// be shuttled or pass the live door, so nothing built from it can trade.
+// REFUSED IN WORDS: no verdict, a single coin, no members, no band. A trade
+// shape the executor does not do yet is not refused here since 3.252.0 --
+// aBreakoutSurvivorIsGreenlightedAsPricedAndCannotBeStartedUntilTheExecutorDoesIt.
 module.exports.aStage4GreenlightRefusesInWordsAndShuttlesOnlyIntoADraft = function () {
   const cases = [
     [() => gl.greenlightFromStage4(stage4Src({ gate: null }), { name: 'x', why: 'x' }), /no verdict on this set is PASS/],
     [() => gl.greenlightFromStage4(stage4Src({ unit: { trade: 'LTCUSDT', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d' } }), { name: 'x', why: 'x' }), /a coin read on its own/],
-    [() => gl.greenlightFromStage4(stage4Src({ survivor: { ...stage4Src().survivor, entry: 'breakout', dMult: 1.5 } }), { name: 'x', why: 'x' }), /only does market entry/],
-    [() => gl.greenlightFromStage4(stage4Src({ survivor: { ...stage4Src().survivor, gate: 'active' } }), { name: 'x', why: 'x' }), /only does the directional gate/],
-    [() => gl.greenlightFromStage4(stage4Src({ survivor: { ...stage4Src().survivor, trailMult: 2 } }), { name: 'x', why: 'x' }), /trailing stop/],
     [() => gl.greenlightFromStage4(stage4Src({ members: [] }), { name: 'x', why: 'x' }), /names no members/],
     [() => gl.greenlightFromStage4(stage4Src({ survivor: { ...stage4Src().survivor, bandPct: null } }), { name: 'x', why: 'x' }), /band/],
     [() => gl.greenlightFromStage4(stage4Src(), { name: 'x' }), /WHY/],
@@ -145,4 +142,42 @@ module.exports.aStage4GreenlightRefusesInWordsAndShuttlesOnlyIntoADraft = functi
   threw = null;
   try { gl.greenlightFromStage4(stage4Src({ survivor: { ...stage4Src().survivor, agreeBar: null } }), { name: 'x', why: 'x' }); } catch (e) { threw = e; }
   assert.ok(threw && /agreement\.bar/.test(threw.message), threw && threw.message);
+};
+
+// THE PROMOTION IS NOT THE START (3.252.0, owner 2026-09-25: "update the system
+// to NOT refuse the promotion to Trade due to breakout instead of market ... i
+// want to be able to promote a row to Trade based on the current design and
+// then we are going to shift the focus to implementing on the Trade tab, first
+// as a paper trade"). A survivor priced with breakout entry, the active gate, a
+// trailing stop and an arm is greenlighted exactly as it was priced; what the
+// live executor does not do yet is said in words; and the one door into Paper
+// Books and Live Trading still refuses it, so nothing built from it can trade.
+module.exports.aBreakoutSurvivorIsGreenlightedAsPricedAndCannotBeStartedUntilTheExecutorDoesIt = function () {
+  const shape = { entry: 'breakout', gate: 'active', dMult: 0.75, tHours: 65, trailMult: 1, armMult: 0.5 };
+  const src = stage4Src({ survivor: { ...stage4Src().survivor, ...shape } });
+  assert.strictEqual(gl.stage4Refusal(src), null, 'the shape is not a refusal');
+  const rec = gl.greenlightFromStage4(src, { name: 'LTC breakout', why: 'held set PASS' });
+  const c = rec.configSnapshot.cell;
+  assert.deepStrictEqual({ entry: c.entry, gate: c.gate, dMult: c.dMult, tHours: c.tHours, trailMult: c.trailMult, armMult: c.armMult }, shape, 'frozen exactly as it was priced');
+  assert.ok(gl.listGreenlights().some((g) => g.id === rec.id), 'and listed, which is what puts it on the Trade tab');
+  const words = [
+    'its entry is breakout, and the live executor only does market entry',
+    'its gate is active, and the live executor only does the directional gate',
+    'it carries a trailing stop, which the live executor does not have',
+    'it carries an arm, which the live executor does not have',
+  ];
+  assert.deepStrictEqual(gl.notYetStartable(c), words, 'what the live executor does not do yet, in words');
+  assert.deepStrictEqual(gl.notYetStartable(src.survivor), words, 'the same words off the survivor, before the press');
+  assert.deepStrictEqual(gl.notYetStartable(stage4Src().survivor), [], 'a market survivor on the directional gate carries none');
+  // THE DOOR INTO PAPER BOOKS AND LIVE TRADING STILL REFUSES IT
+  const { liveExecutable } = require('../lib/live/configschema');
+  assert.strictEqual(liveExecutable(rec.configSnapshot).ok, false);
+  const { setup } = gl.shuttle(rec.id, { name: 'LTC breakout draft', clipUsd: 100, trainPolicy: { mode: 'rolling' } });
+  assert.strictEqual(setup.state, 'draft', 'a shuttle makes a draft, and a draft trades nothing');
+  for (const to of ['paper', 'live']) {
+    let threw = null;
+    try { reg.transition(setup.id, to, 'owner', 'test'); } catch (e) { threw = e; }
+    assert.ok(threw && threw.code === 'NOT_LIVE_EXECUTABLE' && /only does MARKET entry/.test(threw.message), `${to}: ${threw && threw.message}`);
+    assert.strictEqual(reg.getSetup(setup.id).state, 'draft', `${to}: still a draft`);
+  }
 };

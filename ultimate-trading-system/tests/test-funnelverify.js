@@ -1062,6 +1062,9 @@ module.exports = {
       // the dry read: this fixture's coin is read on its own, and the words say so
       dry = await stages.stage4GreenlightDry(held.id);
       assert.ok(/a coin read on its own/.test(dry.refused), dry.refused);
+      // WHAT THE LIVE EXECUTOR DOES NOT DO YET (3.252.0): said for the survivor by depth and for every survivor, never a refusal
+      assert.deepStrictEqual(dry.notYet, ['its gate is active, and the live executor only does the directional gate'], 'this fixture prices the active gate');
+      assert.ok(dry.survivors.every((x) => Array.isArray(x.notYet)), 'every survivor says it too');
       assert.deepStrictEqual({ size: dry.unitSize, depth: dry.depthPick.label, survivors: dry.survivors.length, kind: dry.kind, heldAlone: dry.heldAlone }, { size: 1, depth: src.pick.label, survivors: 2, kind: 'held', heldAlone: stages.HELD_ALONE });
       // a FAIL is refused in words, and so is a PASS under another release line
       rewrite(held.id, (on) => { on.block.verdict.pass = false; });

@@ -43,8 +43,12 @@ let __mintSeq = 0;
 // owner, both recorded -- and the agreement exactly as that survivor carries
 // it, which no integer quorum expresses. `src` is what lib/stages.js hands
 // over (stage4GreenlightSource): everything is read off the set and its
-// parents, never re-typed. Nothing here trades: the shuttle refuses a
-// stage-engine configuration until the live path speaks its agreement.
+// parents, never re-typed. Nothing here trades: what puts a greenlight to work
+// is the owner's Activate press on the Trade tab, and that door refuses a
+// shape the live executor does not do yet (lib/live/setups.js, liveExecutable).
+//
+// WHAT THE LIVE EXECUTOR DOES NOT DO YET, in words, for a survivor or a frozen
+// cell. Since 3.252.0 it is said beside a greenlight, never a refusal of one.
 const EXECUTOR_SHAPE = (cell) => {
   const why = [];
   if (cell.entry !== 'market') why.push(`its entry is ${cell.entry}, and the live executor only does market entry`);
@@ -61,8 +65,16 @@ function stage4Refusal(src) {
     return `this set's unit is ${u.size === 1 ? 'a coin read on its own' : `a coin read alongside ${u.size - 1} other`}, and the live vocabulary carries only a coin read alongside two others — a single-coin unit cannot be greenlighted until the executor takes one`;
   }
   const sv = src.survivor || {};
-  const why = EXECUTOR_SHAPE({ entry: sv.entry, gate: sv.gate, trailMult: sv.trailMult ?? null, armMult: sv.armMult ?? null });
-  if (why.length) return `the survivor cannot be traded as it was priced: ${why.join('; ')}`;
+  // THE PROMOTION IS NOT THE START (3.252.0, owner 2026-09-25: "update the
+  // system to NOT refuse the promotion to Trade due to breakout instead of
+  // market ... i want to be able to promote a row to Trade based on the current
+  // design and then we are going to shift the focus to implementing on the
+  // Trade tab, first as a paper trade"). A survivor priced with a shape the
+  // live executor does not do yet -- breakout entry, the active gate, a
+  // trailing stop, an arm -- is greenlighted exactly as it was priced and is
+  // put on the Trade tab. The door into Paper Books and Live Trading still
+  // refuses it in words until the executor does it (lib/live/setups.js,
+  // transition, liveExecutable); notYetStartable says which, before the press.
   // THE CONFIRMATION OVERLAY (3.130.0) IS PRICED, NOT TRADED: the live path
   // reads no lean off Coins, so a survivor priced with confirm past off would
   // be traded at size 1 as though that were what its record says. Refused in
@@ -91,6 +103,11 @@ function stage4Refusal(src) {
   }
   if (!Number.isFinite(sv.bandPct) || sv.bandPct <= 0) return 'the band this survivor was priced at is not on the record, so it cannot be frozen';
   return null;
+}
+// what the live executor does not do yet for this survivor or frozen cell, in words; empty when it does all of it
+function notYetStartable(cell) {
+  const c = cell || {};
+  return EXECUTOR_SHAPE({ entry: c.entry, gate: c.gate, trailMult: c.trailMult ?? null, armMult: c.armMult ?? null });
 }
 function configFromStage4(src) {
   const why = stage4Refusal(src);
@@ -345,5 +362,5 @@ function revoke(greenlightId, { by = 'owner' } = {}) {
 module.exports = {
   relabel, validName,
   getGreenlight, listGreenlights, shuttle, revoke, glDir,
-  greenlightFromStage4, configFromStage4, stage4Refusal,
+  greenlightFromStage4, configFromStage4, stage4Refusal, notYetStartable,
 };

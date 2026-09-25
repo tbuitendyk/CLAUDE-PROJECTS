@@ -9901,7 +9901,8 @@ async function stage4GreenlightSource(setId, asked = {}) {
     // THE STOP AND THE LADDER AS THE SET FROZE THEM AT ITS PRESS (3.149.0): the survivor's own choice on record, or none
     stop: ((doc.stopChoices || {})[survivor.label]) ? JSON.parse(JSON.stringify(doc.stopChoices[survivor.label])) : null,
     pick,
-    survivors: rows.map((r, i) => { const h = heldOf(r.label); const x = reserveRowOf(r.label); const y = hlOf(r.label); return { index: i, label: r.label, deviance: near[i].deviance, nearby: { survived: near[i].survived, of: near[i].of }, held: h ? h.money : null, trades: h ? h.trades : null, reserve: x ? x.money : null, halfLife: y ? y.halfLife : null, retrained: y && y.money ? y.money.judge : null }; }),
+    // and what the live executor does not do yet for each, in words (3.252.0): said beside the pick, never a refusal
+    survivors: rows.map((r, i) => { const h = heldOf(r.label); const x = reserveRowOf(r.label); const y = hlOf(r.label); return { index: i, label: r.label, deviance: near[i].deviance, nearby: { survived: near[i].survived, of: near[i].of }, held: h ? h.money : null, trades: h ? h.trades : null, reserve: x ? x.money : null, halfLife: y ? y.halfLife : null, retrained: y && y.money ? y.money.judge : null, notYet: require('./live/greenlight').notYetStartable(r) }; }),
     // `at` says WHICH extra a member reads, so the live path marks it against
     // that extra's band and not against the unit's own (3.188.0)
     members: (rec.specs || []).map((sp) => ({ model: sp.model, view: sp.view, at: sp.at ?? null })),
@@ -10061,7 +10062,10 @@ async function stage4GreenlightDry(setId) {
   let src = null;
   let refused = null;
   try { src = await stage4GreenlightSource(setId, { pick: 'depth' }); } catch (err) { refused = err.message; }
-  if (src && !refused) refused = gl.stage4Refusal(src);
+  // THE DRY READ SAYS WHAT THE PRESS WOULD (3.252.0): the configuration the
+  // press builds, checked by the same shared vocabulary, so Greenlight this
+  // survivor is drawn only where pressing it writes the record
+  if (src && !refused) { try { gl.configFromStage4(src); } catch (err) { refused = err.message; } }
   const b = isJudgeSet(doc) ? doc.block || null : null;
   const r = reserveOf(doc);
   return {
@@ -10074,6 +10078,8 @@ async function stage4GreenlightDry(setId) {
     depthPick: src ? { label: src.pick.label, deviance: src.pick.deviance, nearby: src.pick.nearby, tied: src.pick.tied } : null,
     survivors: src ? src.survivors : [],
     refused,
+    // what the live executor does not do yet for the survivor by depth (3.252.0): it goes to the Trade tab, and cannot be started there until it does
+    notYet: src ? gl.notYetStartable(src.survivor) : [],
     // the picture through every period (3.149.0): read, never priced, and drawn whatever the standing
     picture: await pictureOf(doc).catch((err) => ({ stretches: STRETCH_NAMES.slice(), priced: false, rule: {}, survivors: [], why: String((err && err.message) || err) })),
   };
