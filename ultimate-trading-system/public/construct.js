@@ -2591,30 +2591,38 @@ function vBoardHtml(d, stretch) {
 // THE PASS CRITERIA REMEMBER WHAT WAS PUT IN (3.246.0, owner order 2026-09-24:
 // "when bar share % and noise must lose at least % fields are set by the user
 // do not revert those fields back to the defaults -- they are to remember what
-// was put in -- for Held and Reserve"). One memory for Held and one for
-// Reserve, kept as typed; a box never typed in opens on the set's own.
-const vPassKey = (stretch) => `cx-verify-pass-${stretch === 'reserve' ? 'reserve' : 'held'}`;
-function vPassKept(stretch) {
-  try { return JSON.parse(localStorage.getItem(vPassKey(stretch)) || 'null') || {}; } catch (_) { return {}; }
+// was put in -- for Held and Reserve") -- FOR THE SET THEY WERE PUT IN FOR
+// (3.251.3, owner 2026-09-25: "on Held and Reserve also of course the sections
+// need to be set to the CURRENT CONTENTS FOR THE SELECTED stage 4 record set,
+// not some random left-over stuff from the last time it was used"). The memory
+// was one for all of Held and one for all of Reserve, so choosing another set
+// showed what was typed for the last one. It is kept per set now, and a set
+// with nothing typed opens on what its newest reading on this window was read
+// under, else on its own.
+const vPassKey = (stretch, id) => `cx-verify-pass-${stretch === 'reserve' ? 'reserve' : 'held'}-${id}`;
+function vPassKept(stretch, id) {
+  try { return JSON.parse(localStorage.getItem(vPassKey(stretch, id)) || 'null') || {}; } catch (_) { return {}; }
 }
-function vPassKeep(stretch) {
-  const val = (id) => { const el = $(`#${id}`); return el ? el.value : null; };
+function vPassKeep(stretch, id) {
+  const val = (el) => { const x = $(`#${el}`); return x ? x.value : null; };
   const box = $('#vAutoPass');
   const kept = { barPct: val('vBarPct'), sanityPct: val('vSanityPct'), ofFour: val('vOfFour'), autoPass: !!(box && box.checked) };
-  try { localStorage.setItem(vPassKey(stretch), JSON.stringify(kept)); } catch (_) { /* private window */ }
+  try { localStorage.setItem(vPassKey(stretch, id), JSON.stringify(kept)); } catch (_) { /* private window */ }
 }
 function vPressHtml(d, stretch) {
   const r = d.rules || {};
-  const m = vPassKept(stretch);
+  const m = vPassKept(stretch, d.id);
+  // what the newest reading of this set on this window was read under, when there is one
+  const last = (((d.sets || [])[0] || {}).block || {}).rules || {};
   const typed = (v) => v != null && String(v).trim() !== '';
-  const bar = typed(m.barPct) ? m.barPct : (Number(r.barPct) || 80);
-  const sanity = typed(m.sanityPct) ? m.sanityPct : (Number(r.sanityPct) || 50);
+  const bar = typed(m.barPct) ? m.barPct : (Number(last.barPct) || Number(r.barPct) || 80);
+  const sanity = typed(m.sanityPct) ? m.sanityPct : (last.sanityPct != null ? Number(last.sanityPct) : (Number(r.sanityPct) || 50));
   // THE LOOSER CRITERIA AND THE AUTOMATIC PASS (3.246.0, owner order
   // 2026-09-24): 2, 3 or 4 of the four comparisons, fewer than 4 flagged as
   // needing a positive average on the window; and a tick that passes the set on
   // a positive average there alone
-  const ofFour = [2, 3, 4].includes(Number(m.ofFour)) ? Number(m.ofFour) : 4;
-  const auto = m.autoPass === true;
+  const ofFour = [2, 3, 4].includes(Number(m.ofFour)) ? Number(m.ofFour) : ([2, 3, 4].includes(Number(last.ofFour)) ? Number(last.ofFour) : 4);
+  const auto = m.autoPass != null ? m.autoPass === true : last.autoPass === true;
   return `<div class="row" style="margin-top:.4rem;align-items:flex-end">
     <label class="f" title="the share of the scrambled copies the survivors' ${stretchPlain(stretch)} money has to beat, and the share of survivors that must beat the comparisons chosen beside this at their own hold length. Opens on the share this set was cut under until you type one, and then keeps what you typed; a change is written onto the verdict as a guessed threshold.">bar share %<input id="vBarPct" type="number" min="1" max="100" value="${esc(String(bar))}" style="width:5rem"></label>
     <label class="f" title="the share of every scrambled ${stretchPlain(stretch)} figure read that must be losing money for the copies to count as noise. Keeps what you typed. A guessed threshold, written onto the verdict.">noise must lose at least %<input id="vSanityPct" type="number" min="0" max="100" value="${esc(String(sanity))}" style="width:5rem"></label>
@@ -2900,12 +2908,18 @@ function layoutWords(layout) {
 // left, which is the same test because the tab is named after the stretch.
 async function drawHeld() { return drawJudge('held'); }
 async function drawReserve() { return drawJudge('reserve'); }
+// THE SET EACH TAB IS SHOWING (3.251.3): a read, a reading, a ride or a board
+// pricing followed on one set stops writing into the screen once another set is
+// on it -- it said "pricing · 3 of 9" under the next set chosen -- and is
+// followed again when its own set is chosen again
+const vOnScreen = { held: null, reserve: null };
 async function drawJudge(stretch) {
   const all = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []);
   await s4CampRead();
   const sets = s4CampList(vRulesFor(all, stretch));
   const chosen = vRememberedSet(sets, stretch);
   const d = chosen ? await apiOr(`api/funnel/set/${encodeURIComponent(chosen)}/judge/${stretch}`, null) : null;
+  vOnScreen[stretch] = chosen;
   // THE SCREEN'S OWN FRAME IS DRAWN HERE, not only through the helpers: the
   // reader that lists a screen's controls and words (lib/screencontrols.js)
   // follows a helper only when that helper's own body carries markup, and
@@ -2949,7 +2963,7 @@ async function drawJudge(stretch) {
     const el = $(`#${id}`);
     if (!el) continue;
     el.addEventListener(id === 'vBarPct' || id === 'vSanityPct' ? 'input' : 'change', () => {
-      vPassKeep(stretch);
+      vPassKeep(stretch, chosen);
       const flag = $('#vOfFourFlag');
       if (id === 'vOfFour' && flag) flag.innerHTML = Number(el.value) < 4 ? (stretch === 'reserve' ? '<b>requires + reserve $ avg</b>' : '<b>requires + held back $ avg</b>') : '';
     });
@@ -3019,6 +3033,7 @@ async function drawJudge(stretch) {
 // one request is held open; the page redraws from the record when it lands.
 async function vFollow(id, token, stretch) {
   for (;;) {
+    if (vOnScreen[stretch] !== id) return;
     let s = null;
     try { s = await api(`api/funnel/set/${encodeURIComponent(id)}/judge/${stretch}/status`); } catch (_) { s = null; }
     if (!s || s.none || s.token !== token) { drawJudge(stretch); return; }
@@ -3036,6 +3051,7 @@ async function vFollow(id, token, stretch) {
 // the other units are read one at a time and the count is said while they are
 async function vOthersFollow(id, token, stretch) {
   for (;;) {
+    if (vOnScreen[stretch] !== id) return;
     let s = null;
     try { s = await api(`api/funnel/set/${encodeURIComponent(id)}/others/status`); } catch (_) { s = null; }
     if (!s || s.none || s.token !== token) { drawJudge(stretch); return; }
@@ -3053,6 +3069,7 @@ async function vOthersFollow(id, token, stretch) {
 // the reserve board prices a whole unit, so the count is said per setting and per unit with the box's load beside it
 async function vBoardFollow(id, token, stretch) {
   for (;;) {
+    if (vOnScreen[stretch] !== id) return;
     let s = null;
     try { s = await api(`api/funnel/set/${encodeURIComponent(id)}/reserve-board/status`); } catch (_) { s = null; }
     if (!s || s.none || s.token !== token) { drawJudge(stretch); return; }
@@ -3072,6 +3089,7 @@ async function vBoardFollow(id, token, stretch) {
 // the ride prices, so the count is said with the box's load beside it
 async function vRideFollow(id, token, stretch) {
   for (;;) {
+    if (vOnScreen[stretch] !== id) return;
     let s = null;
     try { s = await api(`api/funnel/set/${encodeURIComponent(id)}/ride/status`); } catch (_) { s = null; }
     if (!s || s.none || s.token !== token) { drawJudge(stretch); return; }

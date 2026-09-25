@@ -1615,14 +1615,32 @@ module.exports.twoOrThreeOfTheFourPassOnlyWithAPositiveAverageAndTheAutomaticPas
 module.exports.heldAndReserveKeepThePassCriteriaTypedAndSendThem = function () {
   const page = src('public/construct.js');
   const press = page.slice(page.indexOf('function vPressHtml(d, stretch) {'), page.indexOf('function vLinesHtml(b) {'));
-  assert.ok(press.includes('const m = vPassKept(stretch);'), 'the press row does not open on what was put in');
-  assert.ok(press.includes('const bar = typed(m.barPct) ? m.barPct : (Number(r.barPct) || 80);') && press.includes('const sanity = typed(m.sanityPct) ? m.sanityPct : (Number(r.sanityPct) || 50);'), 'bar share % or noise must lose at least % goes back to the defaults');
+  assert.ok(press.includes('const m = vPassKept(stretch, d.id);'), 'the press row does not open on what was put in for this set');
+  // PER SET, AND A SET OPENS ON ITS OWN (3.251.3, owner 2026-09-25: "the sections need to be set to the CURRENT
+  // CONTENTS FOR THE SELECTED stage 4 record set, not some random left-over stuff from the last time it was used")
+  const lift = page.slice(page.indexOf('const vPassKey = '), page.indexOf('function vLinesHtml(b) {'));
+  const store = {};
+  const h = new Function('localStorage', '$', 'esc', 'stretchPlain', `${lift}\nreturn { vPressHtml, vPassKey };`)(
+    { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = v; } }, () => null, (t) => String(t), (x) => (x === 'reserve' ? 'reserve' : 'held-back'));
+  const valueOf = (html, id) => (html.match(new RegExp(`id="${id}"[^>]*value="([^"]*)"`)) || [])[1];
+  store[h.vPassKey('held', 'A')] = JSON.stringify({ barPct: '65', sanityPct: '40', ofFour: '3', autoPass: true });
+  const setB = { id: 'B', rules: { barPct: 90 }, sets: [{ block: { rules: { barPct: 70, sanityPct: 45, ofFour: 2, autoPass: false } } }] };
+  const setC = { id: 'C', rules: { barPct: 85 }, sets: [] };
+  assert.deepStrictEqual([valueOf(h.vPressHtml({ id: 'A', rules: { barPct: 90 }, sets: [] }, 'held'), 'vBarPct'), valueOf(h.vPressHtml(setB, 'held'), 'vBarPct'), valueOf(h.vPressHtml(setC, 'held'), 'vBarPct')], ['65', '70', '85'],
+    'what was typed for a set is its own; another set opens on what its newest reading was read under, or on its own share');
+  assert.ok(/<option value="2" selected>/.test(h.vPressHtml(setB, 'held')) && !/id="vAutoPass" checked/.test(h.vPressHtml(setB, 'held')), 'the comparisons and the tick open on that reading too');
+  assert.strictEqual(valueOf(h.vPressHtml(setC, 'held'), 'vSanityPct'), '50', 'a set never read opens on the default');
   assert.ok(/>comparisons to beat<select id="vOfFour"><option value="2"[^>]*>2 of 4<\/option><option value="3"[^>]*>3 of 4<\/option><option value="4"[^>]*>4 of 4<\/option><\/select>/.test(press), 'the comparisons box does not offer 2 of 4, 3 of 4 and 4 of 4');
   assert.ok(press.includes("'<b>requires + held back $ avg</b>'") && press.includes("'automatic pass on + held back $ avg'"), 'the flag or the tick is missing on Held');
   assert.ok(press.includes("'<b>requires + reserve $ avg</b>'") && press.includes("'automatic pass on + reserve $ avg'"), 'the flag or the tick is missing on Reserve');
-  const keep = page.slice(page.indexOf('function vPassKeep(stretch) {'), page.indexOf('function vPressHtml(d, stretch) {'));
-  assert.ok(keep.includes('localStorage.setItem(vPassKey(stretch), JSON.stringify(kept))'), 'what was put in is not kept');
-  assert.ok(page.includes("for (const id of ['vBarPct', 'vSanityPct', 'vOfFour', 'vAutoPass']) {") && page.includes('      vPassKeep(stretch);'), 'the four controls do not keep what is put in as it is put in');
+  const keep = page.slice(page.indexOf('function vPassKeep(stretch, id) {'), page.indexOf('function vPressHtml(d, stretch) {'));
+  assert.ok(keep.includes('localStorage.setItem(vPassKey(stretch, id), JSON.stringify(kept))'), 'what was put in is not kept for its set');
+  assert.ok(page.includes("for (const id of ['vBarPct', 'vSanityPct', 'vOfFour', 'vAutoPass']) {") && page.includes('      vPassKeep(stretch, chosen);'), 'the four controls do not keep what is put in as it is put in');
+  // a job followed on one set stops writing into the screen once another set is on it (3.251.3)
+  for (const fn of ['vFollow', 'vOthersFollow', 'vBoardFollow', 'vRideFollow']) {
+    assert.ok(page.includes(`async function ${fn}(id, token, stretch) {\n  for (;;) {\n    if (vOnScreen[stretch] !== id) return;`), `${fn} writes into the screen of another set`);
+  }
+  assert.ok(page.includes('  vOnScreen[stretch] = chosen;'), 'the set on screen is not recorded as it is drawn');
   assert.ok(page.includes("const body = { barPct: vTyped('#vBarPct'), sanityPct: vTyped('#vSanityPct'), ofFour: Number($('#vOfFour').value), autoPass: !!$('#vAutoPass').checked };"), 'the press does not send the comparisons box and the tick');
   assert.ok(src('lib/stages.js').includes('ofFour: r.ofFour ?? null, autoPass: r.autoPass === true };'), 'a held or reserve set read again forgets its criteria');
   const help = src('public/help-content.js');
