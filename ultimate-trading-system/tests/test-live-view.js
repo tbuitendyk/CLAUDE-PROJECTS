@@ -319,7 +319,21 @@ module.exports.theTestedConfigurationSaysTheFieldAndItsGate = function () {
   assert.ok(/0× the clip$/.test(c.fieldGate));
   const step = an.describeAnatomy(cfg).pipeline.find((x) => /^4b\. THE FIELD/.test(x));
   assert.ok(step.includes(c.field) && step.includes(c.fieldGate.slice(1)), 'the pipeline says the same words');
+  assert.strictEqual(c.agreement, 'how many members say the same thing; enough at 50% of the members', 'the agreement is words, never an object the screen cannot print');
   const none = an.describeConfig(aSetupConfig());
   assert.deepStrictEqual([none.field, none.fieldGate], [null, null], 'no field: a dash on screen');
   assert.strictEqual(an.describeConfig(aSetupConfig({ field: { id: 'x', error: 'the field x cannot be read' } })).field, 'the field x cannot be read');
+};
+
+// THE CONFIG EDITOR (3.257.0, 3.262.0): Members train -- rolling, or frozen at
+// a date -- and Verbose, each saved with the clip
+module.exports.theConfigEditorOffersMembersTrainAndVerbose = function () {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'trade.html'), 'utf8');
+  const detail = src.slice(src.indexOf('async function drawDetail('), src.indexOf('async function drawLive('));
+  assert.ok(/<select id="trainIn">/.test(detail) && />rolling<\/option>/.test(detail) && />frozen at<\/option>/.test(detail), 'Members train offers rolling and frozen at');
+  assert.ok(/— not set —/.test(detail), 'a book with no choice says so rather than showing one');
+  assert.ok(/id="trainAt" type="date"/.test(detail), 'frozen at takes a date');
+  assert.ok(/if\(train==='rolling'\) body\.trainPolicy=\{mode:'rolling'\};/.test(detail), 'rolling is saved');
+  assert.ok(/body\.trainPolicy=\{mode:'frozen',throughMs:Date\.parse\(day\+'T00:00:00Z'\)\}/.test(detail), 'frozen at is saved at 00:00 UTC of its date');
+  assert.ok(/id="verboseIn"/.test(detail) && /verbose:\$\('#verboseIn'\)\.checked/.test(detail), 'Verbose is a tick saved with the clip');
 };
