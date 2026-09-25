@@ -2444,6 +2444,13 @@ const GUARDS = [
     "everyStage4RecordSetBoxCarriesTheCampaignTickAndTheDelete", "the box on Held and Reserve carries no campaign tick"],
   [path.join(ROOT, 'server.js'), "      campaign: stages.campaignOfSet(d, camps),", "",
     "everyStage4RecordSetBoxCarriesTheCampaignTickAndTheDelete", "the sets listing carries no campaign, so the tick hides every set"],
+  // 3.250.0 (2026-09-25): Held and Reserve read the sizing on record; the null sets stay at sizing 1
+  [path.join(ROOT, 'lib', 'stages.js'), "      return { ...r, avgHold: x.tunedUsd, avgTrades: sized && Number.isFinite(x.taken) ? x.taken : r.avgTrades, avgVsLong: r.avgVsLong == null ? r.avgVsLong : r.avgVsLong + shift };", "      return { ...r, avgHold: x.stopUsd, avgTrades: sized && Number.isFinite(x.taken) ? x.taken : r.avgTrades, avgVsLong: r.avgVsLong == null ? r.avgVsLong : r.avgVsLong + shift };",
+    "theTwoScansRunOnTheCapturedEntriesAndOnlyAHeldBackReadIsALook", "the reading reads each survivor under its stop alone, and the sizing on its record is left out again"],
+  [path.join(ROOT, 'lib', 'stages.js'), "      return { ...r, avgHold: x.tunedUsd, avgTrades: sized && Number.isFinite(x.taken) ? x.taken : r.avgTrades, avgVsLong: r.avgVsLong == null ? r.avgVsLong : r.avgVsLong + shift };", "      return { ...r, avgHold: x.tunedUsd, avgTrades: r.avgTrades, avgVsLong: r.avgVsLong == null ? r.avgVsLong : r.avgVsLong + shift };",
+    "theTwoScansRunOnTheCapturedEntriesAndOnlyAHeldBackReadIsALook", "the reading counts the trades a multiplier of 0 left out"],
+  [path.join(ROOT, 'lib', 'stages.js'), "    const readInto = t.stop != null || !!(t.sizing && t.sizing.on);", "    const readInto = t.stop != null;",
+    "theTwoScansRunOnTheCapturedEntriesAndOnlyAHeldBackReadIsALook", "a survivor with a sizing and no stop is read plain"],
 ];
 
 const only = process.argv[2] || '';

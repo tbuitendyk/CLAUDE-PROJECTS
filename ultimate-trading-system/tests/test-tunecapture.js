@@ -356,7 +356,11 @@ module.exports = {
       assert.strictEqual((dryR.looks || {}).tuneReads, 1, 'the reserve read on Tune is a look the reserve counts');
       // THE SIZING APPLIED (3.151.0): a choice on the survivor beside its stop; the picture works its money out with and without it, off the capture
       const depthLabel = stages.getSet(c.cut.id).capture.pick.label;
-      const sz = stages.setSizingChoice(c.cut.id, { pick: 'depth', on: true, why: 'size by conviction' });
+      // one row of the table at 0, the row of the survivor's first held-back trade, so the sizing leaves a trade out and the count read is the count it takes
+      const capHold = capR.survivors.find((x) => x.label === depthLabel).entries.hold;
+      const zeroAt = capHold.length ? capHold[0].agree : 1;
+      const ladder = Array.from({ length: stages.getSet(c.cut.id).capture.members }, (_, i) => (i + 1 === zeroAt ? 0 : i + 1));
+      const sz = stages.setSizingChoice(c.cut.id, { pick: 'depth', on: true, why: 'size by conviction', ladder });
       assert.deepStrictEqual({ survivor: sz.survivor, on: sz.sizing.on, ladder: sz.sizing.ladder.length, clip: sz.sizing.clipUsd }, { survivor: depthLabel, on: true, ladder: stages.getSet(c.cut.id).capture.members, clip: 100 });
       const tuned = await stages.tunedOfRule(stages.getSet(c.cut.id), [depthLabel]);
       const tw = tuned[depthLabel].windows;
@@ -385,7 +389,7 @@ module.exports = {
       assert.ok(Number.isFinite(hrow.taken) && hrow.taken <= hrow.trades && readAt.trades === hrow.taken, 'over the trades the sizing takes');
       assert.strictEqual(cents(hrow.plainUsd), cents(capR.survivors.find((x) => x.label === depthLabel).money.hold), "and the money without it is the record's own");
       assert.strictEqual(cents(hrow.stopUsd), cents(hrow.flatUsd), 'with no stop on record the stop money is the plain money');
-      assert.ok(hrow.tunedUsd !== hrow.plainUsd && hrow.clipsPerTrade > 1, 'and the sizing is worked out beside it, at more than one clip a trade');
+      assert.ok(hrow.tunedUsd !== hrow.plainUsd && hrow.taken < hrow.trades, 'and the sizing changed the money and left out the trades of the row at 0');
       // the reading and the picture price at the record's own dollars (lib/paper.js NOTIONAL), not the scans' $10 clip
       const pw = mine.tuned.windows.held;
       assert.deepStrictEqual({ clip: ht.clipUsd, pictureClip: pic.rule.tunings.clipUsd, rowClip: hrow.clipUsd, scans: tw.held.trades }, { clip: 100, pictureClip: 100, rowClip: 100, scans: pw.trades }, 'one currency on the reading and the picture');
