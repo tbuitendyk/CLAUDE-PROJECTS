@@ -18,8 +18,14 @@
 #     here to 127.0.0.1:18095 there, with the key this machine already uses for
 #     the trading box. No new key, no new account.
 # THE OLD ORDER PROGRAM IS NOT TOUCHED (S1): its program file's fingerprint, its
-# env file and master switch (size and time only -- never read), and its timers
-# and units are taken before and after, and the run fails loudly if any differ.
+# env file (size and time only -- never read), whether its master switch file is
+# there, and its timers and units are taken before and after, and the run fails
+# loudly if any differ. The master switch file is compared by presence alone
+# (owner, 2026-09-25): the web box's sync rewrites it every five minutes with a
+# fresh stamp inside (mx_executor.py set_arm, the dead-man keepalive), so its
+# time and its contents both change on their own, and a deploy that happened to
+# span a rewrite was reported as CHANGED. Whether it is there -- armed or not --
+# is what a deploy could break, and that is still compared.
 # Safe to run again: every step checks before it acts.
 set -euo pipefail
 BOX=admin@ec2-78-13-103-81.mx-central-1.compute.amazonaws.com
@@ -37,7 +43,7 @@ oldengine() {
   "${SSH[@]}" 'bash -s' <<'R'
 echo "program $(sha256sum ~/mx_executor.py | cut -d' ' -f1)"
 echo "env $(stat -c '%s %Y' ~/.executor-env 2>/dev/null || echo missing)"
-echo "arm $([ -f ~/pilot/ARM ] && stat -c '%s %Y' ~/pilot/ARM || echo absent)"
+echo "arm $([ -f ~/pilot/ARM ] && echo present || echo absent)"
 systemctl list-timers --all --no-pager 2>/dev/null | grep -i -E 'pilot|exec' | awk '{print "timer "$(NF-1)" "$NF}' | sort
 systemctl list-unit-files --no-pager 2>/dev/null | grep -i -E 'pilot|exec' | awk '{print "unit "$1" "$2}' | sort
 R
