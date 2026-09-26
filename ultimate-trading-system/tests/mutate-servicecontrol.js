@@ -2758,6 +2758,10 @@ const GUARDS = [
     "theKeysPassThroughThisMachineAndAreNeverKeptOrShown", "the fingerprint on screen is the service's word, not worked out in the browser"],
   [path.join(ROOT, "public", "keylock.js"), "additionalData: enc(`uts-keys v1|${account}`)", "additionalData: enc('uts-keys v1|')",
     "theEngineTakesKeysAndNeverAnswersWithThem", "the browser locks keys without the account's name bound in"],
+  [path.join(ROOT, "lib", "live", "enginesetup.js"), "  return t.code ? t.code === here.code : t.release === here.release;", "  return t.release === here.release;",
+    "stepTwoInstallsTheEngineWithAOneTimeCode", "a web-only release marks every engine as behind again"],  // CURRENT MEANS THE SAME CODE (3.266.2)
+  [path.join(ROOT, "engine", "main.js"), "code: CODE, startedAt", "code: null, startedAt",
+    "anEngineStartedWithItsCodeCallsInAndAnswersOverItsLink", "the engine stops saying which code it runs"],
 ];
 
 const only = process.argv[2] || '';
