@@ -1165,6 +1165,7 @@ module.exports = {
     const onDisk = rowstore.count(s1.id, 'records');
     assert.ok(onDisk >= 1 && onDisk < 4, `the pause landed ${onDisk} of 4 units`);
     assert.strictEqual(onDisk, d.perf.unitsDone - d.failures.length, 'the set counts units done that are not on disk');
+    assert.strictEqual(d.failures.length, 0, 'a unit the pause dropped is written down as a failure');
     unitsOf(s1.id);   // every record points at blocks that are on disk, and hold its own rows
     const row = stages.listSets().find((x) => x.id === s1.id);
     assert.strictEqual(row.startsAgain, true, 'the paused set is not offered in the stage 1 box');
@@ -1228,6 +1229,18 @@ module.exports = {
     assert.strictEqual(back.status, 'error', 'a set refused after the answer is not put back as it was');
     assert.ok(/not started again — unit \d+ is on disk twice/.test(back.progress), `the refusal is not on the set: ${back.progress}`);
     assert.strictEqual(rowstore.count(s1.id, 'records'), 3, 'a refused start-again wrote something');
+    // a record pointing at blocks its other stores do not hold: refused the same way
+    cutBackTo(s1.id, 2, 'error');
+    const lost = rowstore.readBlocks(s1.id, 'records', [0])[0].row;
+    const planned = stages.getSet(s1.id).plan.unitList.length;
+    const onDiskNow = new Set(rowstore.readAll(s1.id, 'records').map((r) => r.u));
+    const free = [...Array(planned).keys()].find((u) => !onDiskNow.has(u));
+    const w2 = rowstore.writer(s1.id, 'records');
+    w2.push({ ...lost, u: free, blocks: { votes: [900, 901], tau: [900, 901], models: [900, 901] } });
+    await w2.close();
+    stages.continueStage(s1.id);
+    const back2 = await untilLanded(s1.id);
+    assert.ok(/not started again — the record of unit \d+ points at blocks its other stores do not hold/.test(back2.progress), `a record pointing past the stores is added to: ${back2.progress}`);
   },
 
   // THE ONE-TIME RENAME (3.269.0, RULE TEN): a stage 1 set stopped by the old Stop

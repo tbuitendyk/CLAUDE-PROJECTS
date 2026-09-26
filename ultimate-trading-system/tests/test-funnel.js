@@ -1902,7 +1902,8 @@ module.exports = {
     const s = src('lib/stages.js');
     // the sealed bounds and, since 3.85.0, the date ranges sit between the
     // carried fields and the members on the stage 2 record
-    assert.ok(/          reserve: rec\.reserve \|\| null,\n(?:.*\n){0,8}?          specs: merged\.members\.map\(/.test(s), 'the stage 2 record does not carry the sealed bounds');
+    // (the stage 2 record is built in one place since 3.269.0, s2RecordOf)
+    assert.ok(/function s2RecordOf\(/.test(s) && /\n    reserve: rec\.reserve \|\| null,\n(?:.*\n){0,8}?    specs: merged\.members\.map\(/.test(s), 'the stage 2 record does not carry the sealed bounds');
     const stamp = Date.now().toString(36);
     const ids = { s1: `s1-test-${stamp}-sw`, s2: `s2-test-${stamp}-sw`, s3: `s3-test-${stamp}-sw` };
     const SETS = path.join(__dirname, '..', 'data', 'stagesets');

@@ -292,3 +292,13 @@ module.exports.aStepStillBeingWrittenIsNeverDone = function () {
     es.remove(a.id);
   } finally { es.TEMPLATE.steps.pop(); }
 };
+
+// THE NOTE UNDER A MISSING SHORT NAME NAMES A STEP THE CHECKLIST HAS (3.269.0):
+// it pointed at a step 6 of a checklist that has three steps
+module.exports.theShortNameNoteNamesAStepTheChecklistHas = function () {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
+  const { TEMPLATE } = require('../lib/live/enginesetup');
+  assert.ok(src.includes('this platform has no short name yet: it is the name the platform is saved under when it is installed, at step 2'), 'the note does not say where the short name is used');
+  assert.strictEqual(TEMPLATE.steps[1].title, 'Install the platform', 'step 2 is not the install, so the note points at the wrong step');
+  assert.ok(!/at step [4-9]/.test(src.slice(src.indexOf('no short name yet'), src.indexOf('no short name yet') + 200)), 'the note names a step the checklist does not have');
+};

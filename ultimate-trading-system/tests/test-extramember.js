@@ -713,7 +713,8 @@ function theSplitIsTheOwnersChoiceAndRidesOnEveryRecord() {
   const st = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
   const launch = st.slice(st.indexOf('function startStage1(params) {'), st.indexOf('const units = unitsFor('));
   assert.ok(/windowLayout,\n    extraTrainShare,/.test(launch), 'the split never reaches the workers, so the box does nothing');
-  assert.ok(st.includes('extraTrainShare: parent.params.extraTrainShare,'), 'stage 2 does not inherit the split, so the two halves of a committee could be cut differently');
+  // what stage 2 trains under is read off its parent's params in one place since 3.269.0 (s2TrainingOf)
+  assert.ok(st.includes('extraTrainShare: pp.extraTrainShare,') && st.includes('const p = s2TrainingOf(parent.params);'), 'stage 2 does not inherit the split, so the two halves of a committee could be cut differently');
   assert.ok(/was made before the split for extra members existed/.test(st), 'a parent from before the split is carried to stage 2 and half its committees cut the other way');
   assert.ok(st.includes('saved,') && /const saved = hasExtras \? rec\.specs\.map/.test(st), 'the parent\'s saved models do not ride to stage 2, so its extras cannot be read on their own stretch there');
   // the screen: the box, the launch, the restore, the provenance row, and the

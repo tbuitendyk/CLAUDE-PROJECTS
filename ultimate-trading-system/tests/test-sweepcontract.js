@@ -176,11 +176,15 @@ module.exports = {
     // than restated here.
     // ... and the start-again of a paused run (3.82.0) reads its keys from
     // the function behind ITS route, the same way
+    // ... and since 3.269.0 every stage's start-again says it through one line
+    // (swStartAgain), read by the answer of all three functions behind the route
     for (const [out, fn, lead, answer] of [
       ['swOut1', 'function startStage1', 'started <b>', 'got'], ['swOut2', 'function startStage2', 'started <b>', 'got'],
-      ['swOut3', 'function startStage3', 'started <b>', 'got'], ['swOut3', 'function continueStage3', 'started again <b>', 'again'],
+      ['swOut3', 'function startStage3', 'started <b>', 'got'],
+      ['swOut${n}', 'function continueStage1', 'started again <b>', 'again'], ['swOut${n}', 'function continueStage2', 'started again <b>', 'again'],
+      ['swOut${n}', 'function continueStage3', 'started again <b>', 'again'],
     ]) {
-      const at = SWEEP.indexOf(`say('#${out}', \`${lead}`);
+      const at = out.includes('${n}') ? SWEEP.indexOf(`say(\`#${out}\`, \`${lead}`) : SWEEP.indexOf(`say('#${out}', \`${lead}`);
       assert.ok(at > 0, `#${out} must still report what was launched (${lead.trim()})`);
       const said = SWEEP.slice(at, SWEEP.indexOf('`)', at));
       const keys = [...said.matchAll(new RegExp(`\\b${answer}\\.(\\w+)`, 'g'))].map((m) => m[1]);

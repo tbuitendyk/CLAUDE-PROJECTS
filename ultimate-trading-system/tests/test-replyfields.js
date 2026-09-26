@@ -73,7 +73,8 @@ const PAIRS = [
     label: 'data fingerprint',
     reader: () => between(CX, '<b>Data fingerprint:</b>', '</p>`', 'fingerprint reader'),
     varName: 'dm',
-    writer: () => between(read('lib/manifest.js'), 'return {\n      at: new Date', '\n    };', 'manifest return'),
+    // the one writer of the stamp's summary since 3.269.0 (writeStamp), for a launch and a child alike
+    writer: () => between(read('lib/manifest.js'), 'return {\n    at: new Date', '\n  };', 'manifest return'),
     // the catch branch's own shape, and the one path that already worked
     allowExtra: ['error'],
   },

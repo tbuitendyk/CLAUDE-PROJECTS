@@ -371,3 +371,15 @@ module.exports.aBookShowsOneStateBadgeAndSaveRoutingHasItsOwnRow = function () {
   const routes = fs.readFileSync(path.join(__dirname, '..', 'lib', 'live', 'routes.js'), 'utf8');
   assert.ok(/words: ch\.statusLine\(\[\{ channel: c, state: s\.state, open \}\]\)/.test(routes), 'each book\'s words come from the one status vocabulary');
 };
+
+// WHETHER THE PLATFORM IS FOLLOWED IS ASKED OF THE LINK, NOT OF A FLAG (3.269.0).
+// mirror.status said following from the moment the screen began to watch and
+// never took it back, so the Trade screen read "following the platform" for a
+// platform that had gone. The link's own answer is what both books draw.
+module.exports.theTradeScreenAsksTheLinkWhetherThePlatformIsFollowed = function () {
+  const view = fs.readFileSync(path.join(__dirname, '..', 'lib', 'live', 'view.js'), 'utf8');
+  assert.ok(view.includes('link: mirror.linkStatus(), lastHealth: mirror.lastHealth,'), 'the view does not ask the link whether the platform is followed');
+  assert.ok(!view.includes('link: mirror.status,'), 'the view still reads the flag that never goes back to false');
+  const link = fs.readFileSync(path.join(__dirname, '..', 'lib', 'live', 'enginelink.js'), 'utf8');
+  assert.ok(/linkStatus\(\) \{\n    const h = require\('\.\/enginehub'\)\.status\(this\.target\.id\);\n    return \{ following: h\.linked,/.test(link), 'the link\'s answer is not whether the platform is linked now');
+};

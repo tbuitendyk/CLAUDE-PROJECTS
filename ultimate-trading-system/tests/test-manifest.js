@@ -161,6 +161,12 @@ module.exports = {
         fs.writeFileSync(d2, JSON.stringify(moved));
         const bad = pinnedIntact(stamp);
         assert.deepStrictEqual({ intact: bad.intact, changed: bad.changed }, { intact: false, changed: [path.basename(d2)] }, 'an hour the launch read that changed is named');
+        // an earlier hour rewritten LONGER moves every byte after it: the launch's
+        // cut no longer ends on an hour, and the loader says so rather than read it
+        const longer = hours('2020-03-02', 24, 200);
+        longer[3] = { ...longer[3], close: longer[3].close + 0.123456789 };
+        fs.writeFileSync(d2, JSON.stringify(longer));
+        assert.throws(() => loadSymbolPinned(SYM, entries[SYM]), /has changed since the run was launched: its first \d+ bytes are no longer the hours it held at launch/, 'a file whose earlier hours moved is read as the launch\'s');
         const shorter = hours('2020-03-02', 5, 200);
         fs.writeFileSync(d2, JSON.stringify(shorter));
         assert.throws(() => loadSymbolPinned(SYM, entries[SYM]), /has changed since the run was launched: it is shorter/, 'a file that lost hours is never read as the launch\'s');
