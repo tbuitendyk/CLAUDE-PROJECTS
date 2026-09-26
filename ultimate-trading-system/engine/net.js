@@ -7,7 +7,8 @@ function request(method, url, { headers = {}, body = null, timeoutMs = 10000 } =
   return new Promise((resolve) => {
     const u = new URL(url);
     const started = Date.now();
-    const req = https.request({ method, hostname: u.hostname, port: u.port || 443, path: `${u.pathname}${u.search}`, headers, timeout: timeoutMs }, (res) => {
+    const lib = u.protocol === 'http:' ? require('http') : https;   // plain only for a test server on this machine
+    const req = lib.request({ method, hostname: u.hostname, port: u.port || (u.protocol === 'http:' ? 80 : 443), path: `${u.pathname}${u.search}`, headers, timeout: timeoutMs }, (res) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => {

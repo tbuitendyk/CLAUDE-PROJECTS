@@ -57,6 +57,10 @@ let produceRunning = null;
 function startEngineWork() {
   const targets = require('./targets');
   const link = require('./enginelink');
+  // RULE NINE, once, announced: every engine record says how it is reached, and a
+  // checklist started on template 1 drops the sign-in key template 2 never holds
+  try { const d = targets.repairLinkKinds(); if (d.changed) console.log(`engine records: ${d.changed} now say the tunnel reaches them (${d.named.join(', ')})`); } catch (e) { console.log(`engine records could not be checked: ${e.message}`); }
+  try { const d = require('./enginesetup').repairTemplateOne(); if (d.changed) console.log(`engine checklists: ${d.changed} moved to template 2, their sign-in keys deleted (${d.named.join(', ')})`); } catch (e) { console.log(`engine checklists could not be checked: ${e.message}`); }
   link.followAll(targets.listEngines());
   // THE DECISIONS: once a minute, if any setup on an engine is in paper or live
   // state, the producer runs as a child of its own (engine-produce.js) -- the
@@ -101,10 +105,14 @@ function installLiveRoutes(app, { csrfGuard }) {
       const engines = await Promise.all(targets.listEngines().map(async (t) => {
         const m = link.mirrorFor(t);
         const h = await link.health(t);
+        const out = t.link === 'calls-out'
+          // an engine that calls out: never its token's fingerprint, only what it said of itself
+          ? { linkKind: 'calls-out', release: t.release || null, lock: t.lock || null, machine: t.machine || null, enrolledUtc: t.enrolledUtc || null, lastSeenUtc: t.lastSeenUtc || null }
+          : { linkKind: 'tunnel', host: t.host, user: t.user, enginePort: t.enginePort, localPort: t.localPort };
         return {
-          id: t.id, name: t.name, host: t.host, user: t.user, enginePort: t.enginePort, localPort: t.localPort, isDefault: !!t.isDefault, note: t.note || '',
+          id: t.id, name: t.name, isDefault: !!t.isDefault, note: t.note || '', ...out, releaseHere: require('../../package.json').version,
           answers: h.answers, why: h.why || null, ms: h.ms, health: h.health || null,
-          link: m.status, recordsKept: m.n,
+          link: m.linkStatus(), recordsKept: m.n,
           setups: setups.filter((s) => s.executionTargetRef === t.id && s.state !== 'retired').map((s) => ({ id: s.id, name: s.name, state: s.state })),
         };
       }));
@@ -118,6 +126,11 @@ function installLiveRoutes(app, { csrfGuard }) {
       require('./enginelink').followAll(targets.listEngines());
       res.json({ ok: true, engine: saved });
     } catch (e) { res.status(e.code === 'BAD_ENGINE' ? 400 : 500).json({ error: e.message }); }
+  });
+  // AN ENGINE THE TUNNEL REACHES, MOVED TO CALLING OUT: a one-time code for its first call out
+  app.post('/api/live/engines/:id/move', csrfGuard, (req, res) => {
+    try { res.json({ ok: true, engine: String(req.params.id), ...require('./enginesetup').makeMoveCode(String(req.params.id)) }); }
+    catch (e) { res.status(e.code === 'NOT_FOUND' ? 404 : e.code === 'BAD_ENGINE' ? 400 : 500).json({ error: e.message }); }
   });
   app.post('/api/live/engines/:id/delete', csrfGuard, (req, res) => {
     try {
@@ -142,11 +155,8 @@ function installLiveRoutes(app, { csrfGuard }) {
   app.post('/api/live/engine-setups/:id/delete', csrfGuard, (req, res) => { try { res.json(es.remove(String(req.params.id))); } catch (e) { res.status(e.status || 500).json({ error: e.message }); } });
   // step 2: the machine's address and account, the key, and the sign-in. A key
   // file that arrives is written to the engine's own folder and never echoed.
-  const esSendAsync = async (res, fn) => { try { res.json({ ok: true, setup: await fn() }); } catch (e) { res.status(e.status || 500).json({ error: e.message }); } };
-  app.post('/api/live/engine-setups/:id/field', csrfGuard, (req, res) => esSend(res, () => { const b = req.body || {}; return es.setField(String(req.params.id), String(b.step || ''), String(b.field || ''), b.value); }));
-  app.post('/api/live/engine-setups/:id/key/make', csrfGuard, (req, res) => esSendAsync(res, () => es.makeKey(String(req.params.id))));
-  app.post('/api/live/engine-setups/:id/key/file', csrfGuard, (req, res) => esSendAsync(res, () => es.saveKeyFile(String(req.params.id), (req.body || {}).text)));
-  app.post('/api/live/engine-setups/:id/signin', csrfGuard, (req, res) => esSendAsync(res, () => es.signIn(String(req.params.id))));
+  // STEP 2: an install command with a one-time code, shown once to the page that asked
+  app.post('/api/live/engine-setups/:id/install', csrfGuard, (req, res) => { try { res.json({ ok: true, ...es.makeInstallCode(String(req.params.id)) }); } catch (e) { res.status(e.status || 500).json({ error: e.message }); } });
   // the decisions the producer made for engine setups, newest last: what it did on each run
   app.get('/api/live/engine-produce', (req, res) => {
     try {

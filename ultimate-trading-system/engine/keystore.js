@@ -44,7 +44,8 @@ class KeyStore {
       fs.closeSync(fd);
     }
     const st = fs.statSync(this.masterFile);
-    if ((st.mode & 0o077) !== 0) throw new Error('the key store\'s own key can be read by other users on this machine; it is refused until only the engine can read it');
+    // on Windows the folder's access list does this job (set by the installer); the mode bits say nothing there
+    if (process.platform !== 'win32' && (st.mode & 0o077) !== 0) throw new Error('the key store\'s own key can be read by other users on this machine; it is refused until only the engine can read it');
     const k = fs.readFileSync(this.masterFile);
     if (k.length !== 32) throw new Error('the key store\'s own key is not 32 bytes');
     this.master = k;
@@ -75,16 +76,24 @@ class KeyStore {
     return JSON.parse(Buffer.concat([d.update(Buffer.from(box.ct, 'base64')), d.final()]).toString('utf8'));
   }
 
-  // store (or replace) one account's keys; answers what the list answers, never the keys
-  put(account, { apiKey, secret } = {}) {
-    const f = this.fileOf(account);
+  // the shape a pair must have before anything is done with it
+  static checkPair({ apiKey, secret } = {}) {
     if (typeof apiKey !== 'string' || !PART_RE.test(apiKey) || typeof secret !== 'string' || !PART_RE.test(secret)) {
       const e = new Error('both halves of the key are needed, each 16 to 256 characters with no spaces');
       e.code = 'BAD_KEY';
       throw e;
     }
+  }
+
+  // store (or replace) one account's keys; answers what the list answers, never the keys.
+  // With them: whether the owner let them trade from any address, and whether
+  // the exchange says they are tied to one (owner, 2026-09-25: tying a key to
+  // one address is the owner's choice where the exchange allows it)
+  put(account, { apiKey, secret } = {}, { anyAddress = false, tied = null } = {}) {
+    const f = this.fileOf(account);
+    KeyStore.checkPair({ apiKey, secret });
     const was = fs.existsSync(f);
-    const rec = { v: 1, account, addedAt: new Date(this.now()).toISOString(), box: this.seal(account, { apiKey, secret }) };
+    const rec = { v: 1, account, addedAt: new Date(this.now()).toISOString(), anyAddress: anyAddress === true, tied: typeof tied === 'boolean' ? tied : null, box: this.seal(account, { apiKey, secret }) };
     const tmp = `${f}.tmp${process.pid}`;
     fs.writeFileSync(tmp, JSON.stringify(rec), { mode: 0o600 });
     fs.renameSync(tmp, f);
@@ -108,7 +117,7 @@ class KeyStore {
 
   describe(account) {
     const r = this.read(account);
-    return r ? { account, present: true, addedAt: r.addedAt } : { account, present: false };
+    return r ? { account, present: true, addedAt: r.addedAt, anyAddress: r.anyAddress === true, tied: typeof r.tied === 'boolean' ? r.tied : null } : { account, present: false };
   }
 
   list() {
@@ -122,7 +131,12 @@ class KeyStore {
   signer(account, purpose) {
     const r = this.read(account);
     if (!r) { const e = new Error(`no keys are stored for the trading account ${account}`); e.code = 'NO_KEYS'; throw e; }
-    const { apiKey, secret } = this.unseal(account, r.box);
+    return this.signerOf(account, this.unseal(account, r.box), purpose);
+  }
+
+  // the same signer for a pair not stored yet -- a key is asked what it may do
+  // BEFORE it is kept, so a key that is refused is never written down at all
+  signerOf(account, { apiKey, secret }, purpose) {
     const record = this.record;
     return {
       account,

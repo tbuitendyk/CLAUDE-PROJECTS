@@ -204,7 +204,7 @@ let cErrLoads = null;
 let cErrCfg = null;
 let cEng = null;             // the trading engine records, with whether each answers (loop of 2026-09-25)
 let cErrEng = null;
-let cEngEdit = null;         // the engine record being changed in the form, or null for a new one
+let cEngEdit = null;         // the engine record being changed in the form, or null when the form is closed
 let cEngTyped = {};          // what is typed in the form, kept across the thirty-second redraw
 let cEs = null;              // the engine setups: the template and one checklist per engine (owner, 2026-09-25)
 let cErrEs = null;
@@ -212,9 +212,7 @@ let cEsTyped = '';           // the descriptive name typed for another engine, k
 let cEsTypedShort = '';      // its short name, likewise
 let cEsTypedFix = '';        // the short name typed for a checklist started without one
 let cEsNew = false;          // the boxes for another engine's setup shown or not
-let cEsField = {};           // step 2's boxes as typed, kept across the redraw until signed in with
-let cEsReplace = false;      // the key file box opened again to replace a kept one
-let cEsKeyTyped = '';        // a key file being pasted, kept across the redraw until it is saved
+let cEsCode = null;          // an install command's code, shown once to the page that asked: { setupId, code, expiresUtc }
 let cEsOpen = false;         // the setup area open or closed: this viewer's own, remembered in the browser
 let cEsSel = null;           // which engine's checklist is shown
 try { cEsOpen = localStorage.getItem('setup-es-open') === '1'; cEsSel = localStorage.getItem('setup-es-sel') || null; } catch (_) { /* a private window: closed, newest */ }
@@ -241,10 +239,34 @@ const age = (s) => s == null ? '—' : s < 90 ? s + 's' : s < 5400 ? Math.round(
 // The list of exchanges comes from the trading service, never from here, so
 // the day a second one is supported it appears on this screen with nobody
 // editing this file (RULE FIVE).
+// THE LOCK FOR KEYS (owner, 2026-09-25): the browser's own WebCrypto, from the
+// trading service (keylock.js), loaded the first time it is needed
+let keyLockLoading = null;
+function keyLock() {
+  if (!keyLockLoading) {
+    keyLockLoading = new Promise((resolve, reject) => {
+      const el = document.createElement('script');
+      el.src = ENGINE_DIR + 'keylock.js?v=1';
+      el.onload = () => (window.utsKeyLock ? resolve(window.utsKeyLock) : reject(new Error('the lock for keys did not load')));
+      el.onerror = () => { keyLockLoading = null; reject(new Error('the lock for keys could not be loaded from the trading service')); };
+      document.head.appendChild(el);
+    });
+  }
+  return keyLockLoading;
+}
 async function loadAccount() {
   const a = getJson('api/account').then((d) => { aAcc = d; aErr = null; }, (e) => { aAcc = null; aErr = e.message; });
   const b = getJson('api/account/trading').then((d) => { aTr = d; aTrErr = null; }, (e) => { aTr = null; aTrErr = e.message; });
   await Promise.all([a, b]);
+  // THE FINGERPRINT IS WORKED OUT HERE, in this browser, from the very public
+  // half the keys will be locked with -- never taken from the service's word --
+  // so what the installer printed on the machine can be compared with it by eye
+  if (aTr && aTr.keys) {
+    try {
+      const kl = await keyLock();
+      await Promise.all(Object.values(aTr.keys).map(async (k) => { if (k && k.lock && k.lock.publicKey) k.lockHere = await kl.fingerprint(k.lock.publicKey); }));
+    } catch (_) { /* the form says the lock could not be loaded, and sends nothing */ }
+  }
 }
 
 // ---- THE TRADING ACCOUNTS (loop of 2026-09-25) --------------------------------
@@ -262,7 +284,8 @@ function tradingKeysLine(a) {
     const said = !k.answers
       ? '<span class="neg">cannot tell</span> <span class="muted">(' + esc(k.why) + ')</span>'
       : mine && mine.present
-        ? '<span class="pos">present</span> <span class="muted">entered ' + esc(String(mine.addedAt || '').slice(0, 16).replace('T', ' ')) + ' UTC</span>'
+        ? '<span class="pos">present</span> <span class="muted">entered ' + esc(String(mine.addedAt || '').slice(0, 16).replace('T', ' ')) + ' UTC'
+          + (mine.tied === true ? ' · tied to one address' : mine.tied === false ? ' · open to any address, as ticked when they were sent' : '') + '</span>'
         : '<span class="neg">missing</span>';
     return '<div class="row" style="align-items:baseline; margin-top:.35rem"><span class="k">keys on ' + esc(g.name) + '</span> ' + said + '</div>';
   }).join('');
@@ -282,8 +305,12 @@ function tradingAccountCard(a) {
         + '<label class="f" title="the secret half, shown by the exchange once, when the key is made">secret key<input id="takSec" type="password" autocomplete="off" spellcheck="false" style="width:24rem"></label>'
         + (engines.length > 1 ? '<label class="f" title="the trading engine that keeps these keys">trading engine<select id="takEng">'
           + engines.map((g) => '<option value="' + esc(g.id) + '"' + (pick && g.id === pick.id ? ' selected' : '') + '>' + esc(g.name) + '</option>').join('') + '</select></label>' : '')
+        + '<label class="c"><input type="checkbox" id="takAny"> these keys may trade from any address</label>'
         + '</div>'
-        + '<p class="note" style="margin-top:.4rem">Make the key on the exchange trade-only, with withdrawals off, and lock it to the trading box&#39;s address before sending it.</p>'
+        + '<p class="note" style="margin-top:.4rem">Make the key on the exchange trade-only, with withdrawals off. Tying it to the engine machine&#39;s address is safer; '
+        + 'if you leave it open to any address, tick the box, and what such a key may do is your exchange&#39;s rule. '
+        + 'The keys are locked in this browser with the engine&#39;s lock before they leave it, so this system passes them on without being able to read them.</p>'
+        + '<div class="row" style="align-items:baseline; margin-top:.2rem"><span class="k">the fingerprint of the engine&#39;s lock</span> <span id="takLockFp" class="note"></span></div>'
         + '<div class="row" style="margin-top:.4rem"><button id="takSend" class="pri">Send the keys to the trading engine</button><button id="takCancel">Do not send</button><span id="takMsg" class="note"></span></div>'
       : '<div class="row" style="margin-top:.5rem">'
         + (engines.length ? '<button data-takeys="' + esc(a.id) + '">' + (keysHere ? 'Replace the keys' : 'Enter the keys') + '</button>' : '')
@@ -297,8 +324,8 @@ function tradingAccountsHtml() {
   const v = (k) => esc(aTrTyped[k] || '');
   return '<div class="panel"><h3 style="margin-top:0">Trading accounts</h3>'
     + '<p class="note">One record for each trading account a setup trades through, named the way the setup names its account. '
-    + 'Its keys go straight to the trading engine, which keeps them encrypted on the trading box. This machine never keeps them, '
-    + 'and nothing shows them again — only whether they are there.</p>'
+    + 'Its keys are locked in this browser with the trading engine&#39;s lock before they are sent, so this system passes them on without being able to read them, '
+    + 'and the engine keeps them encrypted on its machine. Nothing shows them again — only whether they are there.</p>'
     + ((aTr.accounts || []).length ? aTr.accounts.map(tradingAccountCard).join('') : '<p class="note">no trading account yet</p>')
     + '<div class="tile"><div class="k" style="margin-bottom:.35rem">A new trading account</div>'
     + '<div class="row" style="align-items:flex-end">'
@@ -342,21 +369,37 @@ function wireTradingAccounts() {
   });
   const cancel = $('#takCancel');
   if (cancel) cancel.onclick = () => { aTrKeys = null; drawAccount(); };
+  // the lock of the engine picked, and its fingerprint as worked out in this browser
+  const lockOf = () => { const k = (aTr.keys || {})[enginePick()]; return k && k.lock && k.lockHere ? k : null; };
+  const showLock = () => {
+    const fp = $('#takLockFp');
+    if (!fp) return;
+    const k = lockOf();
+    fp.innerHTML = k ? '<b>' + esc(k.lockHere) + '</b> — the install command printed the same on the engine&#39;s machine'
+      : '<span class="neg">this engine has not said what its lock is, so no keys can be locked for it — it needs this system&#39;s release, installed with a new install command</span>';
+  };
+  showLock();
+  const pickEl = $('#takEng');
+  if (pickEl) pickEl.onchange = showLock;
   const send = $('#takSend');
   if (send) send.onclick = async () => {
     const msg = $('#takMsg');
     const key = $('#takKey'); const sec = $('#takSec');
-    send.disabled = true; msg.innerHTML = 'sending…';
+    const k = lockOf();
+    if (!k) { msg.innerHTML = '<span class="neg">not sent — this engine has no lock for keys</span>'; return; }
+    send.disabled = true; msg.innerHTML = 'locking and sending…';
     try {
       const acct = aTrKeys;
-      const got = await postJson('api/account/trading/' + encodeURIComponent(acct) + '/keys', { engine: enginePick(), apiKey: key.value.trim(), secret: sec.value.trim() });
+      // LOCKED HERE, BEFORE ANYTHING LEAVES THIS PAGE: only the locked form is sent
+      const locked = await (await keyLock()).lockKeys(k.lock.publicKey, acct, key.value.trim(), sec.value.trim());
+      const got = await postJson('api/account/trading/' + encodeURIComponent(acct) + '/keys', { engine: enginePick(), locked, anyAddress: $('#takAny').checked });
       // THE BOXES ARE EMPTIED THE MOMENT THE KEYS ARE SENT, taken or not
       key.value = ''; sec.value = '';
       aTrKeys = null;
       await redraw();
       const o = $('#taOut_' + acct);
       if (o) o.innerHTML = got.checked
-        ? '<span class="pos">kept — the exchange says the key can trade and borrow, cannot move money, and is locked to one address</span>'
+        ? '<span class="pos">kept — the exchange says the key can trade and borrow, cannot move money, and ' + (got.tied ? 'is tied to one address' : 'is open to any address, as you ticked') + '</span>'
         : '<span class="warn">kept, but not checked — ' + esc(got.why || 'the engine could not ask the exchange') + '</span>';
     } catch (e) {
       key.value = ''; sec.value = '';
@@ -506,16 +549,25 @@ function engineCard(e) {
     ? '<span class="pos">answers</span> <span class="muted">in ' + e.ms + ' ms · release ' + esc(h.release || '?') + '</span>'
     : '<span class="neg">does not answer</span> <span class="muted">(' + esc(e.why || 'no reason given') + ')</span>';
   const link = e.link && e.link.following
-    ? '<span class="pos">following its record</span> <span class="muted">since ' + esc(String(e.link.since || '').slice(11, 19)) + ' UTC</span>'
-    : '<span class="neg">not following its record</span> <span class="muted">(' + esc((e.link && e.link.why) || 'not started') + ')</span>';
+    ? '<span class="pos">' + (e.linkKind === 'calls-out' ? 'called in, and its record is arriving' : 'following its record') + '</span> <span class="muted">since ' + esc(String(e.link.since || '').slice(11, 19)) + ' UTC</span>'
+    : '<span class="neg">' + (e.linkKind === 'calls-out' ? 'not linked right now' : 'not following its record') + '</span> <span class="muted">(' + esc((e.link && e.link.why) || 'not started') + ')</span>';
+  // HOW IT IS REACHED (owner, 2026-09-25): an engine installed with the install
+  // command calls this system and says what it is; the first engine is still
+  // reached through this machine's tunnel
+  const mc = e.machine || {};
+  const behind = e.linkKind === 'calls-out' && e.release && e.release !== e.releaseHere;
+  const reach = e.linkKind === 'calls-out'
+    ? '<span><span class="k">calls this system from</span> <b>' + esc(mc.hostname || 'a machine it has not named') + '</b> <span class="muted">' + esc([mc.platform, mc.arch].filter(Boolean).join(' ')) + '</span></span>'
+      + '<span><span class="k">release</span> <b>' + esc(e.release || '?') + '</b></span>'
+      + '<span><span class="k">the fingerprint of its lock</span> <b>' + esc(e.lock ? e.lock.fingerprint : '—') + '</b></span>'
+    : '<span><span class="k">trading box</span> <b>' + esc(e.user) + '@' + esc(e.host) + '</b></span>'
+      + '<span><span class="k">engine port there</span> <b>' + e.enginePort + '</b></span>'
+      + '<span><span class="k">tunnel port here</span> <b>' + e.localPort + '</b></span>';
   return '<div class="tile" style="margin-bottom:.55rem">'
     + '<div class="row" style="align-items:baseline"><b>' + esc(e.name) + '</b><span class="note">' + esc(e.id) + '</span>'
     + (e.isDefault ? '<span class="note pos">new setups run on this engine</span>' : '') + '<span class="spacer"></span>' + said + '</div>'
-    + '<div class="row" style="align-items:baseline; margin-top:.35rem; gap:1.2rem">'
-    + '<span><span class="k">trading box</span> <b>' + esc(e.user) + '@' + esc(e.host) + '</b></span>'
-    + '<span><span class="k">engine port there</span> <b>' + e.enginePort + '</b></span>'
-    + '<span><span class="k">tunnel port here</span> <b>' + e.localPort + '</b></span>'
-    + '</div>'
+    + '<div class="row" style="align-items:baseline; margin-top:.35rem; gap:1.2rem">' + reach + '</div>'
+    + (behind ? '<div class="row" style="align-items:baseline; margin-top:.25rem"><span class="note warn">this system runs ' + esc(e.releaseHere) + ' — make a new install command in its checklist and run it on the machine to bring the engine up to it</span></div>' : '')
     + '<div class="row" style="align-items:baseline; margin-top:.35rem; gap:1.2rem">'
     + '<span><span class="k">prices</span> ' + feeds + '</span>'
     + '<span><span class="k">plans held</span> <b>' + (h.plans ? h.plans.held + ' (' + h.plans.active + ' open or waiting)' : '—') + '</b></span>'
@@ -536,33 +588,30 @@ function engineHtml() {
   // would make every record a race
   const v = (k, d) => esc(k in cEngTyped ? cEngTyped[k] : (ed ? ed[k] : d));
   return '<div class="panel"><h3 style="margin-top:0">The trading engine</h3>'
-    + '<p class="note">The program on the trading box that carries out Paper Books and Live Trading for this system, '
-    + 'beside the old order program, which it never touches. This machine reaches it through a tunnel of its own. '
+    + '<p class="note">The program that carries out Paper Books and Live Trading for this system. It runs on a machine of yours and calls this system; '
+    + 'nothing here can sign in to that machine. A new engine is added with Set up a trading engine. '
     + 'A new setup runs on the engine ticked for new setups; a setup already running stays where it is.</p>'
     + esHtml()
-    + ((cEng.engines || []).length ? (cEng.engines || []).map(engineCard).join('') : '<p class="note">no engine record yet</p>')
-    + '<div class="tile">'
-    + '<div class="k" style="margin-bottom:.35rem">' + (ed ? 'Changing ' + esc(ed.name) : 'A new engine record') + '</div>'
-    + '<div class="row">'
-    // WHICH IS WHICH, ON THE SCREEN ITSELF (owner, 2026-09-25: "can't tell from
-    // the first two fields which is the short name and which is the descriptive
-    // name" -- the words were hover text, and it did not reach the screen)
-    + '<label class="c"><span class="muted">short name — letters, digits, dashes</span><input id="engId" value="' + v('id', '') + '" placeholder="engine-2" ' + (ed ? 'disabled' : '') + ' style="width:9rem"></label>'
-    + '<label class="c"><span class="muted">descriptive name — what you see on screen</span><input id="engName" value="' + v('name', '') + '" placeholder="Engine 2" style="width:14rem"></label>'
-    + '</div>'
-    + '<div class="row" style="margin-top:.5rem">'
-    + '<label class="c" title="the trading box&#39;s address"><span class="muted">trading box address</span><input id="engHost" value="' + v('host', '') + '" style="width:26rem"></label>'
-    + '<label class="c" title="the account this machine signs in to the trading box as"><span class="muted">sign in as</span><input id="engUser" value="' + v('user', '') + '" style="width:7rem"></label>'
-    + '</div>'
-    + '<div class="row" style="margin-top:.5rem">'
-    + '<label class="c" title="the port the engine listens on, on the trading box itself"><span class="muted">engine port there</span><input id="engPort" type="number" min="1024" max="65535" value="' + v('enginePort', 18095) + '" style="width:7rem"></label>'
-    + '<label class="c" title="the port the tunnel opens on this machine"><span class="muted">tunnel port here</span><input id="engLocal" type="number" min="1024" max="65535" value="' + v('localPort', 18095) + '" style="width:7rem"></label>'
-    + '<label class="c"><input type="checkbox" id="engDefault"' + (('isDefault' in cEngTyped ? cEngTyped.isDefault : (ed ? ed.isDefault : true)) ? ' checked' : '') + '> new setups run on this engine</label>'
-    + '</div>'
-    + '<div class="row" style="margin-top:.5rem"><button id="engSave" class="pri">Save the engine record</button>'
-    + (ed ? '<button id="engNew">Start a new record instead</button>' : '') + '<span id="engMsg" class="note"></span></div>'
-    + '<p class="note" style="margin-top:.4rem">Sending the engine to the trading box and opening the tunnel are not done from this page yet.</p>'
-    + '</div></div>';
+    + ((cEng.engines || []).length ? (cEng.engines || []).map(engineCard).join('') : '<p class="note">no engine yet</p>')
+    + (ed ? '<div class="tile">'
+      + '<div class="k" style="margin-bottom:.35rem">Changing ' + esc(ed.name) + ' <span class="muted">(' + esc(ed.id) + ')</span></div>'
+      + '<div class="row" style="align-items:flex-end">'
+      + '<label class="c"><span class="muted">descriptive name — what you see on screen</span><input id="engName" value="' + v('name', '') + '" placeholder="Engine 2" style="width:14rem"></label>'
+      + '<label class="c"><input type="checkbox" id="engDefault"' + (('isDefault' in cEngTyped ? cEngTyped.isDefault : ed.isDefault) ? ' checked' : '') + '> new setups run on this engine</label>'
+      + '</div>'
+      + (ed.linkKind === 'tunnel'
+        ? '<div class="row" style="margin-top:.5rem">'
+          + '<label class="c" title="the trading box&#39;s address"><span class="muted">trading box address</span><input id="engHost" value="' + v('host', '') + '" style="width:26rem"></label>'
+          + '<label class="c" title="the account this machine signs in to the trading box as"><span class="muted">sign in as</span><input id="engUser" value="' + v('user', '') + '" style="width:7rem"></label>'
+          + '</div>'
+          + '<div class="row" style="margin-top:.5rem">'
+          + '<label class="c" title="the port the engine listens on, on the trading box itself"><span class="muted">engine port there</span><input id="engPort" type="number" min="1024" max="65535" value="' + v('enginePort', 18095) + '" style="width:7rem"></label>'
+          + '<label class="c" title="the port the tunnel opens on this machine"><span class="muted">tunnel port here</span><input id="engLocal" type="number" min="1024" max="65535" value="' + v('localPort', 18095) + '" style="width:7rem"></label>'
+          + '</div>'
+        : '')
+      + '<div class="row" style="margin-top:.5rem"><button id="engSave" class="pri">Save the engine record</button><button id="engNew">Close the form</button><span id="engMsg" class="note"></span></div>'
+      + '</div>' : '')
+    + '</div>';
 }
 // ---- SETTING UP A TRADING ENGINE, STEP BY STEP (owner, 2026-09-25) ---------
 // "somehow the user has to be able to go from NOTHING provisioned with NO
@@ -580,38 +629,54 @@ function esProgress(x) {
   const n = (x.steps || []).findIndex((st) => !st.done);
   return n < 0 ? 'every step done' : 'step ' + (n + 1) + ' of ' + (x.steps || []).length;
 }
-// STEP 2'S KEY AND SIGN-IN (owner, 2026-09-25): the key this system makes or
-// the key file it is given -- only its public half and fingerprint are ever
-// on screen -- the machine's address and account, and the sign-in, in words
-function esAccessHtml(s, step) {
+// STEP 2 -- THE INSTALL COMMAND (owner, 2026-09-25: "the engine connects out to
+// our server ... Nothing ever connects in"). One command for the machine's own
+// system, carrying a one-time code the page is shown once; the engine it installs
+// calls this system with the code and is given a password of its own. Only this
+// page ever sees the code: the service keeps its fingerprint.
+const PUBLIC_BASE = location.origin + ENGINE_DIR;
+function esSystemOf(s) {
   const ch = s.choices || {};
-  if (!ch.keyHow) return '';
-  const k = s.key && s.key.how === ch.keyHow ? s.key : null;
-  const f = (s.fields || {})[step.id] || {};
-  const typed = (fid) => (cEsField[s.id + '|' + fid] != null ? cEsField[s.id + '|' + fid] : (f[fid] || ''));
+  return ch.where === 'server' ? 'linux' : ch.os || null;
+}
+function esCommandFor(system, shortName, code) {
+  const q = (x) => "'" + String(x).replace(/'/g, '') + "'";
+  if (system === 'windows') return '& ([scriptblock]::Create((irm ' + q(PUBLIC_BASE + 'engine-link/install/windows.ps1') + '))) ' + q(PUBLIC_BASE) + ' ' + q(shortName) + ' ' + q(code);
+  const file = system === 'mac' ? 'mac.sh' : 'linux.sh';
+  return 'curl -fsSL ' + q(PUBLIC_BASE + 'engine-link/install/' + file) + ' | sudo sh -s -- ' + q(PUBLIC_BASE) + ' ' + q(shortName) + ' ' + q(code);
+}
+const hhmm = (iso) => String(iso || '').slice(11, 16);
+function esInstallHtml(s, step) {
+  const sys = esSystemOf(s);
   const box = 'width:100%;max-width:60rem;font-family:monospace;font-size:.74rem';
-  let key = '';
-  if (ch.keyHow === 'made') {
-    key = k
-      ? '<div class="k" style="margin-top:.6rem">the public half — copy it onto the machine</div>'
-        + '<textarea id="esPub" readonly rows="2" style="' + box + '">' + esc(k.publicKey) + '</textarea>'
-        + '<div class="row" style="margin-top:.3rem"><button id="esPubCopy">Copy the public half</button><button id="esKeyMake">Make a new key</button><span class="note">fingerprint ' + esc(k.fingerprint || '—') + '</span></div>'
-      : '<div class="row" style="margin-top:.6rem"><button id="esKeyMake">Make this engine\'s key</button></div>';
-  } else {
-    key = k && !cEsReplace
-      ? '<div class="row" style="margin-top:.6rem"><span class="note">a key file is kept, and never shown again — fingerprint ' + esc(k.fingerprint || '—') + '</span></div>'
-        + '<div class="row" style="margin-top:.3rem"><button id="esKeyReplace">Replace the key file</button></div>'
-      : '<div class="k" style="margin-top:.6rem">the private key file</div>'
-        + '<textarea id="esKeyText" rows="5" spellcheck="false" autocomplete="off" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" style="' + box + '">' + esc(cEsKeyTyped) + '</textarea>'
-        + '<div class="row" style="margin-top:.3rem"><button id="esKeySave">Save the key file</button></div>';
+  const mine = cEsCode && cEsCode.setupId === s.id ? cEsCode : null;
+  let cmd = '';
+  if (mine) {
+    cmd = '<div class="k" style="margin-top:.6rem">the install command — for ' + (sys === 'windows' ? 'PowerShell opened as administrator' : 'a terminal on the machine') + '</div>'
+      + '<textarea id="esCmd" readonly rows="3" spellcheck="false" style="' + box + '">' + esc(esCommandFor(sys, s.shortName, mine.code)) + '</textarea>'
+      + '<div class="row" style="margin-top:.3rem"><button id="esCmdCopy">Copy the command</button><span class="note">works once, until ' + esc(hhmm(mine.expiresUtc)) + ' UTC; it is not shown again after this page is reloaded</span></div>';
+  } else if (s.install && s.install.waiting) {
+    cmd = '<div class="row" style="margin-top:.6rem"><span class="note">an install command made at ' + esc(hhmm(s.install.madeUtc)) + ' UTC is waiting to be run, until ' + esc(hhmm(s.install.expiresUtc)) + ' UTC; it is not shown again — make a new one to see one</span></div>';
   }
-  const boxes = '<div class="row" style="margin-top:.6rem">' + (step.fields || []).map((x) => '<label class="c"><span class="muted">' + esc(x.label) + '</span><input data-es-field="' + esc(x.id) + '" value="' + esc(typed(x.id)) + '" placeholder="' + esc(x.placeholder || '') + '" style="width:' + esc(x.width || '12rem') + '"></label>').join('') + '</div>';
-  const sgn = ((s.checks || {})[step.id] || {}).signedIn || null;
-  const said = !sgn ? '' : (sgn.ok ? '<span class="pos">' + esc(sgn.said) + '</span>' + (sgn.machine ? ' · the machine\'s identity ' + esc(sgn.machine) : '') : '<span class="neg">' + esc(sgn.why) + '</span>')
-    + ' <span class="muted">(' + esc(String(sgn.at || '').slice(0, 16).replace('T', ' ')) + ' UTC)</span>';
-  const tryRow = '<div class="row" style="margin-top:.5rem"><button id="esSignIn"' + (k ? '' : ' disabled') + '>Try signing in</button><span id="esSignMsg" class="note">' + (k ? said : (ch.keyHow === 'file' ? 'save the key file first' : 'make this engine\'s key first')) + '</span></div>';
-  const checks = (step.checks || []).map((c) => { const v = ((s.checks || {})[step.id] || {})[c.id] || null; return '<div class="row" style="margin-top:.3rem"><label class="c"><input type="checkbox" disabled' + (v && v.ok ? ' checked' : '') + '> ' + esc(c.label) + '</label><span class="note">ticked by this system when it signs in</span></div>'; }).join('');
-  return key + boxes + tryRow + checks;
+  const make = '<div class="row" style="margin-top:.6rem"><button id="esInstallMake"' + (sys ? '' : ' disabled') + '>' + (s.engine || mine || (s.install && s.install.waiting) ? 'Make a new install command' : 'Make the install command') + '</button>'
+    + '<span id="esInstallMsg" class="note">' + (sys ? '' : 'choose where it runs in step 1 first') + '</span></div>';
+  const e = s.engine;
+  const called = e
+    ? '<span class="note">ticked by this system when the engine called in, ' + esc(String(e.enrolledUtc || '').slice(0, 16).replace('T', ' ')) + ' UTC'
+      + (e.lock ? ' · the fingerprint of its lock ' + esc(e.lock.fingerprint) : '') + '</span>'
+    : '<span class="note">ticked by this system when the engine calls in</span>';
+  const checks = (step.checks || []).map((c) => '<div class="row" style="margin-top:.3rem"><label class="c"><input type="checkbox" disabled' + (e ? ' checked' : '') + '> ' + esc(c.label) + '</label>' + called + '</div>').join('');
+  return make + cmd + checks;
+}
+// STEP 3 -- THE RELEASE IT RUNS, beside the release this system runs
+function esCurrentHtml(s, step) {
+  const e = s.engine;
+  const ok = !!(e && e.release === s.releaseHere);
+  const said = !e ? '<span class="muted">installed in step 2 first</span>'
+    : ok ? '<span class="pos">it runs ' + esc(e.release) + ', the release this system runs</span>'
+      : '<span class="warn">it runs ' + esc(e.release || 'a release it has not said') + '; this system runs ' + esc(s.releaseHere) + '</span> <span class="muted">— make a new install command in step 2 and run it on the machine</span>';
+  const checks = (step.checks || []).map((c) => '<div class="row" style="margin-top:.3rem"><label class="c"><input type="checkbox" disabled' + (ok ? ' checked' : '') + '> ' + esc(c.label) + '</label><span class="note">ticked by this system from what the engine says when it calls</span></div>').join('');
+  return '<div class="row" style="margin-top:.6rem">' + said + '</div>' + checks;
 }
 function esSetupHtml(s, t) {
   const ch = s.choices || {};
@@ -632,7 +697,7 @@ function esSetupHtml(s, t) {
       + '</div>').join('');
     const tk = (s.ticks || {})[step.id] || {};
     const ticks = (step.ticks || []).map((x) => '<div class="row" style="margin-top:.3rem"><label class="c"><input type="checkbox" data-es-tick="' + esc(step.id) + '|' + esc(x.id) + '"' + (tk[x.id] ? ' checked' : '') + '> ' + esc(x.label) + '</label></div>').join('');
-    return head + guide + choices + (step.panel === 'access' ? esAccessHtml(s, step) : '') + (ticks ? '<div style="margin-top:.45rem">' + ticks + '</div>' : '');
+    return head + guide + choices + (step.panel === 'install' ? esInstallHtml(s, step) : step.panel === 'current' ? esCurrentHtml(s, step) : '') + (ticks ? '<div style="margin-top:.45rem">' + ticks + '</div>' : '');
   }).join('');
   return '<div style="border-top:1px solid var(--line);margin-top:.7rem">' + blocks + '</div>'
     + '<div class="row" style="margin-top:.9rem"><button id="esDelete" class="danger" title="takes this checklist away; nothing on any machine is touched">Delete this setup</button></div>';
@@ -698,54 +763,25 @@ function wireEs() {
   if (sh) sh.oninput = () => { cEsTypedShort = sh.value; };
   const fx = $('#esShortFix');
   if (fx) fx.oninput = () => { cEsTypedFix = fx.value; };
-  // step 2
+  // step 2: the install command, made on the service and shown once, here
   const esUrl = (sel, what) => 'api/live/engine-setups/' + encodeURIComponent(sel.id) + '/' + what;
-  document.querySelectorAll('[data-es-field]').forEach((i) => { i.oninput = () => { const sel = currentEs(); if (sel) cEsField[sel.id + '|' + i.dataset.esField] = i.value; }; });
-  const kt = $('#esKeyText');
-  if (kt) kt.oninput = () => { cEsKeyTyped = kt.value; };
-  const km = $('#esKeyMake');
-  if (km) km.onclick = async () => {
+  const im = $('#esInstallMake');
+  if (im) im.onclick = async () => {
     const sel = currentEs();
     if (!sel) return;
-    if (sel.key && !confirm('Make a new key?\n\nThe old one stops working here: copy the new public half onto the machine again.')) return;
-    km.disabled = true;
-    try { await postJson(esUrl(sel, 'key/make'), {}); } catch (e) { alert('No key made — ' + e.message); }
+    if ((sel.engine || (sel.install && sel.install.waiting)) && !confirm(sel.engine
+      ? 'Make a new install command?\n\nRun on the machine, it brings the engine to this system\'s release and keeps its record, its lock and its keys. It gives the engine a new password; the old one stops working when the engine calls in with the new code.'
+      : 'Make a new install command?\n\nThe one made before stops working.')) return;
+    im.disabled = true;
+    try { const got = await postJson(esUrl(sel, 'install'), {}); cEsCode = { setupId: sel.id, code: got.code, expiresUtc: got.expiresUtc }; }
+    catch (e) { const m = $('#esInstallMsg'); if (m) m.innerHTML = '<span class="neg">no command made — ' + esc(e.message) + '</span>'; im.disabled = false; return; }
     await esReload();
   };
-  const pc = $('#esPubCopy');
-  if (pc) pc.onclick = async () => {
-    const t = $('#esPub');
+  const cc = $('#esCmdCopy');
+  if (cc) cc.onclick = async () => {
+    const t = $('#esCmd');
     try { await navigator.clipboard.writeText(t.value); } catch (_) { t.select(); try { document.execCommand('copy'); } catch (__) { /* selected for a manual copy */ } }
-    pc.textContent = 'Copied';
-  };
-  const kr = $('#esKeyReplace');
-  if (kr) kr.onclick = () => { cEsReplace = true; drawCompute(); };
-  const ks = $('#esKeySave');
-  if (ks) ks.onclick = async () => {
-    const sel = currentEs();
-    if (!sel) return;
-    ks.disabled = true;
-    const text = cEsKeyTyped;
-    try { await postJson(esUrl(sel, 'key/file'), { text }); cEsReplace = false; cEsKeyTyped = ''; }
-    catch (e) { alert('Not saved — ' + e.message); }
-    await esReload();
-  };
-  const si = $('#esSignIn');
-  if (si) si.onclick = async () => {
-    const sel = currentEs();
-    if (!sel) return;
-    si.disabled = true;
-    $('#esSignMsg').innerHTML = 'signing in…';
-    try {
-      // the two boxes are saved first, when they changed
-      for (const i of document.querySelectorAll('[data-es-field]')) {
-        const cur = ((sel.fields || {}).access || {})[i.dataset.esField] || '';
-        if (i.value.trim() !== cur) await postJson(esUrl(sel, 'field'), { step: 'access', field: i.dataset.esField, value: i.value.trim() });
-      }
-      await postJson(esUrl(sel, 'signin'), {});
-      for (const k of Object.keys(cEsField)) if (k.startsWith(sel.id + '|')) delete cEsField[k];
-    } catch (e) { alert('Not signed in — ' + e.message); }
-    await esReload();
+    cc.textContent = 'Copied';
   };
   const nt = $('#esNewToggle');
   if (nt) nt.onclick = () => { cEsNew = !cEsNew; drawCompute(); };
@@ -789,7 +825,7 @@ function wireEs() {
 
 function wireEngine() {
   wireEs();
-  for (const [sel, key] of [['#engId', 'id'], ['#engName', 'name'], ['#engHost', 'host'], ['#engUser', 'user'], ['#engPort', 'enginePort'], ['#engLocal', 'localPort']]) {
+  for (const [sel, key] of [['#engName', 'name'], ['#engHost', 'host'], ['#engUser', 'user'], ['#engPort', 'enginePort'], ['#engLocal', 'localPort']]) {
     const el = $(sel);
     if (el) el.oninput = () => { cEngTyped[key] = el.value; };
   }
@@ -812,10 +848,9 @@ function wireEngine() {
     sv.disabled = true;
     msg.innerHTML = 'saving…';
     try {
-      const got = await postJson('api/live/engines', {
-        id: cEngEdit || $('#engId').value.trim(), name: $('#engName').value.trim(), host: $('#engHost').value.trim(), user: $('#engUser').value.trim(),
-        enginePort: Number($('#engPort').value), localPort: Number($('#engLocal').value), isDefault: $('#engDefault').checked,
-      });
+      // the tunnel's two ends only for an engine the tunnel reaches; one that calls out says its own
+      const tunnel = $('#engHost') ? { host: $('#engHost').value.trim(), user: $('#engUser').value.trim(), enginePort: Number($('#engPort').value), localPort: Number($('#engLocal').value) } : {};
+      const got = await postJson('api/live/engines', { id: cEngEdit, name: $('#engName').value.trim(), isDefault: $('#engDefault').checked, ...tunnel });
       cEngEdit = got.engine.id;
       cEngTyped = {};
       await refreshCompute(true);
@@ -848,7 +883,8 @@ function drawCompute() {
     + roles
     // ONE ROW SHAPE FOR ALL THREE (owner, 2026-09-25): the same height, the
     // same letters and the note starting where "runs on" starts
-    + '<div class="row" style="margin:.3rem 0; min-height:1.9rem; gap:.35rem"><b style="min-width:11rem; font-size:.8rem">trading platform</b>'
+    // (baseline, as every row of mixed-size text on this page; the line centred in the row's height)
+    + '<div class="row" style="align-items:baseline; align-content:center; margin:.3rem 0; min-height:1.9rem; gap:.35rem"><b style="min-width:11rem; font-size:.8rem">trading platform</b>'
     + '<span class="note" style="flex:1; min-width:16rem">chosen on each trading setup on the Trade tab — every setup names its own, '
     + 'so two setups can trade in two places. Nothing about it is set here.</span></div>'
     + '</div>'

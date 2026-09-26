@@ -43,11 +43,14 @@ module.exports = {
       const ks = store(dir, lines);
       assert.strictEqual(fs.statSync(path.join(dir, 'keystore.key')).mode & 0o777, 0o600, 'the store\'s own key is the engine user\'s alone');
       const got = ks.put('ltc-1', { apiKey: API_KEY, secret: SECRET });
-      assert.deepStrictEqual(got, { account: 'ltc-1', present: true, addedAt: '2026-09-25T09:00:00.000Z' });
+      assert.deepStrictEqual(got, { account: 'ltc-1', present: true, addedAt: '2026-09-25T09:00:00.000Z', anyAddress: false, tied: null });
       const onDisk = fs.readFileSync(path.join(dir, 'keys', 'ltc-1.key'), 'utf8');
       assert.ok(!onDisk.includes(API_KEY) && !onDisk.includes(SECRET), 'neither half of the key is on disk as it was typed');
       assert.strictEqual(fs.statSync(path.join(dir, 'keys', 'ltc-1.key')).mode & 0o777, 0o600);
-      assert.deepStrictEqual(ks.list(), [{ account: 'ltc-1', present: true, addedAt: '2026-09-25T09:00:00.000Z' }]);
+      assert.deepStrictEqual(ks.list(), [{ account: 'ltc-1', present: true, addedAt: '2026-09-25T09:00:00.000Z', anyAddress: false, tied: null }]);
+      // the owner's choice about addresses, and what the exchange said, kept beside the keys
+      assert.deepStrictEqual(ks.put('ltc-open', { apiKey: API_KEY, secret: SECRET }, { anyAddress: true, tied: false }), { account: 'ltc-open', present: true, addedAt: '2026-09-25T09:00:00.000Z', anyAddress: true, tied: false });
+      ks.remove('ltc-open');
       assert.deepStrictEqual(ks.describe('other'), { account: 'other', present: false });
       // the secret signs here and never leaves: the signature is the one Binance expects
       const sg = ks.signer('ltc-1', 'a read');
@@ -55,7 +58,7 @@ module.exports = {
       assert.strictEqual(sg.sign('symbol=LTCUSDT&timestamp=1'), crypto.createHmac('sha256', SECRET).update('symbol=LTCUSDT&timestamp=1').digest('hex'));
       assert.ok(!Object.values(sg).some((v) => v === SECRET), 'the signer holds no field with the secret in it');
       // every use written down, and no line carries either half
-      assert.deepStrictEqual(lines.map((l) => [l.what, l.account]), [['entered', 'ltc-1'], ['used', 'ltc-1']]);
+      assert.deepStrictEqual(lines.map((l) => [l.what, l.account]), [['entered', 'ltc-1'], ['entered', 'ltc-open'], ['removed', 'ltc-open'], ['used', 'ltc-1']]);
       assert.ok(!JSON.stringify(lines).includes(API_KEY) && !JSON.stringify(lines).includes(SECRET), 'no record carries the key');
       // a file copied under another account's name does not open
       fs.copyFileSync(path.join(dir, 'keys', 'ltc-1.key'), path.join(dir, 'keys', 'thief.key'));
@@ -104,7 +107,7 @@ module.exports = {
       assert.deepStrictEqual([w.base.borrowed, w.quote.locked, w.marginLevel], [0.5, 5, 3.2]);
       assert.deepStrictEqual((await acc.openOrders('LTCUSDT')).orders, []);
       const rs = await acc.restrictions();
-      assert.deepStrictEqual(keyVerdict(rs), { ok: true, refusals: [] });
+      assert.deepStrictEqual(keyVerdict(rs), { ok: true, refusals: [], tied: true });
       assert.ok(seen.filter((x) => x.path !== '/api/v3/time').every((x) => x.method === 'GET' && x.header === API_KEY), 'every read is a GET carrying the public half');
       assert.ok(seen.every((x) => !x.query.includes(SECRET)), 'the secret never travels');
       assert.ok(/timestamp=1790326801500/.test(seen[1].query), 'signed on Binance\'s clock');
@@ -118,44 +121,72 @@ module.exports = {
   // ITEM 7: a key the engine keeps can trade and borrow and can move no money
   aKeyThatCanMoveMoneyOrIsNotLockedIsRefusedInWords() {
     const good = { ipRestrict: true, enableWithdrawals: false, enableInternalTransfer: false, permitsUniversalTransfer: false, enableMargin: true, enableSpotAndMarginTrading: true };
-    assert.deepStrictEqual(keyVerdict(good), { ok: true, refusals: [] });
-    assert.deepStrictEqual(keyVerdict({ ...good, enableWithdrawals: true, ipRestrict: false }).refusals, ['it allows withdrawals', 'it is not locked to the trading box\'s address']);
+    assert.deepStrictEqual(keyVerdict(good), { ok: true, refusals: [], tied: true });
+    assert.deepStrictEqual(keyVerdict({ ...good, enableWithdrawals: true, ipRestrict: false }).refusals, ['it allows withdrawals', 'it is open to any address, and "these keys may trade from any address" was not ticked']);
+    // TIED TO ONE ADDRESS IS THE OWNER'S CHOICE (owner, 2026-09-25): ticked, a key open to any address is kept
+    assert.deepStrictEqual(keyVerdict({ ...good, ipRestrict: false }, { anyAddress: true }), { ok: true, refusals: [], tied: false });
+    // and the tick never excuses a key that can move money
+    assert.deepStrictEqual(keyVerdict({ ...good, ipRestrict: false, enableWithdrawals: true }, { anyAddress: true }).refusals, ['it allows withdrawals']);
     assert.deepStrictEqual(keyVerdict({ ...good, enableMargin: false }).refusals, ['it cannot borrow on margin, so it cannot open a short']);
     assert.deepStrictEqual(keyVerdict({ ...good, enableSpotAndMarginTrading: false, enableInternalTransfer: true, permitsUniversalTransfer: true }).refusals, ['it allows transfers between accounts', 'it allows universal transfers', 'it cannot trade']);
   },
 
-  // THE KEYS THROUGH THE ENGINE'S OWN ADDRESS: stored, listed as present, never
-  // in an answer; a key the venue says can move money is not kept
+  // THE KEYS THROUGH THE ENGINE (owner, 2026-09-25): they arrive locked in the
+  // browser with this engine's lock and only locked; they are asked of the
+  // exchange BEFORE they are kept, so a refused key is never written down; no
+  // answer ever carries them
   async theEngineTakesKeysAndNeverAnswersWithThem() {
     const { makeServer } = require('../engine/api');
     const { Journal } = require('../engine/journal');
+    const { Lock } = require('../engine/lock');
+    const { lockKeys } = require('../public/keylock');
     const dir = tmp();
     const journal = new Journal(path.join(dir, 'journal.jsonl'));
     const ks = new KeyStore({ dir: path.join(dir, 'keys'), masterFile: path.join(dir, 'keystore.key'), record: (l) => journal.append(l) }).open();
-    let verdict = { checked: true, ok: true, refusals: [] };
-    const server = makeServer({ runner: { view: () => [] }, journal, health: () => ({ ok: true }), keystore: ks, checkKey: async () => verdict });
+    const lock = new Lock(path.join(dir, 'lock.json')).open();
+    let verdict = { checked: true, ok: true, refusals: [], tied: true };
+    const asked = [];
+    const server = makeServer({ runner: { view: () => [] }, journal, health: () => ({ ok: true }), keystore: ks, lock, checkKey: async (account, pair, opts) => { asked.push([account, pair.apiKey === API_KEY, ks.describe(account).present, opts.anyAddress]); return verdict; } });
     await new Promise((r) => server.listen(0, '127.0.0.1', r));
     const target = { localPort: server.address().port };
     const link = require('../lib/live/enginelink');
+    const pub = lock.info().publicKey;
     try {
-      const put = await link.call(target, 'POST', '/keys/ltc-1', { apiKey: API_KEY, secret: SECRET });
-      assert.ok(put.ok && put.json.present === true && put.json.checked === true, JSON.stringify(put.json));
+      const put = await link.call(target, 'POST', '/keys/ltc-1', { locked: await lockKeys(pub, 'ltc-1', API_KEY, SECRET) });
+      assert.ok(put.ok && put.json.present === true && put.json.checked === true && put.json.tied === true, JSON.stringify(put.json));
+      assert.deepStrictEqual(asked[0], ['ltc-1', true, false, false], 'the exchange is asked before the keys are kept');
       const listed = await link.call(target, 'GET', '/keys');
       assert.deepStrictEqual(listed.json.keys.map((k) => [k.account, k.present]), [['ltc-1', true]]);
+      assert.deepStrictEqual(listed.json.lock, lock.info(), 'the engine says what its lock is: the public half and its fingerprint');
       assert.ok(![JSON.stringify(put.json), JSON.stringify(listed.json)].some((t) => t.includes(API_KEY) || t.includes(SECRET)), 'no answer carries the key');
-      verdict = { checked: true, ok: false, refusals: ['it allows withdrawals'] };
-      const refused = await link.call(target, 'POST', '/keys/ltc-2', { apiKey: API_KEY, secret: SECRET });
+      // unlocked, they are refused: nothing on the way may be able to read them
+      const plain = await link.call(target, 'POST', '/keys/ltc-9', { apiKey: API_KEY, secret: SECRET });
+      assert.deepStrictEqual([plain.status, plain.json.error], [400, 'keys are taken only locked with this engine\'s lock: nothing on the way here may be able to read them']);
+      // locked for one account, they do not open under another's name
+      const swapped = await link.call(target, 'POST', '/keys/ltc-8', { locked: await lockKeys(pub, 'ltc-1', API_KEY, SECRET) });
+      assert.deepStrictEqual([swapped.status, /could not be opened by this engine/.test(swapped.json.error)], [400, true]);
+      // locked with another engine's lock, they do not open here
+      const other = new Lock(path.join(dir, 'other-lock.json')).open();
+      const elsewhere = await link.call(target, 'POST', '/keys/ltc-7', { locked: await lockKeys(other.info().publicKey, 'ltc-7', API_KEY, SECRET) });
+      assert.deepStrictEqual(elsewhere.status, 400);
+      verdict = { checked: true, ok: false, refusals: ['it allows withdrawals'], tied: true };
+      const refused = await link.call(target, 'POST', '/keys/ltc-2', { locked: await lockKeys(pub, 'ltc-2', API_KEY, SECRET) });
       assert.deepStrictEqual([refused.status, refused.json.error], [400, 'the keys were not kept: it allows withdrawals']);
       assert.deepStrictEqual(ks.describe('ltc-2'), { account: 'ltc-2', present: false }, 'a key that can move money is not kept');
+      // the owner's tick travels with the keys to the check and is kept beside them
+      verdict = { checked: true, ok: true, refusals: [], tied: false };
+      const open = await link.call(target, 'POST', '/keys/ltc-5', { locked: await lockKeys(pub, 'ltc-5', API_KEY, SECRET), anyAddress: true });
+      assert.deepStrictEqual([open.json.present, open.json.anyAddress, open.json.tied, asked[asked.length - 1][3]], [true, true, false, true]);
       verdict = { checked: false, why: 'Binance did not answer: timeout' };
-      const unchecked = await link.call(target, 'POST', '/keys/ltc-3', { apiKey: API_KEY, secret: SECRET });
+      const unchecked = await link.call(target, 'POST', '/keys/ltc-3', { locked: await lockKeys(pub, 'ltc-3', API_KEY, SECRET) });
       assert.deepStrictEqual([unchecked.json.present, unchecked.json.checked, unchecked.json.why], [true, false, 'Binance did not answer: timeout'], 'kept, and said to be unchecked');
-      const bad = await link.call(target, 'POST', '/keys/ltc-4', { apiKey: 'short' });
+      const bad = await link.call(target, 'POST', '/keys/ltc-4', { locked: await lockKeys(pub, 'ltc-4', 'short', SECRET) });
       assert.deepStrictEqual([bad.status, bad.json.error], [400, 'both halves of the key are needed, each 16 to 256 characters with no spaces']);
       const gone = await link.call(target, 'POST', '/keys/ltc-1/delete', {});
       assert.deepStrictEqual(gone.json, { account: 'ltc-1', present: false });
       const rec = fs.readFileSync(path.join(dir, 'journal.jsonl'), 'utf8');
       assert.ok(/"what":"entered"/.test(rec) && /"what":"removed"/.test(rec), 'every entry and removal is written down');
+      assert.ok(!rec.split('\n').filter(Boolean).map((l) => JSON.parse(l)).some((l) => l.what === 'entered' && l.account === 'ltc-2'), 'a refused key is never entered: it was never kept');
       assert.ok(!rec.includes(SECRET) && !rec.includes(API_KEY), 'the engine\'s record never holds the key');
     } finally { server.close(); fs.rmSync(dir, { recursive: true, force: true }); }
   },

@@ -14,10 +14,12 @@ const crypto = require('crypto');
 const { EventEmitter } = require('events');
 
 class WebSocketClient extends EventEmitter {
-  constructor(url, { timeoutMs = 15000 } = {}) {
+  constructor(url, { timeoutMs = 15000, headers = {} } = {}) {
     super();
     this.url = new URL(url);
     this.timeoutMs = timeoutMs;
+    // extra lines for the upgrade request (the engine's link sends its token this way)
+    this.headers = Object.entries(headers || {}).filter(([k, v]) => /^[A-Za-z-]+$/.test(k) && typeof v === 'string' && !/[\r\n]/.test(v)).map(([k, v]) => `${k}: ${v}`);
     this.sock = null;
     this.open = false;
     this.buf = Buffer.alloc(0);
@@ -37,7 +39,7 @@ class WebSocketClient extends EventEmitter {
     sock.on(plain ? 'connect' : 'secureConnect', () => {
       sock.write([
         `GET ${this.url.pathname}${this.url.search} HTTP/1.1`, `Host: ${host}:${port}`, 'Upgrade: websocket', 'Connection: Upgrade',
-        `Sec-WebSocket-Key: ${key}`, 'Sec-WebSocket-Version: 13', '', '',
+        `Sec-WebSocket-Key: ${key}`, 'Sec-WebSocket-Version: 13', ...this.headers, '', '',
       ].join('\r\n'));
     });
     sock.on('timeout', () => { if (!upgraded) sock.destroy(new Error('the upgrade took too long')); });

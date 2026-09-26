@@ -12,101 +12,101 @@
 // system are writing it together, step by step ("we will work the template
 // together as we develop it"). The page draws whatever it says.
 //
+// THE ENGINE CALLS OUT (owner, 2026-09-25, template 2). Step 2 makes an install
+// command carrying a one-time code; the owner runs it on the machine, and the
+// engine it installs calls this system with the code and is given a token of
+// its own (enroll, below). This system keeps a fingerprint of the token, never
+// the token, and never holds anything that could sign in to the machine.
+//
 // The checklists themselves are kept on this machine, one file each, so they
 // follow the owner to any device and each finished one stays as the record of
-// how its engine was set up. The one thing here that reaches a machine is step
-// 2's sign-in: the key it makes or is given, and the sign-in it tries with it.
-// No AI anywhere.
+// how its engine was set up. No AI anywhere.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { execFile } = require('child_process');
 
 const DIR = () => process.env.GC_ENGINE_SETUPS_DIR || path.join(__dirname, '..', '..', 'data', 'live', 'engine-setups');
-// each engine's sign-in key, in a folder of its own that only this service can read
-const KEYS_DIR = () => process.env.GC_ENGINE_KEYS_DIR || path.join(__dirname, '..', '..', 'data', 'live', 'engine-keys');
 const ID_RE = /^es-[a-z0-9]{6,12}-[0-9a-f]{6}$/;
 const NAME_MAX = 60;
-// the engine record's own rule for a short name (lib/live/targets.js), so the
-// short name chosen here is the one step 6 saves the engine under
+// the engine record's own rule for a short name (lib/live/targets.js): the
+// engine is saved under the short name chosen here when it first calls in
 const SHORT_RE = /^[a-z0-9][a-z0-9-]{1,29}$/;
+// how long an install command's code works, once
+const CODE_MS = 60 * 60000;
+const RELEASE = () => require('../../package.json').version;
 
 // ---- THE TEMPLATE -----------------------------------------------------------
 // A guidance block shows when each of its `when` choices matches; one marked
 // `ifUnset` also shows while that choice has not been made, so the owner sees
 // both roads before picking one. A choice with a `when` is asked only then.
 const TEMPLATE = {
-  version: 1,
+  version: 2,
   steps: [
     {
       id: 'ready',
       title: 'Here\'s what you need to get your trading engine off the ground',
       guidance: [
         { paras: [
-          'The trading engine is the program that carries out Paper Books and Live Trading: it watches the price, opens and closes positions, and writes everything down. It needs a machine to run on — a rented server, or this computer — and this system links to it.',
-          'Whatever it runs on needs three things: a fixed public IP address, because an exchange\'s trading keys are locked to one address and this system refuses a key that is not; power and internet around the clock, because a plan waiting or a position open needs it watching prices; and a country where your exchange serves you and you are allowed to use it.',
+          'The trading engine is the program that carries out Paper Books and Live Trading: it watches the price, opens and closes positions, and writes everything down. It runs on a machine of yours — a rented server, or this computer — and calls this system. Nothing here can sign in to that machine.',
+          'Whatever it runs on needs power and internet around the clock, because a plan waiting or a position open needs it watching prices; and it must be in a country where your exchange serves you and you are allowed to use it.',
+          'A fixed public IP address is needed only if you tie your exchange keys to one address. That is your choice, where your exchange allows it: a tied key is safer, because if it ever leaks it is no use from anywhere else. You make the choice on the Account tab when you enter the keys.',
         ] },
         { when: { where: 'server' }, ifUnset: true, heading: 'A rented server', paras: [
           'Any cloud provider will do. Pick a country where your exchange serves you and you are allowed to use it. An exchange\'s servers sit in one place (Binance\'s, for example, are in Tokyo), so nearer is quicker, but for trades decided once a day a fraction of a second hardly matters.',
           'The smallest size is plenty: 1 CPU, 1 GB of memory and 10 GB of disk, running Debian 12 or 13, or Ubuntu 24.04. The engine is held to 300 MB of memory and half a CPU.',
-          'Ask the provider for a fixed public IP address for it (on AWS, for example, it is called an Elastic IP).',
+          'If you will tie your exchange keys to its address, ask the provider for a fixed public IP address for it (on AWS, for example, it is called an Elastic IP).',
         ] },
         { when: { where: 'local' }, ifUnset: true, heading: 'This computer', paras: [
           'Any computer made in the last several years is plenty: the engine is held to 300 MB of memory and half a CPU. Linux, Mac and Windows will all do.',
           'It must stay on and awake whenever a plan is waiting or a position is open: set it never to sleep while it is plugged in.',
-          'Its internet address must be fixed. Home addresses usually change from time to time; ask your internet provider for a static one.',
+          'If you will tie your exchange keys to its address, that address must be fixed. Home addresses usually change from time to time; ask your internet provider for a static one.',
         ] },
         { when: { where: 'local', os: 'linux' }, paras: ['Linux: any current release will do.'] },
         { when: { where: 'local', os: 'mac' }, paras: ['Mac: in its power settings, stop it sleeping while it is plugged in, including when the display is off.'] },
         { when: { where: 'local', os: 'windows' }, paras: ['Windows: in its power settings, set sleep to never while it is plugged in.'] },
       ],
       choices: [
-        { id: 'where', label: 'Where it runs', clears: true, clearsNote: 'changing this clears the ticks below, and any sign-in in step 2: they were about the other machine', options: [{ value: 'server', label: 'a rented server' }, { value: 'local', label: 'this computer' }] },
+        { id: 'where', label: 'Where it runs', clears: true, clearsNote: 'changing this clears the ticks below, and any install command not used yet: they were about the other machine', options: [{ value: 'server', label: 'a rented server' }, { value: 'local', label: 'this computer' }] },
         { id: 'os', label: 'Its operating system', when: { where: 'local' }, options: [{ value: 'linux', label: 'Linux' }, { value: 'mac', label: 'Mac' }, { value: 'windows', label: 'Windows' }] },
       ],
       ticks: [
         { id: 'binance', label: 'My exchange serves me there, and I may use it there' },
-        { id: 'ip', label: 'It has a fixed public IP address' },
         { id: 'on', label: 'It will be on and online around the clock' },
         { id: 'size', label: 'It meets the size above' },
       ],
     },
     {
-      id: 'access',
-      title: 'Let the system in',
+      id: 'install',
+      title: 'Install the engine',
       guidance: [
         { paras: [
-          'This system signs in to the machine to install the engine and keep it running, the way you would sign in yourself: with a key. Choose how it gets one, give it the machine\'s address and the account to sign in as, and press Try signing in. The step is done when it has signed in.',
+          'Press Make the install command, then paste the command into a terminal on the machine. It installs the engine as a service of its own, and the engine calls this system with the code in the command and is given a password of its own. The code works once, for an hour.',
+          'Nothing that can sign in to the machine is kept here: the engine calls out, and this system keeps only a fingerprint of the engine\'s password.',
+          'When the engine has called in, the command prints the fingerprint of the engine\'s lock. The Account tab shows the same fingerprint where you enter the keys for this engine: the keys are locked in your browser so that only this engine can open them.',
         ] },
-        { when: { keyHow: 'made' }, ifUnset: true, heading: 'With a key this system makes', paras: [
-          'Press Make this engine\'s key. The system keeps the private half to itself and never shows it; you copy the public half, shown below, onto the machine.',
-          'A machine you are about to rent: most providers ask for a key when the machine is made. Give it the public half there (on AWS, for example, import it as a key pair and choose it when you launch).',
-          'A machine you already have: sign in to it yourself and add the public half as a new line at the end of ~/.ssh/authorized_keys of the account this system signs in as. Some providers open a terminal on the machine in your browser (on AWS, for example, EC2 Instance Connect).',
+        { when: { where: 'server' }, heading: 'A rented server', paras: [
+          'Sign in to it as an account that may install software (on AWS, for example, EC2 Instance Connect opens a terminal on it in your browser) and paste the command. It needs curl, and installs Node.js from the system\'s own packages if it is missing.',
         ] },
-        { when: { keyHow: 'file' }, ifUnset: true, heading: 'With a key file you already have', paras: [
-          'Paste the private key file the provider gave you when the machine was made: it starts with -----BEGIN and ends with PRIVATE KEY-----. The system keeps it to itself and never shows it again, only its fingerprint. A key file locked with a passphrase cannot be used.',
-        ] },
-        { when: { where: 'local' }, heading: 'This computer', paras: [
-          'How this system reaches a computer at home without opening it to the internet is still being worked out. This step can be finished for a rented server today.',
-        ] },
+        { when: { where: 'local', os: 'linux' }, heading: 'Linux', paras: ['Open a terminal and paste the command; it asks for your password. It installs Node.js from the system\'s own packages if it is missing.'] },
+        { when: { where: 'local', os: 'mac' }, heading: 'Mac', paras: ['Install Node.js 18 or newer first (from nodejs.org). Then open Terminal and paste the command; it asks for your password.'] },
+        { when: { where: 'local', os: 'windows' }, heading: 'Windows', paras: ['Install Node.js 18 or newer first (from nodejs.org). Then open PowerShell as administrator and paste the command.'] },
       ],
-      choices: [
-        { id: 'keyHow', label: 'How this system signs in', clears: true, clearsNote: 'changing this throws away the key and the sign-in made the other way', options: [{ value: 'made', label: 'with a key this system makes' }, { value: 'file', label: 'with a key file you already have' }] },
-      ],
-      fields: [
-        { id: 'host', label: 'the machine\'s address', placeholder: 'ec2-203-0-113-7.compute.amazonaws.com', width: '31rem' },
-        { id: 'user', label: 'sign in as', placeholder: 'admin', width: '8rem' },
-      ],
-      // the key controls and the sign-in, drawn by the page for this step
-      panel: 'access',
-      checks: [{ id: 'signedIn', label: 'This system signed in to the machine' }],
+      // the install command, drawn by the page for this step
+      panel: 'install',
+      checks: [{ id: 'called', label: 'The engine called in' }],
     },
-    // the steps still being written: a title each, and nothing to tick yet
-    { id: 'check', title: 'Check the machine', writing: true },
-    { id: 'install', title: 'Install the engine', writing: true },
-    { id: 'link', title: 'Link it to this system', writing: true },
-    { id: 'save', title: 'Save the engine', writing: true },
-    { id: 'current', title: 'Keep it current', writing: true },
+    {
+      id: 'current',
+      title: 'Keep it current',
+      guidance: [
+        { paras: [
+          'When this system moves to a new release, the engine should follow it. Make a new install command in step 2 and run it on the machine again: it replaces the engine\'s program and keeps its record, its lock and its keys, so nothing has to be entered again.',
+          'Run it when the engine holds no plan waiting or open: the engine stops for the few seconds the new program takes to start.',
+        ] },
+      ],
+      panel: 'current',
+      checks: [{ id: 'current', label: 'It runs the release this system runs' }],
+    },
   ],
 };
 
@@ -115,20 +115,27 @@ const matches = (when, choices) => Object.entries(when || {}).every(([k, v]) => 
 // the choices a step asks for, given what has been chosen so far
 function choicesAsked(step, choices) { return (step.choices || []).filter((c) => !c.when || matches(c.when, choices)); }
 
+// the engine a checklist set up, from its record: it exists once it has called in
+function engineOf(setup) {
+  if (!setup.engineId) return null;
+  const t = require('./targets').listEngines().find((x) => x.id === setup.engineId && x.link === 'calls-out');
+  return t ? { id: t.id, name: t.name, release: t.release || null, lastSeenUtc: t.lastSeenUtc || null, enrolledUtc: t.enrolledUtc || null, lock: t.lock || null, machine: t.machine || null } : null;
+}
+
 // each step: done, open, and what is still missing, in words
 function stepsOf(setup) {
   const out = [];
   let before = true;
+  const eng = engineOf(setup);
   for (const step of TEMPLATE.steps) {
     const choices = setup.choices || {};
     const ticks = (setup.ticks || {})[step.id] || {};
     const missing = [];
-    if (step.writing) missing.push('this step is still being written');
     for (const c of choicesAsked(step, choices)) if (!choices[c.id]) missing.push(`choose ${c.label.toLowerCase()}`);
     for (const t of step.ticks || []) if (ticks[t.id] !== true) missing.push(`tick "${t.label}"`);
-    if (step.panel === 'access' && choices.keyHow && !(setup.key && setup.key.how === choices.keyHow)) missing.push(choices.keyHow === 'file' ? 'save the key file' : 'make this engine\'s key');
-    for (const f of step.fields || []) if (!(((setup.fields || {})[step.id] || {})[f.id])) missing.push(`fill in ${f.label}`);
-    for (const c of step.checks || []) if (!((((setup.checks || {})[step.id] || {})[c.id] || {}).ok)) missing.push(c.id === 'signedIn' ? 'press Try signing in, and sign in' : c.label.toLowerCase());
+    if (step.panel === 'install' && !eng) missing.push(setup.install && !setup.install.usedUtc ? 'run the install command on the machine' : 'press Make the install command');
+    if (step.panel === 'current' && eng && eng.release !== RELEASE()) missing.push(`bring the engine from ${eng.release || 'an unknown release'} to ${RELEASE()}`);
+    if (step.panel === 'current' && !eng) missing.push('install the engine');
     const open = before;
     const done = open && missing.length === 0;
     out.push({ id: step.id, open, done, missing });
@@ -163,15 +170,20 @@ function list() {
   }
   return out.sort((a, b) => String(a.createdUtc).localeCompare(String(b.createdUtc)));
 }
-const withSteps = (rec) => ({ ...rec, steps: stepsOf(rec) });
+// what a page may see: never the code's fingerprint, only whether a code is waiting and until when
+function withSteps(rec) {
+  const { install, ...rest } = rec;
+  const waiting = install && !install.usedUtc && Date.parse(install.expiresUtc) > Date.now();
+  return { ...rest, install: install ? { madeUtc: install.madeUtc, expiresUtc: install.expiresUtc, usedUtc: install.usedUtc || null, waiting: !!waiting } : null, engine: engineOf(rec), releaseHere: RELEASE(), steps: stepsOf(rec) };
+}
+const bad = (m, status = 400) => { const e = new Error(m); e.status = status; throw e; };
 
 // THE ENGINE'S TWO NAMES (owner, 2026-09-25): a short name -- letters, digits,
 // dashes -- and a descriptive name, what the screens show, exactly as the
-// engine record asks for them; step 6 saves the engine under both. A short
-// name another checklist or an engine record already has is refused.
+// engine record keeps them; the engine is saved under both when it calls in.
+// A short name another checklist or an engine record already has is refused.
 function checkShort(shortName, selfId = null) {
   const v = String(shortName == null ? '' : shortName).trim();
-  const bad = (m) => { const e = new Error(m); e.status = 400; throw e; };
   if (!SHORT_RE.test(v)) bad('short name: 2 to 30 of a-z, 0-9 and -, starting with a letter or digit');
   if (v === 'mx-1') bad('short name: mx-1 is already taken');
   const other = list().find((x) => x.shortName === v && x.id !== selfId);
@@ -184,21 +196,21 @@ function checkShort(shortName, selfId = null) {
 // ONE PER ENGINE: a checklist is started under the two names of the engine it sets up
 function create(name, shortName) {
   const n = String(name == null ? '' : name).trim();
-  if (!n || n.length > NAME_MAX) { const e = new Error(`descriptive name: 1 to ${NAME_MAX} characters`); e.status = 400; throw e; }
+  if (!n || n.length > NAME_MAX) bad(`descriptive name: 1 to ${NAME_MAX} characters`);
   const taken = list().find((x) => String(x.name).toLowerCase() === n.toLowerCase());
-  if (taken) { const e = new Error(`there is already a setup for an engine called "${taken.name}" — one per engine`); e.status = 400; throw e; }
+  if (taken) bad(`there is already a setup for an engine called "${taken.name}" — one per engine`);
   const sn = checkShort(shortName);
   const now = new Date().toISOString();
-  const rec = { id: `es-${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`, name: n, shortName: sn, templateVersion: TEMPLATE.version, createdUtc: now, updatedUtc: now, engineId: null, choices: {}, ticks: {} };
+  const rec = { id: `es-${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`, name: n, shortName: sn, templateVersion: TEMPLATE.version, createdUtc: now, updatedUtc: now, engineId: null, choices: {}, ticks: {}, install: null };
   write(rec);
   return withSteps(rec);
 }
 
 // the short name of a checklist started before it was asked for, or a new one
-// while its engine is not saved yet
+// while its engine has not called in yet
 function setShortName(id, shortName) {
   const rec = read(id);
-  if (rec.engineId) { const e = new Error(`the engine is saved under ${rec.engineId}; its short name is the engine record's now`); e.status = 400; throw e; }
+  if (rec.engineId) bad(`the engine is saved under ${rec.engineId}; its short name is the engine record's now`);
   rec.shortName = checkShort(shortName, rec.id);
   rec.updatedUtc = new Date().toISOString();
   write(rec);
@@ -207,38 +219,36 @@ function setShortName(id, shortName) {
 
 function stepOf(stepId) {
   const s = TEMPLATE.steps.find((x) => x.id === stepId);
-  if (!s) { const e = new Error(`no step ${stepId}`); e.status = 400; throw e; }
+  if (!s) bad(`no step ${stepId}`);
   return s;
 }
 function mustBeOpen(rec, stepId) {
   const i = TEMPLATE.steps.findIndex((x) => x.id === stepId);
-  if (!stepsOf(rec)[i].open) { const e = new Error(`step ${i + 1} opens when step ${i} is done`); e.status = 400; throw e; }
+  if (!stepsOf(rec)[i].open) bad(`step ${i + 1} opens when step ${i} is done`);
 }
 
 // A CHOICE. Changing where the engine runs clears the step's ticks, the
-// choices that hang off it and every sign-in after it: they were about the
-// other machine.
+// choices that hang off it and an install command not used yet: they were about
+// the other machine. Once the engine has called in, where it runs is where it
+// runs: another machine is another engine, set up with its own checklist.
 function setChoice(id, stepId, choiceId, value) {
   const rec = read(id);
   const step = stepOf(stepId);
   mustBeOpen(rec, stepId);
   const c = (step.choices || []).find((x) => x.id === choiceId);
-  if (!c) { const e = new Error(`step "${step.title}" asks no choice ${choiceId}`); e.status = 400; throw e; }
+  if (!c) bad(`step "${step.title}" asks no choice ${choiceId}`);
   if (c.when && !matches(c.when, rec.choices)) {
     // said in the screen's words: the parent choice's label and its option's label, never a stored value
     const words = Object.entries(c.when).map(([k, v]) => { const pc = (step.choices || []).find((x) => x.id === k); const po = pc ? pc.options.find((o) => o.value === v) : null; return `${pc ? pc.label.toLowerCase() : k} is ${po ? po.label : v}`; }).join(' and ');
-    const e = new Error(`${c.label.toLowerCase()} is asked only when ${words}`); e.status = 400; throw e;
+    bad(`${c.label.toLowerCase()} is asked only when ${words}`);
   }
   const opt = c.options.find((o) => o.value === value);
-  if (!opt) { const e = new Error(`${c.label.toLowerCase()}: one of ${c.options.map((o) => o.label).join(', ')}`); e.status = 400; throw e; }
+  if (!opt) bad(`${c.label.toLowerCase()}: one of ${c.options.map((o) => o.label).join(', ')}`);
+  if (rec.choices[choiceId] !== value && rec.engineId && engineOf(rec)) bad(`the engine is installed and has called in; to run one on another machine, set up another engine with its own checklist (Set up another engine)`);
   if (rec.choices[choiceId] !== value && c.clears) {
     for (const other of step.choices || []) if (other.when && Object.keys(other.when).includes(choiceId)) delete rec.choices[other.id];
     rec.ticks[stepId] = {};
-    // a check this system made from here on was made the other way, or on the other machine
-    const at = TEMPLATE.steps.indexOf(step);
-    if (rec.checks) for (const later of TEMPLATE.steps.slice(at)) delete rec.checks[later.id];
-    // a different way of signing in: the key made the other way goes
-    if (step.panel === 'access') dropKey(rec);
+    if (rec.install && !rec.install.usedUtc) rec.install = null;
   }
   rec.choices[choiceId] = value;
   rec.updatedUtc = new Date().toISOString();
@@ -251,159 +261,135 @@ function setTick(id, stepId, tickId, on) {
   const step = stepOf(stepId);
   mustBeOpen(rec, stepId);
   const t = (step.ticks || []).find((x) => x.id === tickId);
-  if (!t) { const e = new Error(`step "${step.title}" has no tick ${tickId}`); e.status = 400; throw e; }
+  if (!t) bad(`step "${step.title}" has no tick ${tickId}`);
   rec.ticks[stepId] = { ...(rec.ticks[stepId] || {}), [tickId]: on === true };
   rec.updatedUtc = new Date().toISOString();
   write(rec);
   return withSteps(rec);
 }
 
+// the checklist goes; an engine it set up keeps its own record, deleted from its card
 function remove(id) {
   const f = fileOf(id);
-  if (!fs.existsSync(f)) { const e = new Error(`no engine setup ${id}`); e.status = 404; throw e; }
+  if (!fs.existsSync(f)) bad(`no engine setup ${id}`, 404);
   fs.unlinkSync(f);
-  // deleting a checklist deletes every file it owns: its key goes with it
-  fs.rmSync(keyDirOf(id), { recursive: true, force: true });
   return { ok: true, id };
 }
 
-// ---- STEP 2: THE KEY AND THE SIGN-IN -----------------------------------------
-// The private half of a key is written once, to this engine's own folder, and
-// never read back to any page, answer or log: only its public half and its
-// fingerprint leave this machine. The sign-in runs the machine's own ssh.
-let run = (cmd, args, timeoutMs) => new Promise((resolve) => {
-  execFile(cmd, args, { timeout: timeoutMs, maxBuffer: 1 << 20 }, (err, stdout, stderr) => resolve({ code: err ? (typeof err.code === 'number' ? err.code : 1) : 0, killed: !!(err && err.killed), missing: !!(err && err.code === 'ENOENT'), stdout: String(stdout || ''), stderr: String(stderr || '') }));
-});
-function keyDirOf(id) { fileOf(id); return path.join(KEYS_DIR(), id); }
-const bad = (m, status = 400) => { const e = new Error(m); e.status = status; throw e; };
-function dropKey(rec) {
-  delete rec.key;
-  for (const f of ['key', 'key.pub', 'known_hosts']) fs.rmSync(path.join(keyDirOf(rec.id), f), { force: true });
+// ---- STEP 2: THE INSTALL COMMAND AND THE FIRST CALL ----------------------------
+const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
+// letters and digits that cannot be misread for one another
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTVWXYZ23456789';
+function newCode() {
+  const b = crypto.randomBytes(24);
+  let s = '';
+  for (const x of b) s += CODE_ALPHABET[x % CODE_ALPHABET.length];
+  return `UTS-${s.match(/.{4}/g).join('-')}`;
 }
-async function fingerprintOf(pubFile) {
-  const r = await run('ssh-keygen', ['-l', '-f', pubFile], 10000);
-  const m = /(SHA256:[A-Za-z0-9+/=]+)/.exec(r.stdout);
-  return m ? m[1] : null;
-}
-function freshDir(id) {
-  const dir = keyDirOf(id);
-  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  fs.chmodSync(dir, 0o700);
-  return dir;
-}
-const toolMissing = () => bad('this machine has no ssh-keygen to make or read a key with', 500);
+const normalCode = (c) => String(c == null ? '' : c).trim().toUpperCase();
 
-// with a key this system makes: a new pair, the private half kept here
-async function makeKey(id) {
+// A ONE-TIME CODE for the install command: shown once, on the page that asked;
+// only its fingerprint is kept, and a new one replaces any not used yet
+function makeInstallCode(id, now = Date.now()) {
   const rec = read(id);
-  mustBeOpen(rec, 'access');
-  if (rec.choices.keyHow !== 'made') bad('choose "with a key this system makes" first');
-  dropKey(rec);
-  const dir = freshDir(id);
-  const r = await run('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-C', `uts ${rec.shortName || rec.id}`, '-f', path.join(dir, 'key')], 20000);
-  if (r.missing) toolMissing();
-  if (r.code !== 0) bad(`the key could not be made: ${(r.stderr || r.stdout).trim().split('\n').pop() || 'no reason given'}`, 500);
-  const publicKey = fs.readFileSync(path.join(dir, 'key.pub'), 'utf8').trim();
-  rec.key = { how: 'made', publicKey, fingerprint: await fingerprintOf(path.join(dir, 'key.pub')), at: new Date().toISOString() };
-  if (rec.checks) delete rec.checks.access;
-  rec.updatedUtc = new Date().toISOString();
+  mustBeOpen(rec, 'install');
+  if (!rec.shortName) bad('give the engine its short name first');
+  const code = newCode();
+  rec.install = { codeHash: sha256(code), madeUtc: new Date(now).toISOString(), expiresUtc: new Date(now + CODE_MS).toISOString(), usedUtc: null };
+  rec.updatedUtc = rec.install.madeUtc;
   write(rec);
-  return withSteps(rec);
+  return { setup: withSteps(rec), code, expiresUtc: rec.install.expiresUtc };
 }
 
-// with a key file the owner already has: kept here, and checked to be one
-async function saveKeyFile(id, text) {
-  const rec = read(id);
-  mustBeOpen(rec, 'access');
-  if (rec.choices.keyHow !== 'file') bad('choose "with a key file you already have" first');
-  const t = String(text == null ? '' : text).replace(/\r\n/g, '\n').trim();
-  if (t.length > 20000 || !/^-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(t) || !/-----END [A-Z ]*PRIVATE KEY-----$/.test(t)) bad('that is not a private key file: it starts with -----BEGIN and ends with PRIVATE KEY-----');
-  dropKey(rec);
-  const dir = freshDir(id);
-  const kf = path.join(dir, 'key');
-  fs.writeFileSync(kf, `${t}\n`, { mode: 0o600 });
-  fs.chmodSync(kf, 0o600);
-  // the public half, worked out from the file: a file that cannot give one is not kept
-  const r = await run('ssh-keygen', ['-y', '-P', '', '-f', kf], 10000);
-  if (r.missing) { fs.rmSync(kf, { force: true }); toolMissing(); }
-  if (r.code !== 0 || !/^(ssh-|ecdsa-)/.test(r.stdout.trim())) {
-    fs.rmSync(kf, { force: true });
-    bad(/passphrase/i.test(r.stderr) ? 'the key file is locked with a passphrase, which this system cannot type: use a key file without one, or let the system make a key' : 'the key file could not be read as a key');
+// A CODE TO MOVE AN ENGINE THE TUNNEL REACHES TO CALLING OUT, from its card:
+// shown once, kept as its fingerprint on the engine record, good for an hour
+function makeMoveCode(engineId, now = Date.now()) {
+  const code = newCode();
+  const expiresUtc = new Date(now + CODE_MS).toISOString();
+  require('./targets').setMoveCode(engineId, sha256(code), expiresUtc);
+  return { code, expiresUtc };
+}
+
+// what an engine may say of its lock: a P-256 public half, and its fingerprint worked out here
+function lockOf(lock) {
+  if (!lock || typeof lock.publicKey !== 'string' || lock.publicKey.length > 400) return null;
+  try {
+    const k = crypto.createPublicKey({ key: Buffer.from(lock.publicKey, 'base64'), format: 'der', type: 'spki' });
+    if (k.asymmetricKeyType !== 'ec' || (k.asymmetricKeyDetails || {}).namedCurve !== 'prime256v1') return null;
+    return { publicKey: lock.publicKey, fingerprint: require('../../engine/lock').fingerprintOf(lock.publicKey) };
+  } catch (_) { return null; }
+}
+const clip = (v, n) => (typeof v === 'string' ? v.slice(0, n) : null);
+function machineOf(m) {
+  if (!m || typeof m !== 'object') return null;
+  return { platform: clip(m.platform, 20), arch: clip(m.arch, 20), hostname: clip(m.hostname, 80), node: clip(m.node, 20) };
+}
+const releaseOf = (r) => (typeof r === 'string' && /^[0-9][0-9A-Za-z.-]{0,40}$/.test(r) ? r : null);
+
+// THE FIRST CALL: the engine installed with the command brings the code, and is
+// given a token of its own. The code works once and for an hour; this system
+// keeps the token's fingerprint in the engine record and nothing else of it.
+// An engine installed again on the same machine keeps its lock, so its record's
+// copy of the engine's own record carries on; a different machine under the same
+// short name starts a record of its own (sameMachine: false).
+const sameHash = (a, h) => typeof a === 'string' && a.length === h.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(h));
+function enroll(code, info = {}, now = Date.now()) {
+  const h = sha256(normalCode(code));
+  const targets = require('./targets');
+  // an engine the tunnel reaches, moved to calling out with the code made on its card
+  const moving = targets.listEngines().find((t) => t.link === 'tunnel' && t.move && sameHash(t.move.codeHash, h));
+  if (moving) {
+    if (moving.move.usedUtc || Date.parse(moving.move.expiresUtc) < now) bad('that code has run out: make a new one on the engine\'s card', 403);
+    const token = crypto.randomBytes(32).toString('base64url');
+    const eng = targets.moveToCallingOut(moving.id, { tokenHash: sha256(token), lock: lockOf(info.lock), machine: machineOf(info.machine), release: releaseOf(info.release) });
+    return { engineId: eng.id, name: eng.name, token, again: true, sameMachine: true, moved: true };
   }
-  const publicKey = r.stdout.trim();
-  fs.writeFileSync(path.join(dir, 'key.pub'), `${publicKey}\n`);
-  rec.key = { how: 'file', publicKey, fingerprint: await fingerprintOf(path.join(dir, 'key.pub')), at: new Date().toISOString() };
-  if (rec.checks) delete rec.checks.access;
-  rec.updatedUtc = new Date().toISOString();
+  const rec = list().find((x) => x.install && sameHash(x.install.codeHash, h));
+  if (!rec) bad('that install code is not known here: make a new install command on the Compute tab', 403);
+  if (rec.install.usedUtc) bad('that install code has been used already: make a new install command on the Compute tab', 403);
+  if (Date.parse(rec.install.expiresUtc) < now) bad('that install code has run out: make a new install command on the Compute tab', 403);
+  const lock = lockOf(info.lock);
+  const before = targets.listEngines().find((t) => t.id === rec.shortName);
+  if (before && before.link !== 'calls-out') bad(`the short name ${rec.shortName} already belongs to an engine the tunnel reaches`, 409);
+  const sameMachine = !!(before && before.lock && lock && before.lock.fingerprint === lock.fingerprint);
+  const token = crypto.randomBytes(32).toString('base64url');
+  const eng = targets.saveCallingEngine({ id: rec.shortName, name: rec.name, tokenHash: sha256(token), lock, machine: machineOf(info.machine), release: releaseOf(info.release), setupRef: rec.id });
+  rec.install.usedUtc = new Date(now).toISOString();
+  rec.engineId = eng.id;
+  rec.enrolledUtc = rec.install.usedUtc;
+  rec.updatedUtc = rec.install.usedUtc;
   write(rec);
-  return withSteps(rec);
+  return { engineId: eng.id, name: eng.name, token, again: !!before, sameMachine };
 }
 
-// the machine's address and the account to sign in as; a change asks for a new sign-in
-const HOST_RE = /^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/;
-const USER_RE = /^[a-z_][a-z0-9_.-]{0,31}$/;
-function setField(id, stepId, fieldId, value) {
-  const rec = read(id);
-  const step = stepOf(stepId);
-  mustBeOpen(rec, stepId);
-  const f = (step.fields || []).find((x) => x.id === fieldId);
-  if (!f) bad(`step "${step.title}" has no box ${fieldId}`);
-  const v = String(value == null ? '' : value).trim();
-  if (fieldId === 'host' && !HOST_RE.test(v)) bad('the machine\'s address: a name like ec2-203-0-113-7.compute.amazonaws.com, or an address like 203.0.113.7');
-  if (fieldId === 'user' && !USER_RE.test(v)) bad('sign in as: the account\'s name on the machine, like admin or ubuntu');
-  rec.fields = rec.fields || {};
-  const before = (rec.fields[stepId] || {})[fieldId];
-  rec.fields[stepId] = { ...(rec.fields[stepId] || {}), [fieldId]: v };
-  if (before !== v && rec.checks) delete rec.checks[stepId];
-  rec.updatedUtc = new Date().toISOString();
-  write(rec);
-  return withSteps(rec);
-}
-
-// the sign-in, in words: what the machine said, or why it would not have us
-function signInWords(r, user) {
-  const e = `${r.stderr}\n${r.stdout}`;
-  if (r.killed) return 'the machine did not answer within 25 seconds';
-  if (/Permission denied/i.test(e)) return `the machine refused the key: add the public half to ~/.ssh/authorized_keys of ${user} on it`;
-  if (/Could not resolve hostname|Name or service not known/i.test(e)) return 'no machine answers to that address';
-  if (/timed out/i.test(e)) return 'the machine did not answer on port 22: is it running, and does its firewall let SSH in from this system?';
-  if (/Connection refused/i.test(e)) return 'the machine refused the connection on port 22: its SSH server is not running';
-  if (/REMOTE HOST IDENTIFICATION HAS CHANGED|Host key verification failed/i.test(e)) return 'the machine at that address is not the one this system signed in to before: its identity has changed. Nothing was sent to it';
-  const last = e.trim().split('\n').filter((l) => l && !/^Warning: /.test(l)).pop();
-  return last ? `the sign-in did not work: ${last}` : 'the sign-in did not work, and gave no reason';
-}
-async function signIn(id) {
-  const rec = read(id);
-  mustBeOpen(rec, 'access');
-  const f = (rec.fields || {}).access || {};
-  if (!rec.key) bad(rec.choices.keyHow === 'file' ? 'save the key file first' : 'make this engine\'s key first');
-  if (!f.host || !f.user) bad('fill in the machine\'s address and sign in as first');
-  const dir = keyDirOf(id);
-  const args = ['-F', '/dev/null', '-i', path.join(dir, 'key'), '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'PasswordAuthentication=no',
-    '-o', 'StrictHostKeyChecking=accept-new', '-o', `UserKnownHostsFile=${path.join(dir, 'known_hosts')}`, '-o', 'ConnectTimeout=12', '-o', 'LogLevel=ERROR',
-    `${f.user}@${f.host}`, 'echo UTS-SIGNED-IN; uname -sm; id -un'];
-  const r = await run('ssh', args, 25000);
-  if (r.missing) bad('this machine has no ssh to sign in with', 500);
-  const ok = r.code === 0 && /UTS-SIGNED-IN/.test(r.stdout);
-  const lines = r.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
-  const at = new Date().toISOString();
-  let machine = null;
-  if (ok) {
-    const k = await run('ssh-keygen', ['-l', '-f', path.join(dir, 'known_hosts')], 10000);
-    const m = /(SHA256:[A-Za-z0-9+/=]+)/.exec(k.stdout);
-    machine = m ? m[1] : null;
+// ---- REPAIR: A CHECKLIST STARTED ON TEMPLATE 1 (3.266.0, RULE NINE) ------------
+// Written to be deleted (RULE TEN) the day every checklist on the box has been
+// through it. Template 1's step 2 kept a sign-in key on this machine -- the very
+// thing template 2 exists to never hold -- so the move drops step 2's key, its
+// boxes and its sign-in, deletes the key folder, and keeps the names, where it
+// runs, its operating system and step 1's ticks (less the fixed address tick,
+// which is the Account tab's choice now). Run once at start, announced.
+const OLD_KEYS_DIR = () => process.env.GC_ENGINE_KEYS_DIR || path.join(__dirname, '..', '..', 'data', 'live', 'engine-keys');
+function repairTemplateOne() {
+  const named = [];
+  for (const rec of list()) {
+    if (rec.templateVersion !== 1) continue;
+    const ch = rec.choices || {};
+    const tk = (rec.ticks || {}).ready || {};
+    const moved = {
+      id: rec.id, name: rec.name, shortName: rec.shortName || null, templateVersion: 2, createdUtc: rec.createdUtc, updatedUtc: new Date().toISOString(),
+      engineId: null, choices: { ...(ch.where ? { where: ch.where } : {}), ...(ch.os ? { os: ch.os } : {}) },
+      ticks: { ready: { ...(tk.binance ? { binance: true } : {}), ...(tk.on ? { on: true } : {}), ...(tk.size ? { size: true } : {}) } }, install: null,
+    };
+    write(moved);
+    fs.rmSync(path.join(OLD_KEYS_DIR(), rec.id), { recursive: true, force: true });
+    named.push(rec.name);
   }
-  rec.checks = rec.checks || {};
-  rec.checks.access = { signedIn: ok
-    ? { ok: true, at, said: `signed in as ${lines[2] || f.user} on ${f.host}: ${lines[1] || 'the machine did not say what it is'}`, machine }
-    : { ok: false, at, why: signInWords(r, f.user) } };
-  rec.updatedUtc = at;
-  write(rec);
-  return withSteps(rec);
+  try { if (fs.existsSync(OLD_KEYS_DIR()) && !fs.readdirSync(OLD_KEYS_DIR()).length) fs.rmdirSync(OLD_KEYS_DIR()); } catch (_) { /* a folder with something else in it stays */ }
+  return { changed: named.length, named };
 }
 
 module.exports = {
   TEMPLATE, stepsOf, list: () => list().map(withSteps), get: (id) => withSteps(read(id)), create, setShortName, setChoice, setTick, remove, DIR,
-  makeKey, saveKeyFile, setField, signIn, signInWords, KEYS_DIR,
-  _setRunner: (fn) => { run = fn; },
+  makeInstallCode, makeMoveCode, enroll, lockOf, repairTemplateOne, CODE_MS,
 };

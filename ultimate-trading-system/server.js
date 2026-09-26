@@ -210,10 +210,13 @@ app.post('/api/account/exchange', (req, res) => {
 });
 
 // ---- THE TRADING ACCOUNTS AND THEIR KEYS (loop of 2026-09-25, items 6-7) ----
-// The records are the owner's (lib/account.js). The keys go straight through
-// to the trading engine the owner picks, over this machine's tunnel to it, and
-// are never kept, logged or shown here: the only thing this machine ever holds
-// of a key is the engine's answer -- present or missing, and when entered.
+// The records are the owner's (lib/account.js). THE KEYS ARE LOCKED IN THE
+// BROWSER (owner, 2026-09-25: "encrypted in the browser so only that engine can
+// unlock them. Our server relays them without being able to read them"): the
+// page locks them with the public half of the engine's lock and this machine
+// passes on only the locked form. It never holds a key, locked or not, after the
+// engine answers -- and the only thing it ever keeps of one is that answer:
+// present or missing, when entered, and whether it is tied to one address.
 app.get('/api/account/trading', async (req, res) => {
   try {
     const acc = require('./lib/account');
@@ -224,12 +227,12 @@ app.get('/api/account/trading', async (req, res) => {
     await Promise.all(engines.map(async (t) => {
       const r = await link.call(t, 'GET', '/keys', null, 4000);
       keys[t.id] = r.ok && r.json && Array.isArray(r.json.keys)
-        ? { answers: true, keys: r.json.keys.map((k) => ({ account: k.account, present: !!k.present, addedAt: k.addedAt || null })) }
+        ? { answers: true, keys: r.json.keys.map((k) => ({ account: k.account, present: !!k.present, addedAt: k.addedAt || null, anyAddress: k.anyAddress === true, tied: typeof k.tied === 'boolean' ? k.tied : null })), lock: r.json.lock && typeof r.json.lock.publicKey === 'string' ? { publicKey: r.json.lock.publicKey, fingerprint: r.json.lock.fingerprint } : null }
         : { answers: false, why: r.why || (r.json && r.json.error) || `the engine answered ${r.status}` };
     }));
     res.json({
       accounts: acc.tradingAccounts(), offered: acc.EXCHANGES,
-      engines: engines.map((t) => ({ id: t.id, name: t.name, isDefault: !!t.isDefault })), keys,
+      engines: engines.map((t) => ({ id: t.id, name: t.name, isDefault: !!t.isDefault, linkKind: t.link || null })), keys,
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -252,11 +255,15 @@ app.post('/api/account/trading/:id/keys', csrfGuard, async (req, res) => {
     const target = require('./lib/live/targets').getTarget(String(b.engine || ''));
     if (!target || target.kind !== 'engine') return res.status(400).json({ error: 'pick the trading engine the keys go to' });
     const link = require('./lib/live/enginelink');
+    // ONLY LOCKED: a pair that reaches this machine readable is refused and goes nowhere
+    if (b.remove !== true && (b.apiKey !== undefined || b.secret !== undefined)) return res.status(400).json({ error: 'the keys must be locked in the browser with the engine\'s lock before they are sent: reload the page and send them again' });
+    const locked = b.locked;
+    if (b.remove !== true && (!locked || typeof locked.epk !== 'string' || typeof locked.iv !== 'string' || typeof locked.data !== 'string' || locked.data.length > 4096)) return res.status(400).json({ error: 'the locked keys did not arrive whole: send them again' });
     const r = b.remove === true
       ? await link.call(target, 'POST', `/keys/${encodeURIComponent(id)}/delete`, {}, 8000)
-      : await link.call(target, 'POST', `/keys/${encodeURIComponent(id)}`, { apiKey: String(b.apiKey || ''), secret: String(b.secret || '') }, 8000);
+      : await link.call(target, 'POST', `/keys/${encodeURIComponent(id)}`, { locked: { v: 1, epk: locked.epk, iv: locked.iv, data: locked.data }, anyAddress: b.anyAddress === true }, 15000);
     if (!r.ok) return res.status(r.status >= 400 && r.status < 500 ? r.status : 502).json({ error: (r.json && r.json.error) || r.why || `the engine answered ${r.status}` });
-    return res.json({ ok: true, account: id, engine: target.id, present: !!(r.json && r.json.present), addedAt: (r.json && r.json.addedAt) || null, checked: !!(r.json && r.json.checked), why: (r.json && r.json.why) || null });
+    return res.json({ ok: true, account: id, engine: target.id, present: !!(r.json && r.json.present), addedAt: (r.json && r.json.addedAt) || null, anyAddress: !!(r.json && r.json.anyAddress), tied: r.json && typeof r.json.tied === 'boolean' ? r.json.tied : null, checked: !!(r.json && r.json.checked), why: (r.json && r.json.why) || null });
   } catch (err) { return res.status(500).json({ error: 'the keys could not be passed to the engine' }); }
 });
 
@@ -1717,6 +1724,11 @@ app.post('/api/pilot/disarm', csrfGuard, (req, res) => {
 // Live Trading tab backend (IMPLEMENTATION-PLAN phase 1+). One-line mount so
 // the module boundary holds — all live-trading code lives in lib/live/.
 require('./lib/live/routes').installLiveRoutes(app, { csrfGuard });
+// WHERE THE ENGINES THAT CALL OUT CALL IN (owner, 2026-09-25): engine-link/ --
+// the first call with an install code, the package and the install scripts, and
+// (in the listen callback below) the link itself. Each engine proves itself with
+// its own token; nothing under engine-link/ answers anyone else.
+require('./lib/live/enginehub').installRoutes(app, express);
 
 // PROTECTIVE-STOP TUNER AND CONVICTION SIZING (owner 2026-08-11, 2026-08-13): two
 // scans on the captured trades of a Stage 4 record set, run in the background and
@@ -2010,8 +2022,10 @@ app.use((err, req, res, next) => {
   req.on('error', () => mark(null));
 })();
 
-app.listen(PORT, '127.0.0.1', () => {
+const listener = app.listen(PORT, '127.0.0.1', () => {
   console.log(`ultimate-trading-system listening on 127.0.0.1:${PORT}`);
+  // the engines' link on this same listener, and the relay's address for this service's children
+  require('./lib/live/enginehub').attach(listener, PORT);
   // A WALK SET'S PROMOTIONS LIVE BESIDE IT (3.194.0, RULE NINE). Run here, in
   // the listen callback, so not one request is served against a set whose
   // promotions have not been moved yet -- the socket is already bound, so a

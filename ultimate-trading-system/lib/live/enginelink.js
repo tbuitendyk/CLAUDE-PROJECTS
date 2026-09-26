@@ -2,10 +2,12 @@
 // lib/live/enginelink.js -- THE WEB BOX'S END OF THE LINK TO THE NEW TRADING
 // ENGINE (loop of 2026-09-25, LOOP-2026-09-25-ENGINE.md).
 //
-// The engine runs on the trading box and listens on that box's own loopback
-// address; this machine reaches it through an SSH tunnel whose local end is the
-// engine record's localPort (Setup > Compute). Everything here speaks to
-// 127.0.0.1:<localPort> and to nothing else.
+// Two ways to reach an engine, as its record says (lib/live/targets.js):
+//   * link 'calls-out' -- the engine called this system and keeps its link open
+//     (lib/live/enginehub.js); every question here goes down that link;
+//   * link 'tunnel' -- the engine listens on its own machine's loopback address
+//     and this machine reaches it through an SSH tunnel whose local end is the
+//     record's localPort: 127.0.0.1:<localPort> and nothing else.
 //
 // THE MIRROR. The engine writes every event to its own record and streams each
 // line as it is written. This follows that stream, keeps the lines it received
@@ -22,6 +24,7 @@ const path = require('path');
 const MIRROR_DIR = () => process.env.GC_ENGINE_MIRROR || path.join(__dirname, '..', '..', 'data', 'live', 'engine');
 
 function call(target, method, p, body = null, timeoutMs = 4000) {
+  if (target && target.link === 'calls-out') return require('./enginehub').call(target.id, method, p, body, timeoutMs);
   return new Promise((resolve) => {
     const data = body == null ? null : JSON.stringify(body);
     const started = Date.now();
@@ -132,6 +135,17 @@ class Mirror {
     }
   }
 
+  // the engine's record arriving over its link (an engine that calls out): a line
+  // already kept is never kept twice, exactly as on the tunnel's stream
+  takeFromLink(recs) {
+    for (const rec of recs) {
+      if (!rec || !(rec.n > this.n)) continue;
+      this.n = rec.n;
+      this.status.lastRecordAt = new Date().toISOString();
+      this.take(rec);
+    }
+  }
+
   take(rec, write = true) {
     if (rec.type === 'plan' && rec.plan) this.plans.set(rec.plan.planId, rec.plan);
     if (rec.type === 'state' && rec.planId) this.states.set(rec.planId, { state: rec.state, ledger: rec.ledger, utc: rec.utc });
@@ -143,6 +157,8 @@ class Mirror {
 
   start() {
     if (this.stopped || this.req) return;
+    // an engine that calls out brings its record to this system itself
+    if (this.target.link === 'calls-out') { require('./enginehub').watch(this.target.id, this); this.status = { ...this.status, following: true, since: this.status.since || new Date().toISOString(), why: null }; return; }
     const req = http.request({ host: '127.0.0.1', port: this.target.localPort, method: 'GET', path: `/events?since=${this.n + 1}`, headers: { Accept: 'text/event-stream' } }, (res) => {
       if (res.statusCode !== 200) { res.resume(); this.retry(`the engine answered ${res.statusCode}`); return; }
       this.failures = 0;
@@ -194,7 +210,18 @@ class Mirror {
     setTimeout(() => this.start(), wait).unref();
   }
 
-  stop() { this.stopped = true; if (this.req) this.req.destroy(); }
+  stop() {
+    this.stopped = true;
+    if (this.req) this.req.destroy();
+    if (this.target.link === 'calls-out') require('./enginehub').unwatch(this.target.id);
+  }
+
+  // whether the engine's record is reaching this system, in the shape the screens read
+  linkStatus() {
+    if (this.target.link !== 'calls-out') return this.status;
+    const h = require('./enginehub').status(this.target.id);
+    return { following: h.linked, since: h.since, lastRecordAt: this.status.lastRecordAt, why: h.why };
+  }
 
   // the live figures of a setup's open positions, newest first
   marksOf(setupId) { return [...this.marks.values()].filter((m) => m.setupId === setupId); }
@@ -265,6 +292,21 @@ async function syncVerbose(engines, setups, asked = new Map(), now = Date.now())
 }
 
 const mirrors = new Map();
+// A DIFFERENT MACHINE UNDER THE SAME SHORT NAME (an engine installed afresh
+// elsewhere): its record starts again at line 1, so this machine's copy of the
+// old one is set aside beside it -- kept, never deleted -- and a new copy begins
+function restartMirror(engineId) {
+  const m = mirrors.get(engineId);
+  if (m) { m.stop(); mirrors.delete(engineId); }
+  const dir = path.join(MIRROR_DIR(), engineId);
+  if (fs.existsSync(dir)) fs.renameSync(dir, `${dir}.before-${new Date().toISOString().replace(/[:.]/g, '-')}`);
+}
+// the same engine, reached a new way: its copy of the record carries on, the old way's stream stops
+function relink(engineId) {
+  const m = mirrors.get(engineId);
+  if (m && m.req) { m.stopped = true; m.req.destroy(); m.req = null; }
+  if (m) mirrors.delete(engineId);
+}
 function mirrorFor(target) {
   if (!mirrors.has(target.id)) mirrors.set(target.id, new Mirror(target));
   const m = mirrors.get(target.id);
@@ -278,4 +320,4 @@ function followAll(list) {
   for (const t of list) mirrorFor(t).start();
 }
 
-module.exports = { call, health, postPlan, cancelPlan, cancelLeftovers, engineState, setVerbose, syncVerbose, translate, Mirror, mirrorFor, followAll, MIRROR_DIR };
+module.exports = { call, health, postPlan, cancelPlan, cancelLeftovers, engineState, setVerbose, syncVerbose, translate, Mirror, mirrorFor, followAll, restartMirror, relink, MIRROR_DIR };
