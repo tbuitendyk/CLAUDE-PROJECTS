@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **2350653cc4f1 — what the box is serving**, not from the working tree.
+Generated from **3c7f3c34da27 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -2786,7 +2786,7 @@ about About above above. after against ahead all allow alone already always an a
 
 # Greenlight
 
-## What the controls are called (68)
+## What the controls are called (69)
 
 - `· no tuning on record`
 - `· read from`
@@ -2818,6 +2818,7 @@ about About above above. after against ahead all allow alone already always an a
 - `half-life`
 - `held $`
 - `id`
+- `it goes to the Trade tab`
 - `minted`
 - `name`
 - `no`
@@ -2861,7 +2862,7 @@ about About above above. after against ahead all allow alone already always an a
 
 _none_
 
-## Sentences the page prints (31)
+## Sentences the page prints (33)
 
 - Greenlight — the decision that a config is fit to trade
 - Records WHO/WHEN/WHY with the exact frozen config, engine version, and the campaign's whole
@@ -2885,6 +2886,8 @@ _none_
 - Deviance from the rule's centre is the share of its neighbouring settings that did not survive: the settings one notch up or down on one dial, every other dial the same.
 - 0 is surrounded on every side, 1 on none.
 - its money on each stretch step by step, each change in the order it is applied, with the trades each figure is over in brackets
+- , and can be started on Paper Books there, on
+- ; Live Trading waits until the trading platforms can place real orders
 - it goes to the Trade tab, and cannot be started there yet:
 - The test stretch is without the History and Tune settings:
 - it is the forecasts as stage 3 priced them,
@@ -2895,10 +2898,10 @@ _none_
 - is priced and nothing counts as a look. Each stretch is held against the four simpler things at the survivors' own hold lengths.
 - neighbouring settings that survived
 
-## Every word, flat (251)
+## Every word, flat (260)
 
 ```
-Activate Activation activation. after against agree all alone. always and appears applied are as at average be becomes before behind being below both box brackets built buy by campaign can cannot capture carry centre chain. change changed chosen clear cleared clears config configs conviction counts currently dash deactivation decision Delete depth Deviance deviance dial did does does. down drawn each Each engine ever ever. Every every evidence evidentiary exact exactly Existing fee figure first fit for forecasts forward found four from frozen goes Greenlight greenlight greenlighted greenlights half-life hand-built has held Held here here. History history hold how id in is It it it. its keeps layout lengths. lines live long look. means members minted money most name named neighbouring never no none none. not notch Nothing nothing nuked nuking of off on one One Only only or order other out over own pair paper PASS passed per period pick picture predates press priced read real rebuild REBUILD record recorded. Records records refused release Rename required REQUIRED reserve Reserve retraining row rule run same. sent set set. sets setting settings share short side sides simpler size sized sizing sizing. so Stage stage stand started starts state step stood stop stopped stretch surrounded survive survived surviving survivor survivors tab taken test that the The them then there there. they things this through to too trade Trade trades Train train Tune tuning tunings under until up verdict version was way way. what when where WHO/WHEN/WHY whole why with without write yes yet you
+Activate Activation activation. after against agree all alone. always and appears applied are as at average be becomes before behind being below Books both box brackets built buy by campaign can cannot capture carry centre chain. change changed chosen clear cleared clears config configs conviction counts currently dash deactivation decision Delete depth Deviance deviance dial did does does. down drawn each Each engine ever ever. Every every evidence evidentiary exact exactly Existing fee figure first fit for forecasts forward found four from frozen goes Greenlight greenlight greenlighted greenlights half-life hand-built has held Held here here. History history hold how id in is It it it. its keeps layout lengths. lines live Live long look. means members minted money most name named neighbouring never no none none. not notch Nothing nothing nuked nuking of off on one One Only only or order orders other out over own pair paper Paper PASS passed per period pick picture place platforms predates press priced read real rebuild REBUILD record recorded. Records records refused release Rename required REQUIRED reserve Reserve retraining row rule run same. sent set set. sets setting settings share short side sides simpler size sized sizing sizing. so Stage stage stand started starts state step stood stop stopped stretch surrounded survive survived surviving survivor survivors tab taken test that the The them then there there. they things this through to too trade Trade trades Trading trading Train train Tune tuning tunings under until up verdict version waits was way way. what when where WHO/WHEN/WHY whole why with without write yes yet you
 ```
 
 ---
