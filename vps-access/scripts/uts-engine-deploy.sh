@@ -1,23 +1,22 @@
 #!/usr/bin/env bash
-# uts-engine-deploy.sh -- INSTALLS THE NEW TRADING ENGINE on the trading box in
-# Mexico City, beside the old order program, and opens this machine's private
-# link to it. Owner, 2026-09-25: "install the new engine on the trading box" --
-# GO NOW! (LOOP-2026-09-25-ENGINE.md, P1).
+# uts-engine-deploy.sh -- SHIPS THE NEW TRADING ENGINE'S PROGRAM to the trading
+# box in Mexico City, beside the old order program. Owner, 2026-09-25: "install
+# the new engine on the trading box" -- GO NOW! (LOOP-2026-09-25-ENGINE.md, P1).
 #
 # On the trading box:
 #   * Node from Debian's own packages (nothing else installed, nothing upgraded);
 #   * a system user of its own, uts-engine, that cannot log in;
 #   * the engine's code in /opt/uts-engine, taken from the commit this machine
 #     last deployed; its data (record, key store, settings) in /var/lib/uts-engine;
-#   * a systemd service, uts-engine: listens on the box's own loopback address
-#     only, cannot read /home (where the old program lives), runs below the old
-#     program's priority with a ceiling on memory and processor, and starts with
-#     real orders OFF (this release refuses to switch them on).
-# THE ENGINE CALLS OUT (3.266.0, owner 2026-09-25): since uts-engine-move-out.sh
-# the engine calls this system itself and nothing reaches in -- there is no
-# tunnel any more, and this script no longer makes one. It ships the program,
-# leaves the engine's settings (its address and token) as they are, restarts
-# it, and asks this machine's service whether the engine has called in again.
+#   * a systemd service, uts-engine: listens on no port at all, cannot read
+#     /home (where the old program lives), runs below the old program's
+#     priority with a ceiling on memory and processor, and starts with real
+#     orders OFF (this release refuses to switch them on).
+# THE ENGINE CALLS OUT (3.266.0, owner 2026-09-25), and since 3.267.0 only
+# that: it calls this system itself and nothing reaches in. This script ships
+# the program, leaves the engine's settings (its address and token) as they
+# are, restarts it, and asks this machine's service whether the engine has
+# called in again.
 # THE OLD ORDER PROGRAM IS NOT TOUCHED (S1): its program file's fingerprint, its
 # env file (size and time only -- never read), whether its master switch file is
 # there, and its timers and units are taken before and after, and the run fails
@@ -31,7 +30,6 @@
 set -euo pipefail
 BOX=admin@ec2-78-13-103-81.mx-central-1.compute.amazonaws.com
 KEY=/root/.ssh/aws-mex-deb13-new.pem
-PORT=18095
 SRC="$HOME/deploy-uts/ultimate-trading-system"
 SSH=(ssh -i "$KEY" -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=accept-new "$BOX")
 
@@ -59,7 +57,7 @@ echo "== 1. node on the trading box =="
 
 echo "== 2. the engine, its user, its data, its service =="
 tar -C "$SRC" -czf - engine | "${SSH[@]}" 'cat > /tmp/uts-engine.tgz'
-"${SSH[@]}" "COMMIT=$COMMIT RELEASE=$RELEASE PORT=$PORT bash -s" <<'R'
+"${SSH[@]}" "COMMIT=$COMMIT RELEASE=$RELEASE bash -s" <<'R'
 set -euo pipefail
 NODE_BIN=$(command -v node)
 [ -n "$NODE_BIN" ] || { echo "  node is not on the trading box"; exit 5; }
@@ -75,7 +73,7 @@ sudo chmod -R u=rwX,go=rX /opt/uts-engine.new
 if [ -d /opt/uts-engine ]; then sudo mv /opt/uts-engine /opt/uts-engine.old; fi
 sudo mv /opt/uts-engine.new /opt/uts-engine
 rm -rf "$STAGE" /tmp/uts-engine.tgz
-sudo test -f /var/lib/uts-engine/config.json || { echo "  the engine has no settings: it was never moved to calling out -- run uts-engine-move-out.sh"; exit 6; }
+sudo test -f /var/lib/uts-engine/config.json || { echo "  the engine has no settings: install it with an install command made on the Compute tab"; exit 6; }
 sudo tee /etc/systemd/system/uts-engine.service >/dev/null <<UNIT
 [Unit]
 Description=UTS trading engine: Paper Books and Live Trading for the Ultimate Trading System, beside the old order program, which it never touches
@@ -115,7 +113,7 @@ for i in $(seq 1 45); do
   if curl -fsS -m 8 http://127.0.0.1:8094/api/live/engines | python3 -c "
 import json, sys
 e = [x for x in json.load(sys.stdin).get('engines', []) if x['id'] == 'mx-engine']
-sys.exit(0 if e and e[0].get('linkKind') == 'calls-out' and (e[0].get('link') or {}).get('following') and e[0].get('answers') and (e[0].get('health') or {}).get('release') == '$RELEASE' else 1)" 2>/dev/null; then ok=1; break; fi
+sys.exit(0 if e and (e[0].get('link') or {}).get('following') and e[0].get('answers') and (e[0].get('health') or {}).get('release') == '$RELEASE' else 1)" 2>/dev/null; then ok=1; break; fi
   sleep 2
 done
 echo "  called in on release $RELEASE: $([ $ok = 1 ] && echo yes || echo NO)"

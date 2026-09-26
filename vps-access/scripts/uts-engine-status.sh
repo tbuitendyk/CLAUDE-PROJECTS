@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # uts-engine-status.sh -- READ-ONLY. The new trading engine as the web service
 # sees it: each engine record, whether it answers, whether the service is
-# following its record, and what it says of itself; the link's state on this
-# machine; the last runs of the decisions for setups on an engine. GETs only.
+# following its record, and what it says of itself; the last runs of the
+# decisions for setups on an engine. GETs only. Every engine calls this system
+# over its own link (3.267.0): there is nothing of it to look at on this machine.
 set -uo pipefail
 B=http://127.0.0.1:8094
-echo "== the link on this machine: $(systemctl is-active uts-engine-link 2>/dev/null) =="
+echo "== the engines, as this machine's service sees them =="
 curl -s --max-time 30 "$B/api/live/engines" > /tmp/uts-eng.json
 python3 - <<'PY'
 import json
