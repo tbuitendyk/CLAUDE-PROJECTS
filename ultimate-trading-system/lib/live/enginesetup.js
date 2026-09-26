@@ -311,15 +311,6 @@ function makeInstallCode(id, now = Date.now()) {
   return { setup: withSteps(rec), code, expiresUtc: rec.install.expiresUtc };
 }
 
-// A CODE TO MOVE AN ENGINE THE TUNNEL REACHES TO CALLING OUT, from its card:
-// shown once, kept as its fingerprint on the engine record, good for an hour
-function makeMoveCode(engineId, now = Date.now()) {
-  const code = newCode();
-  const expiresUtc = new Date(now + CODE_MS).toISOString();
-  require('./targets').setMoveCode(engineId, sha256(code), expiresUtc);
-  return { code, expiresUtc };
-}
-
 // what an engine may say of its lock: a P-256 public half, and its fingerprint worked out here
 function lockOf(lock) {
   if (!lock || typeof lock.publicKey !== 'string' || lock.publicKey.length > 400) return null;
@@ -346,21 +337,12 @@ const sameHash = (a, h) => typeof a === 'string' && a.length === h.length && cry
 function enroll(code, info = {}, now = Date.now()) {
   const h = sha256(normalCode(code));
   const targets = require('./targets');
-  // an engine the tunnel reaches, moved to calling out with the code made on its card
-  const moving = targets.listEngines().find((t) => t.link === 'tunnel' && t.move && sameHash(t.move.codeHash, h));
-  if (moving) {
-    if (moving.move.usedUtc || Date.parse(moving.move.expiresUtc) < now) bad('that code has run out: make a new one on the engine\'s card', 403);
-    const token = crypto.randomBytes(32).toString('base64url');
-    const eng = targets.moveToCallingOut(moving.id, { tokenHash: sha256(token), lock: lockOf(info.lock), machine: machineOf(info.machine), release: releaseOf(info.release) });
-    return { engineId: eng.id, name: eng.name, token, again: true, sameMachine: true, moved: true };
-  }
   const rec = list().find((x) => x.install && sameHash(x.install.codeHash, h));
   if (!rec) bad('that install code is not known here: make a new install command on the Compute tab', 403);
   if (rec.install.usedUtc) bad('that install code has been used already: make a new install command on the Compute tab', 403);
   if (Date.parse(rec.install.expiresUtc) < now) bad('that install code has run out: make a new install command on the Compute tab', 403);
   const lock = lockOf(info.lock);
   const before = targets.listEngines().find((t) => t.id === rec.shortName);
-  if (before && before.link !== 'calls-out') bad(`the short name ${rec.shortName} already belongs to an engine the tunnel reaches`, 409);
   const sameMachine = !!(before && before.lock && lock && before.lock.fingerprint === lock.fingerprint);
   const token = crypto.randomBytes(32).toString('base64url');
   const eng = targets.saveCallingEngine({ id: rec.shortName, name: rec.name, tokenHash: sha256(token), lock, machine: machineOf(info.machine), release: releaseOf(info.release), setupRef: rec.id });
@@ -372,34 +354,7 @@ function enroll(code, info = {}, now = Date.now()) {
   return { engineId: eng.id, name: eng.name, token, again: !!before, sameMachine };
 }
 
-// ---- REPAIR: A CHECKLIST STARTED ON TEMPLATE 1 (3.266.0, RULE NINE) ------------
-// Written to be deleted (RULE TEN) the day every checklist on the box has been
-// through it. Template 1's step 2 kept a sign-in key on this machine -- the very
-// thing template 2 exists to never hold -- so the move drops step 2's key, its
-// boxes and its sign-in, deletes the key folder, and keeps the names, where it
-// runs, its operating system and step 1's ticks (less the fixed address tick,
-// which is the Account tab's choice now). Run once at start, announced.
-const OLD_KEYS_DIR = () => process.env.GC_ENGINE_KEYS_DIR || path.join(__dirname, '..', '..', 'data', 'live', 'engine-keys');
-function repairTemplateOne() {
-  const named = [];
-  for (const rec of list()) {
-    if (rec.templateVersion !== 1) continue;
-    const ch = rec.choices || {};
-    const tk = (rec.ticks || {}).ready || {};
-    const moved = {
-      id: rec.id, name: rec.name, shortName: rec.shortName || null, templateVersion: 2, createdUtc: rec.createdUtc, updatedUtc: new Date().toISOString(),
-      engineId: null, choices: { ...(ch.where ? { where: ch.where } : {}), ...(ch.os ? { os: ch.os } : {}) },
-      ticks: { ready: { ...(tk.binance ? { binance: true } : {}), ...(tk.on ? { on: true } : {}), ...(tk.size ? { size: true } : {}) } }, install: null,
-    };
-    write(moved);
-    fs.rmSync(path.join(OLD_KEYS_DIR(), rec.id), { recursive: true, force: true });
-    named.push(rec.name);
-  }
-  try { if (fs.existsSync(OLD_KEYS_DIR()) && !fs.readdirSync(OLD_KEYS_DIR()).length) fs.rmdirSync(OLD_KEYS_DIR()); } catch (_) { /* a folder with something else in it stays */ }
-  return { changed: named.length, named };
-}
-
 module.exports = {
   TEMPLATE, stepsOf, list: () => list().map(withSteps), get: (id) => withSteps(read(id)), create, setShortName, setChoice, setTick, remove, DIR,
-  makeInstallCode, makeMoveCode, enroll, lockOf, repairTemplateOne, codeIsCurrent, CODE_MS,
+  makeInstallCode, enroll, lockOf, codeIsCurrent, CODE_MS,
 };

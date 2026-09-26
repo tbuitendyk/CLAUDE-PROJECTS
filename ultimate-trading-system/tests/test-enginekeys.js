@@ -136,7 +136,7 @@ module.exports = {
   // exchange BEFORE they are kept, so a refused key is never written down; no
   // answer ever carries them
   async theEngineTakesKeysAndNeverAnswersWithThem() {
-    const { makeServer } = require('../engine/api');
+    const { makeHandler } = require('../engine/api');
     const { Journal } = require('../engine/journal');
     const { Lock } = require('../engine/lock');
     const { lockKeys } = require('../public/keylock');
@@ -146,10 +146,10 @@ module.exports = {
     const lock = new Lock(path.join(dir, 'lock.json')).open();
     let verdict = { checked: true, ok: true, refusals: [], tied: true };
     const asked = [];
-    const server = makeServer({ runner: { view: () => [] }, journal, health: () => ({ ok: true }), keystore: ks, lock, checkKey: async (account, pair, opts) => { asked.push([account, pair.apiKey === API_KEY, ks.describe(account).present, opts.anyAddress]); return verdict; } });
-    await new Promise((r) => server.listen(0, '127.0.0.1', r));
-    const target = { localPort: server.address().port };
-    const link = require('../lib/live/enginelink');
+    // the questions as they arrive over the link (engine/link.js), answered by the engine's one handler
+    const handle = makeHandler({ runner: { view: () => [] }, journal, health: () => ({ ok: true }), keystore: ks, lock, checkKey: async (account, pair, opts) => { asked.push([account, pair.apiKey === API_KEY, ks.describe(account).present, opts.anyAddress]); return verdict; } });
+    const link = { call: async (target, method, p, body = null) => { const out = JSON.parse(JSON.stringify(await handle(method, p, body || {}))); return { ok: out.status >= 200 && out.status < 300, status: out.status, json: out.json }; } };
+    const target = null;
     const pub = lock.info().publicKey;
     try {
       const put = await link.call(target, 'POST', '/keys/ltc-1', { locked: await lockKeys(pub, 'ltc-1', API_KEY, SECRET) });
@@ -188,7 +188,7 @@ module.exports = {
       assert.ok(/"what":"entered"/.test(rec) && /"what":"removed"/.test(rec), 'every entry and removal is written down');
       assert.ok(!rec.split('\n').filter(Boolean).map((l) => JSON.parse(l)).some((l) => l.what === 'entered' && l.account === 'ltc-2'), 'a refused key is never entered: it was never kept');
       assert.ok(!rec.includes(SECRET) && !rec.includes(API_KEY), 'the engine\'s record never holds the key');
-    } finally { server.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   },
 
   // THE LOCK IS THE ENGINE'S ALONE (3.266.0): made once, readable by the engine's

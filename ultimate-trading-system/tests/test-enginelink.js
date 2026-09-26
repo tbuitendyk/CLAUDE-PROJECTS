@@ -1,8 +1,8 @@
 // The web box's side of the new trading engine (LOOP-2026-09-25-ENGINE.md):
 // the engine's record on Setup > Compute, the size of a plan (S4), the engine's
 // words written again in the words the Trade tab reads, and a whole loop -- an
-// engine on this machine, followed over HTTP, drawn by the one path both books
-// share.
+// engine on this machine, linked over its own link, drawn by the one path both
+// books share.
 const { assert } = require('./helpers');
 const fs = require('fs');
 const os = require('os');
@@ -14,65 +14,51 @@ process.env.GC_ENGINE_MIRROR = path.join(TDIR, 'mirror');
 const targets = require('../lib/live/targets');
 const link = require('../lib/live/enginelink');
 const { sizeOf, agreeingOf } = require('../lib/live/engineplan');
-
-const ENGINE = { id: 'mx-engine', name: 'Mexico engine', host: 'ec2-78-13-103-81.mx-central-1.compute.amazonaws.com', user: 'admin', enginePort: 18095, localPort: 18095, isDefault: true };
-// AN ENGINE THE TUNNEL REACHES, as the box already holds one: no new one is made
-// through the service any more (a new engine is installed and calls in), so a
-// test puts the record in place the way the box has it
-function putTunnel(rec) {
-  let all = {};
-  try { all = JSON.parse(fs.readFileSync(targets.targetsFile(), 'utf8')); } catch (_) { all = {}; }
-  if (rec.isDefault) for (const t of Object.values(all)) if (t && t.kind === 'engine') t.isDefault = false;
-  all[rec.id] = { kind: 'engine', link: 'tunnel', symbols: null, note: '', ...rec };
-  fs.mkdirSync(path.dirname(targets.targetsFile()), { recursive: true });
-  fs.writeFileSync(targets.targetsFile(), JSON.stringify(all));
-  return all[rec.id];
-}
+const { linkedEngine, until } = require('./engine-linked');
 
 module.exports = {
   // S7: THE ENGINE'S RECORD is the owner's: changed and taken away through the
   // service, refused in words when it is not whole, never written into code. A
   // NEW engine is not made here -- it is installed and its record made when it
-  // first calls in (owner, 2026-09-25); an engine the tunnel reaches has its two
-  // ends changed here, one that calls out only its names and its tick
+  // first calls in (owner, 2026-09-25) -- and the form changes only its names
+  // and its tick, never how it is reached: every engine calls this system
   theEnginesRecordIsTheOwnersAndRefusedInWordsWhenNotWhole() {
-    putTunnel(ENGINE);
-    const saved = targets.saveEngine({ ...ENGINE, name: 'Mexico engine' });
-    assert.deepStrictEqual({ id: saved.id, kind: saved.kind, link: saved.link, isDefault: saved.isDefault, symbols: saved.symbols }, { id: 'mx-engine', kind: 'engine', link: 'tunnel', isDefault: true, symbols: null });
+    const hash = 'a'.repeat(64);
+    const first = targets.saveCallingEngine({ id: 'mx-engine', name: 'Mexico engine', tokenHash: 'd'.repeat(64) });
+    assert.deepStrictEqual({ id: first.id, kind: first.kind, link: first.link, isDefault: first.isDefault, symbols: first.symbols }, { id: 'mx-engine', kind: 'engine', link: 'calls-out', isDefault: true, symbols: null }, 'the first engine is the one new setups run on');
     assert.strictEqual(targets.defaultEngine().id, 'mx-engine');
     assert.ok(targets.getTarget('mx-1') && targets.getTarget('mx-1').kind === 'ssh-box', 'the old order program stays where it was');
     const bad = (rec, re) => { let e = null; try { targets.saveEngine(rec); } catch (x) { e = x; } assert.ok(e && e.code === 'BAD_ENGINE' && re.test(e.message), e && e.message); };
-    bad({ ...ENGINE, id: 'x2' }, /^no engine called x2: a new engine is added by installing it, with Set up a trading engine$/);
-    assert.ok(targets.engineProblems({ ...ENGINE, id: 'mx-1', link: 'tunnel' }).includes('short name: mx-1 is already taken'), 'no engine record takes the old order program\'s name');
-    bad({ ...ENGINE, host: 'no spaces allowed' }, /trading box address: the machine's name or address/);
-    bad({ ...ENGINE, localPort: 8094 }, /tunnel port here: 8094 and 8095 are this system's own services/);
-    putTunnel({ ...ENGINE, id: 'second', name: 'Second', localPort: 18096, isDefault: false });
-    bad({ ...ENGINE, id: 'second', name: 'Second', localPort: 18095 }, /tunnel port here: 18095 is already the tunnel port of mx-engine/);
-    // a second engine ticked default takes the tick from the first
-    targets.saveEngine({ ...ENGINE, id: 'second', name: 'Second', localPort: 18096, isDefault: true });
-    assert.deepStrictEqual(targets.listEngines().map((t) => [t.id, t.isDefault]).sort(), [['mx-engine', false], ['second', true]]);
+    bad({ id: 'x2', name: 'X' }, /^no engine called x2: a new engine is added by installing it, with Set up a trading engine$/);
+    bad({ id: 'mx-engine', name: '' }, /^descriptive name: 1 to 60 characters$/);
+    assert.ok(targets.engineProblems({ id: 'mx-1', name: 'X', link: 'calls-out', tokenHash: hash }).includes('short name: mx-1 is already taken'), 'no engine record takes the old order program\'s name');
+    // an engine calls this system, and that is the only way there is
+    assert.deepStrictEqual(targets.LINKS, ['calls-out']);
+    assert.deepStrictEqual(targets.engineProblems({ id: 'x3', name: 'X', link: 'tunnel', tokenHash: hash }), ['the link: an engine calls this system']);
+    assert.deepStrictEqual(targets.engineProblems({ id: 'x3', name: 'X', link: 'calls-out' }), ['the engine\'s token fingerprint is missing']);
     // AN ENGINE THAT CALLS OUT: made when it first calls; its token's fingerprint and its lock are its own, never the form's
-    const hash = 'a'.repeat(64);
     const out = targets.saveCallingEngine({ id: 'cdmx-engine', name: 'CDMX engine', tokenHash: hash, lock: { publicKey: 'x', fingerprint: 'abcd-ef01-2345-6789-abcd' }, machine: { platform: 'linux' }, release: '3.266.0' });
     assert.deepStrictEqual([out.link, out.tokenHash, out.isDefault], ['calls-out', hash, false]);
-    const changed = targets.saveEngine({ id: 'cdmx-engine', name: 'CDMX engine 2', isDefault: false, tokenHash: 'b'.repeat(64), host: 'evil', localPort: 9999 });
-    assert.deepStrictEqual([changed.name, changed.tokenHash, changed.host, changed.localPort], ['CDMX engine 2', hash, undefined, undefined], 'the form changes its names and tick, and nothing about how it is reached');
-    assert.deepStrictEqual(targets.engineProblems({ id: 'x3', name: 'X', link: 'calls-out' }), ['the engine\'s token fingerprint is missing']);
-    assert.throws(() => targets.saveCallingEngine({ id: 'mx-engine', name: 'Taken', tokenHash: hash }), /the short name mx-engine already belongs to another engine/);
+    // a second engine ticked for new setups takes the tick from the first
+    targets.saveEngine({ id: 'cdmx-engine', name: 'CDMX engine', isDefault: true });
+    assert.deepStrictEqual(targets.listEngines().map((t) => [t.id, t.isDefault]).sort(), [['cdmx-engine', true], ['mx-engine', false]]);
+    const changed = targets.saveEngine({ id: 'cdmx-engine', name: 'CDMX engine 2', isDefault: false, tokenHash: 'b'.repeat(64), link: 'tunnel', host: 'evil', localPort: 9999 });
+    assert.deepStrictEqual([changed.name, changed.tokenHash, changed.link, changed.host, changed.localPort], ['CDMX engine 2', hash, 'calls-out', undefined, undefined], 'the form changes its names and tick, and nothing about how it is reached');
+    targets.saveEngine({ id: 'mx-engine', name: 'Mexico engine', isDefault: true });
+    // a short name kept by a record of another kind is never taken by an engine calling in
+    fs.writeFileSync(targets.targetsFile(), JSON.stringify({ ...JSON.parse(fs.readFileSync(targets.targetsFile(), 'utf8')), 'box-2': { id: 'box-2', kind: 'ssh-box', host: 'h', user: 'u' } }));
+    assert.throws(() => targets.saveCallingEngine({ id: 'box-2', name: 'Taken', tokenHash: hash }), /the short name box-2 already belongs to another engine/);
     // what it says of itself when it calls, and nothing else
     targets.noteEngine('cdmx-engine', { release: '3.266.1', lastSeenUtc: '2026-09-26T01:00:00.000Z', tokenHash: 'c'.repeat(64) });
     assert.deepStrictEqual([targets.getTarget('cdmx-engine').release, targets.getTarget('cdmx-engine').tokenHash], ['3.266.1', hash]);
-    // RULE NINE: a record made before the link had two ways says so once, at start
-    putTunnel({ ...ENGINE, id: 'old-one', name: 'Old', localPort: 18097, isDefault: false, link: undefined });
-    assert.deepStrictEqual(targets.repairLinkKinds(), { changed: 1, named: ['old-one'] });
-    assert.strictEqual(targets.getTarget('old-one').link, 'tunnel');
-    assert.deepStrictEqual(targets.repairLinkKinds(), { changed: 0, named: [] }, 'once');
     // an engine a setup runs on cannot be taken away
     let e = null;
-    try { targets.deleteEngine('second', [{ id: 's1', name: 'LTC paper', executionTargetRef: 'second', state: 'paper' }]); } catch (x) { e = x; }
-    assert.ok(e && e.code === 'IN_USE' && /1 setup\(s\) run on second \(LTC paper\)/.test(e.message), e && e.message);
-    for (const id of ['second', 'cdmx-engine', 'old-one']) targets.deleteEngine(id, []);
-    putTunnel(ENGINE);
+    try { targets.deleteEngine('cdmx-engine', [{ id: 's1', name: 'LTC paper', executionTargetRef: 'cdmx-engine', state: 'paper' }]); } catch (x) { e = x; }
+    assert.ok(e && e.code === 'IN_USE' && /1 setup\(s\) run on cdmx-engine \(LTC paper\)/.test(e.message), e && e.message);
+    targets.deleteEngine('cdmx-engine', []);
+    const all = JSON.parse(fs.readFileSync(targets.targetsFile(), 'utf8'));
+    delete all['box-2'];
+    fs.writeFileSync(targets.targetsFile(), JSON.stringify(all));
   },
 
   // S4: THE SIZE -- clip x the field's size x the multiplier for how many members
@@ -111,12 +97,12 @@ module.exports = {
   },
 
   // A WHOLE LOOP: an engine on this machine (fake market, simulated exchange,
-  // its real API), followed over HTTP by the mirror, read by the Trade tab's path
+  // its real handler), linked over its own link, its record kept by the mirror,
+  // read by the Trade tab's path
   async anEngineOnThisMachineIsFollowedAndDrawnByTheOnePath() {
     const { Journal } = require('../engine/journal');
     const { Runner } = require('../engine/runner');
     const { SimulatedExchange } = require('../engine/venues/simulated');
-    const { makeServer } = require('../engine/api');
     const edir = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-'));
     const t0 = Date.UTC(2026, 8, 26, 1);
     let now = t0 - 60000;
@@ -127,25 +113,24 @@ module.exports = {
     };
     const journal = new Journal(path.join(edir, 'journal.jsonl'));
     const runner = new Runner({ journal, market, venues: { simulated: new SimulatedExchange({ market, feePerLeg: 0.001, now: () => now }) }, now: () => now });
-    const server = makeServer({ runner, journal, health: () => ({ ok: true, realOrders: 'off' }) });
-    await new Promise((r) => server.listen(0, '127.0.0.1', r));
-    const target = { ...ENGINE, id: 'loop-engine', localPort: server.address().port };
+    const eng = await linkedEngine({ id: 'loop-engine', deps: { runner, journal, health: () => ({ ok: true, realOrders: 'off' }) } });
+    const target = eng.target;
     const m = new link.Mirror(target);
     try {
       m.start();
+      await eng.start();
       const plan = { planId: 'setup-loop|2026-09-22T00:00:00.000Z', setupId: 'setup-loop', mode: 'simulated', symbol: 'LTCUSDT', chunkStart: '2026-09-22T00:00:00.000Z', entryTs: t0, call: 1, cell: { entry: 'breakout', gate: 'active', dMult: 0.75, tHours: 65, trailMult: 1.5, armMult: 0.5 }, bandPct: 5, size: { quoteUsd: 100 }, feePerLeg: 0.001 };
       const posted = await link.postPlan(target, plan);
-      assert.ok(posted.ok && posted.json.phase === 'waiting', JSON.stringify(posted.json));
+      assert.ok(posted.ok && posted.json.phase === 'waiting', JSON.stringify(posted));
       now = t0;
       runner.onKline({ symbol: 'LTCUSDT', openTime: t0, open: 70 });
       market.books.set('LTCUSDT', { bids: [[72.6, 5]], asks: [[72.7, 5]], ts: now });
       market.trades.set('LTCUSDT', { price: 72.7, ts: now });
       runner.onTrade({ symbol: 'LTCUSDT', price: 72.7, ts: now });
-      for (let i = 0; i < 50 && runner.plans.get(plan.planId).state.phase !== 'open'; i++) await new Promise((r) => setTimeout(r, 20));
+      await until(() => runner.plans.get(plan.planId).state.phase === 'open');
       runner.sendMarks(now);
-      for (let i = 0; i < 50 && !fs.existsSync(m.eventsFile); i++) await new Promise((r) => setTimeout(r, 20));
-      await new Promise((r) => setTimeout(r, 150));
       const view = require('../lib/live/view');
+      await until(() => fs.existsSync(m.eventsFile) && view.readJournal(m.eventsFile).events.some((e) => e.event === 'PAPER_ENTRY_FILL') && m.marksOf('setup-loop').length);
       const events = view.readJournal(m.eventsFile).events;
       assert.ok(events.some((e) => e.event === 'PAPER_ENTRY_FILL'), `the fill reached this machine: ${events.map((e) => e.event).join(' ')}`);
       const book = view.deriveSetup(events, 'setup-loop');
@@ -157,9 +142,11 @@ module.exports = {
       // what the mirror kept is exactly what the engine wrote, in order
       const raw = fs.readFileSync(m.rawFile, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
       assert.deepStrictEqual(raw.map((r) => r.n), journal.since(1, 1000).map((r) => r.n), 'every line, once, in order');
+      assert.deepStrictEqual([m.linkStatus().following, m.linkStatus().why], [true, null], 'the link says it is up');
     } finally {
+      eng.stop();
       m.stop();
-      server.close();
+      targets.deleteEngine('loop-engine', []);
       fs.rmSync(edir, { recursive: true, force: true });
     }
   },
@@ -194,7 +181,6 @@ module.exports = {
     const { Journal } = require('../engine/journal');
     const { Runner } = require('../engine/runner');
     const { SimulatedExchange } = require('../engine/venues/simulated');
-    const { makeServer } = require('../engine/api');
     const view = require('../lib/live/view');
     const edir = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-'));
     const oldDecisions = process.env.GC_LIVE_DECISIONS;
@@ -208,9 +194,8 @@ module.exports = {
     };
     const journal = new Journal(path.join(edir, 'journal.jsonl'));
     const runner = new Runner({ journal, market, venues: { simulated: new SimulatedExchange({ market, feePerLeg: 0.001, now: () => now }) }, now: () => now });
-    const server = makeServer({ runner, journal, health: () => ({ ok: true, realOrders: 'off' }) });
-    await new Promise((r) => server.listen(0, '127.0.0.1', r));
-    const target = putTunnel({ ...ENGINE, id: 'draw-engine', name: 'Draw engine', localPort: server.address().port, isDefault: false });
+    const eng = await linkedEngine({ id: 'draw-engine', name: 'Draw engine', deps: { runner, journal, health: () => ({ ok: true, realOrders: 'off' }) } });
+    const target = eng.target;
     const m = link.mirrorFor(target);
     const cell = { entry: 'breakout', gate: 'active', dMult: 0.75, tHours: 65, trailMult: 1.5, armMult: 0.5 };
     const setup = { id: 'setup-draw', name: 'LTC on the engine', state: 'paper', executionTargetRef: 'draw-engine', tradedPair: 'LTCUSDT', clipUsd: 100, trainPolicy: { mode: 'rolling' },
@@ -218,6 +203,7 @@ module.exports = {
     const plan = (chunk, entryTs) => ({ planId: `setup-draw|${chunk}`, setupId: 'setup-draw', mode: 'simulated', symbol: 'LTCUSDT', chunkStart: chunk, entryTs, call: 1, cell, bandPct: 5, size: { quoteUsd: 100 }, feePerLeg: 0.001 });
     try {
       m.start();
+      await eng.start();
       assert.ok((await link.postPlan(target, plan('2026-09-22T00:00:00.000Z', t0))).ok);
       assert.ok((await link.postPlan(target, plan('2026-09-23T00:00:00.000Z', t0 + 24 * 3600000))).ok);
       now = t0;
@@ -227,7 +213,7 @@ module.exports = {
       runner.onTrade({ symbol: 'LTCUSDT', price: 72.7, ts: now });
       for (let i = 0; i < 50 && runner.plans.get('setup-draw|2026-09-22T00:00:00.000Z').state.phase !== 'open'; i++) await new Promise((r) => setTimeout(r, 20));
       runner.sendMarks(now);
-      for (let i = 0; i < 100 && !(m.plansOf('setup-draw').some((x) => x.state && x.state.phase === 'open') && m.marksOf('setup-draw').length); i++) await new Promise((r) => setTimeout(r, 20));
+      await until(() => m.plansOf('setup-draw').some((x) => x.state && x.state.phase === 'open') && m.marksOf('setup-draw').length);
       const st = view.setupStatus(setup);
       assert.deepStrictEqual(st.engine.plans.map((p) => [p.chunk_start.slice(0, 10), p.phase, p.side]), [['2026-09-23', 'waiting', null], ['2026-09-22', 'open', 'LONG']]);
       assert.strictEqual(st.engine.plans[1].best, 72.7, 'a trailed plan shows its best price');
@@ -256,8 +242,8 @@ module.exports = {
       const after = view.setupStatus(stopped);
       assert.ok(/this setup is stopped: nothing is sent to Draw engine/.test(after.liveStatus.items[0].why), after.liveStatus.items[0].why);
     } finally {
+      eng.stop();
       m.stop();
-      server.close();
       targets.deleteEngine('draw-engine', []);
       if (oldDecisions === undefined) delete process.env.GC_LIVE_DECISIONS; else process.env.GC_LIVE_DECISIONS = oldDecisions;
       fs.rmSync(edir, { recursive: true, force: true });
@@ -273,7 +259,6 @@ module.exports = {
     const { Journal } = require('../engine/journal');
     const { Runner } = require('../engine/runner');
     const { SimulatedExchange } = require('../engine/venues/simulated');
-    const { makeServer } = require('../engine/api');
     const view = require('../lib/live/view');
     const H = 3600000;
     const edir = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-v-'));
@@ -288,18 +273,18 @@ module.exports = {
     };
     const journal = new Journal(path.join(edir, 'journal.jsonl'));
     const runner = new Runner({ journal, market, venues: { simulated: new SimulatedExchange({ market, feePerLeg: 0.001, now: () => now }) }, now: () => now });
-    const server = makeServer({ runner, journal, health: () => ({ ok: true, realOrders: 'off' }) });
-    await new Promise((r) => server.listen(0, '127.0.0.1', r));
-    const target = putTunnel({ ...ENGINE, id: 'verbose-engine', name: 'Verbose engine', localPort: server.address().port, isDefault: false });
+    const eng = await linkedEngine({ id: 'verbose-engine', name: 'Verbose engine', deps: { runner, journal, health: () => ({ ok: true, realOrders: 'off' }) } });
+    const target = eng.target;
     const m = link.mirrorFor(target);
     const cell = { entry: 'breakout', gate: 'active', dMult: 0.75, tHours: 65, trailMult: 1, armMult: 0.5 };
     const setup = { id: 'setup-v', name: 'LTC verbose', state: 'paper', executionTargetRef: 'verbose-engine', tradedPair: 'LTCUSDT', clipUsd: 100, trainPolicy: { mode: 'rolling' }, verbose: true,
       configSnapshot: { branch: { geometry: 'daily-4d', band: 5 }, cell, combo: { trade: 'LTCUSDT' } } };
     const plan = { planId: 'setup-v|2026-09-22T00:00:00.000Z', setupId: 'setup-v', mode: 'simulated', symbol: 'LTCUSDT', chunkStart: '2026-09-22T00:00:00.000Z', entryTs: t0, call: 1, cell, bandPct: 5, size: { quoteUsd: 100 }, feePerLeg: 0.001 };
-    const waitFor = async (fn) => { for (let i = 0; i < 100 && !fn(); i++) await new Promise((r) => setTimeout(r, 20)); };
+    const waitFor = (fn) => until(fn);
     const print = (price, ts) => { now = ts; market.books.set('LTCUSDT', { bids: [[price - 0.05, 50]], asks: [[price, 50]], ts }); market.trades.set('LTCUSDT', { price, ts }); runner.onTrade({ symbol: 'LTCUSDT', price, ts }); };
     try {
       m.start();
+      await eng.start();
       // the tick reaches the engine, once
       const asked = new Map();
       const sent = await link.syncVerbose([target], [setup], asked, now);
@@ -342,8 +327,8 @@ module.exports = {
       again.recover();
       assert.strictEqual(again.verbose.get('setup-v'), false);
     } finally {
+      eng.stop();
       m.stop();
-      server.close();
       targets.deleteEngine('verbose-engine', []);
       if (oldDecisions === undefined) delete process.env.GC_LIVE_DECISIONS; else process.env.GC_LIVE_DECISIONS = oldDecisions;
       fs.rmSync(edir, { recursive: true, force: true });
@@ -390,5 +375,5 @@ module.exports.theEngineRecordFormSaysWhichNameIsWhich = function () {
   assert.ok(/<span class="muted">descriptive name — what you see on screen<\/span><input id="engName"[^>]*placeholder="Engine 2"/.test(src), 'and the record\'s form says the same');
   assert.ok(/>Changing ' \+ esc\(ed\.name\) \+ ' <span class="muted">\(' \+ esc\(ed\.id\) \+ '\)<\/span>/.test(src), 'the record being changed is headed with both names');
   assert.ok(!/>record id</.test(src) && !/id="engId"/.test(src), 'the old label and the short name box are gone from the form: a record keeps its short name');
-  assert.deepStrictEqual(targets.engineProblems({ id: '', name: '', link: 'tunnel', host: 'h', user: 'u', enginePort: 18095, localPort: 18095 }).slice(0, 2), ['short name: 2 to 30 of a-z, 0-9 and -, starting with a letter or digit', 'descriptive name: 1 to 60 characters'], 'a refusal names the two fields the same way');
+  assert.deepStrictEqual(targets.engineProblems({ id: '', name: '', link: 'calls-out', tokenHash: 'a'.repeat(64) }), ['short name: 2 to 30 of a-z, 0-9 and -, starting with a letter or digit', 'descriptive name: 1 to 60 characters'], 'a refusal names the two fields the same way');
 };

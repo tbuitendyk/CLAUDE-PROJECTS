@@ -206,6 +206,7 @@ let cEng = null;             // the trading engine records, with whether each an
 let cErrEng = null;
 let cEngEdit = null;         // the engine record being changed in the form, or null when the form is closed
 let cEngTyped = {};          // what is typed in the form, kept across the thirty-second redraw
+let cSvcMsg = {};            // what the last press of each button on this tab answered, beside it, kept across the redraw
 let cEs = null;              // the engine setups: the template and one checklist per engine (owner, 2026-09-25)
 let cErrEs = null;
 let cEsTyped = '';           // the descriptive name typed for another engine, kept across the redraw
@@ -515,24 +516,30 @@ function svcCard(u) {
     + ans
     + '</div>'
     + '<div class="loadbar" title="how much of its allowance it is using right now"><div style="width:' + barPct.toFixed(0) + '%"></div></div>'
+    // RULE FOUR-A: the box on its own row, and each button in a row of its own with its answer beside it
     + '<div class="row" style="margin-top:.5rem">'
     + '<label class="c"><span class="muted">ceiling, % of one processor</span><input data-quota="' + esc(u.unit) + '" type="number" min="10" max="800" step="10" value="' + (quota == null ? '' : quota) + '" style="width:6.5rem" placeholder="none set"></label>'
+    + '</div>'
+    + '<div class="row" style="margin-top:.5rem">'
     + '<button data-setquota="' + esc(u.unit) + '" title="applies immediately to running work, and survives the service being restarted">Set the ceiling</button>'
-    + '<span class="spacer"></span>'
+    + '<span class="note">' + (cSvcMsg['quota|' + u.unit] || '') + '</span>'
+    + '</div>'
+    + '<div class="row" style="margin-top:.5rem">'
     + '<button data-act="start" data-unit="' + esc(u.unit) + '" title="starts it if it is not running; does nothing to one that already is">Start</button>'
     + '<button data-act="restart" data-unit="' + esc(u.unit) + '" class="danger" title="stops it and starts it again. Anything it was part-way through is lost; a sweep that was going is marked as stopped and can be picked up again with Resume run on the Construct page.">Restart</button>'
     + '<button data-act="stop" data-unit="' + esc(u.unit) + '" class="danger" title="stops it and leaves it stopped">Stop</button>'
+    + '<span class="note">' + (cSvcMsg['act|' + u.unit] || '') + '</span>'
     + '</div>'
     + (u.cannotStop ? '<div class="note warn" style="margin-top:.3rem">cannot be stopped or restarted from here — ' + esc(u.cannotStop) + '</div>' : '')
     + '</div>';
 }
 
 // ---- THE TRADING ENGINE (loop of 2026-09-25) --------------------------------
-// The program on the trading box that carries out Paper Books and Live Trading
-// for this system. Its record -- where it is, how this machine reaches it, and
-// whether new setups run on it -- is the owner's, made and changed here (RULE
-// FIVE: nothing about the link stays written into code). What it says of itself
-// is read live through the link each time this tab refreshes.
+// The program on a machine of the owner's that carries out Paper Books and Live
+// Trading for this system. Its record is made when it first calls in; its names
+// and whether new setups run on it are the owner's, changed here (RULE FIVE).
+// What it says of itself is read live through the link each time this tab
+// refreshes.
 function engineCard(e) {
   const h = e.health || {};
   // THE PRICES, IN WHAT THEY MEAN (owner, 2026-09-25: "prices prices not
@@ -549,21 +556,16 @@ function engineCard(e) {
     ? '<span class="pos">answers</span> <span class="muted">in ' + e.ms + ' ms · release ' + esc(h.release || '?') + '</span>'
     : '<span class="neg">does not answer</span> <span class="muted">(' + esc(e.why || 'no reason given') + ')</span>';
   const link = e.link && e.link.following
-    ? '<span class="pos">' + (e.linkKind === 'calls-out' ? 'called in, and its record is arriving' : 'following its record') + '</span> <span class="muted">since ' + esc(String(e.link.since || '').slice(11, 19)) + ' UTC</span>'
-    : '<span class="neg">' + (e.linkKind === 'calls-out' ? 'not linked right now' : 'not following its record') + '</span> <span class="muted">(' + esc((e.link && e.link.why) || 'not started') + ')</span>';
+    ? '<span class="pos">called in, and its record is arriving</span> <span class="muted">since ' + esc(String(e.link.since || '').slice(11, 19)) + ' UTC</span>'
+    : '<span class="neg">not linked right now</span> <span class="muted">(' + esc((e.link && e.link.why) || 'not started') + ')</span>';
   // HOW IT IS REACHED (owner, 2026-09-25): an engine installed with the install
-  // command calls this system and says what it is; the first engine is still
-  // reached through this machine's tunnel
+  // command calls this system and says what it is
   const mc = e.machine || {};
   // behind means other code than this system serves, not another release number
-  const behind = e.linkKind === 'calls-out' && e.current === false;
-  const reach = e.linkKind === 'calls-out'
-    ? '<span><span class="k">calls this system from</span> <b>' + esc(mc.hostname || 'a machine it has not named') + '</b> <span class="muted">' + esc([mc.platform, mc.arch].filter(Boolean).join(' ')) + '</span></span>'
-      + '<span><span class="k">release</span> <b>' + esc(e.release || '?') + '</b></span>'
-      + '<span><span class="k">the fingerprint of its lock</span> <b>' + esc(e.lock ? e.lock.fingerprint : '—') + '</b></span>'
-    : '<span><span class="k">trading box</span> <b>' + esc(e.user) + '@' + esc(e.host) + '</b></span>'
-      + '<span><span class="k">engine port there</span> <b>' + e.enginePort + '</b></span>'
-      + '<span><span class="k">tunnel port here</span> <b>' + e.localPort + '</b></span>';
+  const behind = e.current === false;
+  const reach = '<span><span class="k">calls this system from</span> <b>' + esc(mc.hostname || 'a machine it has not named') + '</b> <span class="muted">' + esc([mc.platform, mc.arch].filter(Boolean).join(' ')) + '</span></span>'
+    + '<span><span class="k">release</span> <b>' + esc(e.release || '?') + '</b></span>'
+    + '<span><span class="k">the fingerprint of its lock</span> <b>' + esc(e.lock ? e.lock.fingerprint : '—') + '</b></span>';
   return '<div class="tile" style="margin-bottom:.55rem">'
     + '<div class="row" style="align-items:baseline"><b>' + esc(e.name) + '</b><span class="note">' + esc(e.id) + '</span>'
     + (e.isDefault ? '<span class="note pos">new setups run on this engine</span>' : '') + '<span class="spacer"></span>' + said + '</div>'
@@ -600,16 +602,6 @@ function engineHtml() {
       + '<label class="c"><span class="muted">descriptive name — what you see on screen</span><input id="engName" value="' + v('name', '') + '" placeholder="Engine 2" style="width:14rem"></label>'
       + '<label class="c"><input type="checkbox" id="engDefault"' + (('isDefault' in cEngTyped ? cEngTyped.isDefault : ed.isDefault) ? ' checked' : '') + '> new setups run on this engine</label>'
       + '</div>'
-      + (ed.linkKind === 'tunnel'
-        ? '<div class="row" style="margin-top:.5rem">'
-          + '<label class="c" title="the trading box&#39;s address"><span class="muted">trading box address</span><input id="engHost" value="' + v('host', '') + '" style="width:26rem"></label>'
-          + '<label class="c" title="the account this machine signs in to the trading box as"><span class="muted">sign in as</span><input id="engUser" value="' + v('user', '') + '" style="width:7rem"></label>'
-          + '</div>'
-          + '<div class="row" style="margin-top:.5rem">'
-          + '<label class="c" title="the port the engine listens on, on the trading box itself"><span class="muted">engine port there</span><input id="engPort" type="number" min="1024" max="65535" value="' + v('enginePort', 18095) + '" style="width:7rem"></label>'
-          + '<label class="c" title="the port the tunnel opens on this machine"><span class="muted">tunnel port here</span><input id="engLocal" type="number" min="1024" max="65535" value="' + v('localPort', 18095) + '" style="width:7rem"></label>'
-          + '</div>'
-        : '')
       + '<div class="row" style="margin-top:.5rem"><button id="engSave" class="pri">Save the engine record</button><button id="engNew">Close the form</button><span id="engMsg" class="note"></span></div>'
       + '</div>' : '')
     + '</div>';
@@ -826,10 +818,8 @@ function wireEs() {
 
 function wireEngine() {
   wireEs();
-  for (const [sel, key] of [['#engName', 'name'], ['#engHost', 'host'], ['#engUser', 'user'], ['#engPort', 'enginePort'], ['#engLocal', 'localPort']]) {
-    const el = $(sel);
-    if (el) el.oninput = () => { cEngTyped[key] = el.value; };
-  }
+  const nm = $('#engName');
+  if (nm) nm.oninput = () => { cEngTyped.name = nm.value; };
   const df = $('#engDefault');
   if (df) df.onchange = () => { cEngTyped.isDefault = df.checked; };
   document.querySelectorAll('[data-engedit]').forEach((b) => { b.onclick = () => { cEngEdit = b.dataset.engedit; cEngTyped = {}; drawCompute(); }; });
@@ -849,9 +839,7 @@ function wireEngine() {
     sv.disabled = true;
     msg.innerHTML = 'saving…';
     try {
-      // the tunnel's two ends only for an engine the tunnel reaches; one that calls out says its own
-      const tunnel = $('#engHost') ? { host: $('#engHost').value.trim(), user: $('#engUser').value.trim(), enginePort: Number($('#engPort').value), localPort: Number($('#engLocal').value) } : {};
-      const got = await postJson('api/live/engines', { id: cEngEdit, name: $('#engName').value.trim(), isDefault: $('#engDefault').checked, ...tunnel });
+      const got = await postJson('api/live/engines', { id: cEngEdit, name: $('#engName').value.trim(), isDefault: $('#engDefault').checked });
       cEngEdit = got.engine.id;
       cEngTyped = {};
       await refreshCompute(true);
@@ -923,11 +911,11 @@ function drawCompute() {
     + (cCfg ? '<div class="row">'
       + '<label class="c"><span class="muted">workers</span><input id="cWorkers" type="number" min="1" max="' + (cCfg.workers.max || 8) + '" step="1" value="' + (cCfg.workers.setting == null ? cCfg.workers.inForce : cCfg.workers.setting) + '" style="width:5.5rem"></label>'
       + '<label class="c"><span class="muted">each worker&#39;s share, %</span><input id="cPct" type="number" min="0" max="100" step="5" value="' + (cCfg.pct == null ? '' : cCfg.pct) + '" style="width:5.5rem"></label>'
-      + '<button id="cSaveKnobs">Set these</button>'
       + '<span class="note">machine-wide that is workers &times; share — '
       + '<b>' + cCfg.workers.inForce + ' &times; ' + (cCfg.pct == null ? '—' : cCfg.pct + '%') + '</b> right now. '
       + 'The share change reaches running work within seconds; the worker count takes effect when the next job starts. 0% parks running work in place until turned back up.</span>'
       + '</div>'
+      + '<div class="row" style="margin-top:.5rem"><button id="cSaveKnobs">Set these</button><span class="note">' + (cSvcMsg.knobs || '') + '</span></div>'
       : '<p class="note neg">the trading service did not answer, so these cannot be shown' + (cErrCfg ? ' — ' + esc(cErrCfg) : '') + '</p>')
     + '</div>'
     + '<div id="cOut"></div>'
@@ -954,8 +942,8 @@ function drawCompute() {
       if (!confirm('Set the ceiling for "' + short + '" to ' + box.value + '% of one processor?\n\nIt applies immediately, including to running work.')) return;
       try {
         const out = await postJson('svc/api/quota', { unit, percent: Number(box.value), confirm: unit });
-        $('#cOut').innerHTML = '<p class="note pos">' + esc(short) + ' is now allowed ' + esc(out.quotaPct) + '%</p>';
-      } catch (e) { $('#cOut').innerHTML = '<p class="note neg">not set — ' + esc(e.message) + '</p>'; }
+        cSvcMsg['quota|' + unit] = '<span class="pos">' + esc(short) + ' is now allowed ' + esc(out.quotaPct) + '%</span>';
+      } catch (e) { cSvcMsg['quota|' + unit] = '<span class="neg">not set — ' + esc(e.message) + '</span>'; }
       refreshCompute(true);
     };
   });
@@ -970,8 +958,9 @@ function drawCompute() {
         + '\n\nHit Cancel and nothing is done.')) return;
       try {
         const out = await postJson('svc/api/service', { unit, action, confirm: unit });
-        $('#cOut').innerHTML = '<p class="note pos">' + esc(short) + ': ' + esc(out.was) + ' &rarr; ' + esc(out.now) + '</p>';
-      } catch (e) { $('#cOut').innerHTML = '<p class="note neg">it did not go through — ' + esc(e.message) + '</p>'; }
+        cSvcMsg['act|' + unit] = '<span class="pos">' + esc(short) + ': ' + esc(out.was) + ' &rarr; ' + esc(out.now) + '</span>';
+      } catch (e) { cSvcMsg['act|' + unit] = '<span class="neg">it did not go through — ' + esc(e.message) + '</span>'; }
+      drawCompute();
       setTimeout(() => refreshCompute(true), 2500);
     };
   });
@@ -979,8 +968,8 @@ function drawCompute() {
   if (save) save.onclick = async () => {
     try {
       await postJson('api/compute-config', { workers: Number($('#cWorkers').value), pct: Number($('#cPct').value) });
-      $('#cOut').innerHTML = '<p class="note pos">saved</p>';
-    } catch (e) { $('#cOut').innerHTML = '<p class="note neg">not saved — ' + esc(e.message) + '</p>'; }
+      cSvcMsg.knobs = '<span class="pos">saved</span>';
+    } catch (e) { cSvcMsg.knobs = '<span class="neg">not saved — ' + esc(e.message) + '</span>'; }
     refreshCompute(true);
   };
 }

@@ -6,10 +6,11 @@
 // record, its own price feed.
 //
 // Settings come from one file in its own data folder (config.json):
-//   link         { url, code } -- an engine installed with the install command
-//                calls out to the web server at url (engine/link.js); the
-//                one-time code becomes its own token on the first start
-//   port         otherwise, the loopback port the web box reaches through its tunnel
+//   link         { url, code } -- the web server this engine calls out to
+//                (engine/link.js), and the install command's one-time code,
+//                which becomes the engine's own token on the first start. The
+//                install command writes it; without it the engine does not start,
+//                because an engine that calls nobody can do nothing
 //   feePerLeg    a fee for paper fills when neither the account's (read with its
 //                key) nor the setup's came with the order
 //   simDelayMs   the delay a live fill takes, as the probe measured it (0 until then)
@@ -19,7 +20,7 @@ const fs = require('fs');
 const path = require('path');
 const { Journal } = require('./journal');
 const { Runner } = require('./runner');
-const { makeServer, makeHandler } = require('./api');
+const { makeHandler } = require('./api');
 const { BinanceMarket } = require('./venues/binance-market');
 const { SimulatedExchange } = require('./venues/simulated');
 const { KeyStore } = require('./keystore');
@@ -29,7 +30,12 @@ const { BinanceAccount, keyVerdict } = require('./venues/binance-account');
 const VERSION = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'VERSION.json'), 'utf8')); } catch (_) { return { release: 'unknown' }; } })();
 const DATA = process.env.ENGINE_DATA || '/var/lib/uts-engine';
 const cfgFile = path.join(DATA, 'config.json');
-const cfg = { port: 18095, feePerLeg: 0.001, simDelayMs: 0, liveEnabled: false, ...(fs.existsSync(cfgFile) ? JSON.parse(fs.readFileSync(cfgFile, 'utf8')) : {}) };
+const cfg = { feePerLeg: 0.001, simDelayMs: 0, liveEnabled: false, ...(fs.existsSync(cfgFile) ? JSON.parse(fs.readFileSync(cfgFile, 'utf8')) : {}) };
+if (!cfg.link || typeof cfg.link.url !== 'string' || !cfg.link.url) {
+  // THE ENGINE CALLS OUT, and only that: refused before anything is opened or written
+  console.error(`${cfgFile} names no web server to call: install the engine with an install command made on the Compute tab`);
+  process.exit(2);
+}
 if (cfg.liveEnabled) {
   // A SWITCH THIS BUILD CANNOT FLIP: the live module is not in this release, so
   // a config asking for real orders is refused at start, loudly
@@ -76,7 +82,7 @@ const health = () => ({
   link: link ? link.status() : null,
 });
 
-journal.append({ type: 'start', release: VERSION.release, commit: VERSION.commit || null, config: { port: cfg.link ? null : cfg.port, calls: cfg.link ? 'out' : 'in', feePerLeg: cfg.feePerLeg, simDelayMs: cfg.simDelayMs, liveEnabled: false } });
+journal.append({ type: 'start', release: VERSION.release, commit: VERSION.commit || null, config: { feePerLeg: cfg.feePerLeg, simDelayMs: cfg.simDelayMs, liveEnabled: false } });
 const recovered = runner.recover();
 journal.append({ type: 'note', what: 'recovered', plans: recovered });
 setInterval(() => runner.tick(), 1000);
@@ -89,17 +95,11 @@ const checkKey = keystore ? async (account, pair, { anyAddress = false } = {}) =
   return r.ok ? { checked: true, ...keyVerdict(r, { anyAddress }) } : { checked: false, why: r.why };
 } : null;
 const deps = { runner, journal, health, keystore, checkKey, lock };
-let server = null;
-if (cfg.link && cfg.link.url) {
-  // THE ENGINE CALLS OUT (engine/link.js): nothing listens on this machine at all
-  const { Link } = require('./link');
-  link = new Link({ url: cfg.link.url, code: cfg.link.code || null, dataDir: DATA, handle: makeHandler(deps), journal, health, lock, version: VERSION });
-  link.start();
-  console.log(`uts-engine ${VERSION.release} calling out to ${cfg.link.url}`);
-} else {
-  server = makeServer(deps);
-  server.listen(cfg.port, '127.0.0.1', () => console.log(`uts-engine ${VERSION.release} listening on 127.0.0.1:${cfg.port}`));
-}
-const stop = () => { journal.append({ type: 'stop' }); market.stop(); if (server) server.close(); if (link) link.stop(); setTimeout(() => process.exit(0), 500); };
+// THE ENGINE CALLS OUT (engine/link.js): nothing listens on this machine at all
+const { Link } = require('./link');
+link = new Link({ url: cfg.link.url, code: cfg.link.code || null, dataDir: DATA, handle: makeHandler(deps), journal, health, lock, version: VERSION });
+link.start();
+console.log(`uts-engine ${VERSION.release} calling out to ${cfg.link.url}`);
+const stop = () => { journal.append({ type: 'stop' }); market.stop(); link.stop(); setTimeout(() => process.exit(0), 500); };
 process.on('SIGTERM', stop);
 process.on('SIGINT', stop);

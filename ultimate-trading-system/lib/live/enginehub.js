@@ -129,7 +129,7 @@ function onUpgrade(req, socket, head) {
   });
 }
 
-// a question to an engine over its link, answered as the tunnel answers
+// a question to an engine over its link: { ok, status, json, ms }, or { ok: false, why }
 function call(engineId, method, p, body = null, timeoutMs = 4000) {
   if (!attached) return relay(engineId, method, p, body, timeoutMs);
   const c = conns.get(engineId);
@@ -194,8 +194,6 @@ function installRoutes(app, express) {
       const out = require('./enginesetup').enroll(b.code, { lock: b.lock, release: b.release, machine: b.machine });
       // a different machine under the same short name: its record here starts afresh, the old one kept beside it
       if (out.again && !out.sameMachine) require('./enginelink').restartMirror(out.engineId);
-      // moved from the tunnel: the same engine and the same record, now followed over its link
-      if (out.moved) require('./enginelink').relink(out.engineId);
       require('./enginelink').followAll(require('./targets').listEngines());
       return res.json({ engineId: out.engineId, name: out.name, token: out.token });
     } catch (e) {

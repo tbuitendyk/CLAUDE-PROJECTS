@@ -1,12 +1,9 @@
 'use strict';
-// engine/api.js -- WHAT THE WEB BOX MAY ASK OF THE ENGINE, and the two ways it
-// can arrive (owner, 2026-09-25: the engine calls out; nothing connects in):
-//   * over the link the engine opens to the web server itself (engine/link.js):
-//     each request arrives as a message and is answered through makeHandler;
-//   * on the machine's own loopback address (makeServer), for an engine the web
-//     box still reaches through its SSH tunnel until it is moved to the link.
-// Both ways run the one handler below, so an engine answers the same questions
-// the same way whichever way they came.
+// engine/api.js -- WHAT THE WEB BOX MAY ASK OF THE ENGINE (owner, 2026-09-25:
+// "the engine connects out to our server and keeps that connection open ...
+// Nothing ever connects in"). Each question arrives as a message over the link
+// the engine opens to the web server itself (engine/link.js) and is answered
+// here; nothing listens on the engine's machine at all.
 //
 //   GET  /health            the engine's version, clock, feeds and plan counts
 //   GET  /state             every plan: as received, where it stands, its money
@@ -24,13 +21,6 @@
 //   POST /setups/:id/verbose  { on } -- every hourly trail check of this setup's
 //                           plans written down, or not (Verbose on Setup detail)
 //   GET  /journal?since=N   the record, numbered lines from N
-//   GET  /events?since=N    (loopback only) the same, then every new line as it is
-//                           written and the live figures of open positions
-const http = require('http');
-
-// the largest body each question may carry
-const LIMITS = { plans: 1 << 20, verbose: 4096, keys: 16384, cancel: 4096 };
-
 function makeHandler({ runner, journal, health, keystore = null, checkKey = null, lock = null }) {
   // one question in, { status, json } out -- never throws
   return async function handle(method, target, body = {}) {
@@ -94,55 +84,4 @@ function makeHandler({ runner, journal, health, keystore = null, checkKey = null
   };
 }
 
-function readBody(req, limit) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    let size = 0;
-    req.on('data', (c) => { size += c.length; if (size > limit) { reject(new Error('too large')); req.destroy(); } else chunks.push(c); });
-    req.on('end', () => { try { resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}); } catch (e) { reject(new Error('not JSON')); } });
-    req.on('error', reject);
-  });
-}
-function send(res, code, obj) {
-  const text = JSON.stringify(obj);
-  res.writeHead(code, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(text), 'Cache-Control': 'no-store' });
-  res.end(text);
-}
-const limitOf = (pathname) => (pathname === '/plans' ? LIMITS.plans : pathname.startsWith('/keys/') ? LIMITS.keys : pathname.endsWith('/verbose') ? LIMITS.verbose : LIMITS.cancel);
-
-// THE LOOPBACK LISTENER, for an engine the web box reaches through its tunnel
-function makeServer(deps) {
-  const { journal, health } = deps;
-  const handle = makeHandler(deps);
-  const followers = new Set();
-  journal.on('record', (rec) => { for (const f of followers) f(`id: ${rec.n}\nevent: record\ndata: ${JSON.stringify(rec)}\n\n`); });
-  journal.on('mark', (m) => { for (const f of followers) f(`event: mark\ndata: ${JSON.stringify(m)}\n\n`); });
-  const server = http.createServer(async (req, res) => {
-    const u = new URL(req.url, 'http://engine');
-    try {
-      if (req.method === 'GET' && u.pathname === '/events') {
-        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
-        const from = Number(u.searchParams.get('since')) || (Number(req.headers['last-event-id']) + 1) || 1;
-        let sent = from - 1;
-        for (;;) {
-          const batch = journal.since(sent + 1, 2000);
-          for (const rec of batch) { res.write(`id: ${rec.n}\nevent: record\ndata: ${JSON.stringify(rec)}\n\n`); sent = rec.n; }
-          if (batch.length < 2000) break;
-        }
-        const f = (chunk) => res.write(chunk);
-        followers.add(f);
-        const beat = setInterval(() => res.write(`event: beat\ndata: ${JSON.stringify(health())}\n\n`), 10000);
-        req.on('close', () => { followers.delete(f); clearInterval(beat); });
-        return undefined;
-      }
-      const body = req.method === 'POST' ? await readBody(req, limitOf(u.pathname)) : {};
-      const out = await handle(req.method, `${u.pathname}${u.search}`, body);
-      return send(res, out.status, out.json);
-    } catch (e) {
-      return send(res, 400, { error: e.message });
-    }
-  });
-  return server;
-}
-
-module.exports = { makeHandler, makeServer, LIMITS };
+module.exports = { makeHandler };

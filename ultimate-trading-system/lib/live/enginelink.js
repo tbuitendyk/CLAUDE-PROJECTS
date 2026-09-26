@@ -2,49 +2,25 @@
 // lib/live/enginelink.js -- THE WEB BOX'S END OF THE LINK TO THE NEW TRADING
 // ENGINE (loop of 2026-09-25, LOOP-2026-09-25-ENGINE.md).
 //
-// Two ways to reach an engine, as its record says (lib/live/targets.js):
-//   * link 'calls-out' -- the engine called this system and keeps its link open
-//     (lib/live/enginehub.js); every question here goes down that link;
-//   * link 'tunnel' -- the engine listens on its own machine's loopback address
-//     and this machine reaches it through an SSH tunnel whose local end is the
-//     record's localPort: 127.0.0.1:<localPort> and nothing else.
+// Every engine calls this system and keeps its link open (lib/live/enginehub.js);
+// every question here goes down that link. Nothing here reaches into the
+// engine's machine.
 //
-// THE MIRROR. The engine writes every event to its own record and streams each
-// line as it is written. This follows that stream, keeps the lines it received
+// THE MIRROR. The engine writes every event to its own record and sends each
+// line over its link as it is written. This keeps the lines it received
 // (raw.jsonl, byte for byte what the engine sent), and writes each one again in
 // the words the Trade tab already reads (journal.jsonl) -- so Paper Books and
 // Live Trading are drawn by the one path they already share (RULE TWO), from a
 // record, never from memory. The live figures of open positions (price now,
 // money open, stop, best price) arrive beside the lines and are held in memory
 // only, exactly as the engine holds them.
-const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
 const MIRROR_DIR = () => process.env.GC_ENGINE_MIRROR || path.join(__dirname, '..', '..', 'data', 'live', 'engine');
 
 function call(target, method, p, body = null, timeoutMs = 4000) {
-  if (target && target.link === 'calls-out') return require('./enginehub').call(target.id, method, p, body, timeoutMs);
-  return new Promise((resolve) => {
-    const data = body == null ? null : JSON.stringify(body);
-    const started = Date.now();
-    const req = http.request({
-      host: '127.0.0.1', port: target.localPort, method, path: p, timeout: timeoutMs,
-      headers: data ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {},
-    }, (res) => {
-      const chunks = [];
-      res.on('data', (c) => chunks.push(c));
-      res.on('end', () => {
-        let json = null;
-        try { json = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (_) { json = null; }
-        resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, json, ms: Date.now() - started });
-      });
-    });
-    req.on('timeout', () => { req.destroy(); resolve({ ok: false, status: 0, why: `the engine sent nothing for ${timeoutMs / 1000} seconds`, ms: Date.now() - started }); });
-    req.on('error', (e) => resolve({ ok: false, status: 0, why: e.code === 'ECONNREFUSED' ? 'nothing answers on the tunnel\'s port on this machine -- the tunnel is not up, or the engine is not on the trading box yet' : e.message, ms: Date.now() - started }));
-    if (data) req.write(data);
-    req.end();
-  });
+  return require('./enginehub').call(target.id, method, p, body, timeoutMs);
 }
 
 async function health(target) {
@@ -120,9 +96,7 @@ class Mirror {
     this.verbose = new Map();       // setupId -> { on, utc }: Verbose as the engine last recorded it
     this.lastHealth = null;
     this.status = { following: false, since: null, lastRecordAt: null, why: 'not started' };
-    this.req = null;
     this.stopped = false;
-    this.failures = 0;
     fs.mkdirSync(this.dir, { recursive: true });
     if (fs.existsSync(this.rawFile)) {
       for (const line of fs.readFileSync(this.rawFile, 'utf8').split('\n')) {
@@ -135,8 +109,7 @@ class Mirror {
     }
   }
 
-  // the engine's record arriving over its link (an engine that calls out): a line
-  // already kept is never kept twice, exactly as on the tunnel's stream
+  // the engine's record arriving over its link: a line already kept is never kept twice
   takeFromLink(recs) {
     for (const rec of recs) {
       if (!rec || !(rec.n > this.n)) continue;
@@ -155,70 +128,20 @@ class Mirror {
     for (const ev of translate(rec, this.plans)) fs.appendFileSync(this.eventsFile, `${JSON.stringify(ev)}\n`);
   }
 
+  // the engine brings its record to this system itself, over its link
   start() {
-    if (this.stopped || this.req) return;
-    // an engine that calls out brings its record to this system itself
-    if (this.target.link === 'calls-out') { require('./enginehub').watch(this.target.id, this); this.status = { ...this.status, following: true, since: this.status.since || new Date().toISOString(), why: null }; return; }
-    const req = http.request({ host: '127.0.0.1', port: this.target.localPort, method: 'GET', path: `/events?since=${this.n + 1}`, headers: { Accept: 'text/event-stream' } }, (res) => {
-      if (res.statusCode !== 200) { res.resume(); this.retry(`the engine answered ${res.statusCode}`); return; }
-      this.failures = 0;
-      this.status = { following: true, since: new Date().toISOString(), lastRecordAt: this.status.lastRecordAt, why: null };
-      let buf = '';
-      res.setEncoding('utf8');
-      res.on('data', (chunk) => {
-        buf += chunk;
-        let i;
-        while ((i = buf.indexOf('\n\n')) >= 0) {
-          const frame = buf.slice(0, i);
-          buf = buf.slice(i + 2);
-          this.frame(frame);
-        }
-      });
-      res.on('end', () => this.retry('the engine closed the stream'));
-      res.on('error', (e) => this.retry(e.message));
-    });
-    req.on('error', (e) => this.retry(e.code === 'ECONNREFUSED' ? 'nothing answers on the tunnel\'s port on this machine' : e.message));
-    req.end();
-    this.req = req;
-  }
-
-  frame(text) {
-    let ev = 'message';
-    const data = [];
-    for (const line of text.split('\n')) {
-      if (line.startsWith('event:')) ev = line.slice(6).trim();
-      else if (line.startsWith('data:')) data.push(line.slice(5).trim());
-    }
-    if (!data.length) return;
-    let obj;
-    try { obj = JSON.parse(data.join('\n')); } catch (_) { return; }
-    if (ev === 'record') {
-      if (!(obj.n > this.n)) return;   // a line already kept is never kept twice
-      this.n = obj.n;
-      this.status.lastRecordAt = new Date().toISOString();
-      this.take(obj);
-    } else if (ev === 'mark') this.marks.set(obj.planId, obj);
-    else if (ev === 'beat') this.lastHealth = { at: new Date().toISOString(), health: obj };
-  }
-
-  retry(why) {
-    this.req = null;
-    this.failures += 1;
-    this.status = { ...this.status, following: false, why };
     if (this.stopped) return;
-    const wait = Math.min(30000, 1000 * 2 ** Math.min(this.failures, 5));
-    setTimeout(() => this.start(), wait).unref();
+    require('./enginehub').watch(this.target.id, this);
+    this.status = { ...this.status, following: true, since: this.status.since || new Date().toISOString(), why: null };
   }
 
   stop() {
     this.stopped = true;
-    if (this.req) this.req.destroy();
-    if (this.target.link === 'calls-out') require('./enginehub').unwatch(this.target.id);
+    require('./enginehub').unwatch(this.target.id);
   }
 
   // whether the engine's record is reaching this system, in the shape the screens read
   linkStatus() {
-    if (this.target.link !== 'calls-out') return this.status;
     const h = require('./enginehub').status(this.target.id);
     return { following: h.linked, since: h.since, lastRecordAt: this.status.lastRecordAt, why: h.why };
   }
@@ -301,12 +224,6 @@ function restartMirror(engineId) {
   const dir = path.join(MIRROR_DIR(), engineId);
   if (fs.existsSync(dir)) fs.renameSync(dir, `${dir}.before-${new Date().toISOString().replace(/[:.]/g, '-')}`);
 }
-// the same engine, reached a new way: its copy of the record carries on, the old way's stream stops
-function relink(engineId) {
-  const m = mirrors.get(engineId);
-  if (m && m.req) { m.stopped = true; m.req.destroy(); m.req = null; }
-  if (m) mirrors.delete(engineId);
-}
 function mirrorFor(target) {
   if (!mirrors.has(target.id)) mirrors.set(target.id, new Mirror(target));
   const m = mirrors.get(target.id);
@@ -320,4 +237,4 @@ function followAll(list) {
   for (const t of list) mirrorFor(t).start();
 }
 
-module.exports = { call, health, postPlan, cancelPlan, cancelLeftovers, engineState, setVerbose, syncVerbose, translate, Mirror, mirrorFor, followAll, restartMirror, relink, MIRROR_DIR };
+module.exports = { call, health, postPlan, cancelPlan, cancelLeftovers, engineState, setVerbose, syncVerbose, translate, Mirror, mirrorFor, followAll, restartMirror, MIRROR_DIR };

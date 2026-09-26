@@ -20,8 +20,8 @@
 //                        answer to each request;
 //      server -> engine: welcome (where its copy of the record ends, and the
 //                        release the web server runs, so a screen can say when
-//                        this engine is behind), and requests (the same
-//                        questions the loopback listener answers -- engine/api.js).
+//                        this engine is behind), and requests (the fixed
+//                        questions in engine/api.js).
 //    A dropped link is opened again, waiting a little longer each time.
 //    Nothing that arrives over the link is ever run as code: a request is one of
 //    the fixed questions in engine/api.js, answered or refused.

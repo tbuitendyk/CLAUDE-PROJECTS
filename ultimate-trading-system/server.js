@@ -232,7 +232,7 @@ app.get('/api/account/trading', async (req, res) => {
     }));
     res.json({
       accounts: acc.tradingAccounts(), offered: acc.EXCHANGES,
-      engines: engines.map((t) => ({ id: t.id, name: t.name, isDefault: !!t.isDefault, linkKind: t.link || null })), keys,
+      engines: engines.map((t) => ({ id: t.id, name: t.name, isDefault: !!t.isDefault })), keys,
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

@@ -348,6 +348,25 @@ module.exports = {
     assert.ok(page.includes("'api/compute-config'"), 'the Compute tab no longer reads the roles and knobs from the trading service');
   },
 
+  // RULE FOUR-A ON THE COMPUTE TAB (3.267.0, owner 2026-09-26: "fix whatever
+  // that Set the ceiling thing is about"): a button never shares a row with a
+  // box -- Set the ceiling sat beside its box, and Set these beside its two --
+  // and each button's answer is written beside it, kept across the redraw.
+  // Counted, not looked at: every row of the tab's source, every branch of it.
+  theComputeTabGivesEveryButtonARowOfItsOwn() {
+    const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
+    const src = page.slice(page.indexOf('function svcCard'), page.indexOf('async function refreshCompute'));
+    const rows = src.split('<div class="row"').slice(1).map((r) => r.slice(0, r.indexOf('</div>')));
+    const field = /<input(?![^>]*type="(?:checkbox|radio)")|<select|<textarea/;
+    const squeezed = rows.filter((r) => /<button/.test(r) && field.test(r));
+    assert.ok(rows.length > 30, `the tab's rows were found: ${rows.length}`);
+    assert.deepStrictEqual(squeezed.map((r) => r.replace(/\s+/g, ' ').slice(0, 90)), [], 'a button shares a row with a box on the Compute tab');
+    for (const [btn, key] of [['Set the ceiling', "cSvcMsg['quota|' + u.unit]"], ['Stop', "cSvcMsg['act|' + u.unit]"], ['Set these', 'cSvcMsg.knobs']]) {
+      const row = rows.find((r) => r.includes(`>${btn}</button>`));
+      assert.ok(row && row.includes(key), `${btn}: its answer is written beside it`);
+    }
+  },
+
   // The unit that runs it has to come back on its own: it is the way back.
   async theControlsOwnUnitAlwaysRestartsAndIsTiny() {
     const unit = fs.readFileSync(path.join(__dirname, '..', 'service-control', 'uts-service-control.service'), 'utf8');

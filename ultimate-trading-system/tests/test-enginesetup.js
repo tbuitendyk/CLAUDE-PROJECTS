@@ -11,7 +11,6 @@ const path = require('path');
 const crypto = require('crypto');
 
 process.env.GC_ENGINE_SETUPS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-es-'));
-process.env.GC_ENGINE_KEYS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-es-keys-'));
 process.env.GC_TARGETS_FILE = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gc-es-targets-')), 'targets.json');
 const es = require('../lib/live/enginesetup');
 const targets = require('../lib/live/targets');
@@ -161,35 +160,15 @@ module.exports.stepTwoInstallsTheEngineWithAOneTimeCode = function () {
   assert.strictEqual(es.lockOf({ publicKey: 'not a key' }), null);
   // once it has called in, where it runs is where it runs
   refused(() => es.setChoice(a.id, 'ready', 'where', 'local'), /the engine is installed and has called in; to run one on another machine, set up another engine/);
-  // an engine the tunnel reaches keeps its short name: no install code can take it
-  fs.writeFileSync(process.env.GC_TARGETS_FILE, JSON.stringify({ ...JSON.parse(fs.readFileSync(process.env.GC_TARGETS_FILE, 'utf8')), 'tun-engine': { id: 'tun-engine', kind: 'engine', link: 'tunnel', name: 'Tunnel', host: 'h', user: 'u', enginePort: 18095, localPort: 18095 } }));
-  const tunId = 'es-muhgtun1-abcdef';
-  fs.writeFileSync(path.join(process.env.GC_ENGINE_SETUPS_DIR, `${tunId}.json`), JSON.stringify({ id: tunId, name: 'Tun', shortName: 'tun-engine', templateVersion: 2, createdUtc: '2026-09-26T00:00:00.000Z', engineId: null, choices: { where: 'server' }, ticks: { ready: { binance: true, on: true, size: true } }, install: null }));
-  refused(() => es.enroll(es.makeInstallCode(tunId, t0).code, {}, t0 + 60000), /already belongs to an engine the tunnel reaches/);
-  es.remove(tunId);
+  // a short name kept by a record of another kind is never taken by an install code, and the code is not spent
+  fs.writeFileSync(process.env.GC_TARGETS_FILE, JSON.stringify({ ...JSON.parse(fs.readFileSync(process.env.GC_TARGETS_FILE, 'utf8')), 'box-3': { id: 'box-3', kind: 'ssh-box', host: 'h', user: 'u' } }));
+  const boxId = 'es-muhgbox1-abcdef';
+  fs.writeFileSync(path.join(process.env.GC_ENGINE_SETUPS_DIR, `${boxId}.json`), JSON.stringify({ id: boxId, name: 'Box', shortName: 'box-3', templateVersion: 2, createdUtc: '2026-09-26T00:00:00.000Z', engineId: null, choices: { where: 'server' }, ticks: { ready: { binance: true, on: true, size: true } }, install: null }));
+  refused(() => es.enroll(es.makeInstallCode(boxId, t0).code, {}, t0 + 60000), /the short name box-3 already belongs to another engine/);
+  assert.strictEqual(es.get(boxId).install.usedUtc, null, 'a refused call does not use the code up');
+  es.remove(boxId);
   es.remove(a.id);
   targets.deleteEngine('cdmx-engine', []);
-};
-
-// RULE NINE: a checklist started on template 1 moves to template 2 once, and its
-// sign-in key -- the thing template 2 never holds -- is deleted with its folder
-module.exports.aTemplateOneChecklistMovesAndItsSignInKeyIsDeleted = function () {
-  const id = 'es-muhgold1-0a1b2c';
-  const keys = path.join(process.env.GC_ENGINE_KEYS_DIR, id);
-  fs.mkdirSync(keys, { recursive: true });
-  fs.writeFileSync(path.join(keys, 'key'), 'THE-PRIVATE-HALF');
-  fs.writeFileSync(path.join(process.env.GC_ENGINE_SETUPS_DIR, `${id}.json`), JSON.stringify({
-    id, name: 'CDMX UTS Trading Engine (AWS)', shortName: 'cdmx-engine', templateVersion: 1, createdUtc: '2026-09-25T20:55:00.000Z', updatedUtc: '2026-09-25T21:00:00.000Z', engineId: null,
-    choices: { where: 'server', keyHow: 'made' }, ticks: { ready: { binance: true, ip: true, on: true, size: true } },
-    fields: { access: { host: 'h', user: 'admin' } }, key: { how: 'made', publicKey: 'ssh-ed25519 AAAA', fingerprint: 'SHA256:x' }, checks: { access: { signedIn: { ok: true } } },
-  }));
-  assert.deepStrictEqual(es.repairTemplateOne(), { changed: 1, named: ['CDMX UTS Trading Engine (AWS)'] });
-  const rec = JSON.parse(fs.readFileSync(path.join(process.env.GC_ENGINE_SETUPS_DIR, `${id}.json`), 'utf8'));
-  assert.deepStrictEqual([rec.templateVersion, rec.choices, rec.ticks, rec.key, rec.fields, rec.checks, rec.install], [2, { where: 'server' }, { ready: { binance: true, on: true, size: true } }, undefined, undefined, undefined, null]);
-  assert.strictEqual(fs.existsSync(keys), false, 'the sign-in key and its folder are gone');
-  assert.deepStrictEqual(es.get(id).steps.map((s) => [s.open, s.done]), [[true, true], [true, false], [false, false]], 'step 1 stays done; step 2 is the install command');
-  assert.deepStrictEqual(es.repairTemplateOne(), { changed: 0, named: [] }, 'once');
-  es.remove(id);
 };
 
 // the page draws step 2 with a button in a row of its own each time, and never a code it was not just given

@@ -46,7 +46,7 @@ module.exports = {
     const web = tmp('co-web-');
     const eng = tmp('co-eng-');
     const port = await freePort();
-    const env = { ...process.env, PORT: String(port), GC_TARGETS_FILE: path.join(web, 'targets.json'), GC_ENGINE_MIRROR: path.join(web, 'mirror'), GC_ENGINE_SETUPS_DIR: path.join(web, 'es'), GC_ENGINE_KEYS_DIR: path.join(web, 'keys'), GC_NO_ENGINE_PRODUCE: '1' };
+    const env = { ...process.env, PORT: String(port), GC_TARGETS_FILE: path.join(web, 'targets.json'), GC_ENGINE_MIRROR: path.join(web, 'mirror'), GC_ENGINE_SETUPS_DIR: path.join(web, 'es'), GC_NO_ENGINE_PRODUCE: '1' };
     const server = spawn(process.execPath, ['server.js'], { cwd: ROOT, env, stdio: 'ignore' });
     let engine = null;
     try {
@@ -67,7 +67,7 @@ module.exports = {
       });
       assert.ok(linked, 'the engine called in and answers over its link');
       // (run from the repository the engine has no VERSION.json; the package the installer fetches carries one -- tested beside the install scripts)
-      assert.deepStrictEqual([linked.linkKind, linked.health.realOrders, linked.health.link.linked], ['calls-out', 'off', true]);
+      assert.deepStrictEqual([linked.health.realOrders, linked.health.link.linked], ['off', true]);
       // what each side keeps
       const lock = JSON.parse(fs.readFileSync(path.join(eng, 'lock.json'), 'utf8'));
       const tok = JSON.parse(fs.readFileSync(path.join(eng, 'link.json'), 'utf8'));
@@ -114,10 +114,25 @@ module.exports = {
     }
   },
 
+  // AN ENGINE CALLS OUT, AND ONLY THAT (3.267.0): with no web server to call it
+  // does not start -- it refuses before it opens or writes anything, and it
+  // never listens for anyone instead
+  async anEngineWithNoWebServerToCallRefusesToStart() {
+    const eng = tmp('co-none-');
+    try {
+      fs.writeFileSync(path.join(eng, 'config.json'), JSON.stringify({ liveEnabled: false }));
+      const out = await new Promise((resolve) => {
+        execFile(process.execPath, ['engine/main.js'], { cwd: ROOT, env: { ...process.env, ENGINE_DATA: eng }, timeout: 15000 }, (err, stdout, stderr) => resolve({ code: err ? err.code : 0, stderr: String(stderr) }));
+      });
+      assert.strictEqual(out.code, 2, JSON.stringify(out));
+      assert.ok(/names no web server to call: install the engine with an install command made on the Compute tab/.test(out.stderr), out.stderr);
+      assert.deepStrictEqual(fs.readdirSync(eng), ['config.json'], 'nothing opened or written: no record, no lock, no key store');
+    } finally { fs.rmSync(eng, { recursive: true, force: true }); }
+  },
+
   // A CHILD OF THE WEB SERVICE -- the decisions run in one of their own -- asks an
   // engine that calls out through its parent, with the secret it was started with
   async aChildOfTheServiceReachesAnEngineThroughItsParent() {
-    const express = require('express');
     const hub = require('../lib/live/enginehub');
     const targets = require('../lib/live/targets');
     const dir = tmp('co-relay-');
@@ -125,12 +140,8 @@ module.exports = {
     process.env.GC_ENGINE_MIRROR = path.join(dir, 'mirror');
     const token = crypto.randomBytes(32).toString('base64url');
     targets.saveCallingEngine({ id: 'relay-engine', name: 'Relay engine', tokenHash: crypto.createHash('sha256').update(token).digest('hex') });
-    const app = express();
-    app.use(express.json());
-    hub.installRoutes(app, express);
-    const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
-    const port = server.address().port;
-    hub.attach(server, port);
+    // the hub takes links on the one listener it is attached to, once per process: the run's shared one
+    const { port } = await require('./engine-linked').hubListener();
     require('../lib/live/enginelink').followAll(targets.listEngines());
     // a stand-in engine: the real link, answering one question
     const { Link } = require('../engine/link');
@@ -155,7 +166,8 @@ module.exports = {
       assert.strictEqual(outsider.ok, false);
     } finally {
       lk.stop();
-      server.close();
+      require('../lib/live/enginelink').followAll([]);
+      targets.deleteEngine('relay-engine', []);
       fs.rmSync(dir, { recursive: true, force: true });
       fs.rmSync(edir, { recursive: true, force: true });
     }
