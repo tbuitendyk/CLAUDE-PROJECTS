@@ -222,7 +222,6 @@ let aErr = null;             // why they could not be read, when they could not
 let aTr = null;              // the trading accounts, the engines, and what each engine says of their keys (loop of 2026-09-25)
 let aTrErr = null;
 let aTrKeys = null;          // the trading account whose key form is open, or null
-let aTrTyped = {};           // the new-account form as typed, kept across a redraw (never the keys)
 // SETTING UP A TRADING ACCOUNT, STEP BY STEP (3.268.0): the checklist area, shaped as a platform's
 let aAsOpen = (() => { try { return localStorage.getItem('setup-as-open') === '1'; } catch (_) { return false; } })();
 let aAsSel = (() => { try { return localStorage.getItem('setup-as-sel'); } catch (_) { return null; } })();
@@ -327,21 +326,16 @@ function tradingAccountCard(a) {
 }
 function tradingAccountsHtml() {
   if (!aTr) return '<div class="panel"><h3 style="margin-top:0">Trading accounts</h3><p class="note neg">the trading service did not answer, so the trading accounts cannot be shown' + (aTrErr ? ' — ' + esc(aTrErr) : '') + '</p></div>';
-  const v = (k) => esc(aTrTyped[k] || '');
   return '<div class="panel"><h3 style="margin-top:0">Trading accounts</h3>'
     + '<p class="note">One record for each trading account a setup trades through, named the way the setup names its account. '
     + 'Its keys are locked in this browser with the trading platform&#39;s lock before they are sent, so this system passes them on without being able to read them, '
     + 'and the platform keeps them encrypted on its machine. Nothing shows them again — only whether they are there.</p>'
     + asHtml()
     + ((aTr.accounts || []).length ? aTr.accounts.map(tradingAccountCard).join('') : '<p class="note">no trading account yet</p>')
-    + '<div class="tile"><div class="k" style="margin-bottom:.35rem">A new trading account</div>'
-    + '<div class="row" style="align-items:flex-end">'
-    + '<label class="f" title="the name a setup gives its account: letters, digits, dot, dash and underscore">account name<input id="taId" value="' + v('id') + '" style="width:12rem"></label>'
-    + '<label class="f" title="the exchange the account is on">exchange<select id="taEx">' + (aTr.offered || []).map((x) => '<option value="' + esc(x.id) + '">' + esc(x.label) + '</option>').join('') + '</select></label>'
-    + '<label class="f" title="anything you want to see beside the name">note<input id="taNote" value="' + v('note') + '" style="width:20rem"></label>'
-    + '</div>'
-    + '<div class="row" style="margin-top:.5rem"><button id="taSave" class="pri">Save the trading account</button><span id="taMsg" class="note"></span></div>'
-    + '</div></div>';
+    // A TRADING ACCOUNT IS MADE BY STARTING ITS SETUP (3.269.1, owner 2026-09-26: "remove
+    // the old 'A new trading account' box"): the checklist above names it and
+    // makes its record, so there is one way in, not two
+    + '</div>';
 }
 // ---- SETTING UP A TRADING ACCOUNT, STEP BY STEP (3.268.0, owner 2026-09-26) ----
 // "we're going to follow the same build while setting-up pattern with a new
@@ -429,20 +423,8 @@ function wireAs(redraw) {
 }
 function wireTradingAccounts() {
   if (!aTr) return;
-  for (const [sel, key] of [['#taId', 'id'], ['#taNote', 'note']]) { const el = $(sel); if (el) el.oninput = () => { aTrTyped[key] = el.value; }; }
   const redraw = async () => { await loadAccount(); drawAccount(); };
   wireAs(redraw);
-  const sv = $('#taSave');
-  if (sv) sv.onclick = async () => {
-    const msg = $('#taMsg');
-    sv.disabled = true; msg.innerHTML = 'saving…';
-    try {
-      await postJson('api/account/trading', { id: $('#taId').value.trim(), exchange: $('#taEx').value, note: $('#taNote').value });
-      aTrTyped = {};
-      await redraw();
-      const m2 = $('#taMsg'); if (m2) m2.innerHTML = '<span class="pos">saved</span>';
-    } catch (e) { msg.innerHTML = '<span class="neg">not saved — ' + esc(e.message) + '</span>'; sv.disabled = false; }
-  };
   document.querySelectorAll('[data-takeys]').forEach((b) => { b.onclick = () => { aTrKeys = b.dataset.takeys; drawAccount(); const k = $('#takKey'); if (k) k.focus(); }; });
   document.querySelectorAll('[data-tadel]').forEach((b) => {
     b.onclick = async () => {
