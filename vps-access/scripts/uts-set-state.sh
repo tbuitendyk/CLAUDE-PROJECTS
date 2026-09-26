@@ -26,6 +26,8 @@ print(f"{d.get('name')} ({sid}) · status {d.get('status')} · cancel asked {boo
 print(f"  progress: {str(d.get('progress') or '')[:160]}")
 print(f"  units done {p.get('unitsDone')} of {p.get('unitsTotal')} · workers {p.get('workers')} · records on disk {rows}")
 print(f"  hours kept: {hw} · old price record still on it: {bool(d.get('dataManifest'))}")
+f = d.get('failures') or []
+print(f"  units that failed: {len(f)}" + (f" -- last: {str(f[-1])[:200]}" if f else ''))
 PY
 curl -sS -m 20 http://127.0.0.1:8094/api/stage-gate/status | python3 -c '
 import json, sys
