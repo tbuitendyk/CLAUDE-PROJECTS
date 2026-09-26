@@ -118,6 +118,7 @@ module.exports = {
     const m = new link.Mirror(target);
     try {
       m.start();
+      assert.strictEqual(m.linkStatus().following, false, 'before the engine calls in, the link says it is not up');
       await eng.start();
       const plan = { planId: 'setup-loop|2026-09-22T00:00:00.000Z', setupId: 'setup-loop', mode: 'simulated', symbol: 'LTCUSDT', chunkStart: '2026-09-22T00:00:00.000Z', entryTs: t0, call: 1, cell: { entry: 'breakout', gate: 'active', dMult: 0.75, tHours: 65, trailMult: 1.5, armMult: 0.5 }, bandPct: 5, size: { quoteUsd: 100 }, feePerLeg: 0.001 };
       const posted = await link.postPlan(target, plan);

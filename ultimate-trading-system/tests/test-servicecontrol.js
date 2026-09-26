@@ -367,6 +367,17 @@ module.exports = {
     }
   },
 
+  // ONE THING, ONE NAME (3.267.1, owner 2026-09-26: "you've got the section
+  // above on compute saying 'trading platform' and the section itself saying
+  // 'The trading engine'"): the section is named as its row above names it,
+  // whether the service answered or not
+  theTradingPlatformSectionIsNamedAsItsRowIs() {
+    const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
+    assert.ok(/<b style="min-width:11rem; font-size:\.8rem">trading platform<\/b>/.test(page), 'the row under Where each part runs says trading platform');
+    assert.strictEqual(page.split('<h3 style="margin-top:0">The trading platform</h3>').length - 1, 2, 'both of the section\'s headings say The trading platform');
+    assert.ok(!/>The trading engine<\/h3>/.test(page), 'no heading still says The trading engine');
+  },
+
   // The unit that runs it has to come back on its own: it is the way back.
   async theControlsOwnUnitAlwaysRestartsAndIsTiny() {
     const unit = fs.readFileSync(path.join(__dirname, '..', 'service-control', 'uts-service-control.service'), 'utf8');
