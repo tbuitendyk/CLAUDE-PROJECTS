@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **97841eed07a9 — what the box is serving**, not from the working tree.
+Generated from **e89f91a64e19 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -856,7 +856,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 
 # Boards
 
-## What the controls are called (239)
+## What the controls are called (245)
 
 - `— no filter: every unit —`
 - `— nothing came out of`
@@ -865,6 +865,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `, none from a walk set`
 - `(centre)`
 - `(no unit carried a lean)`
+- `(UTC)`
 - `/\u00d7`
 - `\u00b7`
 - `\u00d7`
@@ -927,6 +928,7 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `coin`
 - `coin + chunk shape + alongside`
 - `coin and shape`
+- `coin(s),`
 - `coins`
 - `coins and shapes`
 - `coins in the money`
@@ -972,6 +974,8 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `held-back trades`
 - `held-back verdict`
 - `held,`
+- `hours · kept`
+- `Hours kept:`
 - `in all`
 - `independent voices`
 - `is`
@@ -1000,9 +1004,11 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `Next`
 - `no`
 - `NO`
+- `no hours kept —`
 - `no records are open`
 - `no units`
 - `none`
+- `none ·`
 - `not recorded on this run yet`
 - `nothing cleared the floors`
 - `nothing here`
@@ -1119,18 +1125,17 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - `trained`
 - `voices`
 
-## Sentences the page prints (99)
+## Sentences the page prints (98)
 
 - Table 3.A
 - Table 3.B
 - Table 3.C
 - no record sets of this stage on this box yet — start one on Sweep
-- · price files fingerprint-checked at every launch
+- · every stage reads the hours kept at stage 1
 - Its tables appear when it lands.
 - no stage 3 record set is picked — pick one on Stage 3
 - . Its tables appear when it lands.
 - notes — why this run exists, what it showed, what it cost
-- STAMP FAILED — this run cannot be proved comparable to any other
 - THIS SET DOES NOT MATCH ITS OWN PLAN.
 - unit(s) failed and are missing from every table below — read the numbers accordingly.
 - put away — press the arrow to bring it back.
@@ -1221,10 +1226,10 @@ again. and asset. back been below board cache cached candle. closed coin comma-s
 - settings in the money over the whole test window
 - The plateaus, read on the test window
 
-## Every word, flat (571)
+## Every word, flat (567)
 
 ```
-1st 1v 2nd 3.A 3.B 3.C 3rd above above. accordingly. acted active acts actually added adding adds after afterwards. again again. against agreed all alone alone. alongside already always always-long an and another answer any apart appear appears APPLIED Apply apply are argmax arm around arrow as aside asked asked. asking asks at auto auto-apply average averaged averages avg away back back. background band BAND bands bar be beat beats because before behind. belong below beside best better biggest blank blank. block blocked board BOOST both bought box boxes breakout bring broken building but by call called came campaign can cannot carried carries carry ceiling centre changes Check check chunk chunks Clear cleared clears Close coin coin/chunk-shape coins column columns combinations committee committees comparable compared comparisons confirm conviction copies Copy copy cost could count cover cut Data Date decision DECISION decisions declare declare. declared declares declares. Delete deletes did died different directional disk DOES does done down Drop dropped dropping Dropping each edge. either else empty end enough entry every Every exactly exist existed exists extra factored FACTORED FAILED failed families far few fewer fewer. field files Fill filled Filling filling fills filter filter. filters fingerprint fingerprint-checked finished finishes first first. fit fixed floors for forecast form forward four from fuller Funnel gate GATE go goes going half handed held held-back helped here here. hidden history hold holds how if in independent Independent inside into is it It it. Its ITS its just keep keeps. kept kind landed lands. last launch layout lead lean learned leaves left leverage lie like line list LOGREG long look-back look-backs looks. losing made marked market MATCH maximum may means median member members Members middle mind minimum missing moment money move name names near-copies never Next no NO none NOT not not. notes nothing nothing. now null number numbers of of. offers often old on on. once once. one ones only Open open opened opinions or order Ordered ordinary other others out OUT over OWN own page part parts past per permuted pick picked picks place placed PLAN. plateau plateaus pooled press Prev price priced prices Pricing pricing. pricings promoted proved provided pulled Put put puts quarter question quorum ran ranges ranked rate. rather reach read reading reads real rebuilt record recorded records Records records. Rename renumbers replaced rest rest. restart. resting rests Revert right row rows rule rule. run Run rung running said same Save save saved saw says score second seconds seconds. see Selected service set SET set-up set. sets setting SETTING settings Settings settings. shape shapes share short SHORT show Show showed showing shows. sign signal silent sit sits Size size sized smaller so some sort sorting sound. source. speaks split spoke stage Stage STAMP start started starting static steps still Stop stopped stopping stops stored streak sub-rows suggests. swapped Sweep Table table table. tables takes test Test-window than that That the The their them them. then there. these They they thing third this THIS This those three tick ties time to together top totalled totalling touched touched. trade traded trades trail trained training trains tried tuning-slice two u00b7 u00d7 under Undo undoing Undoing unfinished unit unit. units units. up usual value variants verdict visible voices votes vs walk walking was way way. ways were. what What when where whether which while whole why will window windows With with without won Work worked working worst Worth would writes written yes yet you your
+1st 1v 2nd 3.A 3.B 3.C 3rd above above. accordingly. acted active acts actually added adding adds after afterwards. again again. against agreed all alone alone. alongside already always always-long an and another answer any apart appear appears APPLIED Apply apply are argmax arm around arrow as aside asked asked. asking asks at auto auto-apply average averaged averages avg away back back. background band BAND bands bar be beat beats because before behind. belong below beside best better biggest blank blank. block blocked board BOOST both bought box boxes breakout bring broken building but by call called came campaign can cannot carried carries carry ceiling centre changes Check check chunk chunks Clear cleared clears Close coin coin/chunk-shape coins column columns combinations committee committees compared comparisons confirm conviction copies Copy copy cost could count cover cut Data Date decision DECISION decisions declare declare. declared declares declares. Delete deletes did died different directional disk DOES does done down Drop dropped dropping Dropping each edge. either else empty end enough entry every Every exactly exist existed exists extra factored FACTORED failed families far few fewer fewer. field Fill filled Filling filling fills filter filter. filters fingerprint finished finishes first first. fit fixed floors for forecast form forward four from fuller Funnel gate GATE go goes going half handed held held-back helped here here. hidden history hold holds hours Hours how if in independent Independent inside into is it It it. Its ITS its just keep keeps. kept kind landed lands. last layout lead lean learned leaves left leverage lie like line list LOGREG long look-back look-backs looks. losing made marked market MATCH maximum may means median member members Members middle mind minimum missing moment money move name names near-copies never Next no NO none NOT not not. notes nothing nothing. now null number numbers of of. offers often old on on. once once. one ones only Open open opened opinions or order Ordered ordinary other others out OUT over OWN own page part parts past per permuted pick picked picks place placed PLAN. plateau plateaus pooled press Prev price priced prices Pricing pricing. pricings promoted provided pulled Put put puts quarter question quorum ran ranges ranked rate. rather reach read reading reads real rebuilt record recorded records Records records. Rename renumbers replaced rest rest. restart. resting rests Revert right row rows rule rule. run Run rung running said same Save save saved saw says score second seconds seconds. see Selected service set SET set-up set. sets setting SETTING settings Settings settings. shape shapes share short SHORT show Show showed showing shows. sign signal silent sit sits Size size sized smaller so some sort sorting sound. source. speaks split spoke stage Stage start started starting static steps still Stop stopped stopping stops stored streak sub-rows suggests. swapped Sweep Table table table. tables takes test Test-window than that That the The their them them. then there. these They they thing third this THIS This those three tick ties time to together top totalled totalling touched touched. trade traded trades trail trained training trains tried tuning-slice two u00b7 u00d7 under Undo undoing Undoing unfinished unit unit. units units. up usual UTC value variants verdict visible voices votes vs walk walking was way way. ways were. what What when where whether which while whole why will window windows With with without won Work worked working worst Worth would writes written yes yet you your
 ```
 
 ---
