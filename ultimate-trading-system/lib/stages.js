@@ -1180,8 +1180,8 @@ function fillMissingUnitsStatus(id) {
 // so a unit trained after a pause is the unit the launch would have trained.
 // What it refuses, in the answer: a set that is running or finished; one built
 // on another measurement block or under another first digit of the release;
-// price files that changed since the launch (a file that has only gained hours
-// has not changed -- lib/pin.js); one heavy job at a time. And after the
+// kept hours that are gone or no longer match what was kept (lib/hours.js);
+// one heavy job at a time. And after the
 // answer, before anything is trained: a unit on disk twice, a record numbered
 // outside the plan, or a record whose blocks the other stores do not hold puts
 // the set back exactly as it was, with the sentence on it.
@@ -11743,7 +11743,7 @@ async function halfLifeRunOn(doc, months, note = null) {
   };
   writeHalfLifeRun(doc.id, block.id, {
     v: HALFLIFE_V, id: block.id, setId: doc.id, at, release: ENGINE_VERSION, judge: layout.judge, layout: layout.layout,
-    unit: doc.unit, combo, geometry: rec.geometry, fee: block.fee, params: trainParams, pin, originalBandPct: rec.bandPct,
+    unit: doc.unit, combo, geometry: rec.geometry, fee: block.fee, params: trainParams, hours, originalBandPct: rec.bandPct,
     window, halfLives: trained.filter((t) => t && !t.refused),
   });
   fresh.halflife = [block, ...had];
