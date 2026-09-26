@@ -266,6 +266,21 @@ module.exports.theInstallScriptsCheckThePackageAndOpenNothing = function () {
   assert.strictEqual(JSON.parse(unpack(p.data).find((f) => f.name === 'VERSION.json').data).release, RELEASE);
 };
 
+// ONE DRAWING FOR EVERY CHECKLIST, AND EVERY WORD FROM ITS TEMPLATE (3.268.0): the page draws a
+// platform's checklist and a trading account's with checklistStepsHtml, and what a choice says under
+// itself -- the note about the other machine -- is the template's, never typed in the page
+module.exports.theChecklistDrawingTakesEveryWordFromTheTemplate = function () {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
+  const draw = new Function('esc', `${src.slice(src.indexOf('function checklistStepsHtml('), src.indexOf('function esSetupHtml('))}; return checklistStepsHtml;`)((t) => String(t));
+  const html = draw('es', { choices: { where: 'server' }, steps: [{ open: true, done: false }, { open: false }, { open: false }] }, es.TEMPLATE, null);
+  const where = es.TEMPLATE.steps[0].choices.find((c) => c.id === 'where');
+  assert.ok(html.includes(`<span class="note">${where.clearsNote}</span>`), 'the note under Where it runs is the template\'s own');
+  assert.ok(html.includes('data-es-choice="ready|os"') && html.includes('data-es-tick="ready|size"'), 'its choices and ticks carry the kind they were drawn for');
+  // what the platform said answers a choice on the screen too: the system it reported is the one ticked
+  const said = draw('es', { choices: { where: 'server' }, said: { os: 'linux' }, steps: [{ open: true, done: true }, { open: false }, { open: false }] }, es.TEMPLATE, null);
+  assert.ok(/data-es-choice="ready\|os" value="linux" checked/.test(said), 'the reported system is the one ticked');
+};
+
 // A STEP STILL BEING WRITTEN IS NEVER DONE (the template grows as it is written with the owner)
 module.exports.aStepStillBeingWrittenIsNeverDone = function () {
   es.TEMPLATE.steps.push({ id: 'later', title: 'A step still being written', writing: true });

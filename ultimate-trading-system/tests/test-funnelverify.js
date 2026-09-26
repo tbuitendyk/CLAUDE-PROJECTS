@@ -1372,9 +1372,10 @@ module.exports.thePictureIsReadOffTheSetsAndPricesNothing = async function () {
     const ui = src('public/construct.js');
     assert.ok(/^function glPictureHtml\(/m.test(ui) && /^function glOneHtml\(/m.test(ui), 'top-level helpers');
     assert.ok(ui.includes('${glPictureHtml(d)}'), 'drawn under the chosen set');
-    // what the live executor does not do yet is said above the pick, for the survivor picked (3.252.0)
-    assert.ok(ui.includes('<p class="note" id="gl4NotYet"${glNotYetOf(d, \'depth\').length ? \'\' : \' hidden\'}>'), 'said above the pick');
-    assert.ok(ui.includes('if (ny) { const list = glNotYetOf(gl4, picked); ny.innerHTML = glNotYetHtml(list); ny.hidden = !list.length; }'), 'and said again for the survivor picked');
+    // what the live executor does not do yet is said above the pick, for the survivor picked (3.252.0) --
+    // and, with a trading platform ticked for new setups, where it can start instead (3.268.0)
+    assert.ok(ui.includes('<p class="note" id="gl4NotYet"${glNotYetOf(d, \'depth\').length || d.startsOn ? \'\' : \' hidden\'}>'), 'said above the pick');
+    assert.ok(ui.includes('if (ny) { const list = glNotYetOf(gl4, picked); ny.innerHTML = glNotYetHtml(list, gl4.startsOn); ny.hidden = !list.length && !gl4.startsOn; }'), 'and said again for the survivor picked');
     for (const w of ['<span>train</span>', '<span>test</span>', '<span>held</span>', '<span>reserve</span>', '<span>The picture through every period</span>']) assert.ok(ui.includes(w), `${w} is on the page`);
     // the pick draws the one survivor, and marks it in the table of every survivor (3.247.0)
     assert.ok(/pk\.addEventListener\('change', \(\) => \{ picked = pk\.value; drawRows\(\); drawOne\(\); \}\)/.test(ui), 'the pick draws the one survivor');
