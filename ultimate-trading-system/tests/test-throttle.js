@@ -134,15 +134,17 @@ module.exports = {
   // and a new ceiling reaches it without anything restarting
   async runningWorkHonoursTheHeldShare() {
     const prev = fs.existsSync(SETTINGS) ? fs.readFileSync(SETTINGS, 'utf8') : null;
-    const fake = fakeCeiling('400000 100000');
+    // a ceiling of half a processor per worker, however many workers this
+    // machine starts, so the hold binds and 99 must come back as 49
+    const n = throttle.workersNow();
+    const fake = fakeCeiling(`${50 * n * 1000} 100000`);
     const was = throttle.useCeilingFiles(fake.files);
     try {
       throttle.setCpuPct(99);
       throttle.refresh();
-      const n = throttle.workersNow();
       assert.strictEqual(throttle.askedCpuPct(), 99, 'the share as set is kept');
-      assert.strictEqual(throttle.currentCpuPct(), throttle.heldPct(99, n, 400));
-      assert.ok(n * throttle.currentCpuPct() < 400, 'the workers together are not under the ceiling');
+      assert.strictEqual(throttle.currentCpuPct(), 49, 'running work goes on at the share as set instead of the share held under the ceiling');
+      assert.ok(n * throttle.currentCpuPct() < 50 * n, 'the workers together are not under the ceiling');
       fs.writeFileSync(path.join(fake.files.root, 'system.slice', 'uts-test.service', 'cpu.max'), 'max 100000\n');
       throttle.refresh();
       assert.strictEqual(throttle.currentCpuPct(), 99, 'the ceiling lifted and the hold did not');

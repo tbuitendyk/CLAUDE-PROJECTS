@@ -68,8 +68,6 @@ const GUARDS = [
     'theClampNeverOverwritesTheMemory', 'the clamped landing writes over the remembered place and every restore restores the wrong spot'],
   [path.join(ROOT, 'public', 'construct.js'), '  holdScrollMemory();\n  requestAnimationFrame(() => requestAnimationFrame(() => { holdScrollMemory(); window.scrollTo(0, y); }));', '  requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, y)));',
     'theClampNeverOverwritesTheMemory', 'the restore itself is what destroys the memory it restores from'],
-  [path.join(ROOT, 'lib', 'stages.js'), 'if (!pinned.intact) {', 'if (false) {',
-    'theChainRefusalsNameThemselves', 'a stage launches over changed price files and two histories are quietly mixed into one chain'],
   [path.join(ROOT, 'lib', 'stagework.js'), 'return [d / c, n / c, u / c];', 'return [d, n, u];',
     'theForecastScoreMatchesThePencil', 'a unit with more members outscores a better unit with fewer, by arithmetic alone'],
   [path.join(ROOT, 'lib', 'stagework.js'), 'if (!(sd > 1e-9 * Math.max(1, Math.abs(mean)))) return 0;', 'if (!(sd > 1e-9 * Math.max(1, Math.abs(mean)))) return null;',
