@@ -4,7 +4,7 @@
 // with NO ACCESS by the system to provisioned with the current trading engine
 // service installed and active").
 //
-// A checklist the owner works through on Setup > Compute, in The trading engine
+// A checklist the owner works through on Setup > Compute, in The trading platform
 // section, one kept per engine: each step has its guidance, the choices it
 // asks for and the ticks that say it is done, and a step opens only when every
 // one of the step before it is. The template below is the whole of what the

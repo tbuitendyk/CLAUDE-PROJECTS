@@ -74,12 +74,12 @@ module.exports = {
     refused(() => es.get('../../etc/passwd'), /no engine setup/);
   },
 
-  // THE PAGE: the button in The trading engine section opens and closes the
+  // THE PAGE: the button in The trading platform section opens and closes the
   // area; the steps come from the template; a button never shares a row with a field
   theComputeTabOpensTheChecklistFromItsButton() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
     const engine = src.slice(src.indexOf('function engineHtml('), src.indexOf('function wireEs('));
-    assert.ok(/\+ esHtml\(\)/.test(engine), 'the area is drawn inside The trading engine section');
+    assert.ok(/\+ esHtml\(\)/.test(engine), 'the area is drawn inside The trading platform section');
     assert.ok(/<button id="esToggle"[^>]*>' \+ \(cEsOpen \? '▾' : '▸'\) \+ ' Set up a trading engine<\/button>/.test(src), 'one button opens and closes it');
     assert.ok(/localStorage\.setItem\('setup-es-open'/.test(src), 'open or closed is remembered for this viewer');
     assert.ok(/getJson\('api\/live\/engine-setups'\)/.test(src) && /esSetupHtml\(sel, cEs\.template\)/.test(src), 'the steps are the service\'s template');

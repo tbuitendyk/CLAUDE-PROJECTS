@@ -584,13 +584,13 @@ function engineCard(e) {
     + '</div>';
 }
 function engineHtml() {
-  if (!cEng) return '<div class="panel"><h3 style="margin-top:0">The trading engine</h3><p class="note neg">the trading service did not answer, so the engine records cannot be shown' + (cErrEng ? ' — ' + esc(cErrEng) : '') + '</p></div>';
+  if (!cEng) return '<div class="panel"><h3 style="margin-top:0">The trading platform</h3><p class="note neg">the trading service did not answer, so the engine records cannot be shown' + (cErrEng ? ' — ' + esc(cErrEng) : '') + '</p></div>';
   const ed = cEngEdit ? (cEng.engines || []).find((x) => x.id === cEngEdit) || null : null;
   // WHAT IS TYPED OUTLIVES THE REDRAW: this tab reads everything again every
   // thirty seconds, and a form that emptied itself under the owner's fingers
   // would make every record a race
   const v = (k, d) => esc(k in cEngTyped ? cEngTyped[k] : (ed ? ed[k] : d));
-  return '<div class="panel"><h3 style="margin-top:0">The trading engine</h3>'
+  return '<div class="panel"><h3 style="margin-top:0">The trading platform</h3>'
     + '<p class="note">The program that carries out Paper Books and Live Trading for this system. It runs on a machine of yours and calls this system; '
     + 'nothing here can sign in to that machine. A new engine is added with Set up a trading engine. '
     + 'A new setup runs on the engine ticked for new setups; a setup already running stays where it is.</p>'
