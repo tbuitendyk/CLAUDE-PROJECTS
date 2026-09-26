@@ -107,7 +107,7 @@ function installLiveRoutes(app, { csrfGuard }) {
         const h = await link.health(t);
         const out = t.link === 'calls-out'
           // an engine that calls out: never its token's fingerprint, only what it said of itself
-          ? { linkKind: 'calls-out', release: t.release || null, lock: t.lock || null, machine: t.machine || null, enrolledUtc: t.enrolledUtc || null, lastSeenUtc: t.lastSeenUtc || null }
+          ? { linkKind: 'calls-out', release: t.release || null, current: require('./enginesetup').codeIsCurrent(t), lock: t.lock || null, machine: t.machine || null, enrolledUtc: t.enrolledUtc || null, lastSeenUtc: t.lastSeenUtc || null }
           : { linkKind: 'tunnel', host: t.host, user: t.user, enginePort: t.enginePort, localPort: t.localPort };
         return {
           id: t.id, name: t.name, isDefault: !!t.isDefault, note: t.note || '', ...out, releaseHere: require('../../package.json').version,

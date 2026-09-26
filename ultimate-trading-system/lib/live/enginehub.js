@@ -51,11 +51,12 @@ let pkg = null;
 function packageNow() {
   const release = RELEASE();
   if (pkg && pkg.release === release) return pkg;
-  const { pack, filesUnder } = require('../../engine/tar');
-  const files = filesUnder(ENGINE_DIR, (rel) => rel.endsWith('.js') && !rel.startsWith('install/'));
+  const { pack, filesUnder, codeFingerprint, ENGINE_CODE } = require('../../engine/tar');
+  const files = filesUnder(ENGINE_DIR, ENGINE_CODE);
+  const code = codeFingerprint(files);
   files.push({ name: 'VERSION.json', data: JSON.stringify({ release, commit: null }) });
   const data = pack(files);
-  pkg = { release, data, sha256: crypto.createHash('sha256').update(data).digest('hex'), bytes: data.length };
+  pkg = { release, code, data, sha256: crypto.createHash('sha256').update(data).digest('hex'), bytes: data.length };
   return pkg;
 }
 
@@ -103,7 +104,7 @@ function onUpgrade(req, socket, head) {
       clearTimeout(helloWait);
       const es = require('./enginesetup');
       const lock = es.lockOf(msg.lock);
-      require('./targets').noteEngine(id, { release: me.hello.release, lastSeenUtc: new Date().toISOString(), ...(lock ? { lock } : {}), ...(msg.machine ? { machine: { platform: String(msg.machine.platform || '').slice(0, 20), arch: String(msg.machine.arch || '').slice(0, 20), hostname: String(msg.machine.hostname || '').slice(0, 80), node: String(msg.machine.node || '').slice(0, 20) } } : {}) });
+      require('./targets').noteEngine(id, { release: me.hello.release, code: typeof msg.code === 'string' && /^[0-9a-f]{16}$/.test(msg.code) ? msg.code : null, lastSeenUtc: new Date().toISOString(), ...(lock ? { lock } : {}), ...(msg.machine ? { machine: { platform: String(msg.machine.platform || '').slice(0, 20), arch: String(msg.machine.arch || '').slice(0, 20), hostname: String(msg.machine.hostname || '').slice(0, 80), node: String(msg.machine.node || '').slice(0, 20) } } : {}) });
       if (w && typeof w.hello === 'function') w.hello(msg);
       conn.send(JSON.stringify({ t: 'welcome', since: w ? w.n : 0, release: RELEASE() }));
       return;
@@ -204,7 +205,7 @@ function installRoutes(app, express) {
   });
   app.get('/engine-link/release', (req, res) => {
     const p = packageNow();
-    res.set('Cache-Control', 'no-store').json({ release: p.release, sha256: p.sha256, bytes: p.bytes });
+    res.set('Cache-Control', 'no-store').json({ release: p.release, code: p.code, sha256: p.sha256, bytes: p.bytes });
   });
   app.get('/engine-link/package', (req, res) => {
     const p = packageNow();

@@ -87,4 +87,18 @@ function filesUnder(dir, keep = () => true, rel = '') {
   return out;
 }
 
-module.exports = { pack, unpack, filesUnder };
+// THE ENGINE'S CODE, AS ONE FINGERPRINT: every .js file's path and bytes, in
+// order. The web server works it out from the package it serves and the engine
+// from its own folder, so "the engine is current" means the same code -- not the
+// same release number, which moves with every change to the web service too
+const crypto = require('crypto');
+function codeFingerprint(files) {
+  const h = crypto.createHash('sha256');
+  for (const f of files.filter((x) => x.name.endsWith('.js') && !x.name.startsWith('install/')).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+    h.update(f.name); h.update('\0'); h.update(f.data); h.update('\0');
+  }
+  return h.digest('hex').slice(0, 16);
+}
+const ENGINE_CODE = (rel) => rel.endsWith('.js') && !rel.startsWith('install/');
+
+module.exports = { pack, unpack, filesUnder, codeFingerprint, ENGINE_CODE };

@@ -79,8 +79,10 @@ module.exports = {
       assert.ok(!JSON.stringify(linked).includes('tokenHash'), 'the screens are not told even the fingerprint');
       // the checklist's step 2 is ticked by the engine's call
       const es = (await req(port, 'GET', '/api/live/engine-setups')).json.setups.find((x) => x.id === id);
-      // step 3 waits for the release: run from the repository the engine says none (the package says it)
-      assert.deepStrictEqual([es.steps.map((s) => s.done), es.steps[2].missing], [[true, true, false], [`bring the engine from an unknown release to ${require('../package.json').version}`]]);
+      // step 3 is done by the code, not the number: run from the repository the engine says no release,
+      // and its code is the very code this system serves
+      assert.deepStrictEqual(es.steps.map((s) => s.done), [true, true, true]);
+      assert.strictEqual(linked.health.code, require('../lib/live/enginehub').packageNow().code, 'the engine\'s code fingerprint is the package\'s');
       // the Account tab's question goes over the link: the keys (none yet) and the lock to lock them with
       const acct = await req(port, 'GET', '/api/account/trading');
       assert.deepStrictEqual([acct.json.keys['cdmx-engine'].answers, acct.json.keys['cdmx-engine'].lock.publicKey], [true, lock.publicKey]);

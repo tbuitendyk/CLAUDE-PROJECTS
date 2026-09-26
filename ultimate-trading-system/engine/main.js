@@ -64,9 +64,11 @@ const accounts = keystore ? (account) => new BinanceAccount({ signer: keystore.s
 runner = new Runner({ journal, market, venues: { simulated }, accounts, liveEnabled: false });
 
 let link = null;
+// the fingerprint of this engine's own code, the same one the web server works out from its package
+const CODE = (() => { try { const t = require('./tar'); return t.codeFingerprint(t.filesUnder(__dirname, t.ENGINE_CODE)); } catch (_) { return null; } })();
 const startedAt = Date.now();
 const health = () => ({
-  ok: true, engine: 'uts-engine', release: VERSION.release, commit: VERSION.commit || null, startedAt: new Date(startedAt).toISOString(), now: new Date().toISOString(),
+  ok: true, engine: 'uts-engine', release: VERSION.release, commit: VERSION.commit || null, code: CODE, startedAt: new Date(startedAt).toISOString(), now: new Date().toISOString(),
   feeds: [market.status()], plans: { held: runner.plans.size, active: runner.active().length }, journalN: journal.n,
   realOrders: 'off', modes: ['simulated'], feePerLeg: cfg.feePerLeg, simDelayMs: cfg.simDelayMs,
   keys: keystore ? keystore.list().map((k) => ({ account: k.account, present: k.present, addedAt: k.addedAt || null, anyAddress: k.anyAddress === true, tied: typeof k.tied === 'boolean' ? k.tied : null })) : null, keystoreProblem,

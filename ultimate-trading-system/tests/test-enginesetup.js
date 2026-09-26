@@ -141,9 +141,15 @@ module.exports.stepTwoInstallsTheEngineWithAOneTimeCode = function () {
   const after = es.get(a.id);
   assert.deepStrictEqual(after.steps.map((s) => [s.open, s.done]), [[true, true], [true, true], [true, true]], 'called in on this system\'s release: every step done');
   assert.deepStrictEqual([after.engine.id, after.engine.lock.fingerprint], ['cdmx-engine', lock.info().fingerprint]);
-  // an engine behind this system's release is step 3's to bring forward
-  targets.noteEngine('cdmx-engine', { release: '3.1.0' });
+  // CURRENT MEANS THE SAME CODE (3.266.2): an engine running other code is step 3's to bring forward;
+  // one running this system's code is current whatever release number it carries
+  const here = require('../lib/live/enginehub').packageNow();
+  targets.noteEngine('cdmx-engine', { release: '3.1.0', code: '0123456789abcdef' });
   assert.deepStrictEqual(es.get(a.id).steps[2].missing, [`bring the engine from 3.1.0 to ${RELEASE}`]);
+  targets.noteEngine('cdmx-engine', { release: '3.1.0', code: here.code });
+  assert.deepStrictEqual([es.get(a.id).steps[2].done, es.get(a.id).engine.current], [true, true], 'a web-only release does not make an engine behind');
+  targets.noteEngine('cdmx-engine', { release: '3.1.0', code: null });
+  assert.strictEqual(es.get(a.id).engine.current, false, 'an engine that does not say its code is judged by its release');
   // installed again on the same machine (the same lock): the record carries on; a different machine starts afresh
   const again = es.enroll(es.makeInstallCode(a.id, t0 + 7 * 60000).code, { lock: { publicKey: lock.info().publicKey }, release: RELEASE }, t0 + 8 * 60000);
   assert.deepStrictEqual([again.again, again.sameMachine], [true, true]);

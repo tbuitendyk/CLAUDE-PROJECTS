@@ -115,11 +115,20 @@ const matches = (when, choices) => Object.entries(when || {}).every(([k, v]) => 
 // the choices a step asks for, given what has been chosen so far
 function choicesAsked(step, choices) { return (step.choices || []).filter((c) => !c.when || matches(c.when, choices)); }
 
+// THE ENGINE IS CURRENT WHEN IT RUNS THE CODE THIS SYSTEM SERVES -- the same
+// fingerprint of its code, not the same release number (a web-only release
+// changes the number and not one line of the engine)
+function codeIsCurrent(t) {
+  if (!t) return false;
+  const here = require('./enginehub').packageNow();
+  return t.code ? t.code === here.code : t.release === here.release;
+}
+
 // the engine a checklist set up, from its record: it exists once it has called in
 function engineOf(setup) {
   if (!setup.engineId) return null;
   const t = require('./targets').listEngines().find((x) => x.id === setup.engineId && x.link === 'calls-out');
-  return t ? { id: t.id, name: t.name, release: t.release || null, lastSeenUtc: t.lastSeenUtc || null, enrolledUtc: t.enrolledUtc || null, lock: t.lock || null, machine: t.machine || null } : null;
+  return t ? { id: t.id, name: t.name, release: t.release || null, current: codeIsCurrent(t), lastSeenUtc: t.lastSeenUtc || null, enrolledUtc: t.enrolledUtc || null, lock: t.lock || null, machine: t.machine || null } : null;
 }
 
 // each step: done, open, and what is still missing, in words
@@ -135,7 +144,7 @@ function stepsOf(setup) {
     for (const c of choicesAsked(step, choices)) if (!choices[c.id]) missing.push(`choose ${c.label.toLowerCase()}`);
     for (const t of step.ticks || []) if (ticks[t.id] !== true) missing.push(`tick "${t.label}"`);
     if (step.panel === 'install' && !eng) missing.push(setup.install && !setup.install.usedUtc ? 'run the install command on the machine' : 'press Make the install command');
-    if (step.panel === 'current' && eng && eng.release !== RELEASE()) missing.push(`bring the engine from ${eng.release || 'an unknown release'} to ${RELEASE()}`);
+    if (step.panel === 'current' && eng && !eng.current) missing.push(`bring the engine from ${eng.release || 'an unknown release'} to ${RELEASE()}`);
     if (step.panel === 'current' && !eng) missing.push('install the engine');
     const open = before;
     const done = open && missing.length === 0;
@@ -392,5 +401,5 @@ function repairTemplateOne() {
 
 module.exports = {
   TEMPLATE, stepsOf, list: () => list().map(withSteps), get: (id) => withSteps(read(id)), create, setShortName, setChoice, setTick, remove, DIR,
-  makeInstallCode, makeMoveCode, enroll, lockOf, repairTemplateOne, CODE_MS,
+  makeInstallCode, makeMoveCode, enroll, lockOf, repairTemplateOne, codeIsCurrent, CODE_MS,
 };

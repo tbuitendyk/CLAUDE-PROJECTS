@@ -127,7 +127,7 @@ class Link {
     this.live = false;
     ws.on('open', () => {
       this.send({
-        t: 'hello', engineId: tok.engineId, release: this.version.release || null, commit: this.version.commit || null,
+        t: 'hello', engineId: tok.engineId, release: this.version.release || null, commit: this.version.commit || null, code: (this.health() || {}).code || null,
         lock: this.lock ? this.lock.info() : null, journalN: this.journal.n, health: this.health(),
         machine: { platform: process.platform, arch: process.arch, hostname: os.hostname().slice(0, 80), node: process.version },
       });

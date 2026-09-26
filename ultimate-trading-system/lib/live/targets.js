@@ -208,7 +208,7 @@ function noteEngine(id, patch) {
   const was = all[id];
   if (!was || was.link !== 'calls-out') return null;
   const keep = {};
-  for (const k of ['lock', 'machine', 'release', 'lastSeenUtc']) if (patch[k] !== undefined) keep[k] = patch[k];
+  for (const k of ['lock', 'machine', 'release', 'code', 'lastSeenUtc']) if (patch[k] !== undefined) keep[k] = patch[k];
   all[id] = { ...was, ...keep };
   writeTargets(all);
   return all[id];

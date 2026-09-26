@@ -555,7 +555,8 @@ function engineCard(e) {
   // command calls this system and says what it is; the first engine is still
   // reached through this machine's tunnel
   const mc = e.machine || {};
-  const behind = e.linkKind === 'calls-out' && e.release && e.release !== e.releaseHere;
+  // behind means other code than this system serves, not another release number
+  const behind = e.linkKind === 'calls-out' && e.current === false;
   const reach = e.linkKind === 'calls-out'
     ? '<span><span class="k">calls this system from</span> <b>' + esc(mc.hostname || 'a machine it has not named') + '</b> <span class="muted">' + esc([mc.platform, mc.arch].filter(Boolean).join(' ')) + '</span></span>'
       + '<span><span class="k">release</span> <b>' + esc(e.release || '?') + '</b></span>'
@@ -671,9 +672,9 @@ function esInstallHtml(s, step) {
 // STEP 3 -- THE RELEASE IT RUNS, beside the release this system runs
 function esCurrentHtml(s, step) {
   const e = s.engine;
-  const ok = !!(e && e.release === s.releaseHere);
+  const ok = !!(e && e.current);
   const said = !e ? '<span class="muted">installed in step 2 first</span>'
-    : ok ? '<span class="pos">it runs ' + esc(e.release) + ', the release this system runs</span>'
+    : ok ? '<span class="pos">it runs the engine this system serves (release ' + esc(e.release || '?') + ')</span>'
       : '<span class="warn">it runs ' + esc(e.release || 'a release it has not said') + '; this system runs ' + esc(s.releaseHere) + '</span> <span class="muted">— make a new install command in step 2 and run it on the machine</span>';
   const checks = (step.checks || []).map((c) => '<div class="row" style="margin-top:.3rem"><label class="c"><input type="checkbox" disabled' + (ok ? ' checked' : '') + '> ' + esc(c.label) + '</label><span class="note">ticked by this system from what the engine says when it calls</span></div>').join('');
   return '<div class="row" style="margin-top:.6rem">' + said + '</div>' + checks;
