@@ -75,6 +75,11 @@ el = perf.get('elapsedMs') or 0
 if ud and el:
     w = perf.get('workers') or 1
     print(f"   pace: {ud / (el / 3600000):.1f} units/hour · {el * w / ud / 60000:.1f} minutes per unit on each worker · {el/3600000:.1f} h in · about {(perf.get('etaMs') or 0)/3600000:.1f} h left by its own estimate")
+order = []
+for i, u in enumerate(ulist):
+    if not order or order[-1][0] != u.get('trade'): order.append([u.get('trade'), i, 0])
+    order[-1][2] += 1
+print('   trade coins in plan order (first unit number, units): ' + ', '.join(f"{t} {i}{'*' if i <= ud < i + n else ''}" for t, i, n in order) + '   (* = being worked now)')
 print(f"   failures recorded: {len(fails)}" + (f" -- first: {json.dumps(fails[0])[:160]}" if fails else ''))
 
 # ---- the four stores -----------------------------------------------------------
@@ -119,6 +124,26 @@ def blocks_of(f, meta):
                 rows.append({c: (arr[i] if i < len(arr) else None) for i, c in enumerate(cols)})
             yield bi, b, rows, None
 
+f, meta = store('records')
+recs = []
+if not meta or not meta.get('squashed'):
+    print('   records: NO INDEX -- nothing can be read back'); sys.exit(0)
+bl = meta.get('blocks') or []
+last = bl[-1] if bl else None
+size = os.path.getsize(f)
+bad = 0
+for bi, b, rows, err in blocks_of(f, meta):
+    if err: bad += 1; problems.append(f'records block {bi}: {err}'); continue
+    for r in rows:
+        recs.append({
+            'bi': bi, 'u': r.get('u'), 'unit': (r.get('trade'), r.get('ctx1') or '', r.get('ctx2') or '', r.get('geometry')),
+            'blocks': r.get('blocks') or {}, 'score': r.get('score'), 'beat': r.get('beat'),
+            'specs': len(r.get('specs') or []), 'perMember': r.get('perMember') is not None,
+            'extras': len(r.get('extras') or []),
+        })
+print(f"   records: index {meta.get('rows')} rows in {len(bl)} blocks · read back {len(recs)} · unreadable blocks {bad} · bytes past the last indexed block {size - ((last['at'] + last['bytes']) if last else 0)}")
+
+
 owner = {}      # store -> list of the one unit each block holds (None when mixed or empty)
 problems = []
 for name in ('votes', 'tau', 'models'):
@@ -138,25 +163,6 @@ for name in ('votes', 'tau', 'models'):
         own.append(next(iter(us)) if len(us) == 1 else None)
     owner[name] = own
     print(f"   {name}: index {meta.get('rows')} rows in {len(bl)} blocks · read back {nrows} rows · unreadable blocks {bad} · bytes past the last indexed block {size - end}")
-
-f, meta = store('records')
-recs = []
-if not meta or not meta.get('squashed'):
-    print('   records: NO INDEX -- nothing can be read back'); sys.exit(0)
-bl = meta.get('blocks') or []
-last = bl[-1] if bl else None
-size = os.path.getsize(f)
-bad = 0
-for bi, b, rows, err in blocks_of(f, meta):
-    if err: bad += 1; problems.append(f'records block {bi}: {err}'); continue
-    for r in rows:
-        recs.append({
-            'bi': bi, 'u': r.get('u'), 'unit': (r.get('trade'), r.get('ctx1') or '', r.get('ctx2') or '', r.get('geometry')),
-            'blocks': r.get('blocks') or {}, 'score': r.get('score'), 'beat': r.get('beat'),
-            'specs': len(r.get('specs') or []), 'perMember': r.get('perMember') is not None,
-            'extras': len(r.get('extras') or []),
-        })
-print(f"   records: index {meta.get('rows')} rows in {len(bl)} blocks · read back {len(recs)} · unreadable blocks {bad} · bytes past the last indexed block {size - ((last['at'] + last['bytes']) if last else 0)}")
 
 # ---- every record, against the plan and the other three stores ------------------
 print('\n== every record')
@@ -209,7 +215,7 @@ if dm.get('detailFile') and '..' not in dm['detailFile']:
     except Exception as e:
         print(f'   the record of which files it read could not be opened: {e}')
 if det and det.get('detail'):
-    n = 0; gone = []; changed = []; touched = 0
+    n = 0; gone = []; changed = []; touched = 0; prefix = []
     for sym, lst in det['detail'].items():
         for x in lst or []:
             if not x or not x.get('file') or not x.get('sha256'): continue
@@ -217,16 +223,25 @@ if det and det.get('detail'):
             fp = os.path.join(D, 'cache', x['file'])
             try: s3 = os.stat(fp)
             except FileNotFoundError: gone.append(x['file']); continue
-            if s3.st_size != x.get('bytes'): changed.append(x['file']); continue
-            if t0 and s3.st_mtime > t0:
-                touched += 1
-                h = hashlib.sha256()
-                with open(fp, 'rb') as fh:
-                    for chunk in iter(lambda: fh.read(1 << 20), b''): h.update(chunk)
-                if h.hexdigest() != x['sha256']: changed.append(x['file'])
-    print(f"   {n} files across {len(det['detail'])} coins, stamped {dm.get('at')} · gone {len(gone)} · changed {len(changed)} · rewritten since with the same bytes {touched - len([c for c in changed])}")
+            same = s3.st_size == x.get('bytes')
+            if same and not (t0 and s3.st_mtime > t0): continue
+            with open(fp, 'rb') as fh: raw = fh.read()
+            if same and hashlib.sha256(raw).hexdigest() == x['sha256']: touched += 1; continue
+            changed.append(x['file'])
+            # WHAT THE LAUNCH READ, PROVED FROM WHAT IS THERE NOW: a day file only ever
+            # gains finished hours at its end, so the launch's file should be this file's
+            # first (launch bytes - 1) bytes closed with ']' -- and its fingerprint says so or not
+            L = x.get('bytes') or 0
+            proof = 'no'
+            if 2 < L <= len(raw) and raw[L - 2:L] == b'},':
+                pre = raw[:L - 1] + b']'
+                if hashlib.sha256(pre).hexdigest() == x['sha256']:
+                    rows_then = json.loads(pre); rows_now = json.loads(raw)
+                    proof = f"YES -- the launch held its first {len(rows_then)} hours (to {when(rows_then[-1]['ts'] / 1000)}); it now holds {len(rows_now)} (to {when(rows_now[-1]['ts'] / 1000)})"
+            prefix.append(f"{x['file']}: last written {when(s3.st_mtime)}; launch data recoverable exactly: {proof}")
+    print(f"   {n} files across {len(det['detail'])} coins, stamped {dm.get('at')} · gone {len(gone)} · changed {len(changed)} · rewritten since with the same bytes {touched}")
     if gone: print(f"   gone: {', '.join(gone[:6])}")
-    if changed: print(f"   changed: {', '.join(changed[:6])}")
+    for line in prefix[:6]: print('   ' + line)
 elif not dm:
     print('   the set carries no record of its price files')
 
