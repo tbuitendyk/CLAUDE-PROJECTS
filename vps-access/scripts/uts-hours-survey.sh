@@ -6,6 +6,9 @@
 # would need: which sets carry a price record, which of those can still be read
 # exactly as launched, and how much disk the kept hours would take.
 #
+# After 3.271.0 it also reports the sets that keep their hours, and proves every
+# kept copy against the fingerprint its set recorded.
+#
 # WHAT IT DOES NOT DO, ON PURPOSE: it loads none of the service's code (a second
 # copy of the set listing in its own process has rewritten a running set's
 # document before); it asks the service nothing; it writes nothing; it runs at
@@ -122,6 +125,27 @@ if snaps:
     ratio = len(packed) / max(1, len(text))
     print(f'  sample {sym}: {len(rows)} hours, {len(text)/1048576:.1f} MB as text, {len(packed)/1048576:.1f} MB packed ({ratio*100:.0f}%)')
     print(f'  so all of them packed: about {raw_total*ratio/1048576:.0f} MB')
+# AFTER 3.271.0: the sets that keep their hours, every copy proved against the
+# fingerprint its set recorded (the copies are gzip of the hours as JSON text)
+import gzip
+kept_sets = [d for d in docs if isinstance(d.get('hours'), dict)]
+lost = [d for d in kept_sets if d['hours'].get('lost')]
+copies = {}
+for d in kept_sets:
+    for sym, e in ((d['hours'].get('coins') or {}).items()):
+        if isinstance(e, dict) and e.get('file'): copies[e['file']] = (sym, e.get('sha256'))
+bad_copies = []
+for f, (sym, want) in sorted(copies.items()):
+    try:
+        text = gzip.open(os.path.join(D, f), 'rb').read()
+        if hashlib.sha256(text).hexdigest() != want: bad_copies.append(f + ' (does not match)')
+    except FileNotFoundError: bad_copies.append(f + ' (gone)')
+    except Exception as e: bad_copies.append(f'{f} ({e})')
+still_old = [d for d in docs if d.get('stage') in (1, 2, 3) and d.get('dataManifest')]
+size = sum(os.path.getsize(os.path.join(D, f)) for f in copies if os.path.exists(os.path.join(D, f)))
+print(f'sets that keep their hours: {len(kept_sets) - len(lost)}; say they could not: {len(lost)}; still carry the old record: {len(still_old)}')
+for d in lost[:10]: print(f"  lost: {d.get('id')} {str(d.get('name') or '')[:40]!r} -- {str(d['hours']['lost'])[:160]}")
+print(f'kept copies named by a set: {len(copies)}, {size/1048576:.0f} MB on disk; not whole: {len(bad_copies)}' + (f' -- {bad_copies[:5]}' if bad_copies else ''))
 mf = glob.glob(os.path.join(D, 'manifests', '*.json'))
 print(f'detail files in manifests/: {len(mf)}, named by a set: {len(refs)}, named by none: {len([m for m in mf if os.path.relpath(m, D) not in refs])}')
 st = os.statvfs(D); print(f'free on the data disk: {st.f_bavail*st.f_frsize/1073741824:.0f} GB')
