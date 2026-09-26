@@ -51,6 +51,7 @@ module.exports = {
     refused(() => es.create('Another', 'mx-engine-2'), /short name: mx-engine-2 is already the short name of the setup for "Mexico engine"/);
     refused(() => es.create('Another', 'mx-1'), /^short name: mx-1 is already taken$/);
     refused(() => es.makeInstallCode(a.id), /^step 2 opens when step 1 is done$/);
+    refused(() => es.setTick(a.id, 'install', 'x', true), /^step 2 opens when step 1 is done$/);
     refused(() => es.setChoice(a.id, 'ready', 'os', 'mac'), /^its operating system is asked only when where it runs is this computer$/);
     refused(() => es.setChoice(a.id, 'ready', 'where', 'moon'), /one of a rented server, this computer/);
     refused(() => es.setTick(a.id, 'ready', 'nope', true), /has no tick nope/);
@@ -234,4 +235,16 @@ module.exports.theInstallScriptsCheckThePackageAndOpenNothing = function () {
   assert.ok(!names.some((n) => n.startsWith('install/')), 'the install scripts are served, not packed');
   assert.strictEqual(p.sha256, crypto.createHash('sha256').update(p.data).digest('hex'));
   assert.strictEqual(JSON.parse(unpack(p.data).find((f) => f.name === 'VERSION.json').data).release, RELEASE);
+};
+
+// A STEP STILL BEING WRITTEN IS NEVER DONE (the template grows as it is written with the owner)
+module.exports.aStepStillBeingWrittenIsNeverDone = function () {
+  es.TEMPLATE.steps.push({ id: 'later', title: 'A step still being written', writing: true });
+  try {
+    const a = es.create('Writing engine', 'writing-engine');
+    readyTicks(a.id);
+    const st = es.get(a.id).steps;
+    assert.deepStrictEqual(st[st.length - 1].missing, ['this step is still being written']);
+    es.remove(a.id);
+  } finally { es.TEMPLATE.steps.pop(); }
 };

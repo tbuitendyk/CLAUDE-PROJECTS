@@ -131,6 +131,7 @@ function stepsOf(setup) {
     const choices = setup.choices || {};
     const ticks = (setup.ticks || {})[step.id] || {};
     const missing = [];
+    if (step.writing) missing.push('this step is still being written');
     for (const c of choicesAsked(step, choices)) if (!choices[c.id]) missing.push(`choose ${c.label.toLowerCase()}`);
     for (const t of step.ticks || []) if (ticks[t.id] !== true) missing.push(`tick "${t.label}"`);
     if (step.panel === 'install' && !eng) missing.push(setup.install && !setup.install.usedUtc ? 'run the install command on the machine' : 'press Make the install command');

@@ -248,6 +248,13 @@ function theKeysPassThroughThisMachineAndAreNeverKeptOrShown() {
   assert(/id="takKey" type="password"/.test(page) && /id="takSec" type="password"/.test(page), 'the two halves are typed into boxes that do not show them');
   assert((page.match(/key\.value = ''; sec\.value = '';/g) || []).length === 2, 'both boxes are emptied whether the keys were taken or not');
   assert(!/localStorage[^\n]*(takKey|takSec|apiKey|secret)/.test(page), 'the page keeps no key in the browser');
+  // LOCKED IN THE BROWSER (3.266.0): only the locked form leaves the page, and only the locked form passes this machine
+  assert(/if \(b\.remove !== true && \(b\.apiKey !== undefined \|\| b\.secret !== undefined\)\) return res\.status\(400\)/.test(route), 'a pair that arrives readable is refused and goes nowhere');
+  assert(/lockKeys\(k\.lock\.publicKey, acct, key\.value\.trim\(\), sec\.value\.trim\(\)\)/.test(page), 'the keys are locked with the engine\'s lock on the page');
+  assert(/postJson\('api\/account\/trading\/' \+ encodeURIComponent\(acct\) \+ '\/keys', \{ engine: enginePick\(\), locked, anyAddress: \$\('#takAny'\)\.checked \}\)/.test(page), 'what is sent is the locked form and the tick, nothing else');
+  assert(!/apiKey: key\.value|secret: sec\.value/.test(page), 'the page never sends a readable pair');
+  // the fingerprint on screen is worked out in the browser from the public half the keys are locked with
+  assert(/k\.lockHere = await kl\.fingerprint\(k\.lock\.publicKey\)/.test(page), 'the fingerprint is the browser\'s own, not the service\'s word');
 }
 
 module.exports = {

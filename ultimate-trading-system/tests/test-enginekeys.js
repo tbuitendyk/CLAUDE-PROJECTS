@@ -191,6 +191,24 @@ module.exports = {
     } finally { server.close(); fs.rmSync(dir, { recursive: true, force: true }); }
   },
 
+  // THE LOCK IS THE ENGINE'S ALONE (3.266.0): made once, readable by the engine's
+  // user only, refused when others can read it; its private half is never in
+  // anything it hands out
+  theLockIsTheEnginesAloneAndNeverLeaves() {
+    const { Lock } = require('../engine/lock');
+    const dir = tmp();
+    try {
+      const f = path.join(dir, 'lock.json');
+      const l = new Lock(f).open();
+      assert.strictEqual(fs.statSync(f).mode & 0o777, 0o600);
+      const priv = JSON.parse(fs.readFileSync(f, 'utf8')).privateKey;
+      assert.ok(!JSON.stringify(l.info()).includes(priv), 'what the lock says of itself holds no private half');
+      assert.deepStrictEqual(new Lock(f).open().info(), l.info(), 'made once: opened again, the same lock');
+      fs.chmodSync(f, 0o644);
+      assert.throws(() => new Lock(f).open(), /can be read by other users on this machine; it is refused/);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  },
+
   // ITEM 5 AND D7 ON PAPER: a plan whose trading account has keys pays that
   // account's own fee on every fill and owes, on every hour of a short, the rate
   // Binance quotes that account; a plan without pays the setup's fee and its

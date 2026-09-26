@@ -43,6 +43,7 @@ module.exports = {
     assert.ok(targets.getTarget('mx-1') && targets.getTarget('mx-1').kind === 'ssh-box', 'the old order program stays where it was');
     const bad = (rec, re) => { let e = null; try { targets.saveEngine(rec); } catch (x) { e = x; } assert.ok(e && e.code === 'BAD_ENGINE' && re.test(e.message), e && e.message); };
     bad({ ...ENGINE, id: 'x2' }, /^no engine called x2: a new engine is added by installing it, with Set up a trading engine$/);
+    assert.ok(targets.engineProblems({ ...ENGINE, id: 'mx-1', link: 'tunnel' }).includes('short name: mx-1 is already taken'), 'no engine record takes the old order program\'s name');
     bad({ ...ENGINE, host: 'no spaces allowed' }, /trading box address: the machine's name or address/);
     bad({ ...ENGINE, localPort: 8094 }, /tunnel port here: 8094 and 8095 are this system's own services/);
     putTunnel({ ...ENGINE, id: 'second', name: 'Second', localPort: 18096, isDefault: false });

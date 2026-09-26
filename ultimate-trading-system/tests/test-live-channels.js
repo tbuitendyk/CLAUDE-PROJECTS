@@ -152,7 +152,8 @@ module.exports.aNewSetupRunsOnTheEngineTickedForNewSetupsAndOtherwiseWhereItAlwa
   try {
     const plain = ch.activate(mkGreenlight().id, 'paper');
     assert.ok(!reg.getSetup(plain.id).executionTargetRef, 'no engine on record: the setup runs where it always did');
-    targets.saveEngine({ id: 'ch-engine', name: 'Channel engine', host: 'engine.example', user: 'admin', enginePort: 18095, localPort: 18097, isDefault: true });
+    // an engine is made the way every new one is now: when it first calls in (3.266.0); the first is the one new setups run on
+    targets.saveCallingEngine({ id: 'ch-engine', name: 'Channel engine', tokenHash: 'a'.repeat(64) });
     const g = mkGreenlight();
     let err = null;
     try { ch.activate(g.id, 'paper'); } catch (e) { err = e; }
