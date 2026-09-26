@@ -143,6 +143,10 @@ for f, (sym, want) in sorted(copies.items()):
     except Exception as e: bad_copies.append(f'{f} ({e})')
 still_old = [d for d in docs if d.get('stage') in (1, 2, 3) and d.get('dataManifest')]
 size = sum(os.path.getsize(os.path.join(D, f)) for f in copies if os.path.exists(os.path.join(D, f)))
+try: on_disk = sorted('hours/' + f for f in os.listdir(os.path.join(D, 'hours')) if f.endswith('.json.gz'))
+except FileNotFoundError: on_disk = []
+orphans = [f for f in on_disk if f not in copies]
+print(f'kept copies on disk: {len(on_disk)}; named by no set: {len(orphans)}' + (f' -- {orphans[:5]}' if orphans else ''))
 print(f'sets that keep their hours: {len(kept_sets) - len(lost)}; say they could not: {len(lost)}; still carry the old record: {len(still_old)}')
 for d in lost[:10]: print(f"  lost: {d.get('id')} {str(d.get('name') or '')[:40]!r} -- {str(d['hours']['lost'])[:160]}")
 print(f'kept copies named by a set: {len(copies)}, {size/1048576:.0f} MB on disk; not whole: {len(bad_copies)}' + (f' -- {bad_copies[:5]}' if bad_copies else ''))

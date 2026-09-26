@@ -17,7 +17,9 @@ except Exception as e: print(f'no readable document for {sid}: {e}'); sys.exit(0
 p = d.get('perf') or {}
 rows = 0
 try:
-    m = json.load(open(os.path.join(D, 'batches', sid + '.rows', 'records.meta.json')))
+    store = os.path.join(D, 'batches', sid + '.rows')
+    meta = [f for f in os.listdir(store) if f.startswith('records') and f.endswith('.meta.json')][0]
+    m = json.load(open(os.path.join(store, meta)))
     rows = sum(b.get('rows', 0) for b in (m.get('blocks') or []))
 except Exception: rows = None
 h = d.get('hours')
