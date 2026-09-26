@@ -17,7 +17,8 @@
 // before it is trusted.
 
 const { toHourlyMap, forwardFill, scoreDiff, balancedBandPct, GEOMETRIES } = require('./dataset');
-const { loadSymbol, loadSymbolAll, loadSymbolPinned, monthList, MIN_CHUNKS } = require('./pipeline');
+const { loadSymbol, loadSymbolAll, monthList, MIN_CHUNKS } = require('./pipeline');
+const { readCoin } = require('./hours');
 const bracketLib = require('./bracket');
 const { feeFracOf } = require('./paper');
 // the ONE definition of "what this coin usually moves", shared with the walk
@@ -36,13 +37,13 @@ async function getMap(sym, p) {
   // first — it broke a split-boundary diagnostic on 2026-07-30 by reporting
   // two different runs as identical. Per-job worker pools masked it in real
   // jobs; that is luck, not protection.
-  // A PINNED RUN READS ITS OWN FILES (3.84.0), and the key says which files,
-  // or a worker that priced one run's unit would hand the next run the map
-  // (each pinned file with the size it had at launch, 3.269.0: the same names
-  // cut at other sizes are other prices, so they are another key)
-  const pin = p.pinnedFiles && Array.isArray(p.pinnedFiles[sym]) ? p.pinnedFiles[sym] : null;
-  const rangeKey = pin ? `pin:${require('crypto').createHash('sha256').update(pin.map((x) => `${x.file}:${x.bytes}`).join('\n')).digest('hex').slice(0, 16)}`
-    : (p.allLoaded ? 'all' : `${p.startMonth || ''}..${p.endMonth || ''}`);
+  // A SET'S RUN READS THE HOURS KEPT WITH IT (3.271.0, lib/hours.js), and the
+  // key is the fingerprint of the copy, or a worker that priced one run's unit
+  // would hand the next run the map. A set that keeps hours and not this coin's
+  // refuses: it never reads the box instead.
+  const kept = p.hours ? p.hours[sym] : null;
+  if (p.hours && !kept) throw new Error(`the hours kept with this set do not include ${sym}`);
+  const rangeKey = kept ? `kept:${kept.sha256}` : (p.allLoaded ? 'all' : `${p.startMonth || ''}..${p.endMonth || ''}`);
   const key = `${sym}|${rangeKey}`;
   if (mapCache.has(key)) {
     const v = mapCache.get(key);
@@ -50,8 +51,8 @@ async function getMap(sym, p) {
     mapCache.set(key, v); // LRU touch
     return v;
   }
-  const loaded = pin
-    ? loadSymbolPinned(sym, pin, () => {})
+  const loaded = kept
+    ? { rows: readCoin(sym, kept) }
     : (p.allLoaded
       ? await loadSymbolAll(sym, () => {})
       : await loadSymbol(sym, monthList(p.startMonth, p.endMonth), () => {}));

@@ -132,7 +132,7 @@ module.exports = {
       const votesRows = rowstore.readBlocks(c.s2, 'votes', Array.from({ length: rec.blocks.votes[1] - rec.blocks.votes[0] }, (_, i) => rec.blocks.votes[0] + i)).map((x) => x.row).filter((r) => r.u === rec.u);
       const modelRows = rowstore.readBlocks(c.s2, 'models', Array.from({ length: rec.blocks.models[1] - rec.blocks.models[0] }, (_, i) => rec.blocks.models[0] + i)).map((x) => x.row).filter((r) => r.u === rec.u);
       assert.ok(modelRows.length >= 2, `saved models per member (${modelRows.length})`);
-      const p1 = { windowLayout: S1.windowLayout, allLoaded: false, startMonth: S1.startMonth, endMonth: S1.endMonth, trainOn: S1.trainOn, weightCap: sw.WEIGHT_CAP_DEFAULT, pinnedFiles: null };
+      const p1 = { windowLayout: S1.windowLayout, allLoaded: false, startMonth: S1.startMonth, endMonth: S1.endMonth, trainOn: S1.trainOn, weightCap: sw.WEIGHT_CAP_DEFAULT, hours: null };
       const combo = { trade: G.PLANT, ctx1: null, ctx2: null, size: 1 };
       const { geo, split, reserve } = await sw.unitChunks(combo, S1.geometry, p1);
       const testVotes = votesRows.filter((v) => v.w === 0);
@@ -318,7 +318,7 @@ module.exports = {
       const tauRows = rowstore.readBlocks(c.s2, 'tau', Array.from({ length: rec2.blocks.tau[1] - rec2.blocks.tau[0] }, (_, i) => rec2.blocks.tau[0] + i)).map((x) => x.row).filter((r) => r.u === rec2.u);
       const test = votes.filter((v) => v.w === 0);
       const hold = votes.filter((v) => v.w === 1);
-      const p1 = { windowLayout: S1.windowLayout, allLoaded: false, startMonth: S1.startMonth, endMonth: S1.endMonth, trainOn: S1.trainOn, weightCap: sw.WEIGHT_CAP_DEFAULT, pinnedFiles: null };
+      const p1 = { windowLayout: S1.windowLayout, allLoaded: false, startMonth: S1.startMonth, endMonth: S1.endMonth, trainOn: S1.trainOn, weightCap: sw.WEIGHT_CAP_DEFAULT, hours: null };
       const combo = { trade: G.PLANT, ctx1: null, ctx2: null, size: 1 };
       const { geo, maps, split } = await sw.unitChunks(combo, S1.geometry, p1);
       assert.strictEqual(split.holdChunks.length, hold.length, 'the stored held-back votes line up with the rebuilt held-back chunks');

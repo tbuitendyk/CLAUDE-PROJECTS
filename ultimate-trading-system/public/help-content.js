@@ -211,8 +211,8 @@ window.HELP = {
   sweep: {
     title: 'Sweep',
     intro: 'The working three-stage system. Each stage writes a record set the next one reads, every set names '
-      + 'its parent, and a launch refuses — by name — when the price files no longer match the ones its parent '
-      + 'read. Stage 1 trains and keeps votes, stage 2 adds the BOOST members to the rows you carry forward, and '
+      + 'its parent, and every stage reads the hours each coin had when its stage 1 was started, kept with that set, '
+      + 'so nothing the box fetches later can change a run. Stage 1 trains and keeps votes, stage 2 adds the BOOST members to the rows you carry forward, and '
       + 'stage 3 prices settings from the kept votes without training anything.',
     how: [
       ['What each stage does, and what it writes',
@@ -230,9 +230,11 @@ window.HELP = {
         + 'block tomorrow and nothing retrains.'],
       ['What the launches refuse, and why',
         'One heavy job at a time: a stage refuses to start while a sweep or another stage run is going. A stage '
-        + 'refuses a parent that is not finished, one written by a different engine release, and one whose price '
-        + 'files no longer fingerprint identically — the refusal names the symbols that changed, and nothing is '
-        + 'ever mixed. A set that finishes with failed units says INCOMPLETE on Boards rather than wearing a '
+        + 'refuses a parent that is not finished, one written by a different engine release, and one whose kept '
+        + 'hours are gone or no longer match what was kept — the refusal names the coins, and nothing is ever '
+        + 'mixed. A refresh, a new day or a new month on Data never refuses anything: a run reads only the hours '
+        + 'kept with its stage 1 set, from each coin\'s first hour to its last at the moment Start stage 1 was pressed.'
+        + ' A set that finishes with failed units says INCOMPLETE on Boards rather than wearing a '
         + 'finished face: a set must match its own plan, written before anything ran.'],
     ],
     controls: {
@@ -305,7 +307,7 @@ window.HELP = {
       },
       swFrom2: {
         what: 'At the top of the stage 1 section: a stage 1 record set of the campaign that is set, or new. Picking only chooses. Open opens the set chosen: the boxes below are filled from it and stay live, Start stage 1 runs a new set from what they hold, and it becomes the set stage 2 comes out of. New, opened, frees the boxes to set up a stage 1 and start it. A paused stage 1 run is offered here too; opened, Start stage 1 starts it again where it stopped.',
-        more: 'Only the stage 1 sets of the campaign that is set are offered, every status, each saying which. Picking another set here lets go of whatever was picked in the stage 2 and stage 3 sections, because those came out of this one. A stage 2 set names its parent forever, and the launch refuses when the price files no longer fingerprint identically to the ones the parent read. Start stage 1 refuses while no campaign is set: every stage 1 record set belongs to one.',
+        more: 'Only the stage 1 sets of the campaign that is set are offered, every status, each saying which. Picking another set here lets go of whatever was picked in the stage 2 and stage 3 sections, because those came out of this one. A stage 2 set names its parent forever, and reads the hours its parent kept when it was started, whatever the box has fetched since. Start stage 1 refuses while no campaign is set: every stage 1 record set belongs to one.',
       },
       swCarry: {
         what: 'How many rows carry forward into the BOOST training, from the top of the parent\'s table as Boards shows it: in the sort saved on it, and only the rows the filters saved on it keep. 0 carries all of them.',
@@ -652,7 +654,7 @@ window.HELP = {
       },
       bFillUnits: {
         what: 'Re-runs exactly the units a stage 1 run lost, and marks the record set finished when it matches its plan again. Only the absent ones are trained \u2014 eighteen units out of ten thousand costs minutes, not another whole run.',
-        more: 'It uses the record set\u2019s OWN saved choices, never the boxes on Sweep. A unit trained on a different window would sit in the same table, be ranked against the rest and be carried forward beside them, with nothing able to tell them apart \u2014 so the window, the fee, the null set size and how the units were trained all come off the set itself. Three things would make a new unit incomparable and each refuses by name before anything runs: a different measurement block, a different first digit of the release, and price files that have changed since the set was written. Nothing already in the set is read, touched or trained again.',
+        more: 'It uses the record set\u2019s OWN saved choices, never the boxes on Sweep. A unit trained on a different window would sit in the same table, be ranked against the rest and be carried forward beside them, with nothing able to tell them apart \u2014 so the window, the fee, the null set size and how the units were trained all come off the set itself. Three things would make a new unit incomparable and each refuses by name before anything runs: a different measurement block, a different first digit of the release, and hours kept with the set that are gone or no longer match what was kept. Nothing already in the set is read, touched or trained again.',
       },
       bDropUndeclared: {
         what: 'Deletes the settings this record set holds that its own block does not declare, and renumbers what is left.',
@@ -682,7 +684,7 @@ window.HELP = {
           + 'seven is the same deal seven it always was and pricing it again reproduces exactly what the run would '
           + 'have written.\n\n'
           + 'It re-prices the real test money alongside, as a proof: a disagreement of more than a cent means the '
-          + 'price files moved or the engine did, and it stops rather than writing numbers from one world beside '
+          + 'engine\'s arithmetic moved, and it stops rather than writing numbers from one world beside '
           + 'numbers from another. Nothing is replaced until every row is written: the records are built BESIDE the '
           + 'old ones, checked for the same row count and the same block boundaries, and only then swapped. The '
           + 'tables are worked out again afterwards.\n\n'

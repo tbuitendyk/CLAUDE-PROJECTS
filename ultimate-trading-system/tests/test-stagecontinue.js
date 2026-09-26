@@ -29,7 +29,8 @@ const { assert } = require('./helpers');
 const stages = require('../lib/stages');
 const rowstore = require('../lib/rowstore');
 const { generateFabricated } = require('../lib/fabricated');
-const { MANIFEST_DIR } = require('../lib/manifest');
+const { readCoin } = require('../lib/hours');
+const { recordOf } = require('../lib/keephours');
 
 const ROOT = path.join(__dirname, '..');
 const CACHE = path.join(ROOT, 'data', 'cache');
@@ -224,7 +225,7 @@ function spawnChild(block, name, { goFile = null } = {}) {
 }
 function removeSet(id) {
   const safe = String(id).replace(/[^A-Za-z0-9._-]+/g, '_');
-  for (const dir of [SETS_DIR, MANIFEST_DIR]) {
+  for (const dir of [SETS_DIR]) {
     let files = [];
     try { files = fs.readdirSync(dir); } catch (_) { files = []; }
     for (const f of files) {
@@ -414,13 +415,15 @@ module.exports = {
     assert.ok(Date.now() - t0 >= 1500, `the reference landed in ${Date.now() - t0} ms — too quick for a stop to land in the middle of a run of this block on this box`);
     assert.ok(!stages.hasCheckpoint(s3.id), 'a run that landed keeps no checkpoint');
     assert.ok(!Array.isArray(doc.continued) || !doc.continued.length, 'a run that was never stopped records no start-again');
-    // THE RUN IS PINNED TO THE FILES IT WAS LAUNCHED ON (3.84.0): its stamp
-    // lists June as day files, handed down from stage 1 through stage 2
-    const pin = require('../lib/manifest').pinnedFilesOf(doc.dataManifest);
-    assert.ok(pin && Array.isArray(pin[A]), 'the stage 3 set carries a pin');
-    assert.ok(pin[A].includes(`${A}-1h-${HOLE_DAY}.json`) && !pin[A].includes(`${A}-1h-2024-06.json`), 'June is pinned as day files, the short day among them');
-    assert.deepStrictEqual(pin, require('../lib/manifest').pinnedFilesOf(state.s2.dataManifest), 'the same pin as its parent');
-    assert.deepStrictEqual(pin, require('../lib/manifest').pinnedFilesOf(state.s1.dataManifest), 'which is the root stage 1 set\'s');
+    // THE RUN READS THE HOURS KEPT AT ITS STAGE 1 LAUNCH (3.84.0, 3.271.0): June
+    // as the day files held it, the short day among them, handed down unchanged
+    // from stage 1 through stage 2
+    const kept = doc.hours && doc.hours.coins;
+    assert.ok(kept && kept[A] && kept[B], 'the stage 3 set keeps hours for both coins');
+    const june = readCoin(A, kept[A]).filter((r) => new Date(r.ts).toISOString().startsWith('2024-06'));
+    assert.strictEqual(june.length, 30 * 24 - 17, 'June is kept as the day files held it, the short day seventeen hours short');
+    assert.deepStrictEqual(kept, state.s2.hours.coins, 'the same hours as its parent');
+    assert.deepStrictEqual(kept, state.s1.hours.coins, 'which are the root stage 1 set\'s');
     state.ref = s3.id;
     // THE ACTUAL DATE RANGES ARE STORED ON EVERY STAGE (3.85.0, owner order):
     // on each stage 1 and 2 record, and per unit beside the stage 3 set; the
@@ -509,8 +512,8 @@ module.exports = {
     // equal to the reference, which never saw the bundle either.
     fs.writeFileSync(path.join(CACHE, `${A}-1h-2024-06.json`), JSON.stringify(state.juneBundle));
     const onDisk = await require('../lib/pipeline').loadSymbolAll(A, () => {});
-    const pinnedNow = require('../lib/pipeline').loadSymbolPinned(A, require('../lib/manifest').pinnedEntriesOf(stages.getSet(s3.id).dataManifest)[A]);
-    assert.strictEqual(onDisk.rows.length - pinnedNow.rows.length, 17, 'the bundle would hand the run seventeen candles it never read');
+    const keptNow = readCoin(A, stages.getSet(s3.id).hours.coins[A]);
+    assert.strictEqual(onDisk.rows.length - keptNow.length, 17, 'the bundle would hand the run seventeen candles it never read');
 
     const again = stages.continueStage3(s3.id);
     // THE ANSWER COMES AT ONCE (3.83.0): before the block is rebuilt or a row
@@ -549,8 +552,7 @@ module.exports = {
     made.push(s3.id);
     const doc = await untilLanded(s3.id);
     assert.strictEqual(doc.status, 'done', `ended ${doc.status}: ${JSON.stringify(doc.failures)}`);
-    const pin = require('../lib/manifest').pinnedFilesOf(doc.dataManifest);
-    assert.ok(!pin[A].includes(`${A}-1h-2024-06.json`), 'the bundle that appeared after the parent was written is not this run\'s');
+    assert.deepStrictEqual(doc.hours.coins, state.s1.hours.coins, 'the bundle that appeared after the parent was written is not this run\'s: it reads the hours kept at stage 1');
     sameAsReference(s3.id, state.ref, 'launched after the bundle appeared');
   },
 
@@ -567,15 +569,14 @@ module.exports = {
     fs.cpSync(rowstore.storeDir(state.ref), rowstore.storeDir(id), { recursive: true });
     const doc = { ...src, id, name: `ZZZ pause copied ${stamp()}`, status: 'paused', finishedAt: null, continued: [], counts: null, controls: null, progress: 'paused at 0 of 0 parts', cancelRequested: true };
     delete doc.tallyError;
-    // AND ITS STAMP NARROWED TO ONE COIN (3.84.1): the shape S3 #1c was found
+    // AND ITS RECORD NARROWED TO ONE COIN (3.84.1): the shape S3 #1c was found
     // in on the box -- its own record named LTCUSDT while its units read
-    // sixteen more. The start-again widens the pin to the parent's files, on
-    // the record, and the fair coin is read from those.
-    const { stampManifest, pinnedFilesOf } = require('../lib/manifest');
-    const wide = pinnedFilesOf(src.dataManifest);
-    assert.ok(wide && wide[A] && wide[B], 'the reference is pinned over both coins');
-    doc.dataManifest = stampManifest(`${id}-narrow`, [A], { onlyFiles: { [A]: wide[A] } });
-    assert.deepStrictEqual(Object.keys(pinnedFilesOf(doc.dataManifest)), [A], 'narrowed to the planted coin alone');
+    // sixteen more. The start-again widens it to the parent's hours, on the
+    // record, and the fair coin is read from those.
+    const wide = src.hours.coins;
+    assert.ok(wide && wide[A] && wide[B], 'the reference keeps hours for both coins');
+    doc.hours = recordOf({ [A]: wide[A] }, src.hours.at);
+    assert.deepStrictEqual(Object.keys(doc.hours.coins), [A], 'narrowed to the planted coin alone');
     // and its date ranges never kept (a set from before 3.85.0): they come
     // back with one setting priced again per unit, like the agreements
     doc.windows = null;
@@ -588,11 +589,10 @@ module.exports = {
     });
     assert.strictEqual(stages.readAgreed(id), null, 'nothing agreed is kept beside the copy yet');
     stages.continueStage3(id);
-    const widened = pinnedFilesOf(stages.getSet(id).dataManifest);
-    assert.deepStrictEqual(Object.keys(widened).sort(), [A, B], 'the pin now names both coins');
-    assert.deepStrictEqual(widened[A], wide[A], 'its own files for the coin it named');
+    const widened = stages.getSet(id).hours.coins;
+    assert.deepStrictEqual(Object.keys(widened).sort(), [A, B], 'the record now names both coins');
+    assert.deepStrictEqual(widened[A], wide[A], 'its own hours for the coin it named');
     assert.deepStrictEqual(widened[B], wide[B], 'and the parent\'s for the one it did not');
-    assert.ok(stages.getSet(id).dataManifest.detailFile.endsWith(`${id}-widened.json`), 'written beside the launch\'s own record, which stays');
     const c = (await untilStartedAgain(id)).continued[0];
     assert.deepStrictEqual(c.pinWidened, { from: 1, to: 2, added: [B] }, 'the start-again\'s record says the pin was widened, and by what');
     assert.strictEqual(c.unitsKept, 0, 'no unit is whole without its agreements and comparisons');
@@ -795,7 +795,7 @@ module.exports = {
     const ref = stages.getSet(state.ref);
     const base = () => ({
       stage: 3, seq: 999979, status: 'paused', createdAt: new Date().toISOString(), parent: { id: state.s2.id, name: state.s2.name },
-      params: { ...ref.params }, plan: { ...ref.plan }, dataManifest: ref.dataManifest, perf: { ...ref.perf }, failures: [],
+      params: { ...ref.params }, plan: { ...ref.plan }, hours: ref.hours, perf: { ...ref.perf }, failures: [],
       engineVersion: ref.engineVersion, recordsVersion: ref.recordsVersion,
     });
     assert.throws(() => stages.continueStage3('s3-test-no-such-set'), /unknown stage 3 record set/);
@@ -812,24 +812,23 @@ module.exports = {
     const moved = { ...base(), id: `s3-test-${stamp()}-rf4`, name: `ZZZ pause refuse moved ${stamp()}` };
     writeSet(moved);
     writeCheckpointFile(moved.id, {});
-    // one pinned day file rewritten with different candles (3.84.0): the
-    // refusal names the FILE, and a bundle that merely appeared did not refuse
-    const dayFile = path.join(CACHE, `${A}-1h-2024-06-05.json`);
-    const bytes = fs.readFileSync(dayFile);
+    // WHAT THE BOX DOES TO ITS OWN FILES IS NOT THIS RUN'S (3.271.0): the run
+    // reads the hours kept with its stage 1 set, so only a damaged copy
+    // refuses, and the refusal names the coin
+    const copy = path.join(ROOT, 'data', ref.hours.coins[A].file);
+    const bytes = fs.readFileSync(copy);
     try {
-      const rows = JSON.parse(bytes.toString('utf8'));
-      rows[3] = { ...rows[3], close: rows[3].close * 1.5 };
-      fs.writeFileSync(dayFile, JSON.stringify(rows));
-      assert.throws(() => stages.continueStage3(moved.id), new RegExp(`1 of the price files .* was launched on has changed since \\(${A}-1h-2024-06-05\\.json\\) — the rest of this run would be priced on different prices`),
-        'a pinned price file that changed refuses, and names the file');
+      fs.writeFileSync(copy, require('zlib').gzipSync('[]'));
+      assert.throws(() => stages.continueStage3(moved.id), new RegExp(`the hours kept for ${A} no longer match what was kept — the rest of this run would be priced on different prices`),
+        'a damaged copy refuses, and names the coin');
     } finally {
-      fs.writeFileSync(dayFile, bytes);
+      fs.writeFileSync(copy, bytes);
     }
     const gone = { ...base(), id: `s3-test-${stamp()}-rf4b`, name: `ZZZ pause refuse gone ${stamp()}` };
-    gone.dataManifest = { ...ref.dataManifest, detailFile: 'manifests/zzz-no-such-detail.json' };
+    gone.hours = { lost: 'its hours could not be kept when it was brought forward to release 3.271.0: a file was gone' };
     writeSet(gone);
     writeCheckpointFile(gone.id, {});
-    assert.throws(() => stages.continueStage3(gone.id), /cannot be proved unchanged: the record of which price files it read is gone/, 'a set whose record of its files is gone cannot be proved unchanged');
+    assert.throws(() => stages.continueStage3(gone.id), /cannot be read as it was launched: its hours could not be kept when it was brought forward/, 'a set that keeps no hours says why');
     const missing = { ...base(), id: `s3-test-${stamp()}-rf5`, name: `ZZZ pause refuse missing ${stamp()}` };
     writeSet(missing);
     writeCheckpointFile(missing.id, { units: [0, 5] });
@@ -1001,7 +1000,7 @@ module.exports = {
     // the Funnel says where the unread window runs
     assert.ok(src.includes('function windowsLineHtml(win)') && src.includes('${windowsLineHtml(win)}'), 'the header carries the date ranges line');
     for (const word of ['training ', 'test ', 'held-back ', 'unread from ', ' onward — the box holds data to ', ', all of it unread']) assert.ok(src.includes(word), `the line says ${JSON.stringify(word)}`);
-    assert.ok(src.includes('doc.dataManifest || null, got.windows || null)'), 'Boards hands the panel what the route sent');
+    assert.ok(src.includes('doc.hours || null, got.windows || null)'), 'Boards hands the panel what the route sent');
     assert.ok(src.includes(': unread from ${fDayOf(sealed.fromTs)} onward - the box holds data to ${fDayOf(sealed.dataToTs)}, and all of it counts as unread.'), 'the Funnel says where the unread window runs, to the newest data');
     assert.ok(server.includes('chain: stages.chainOf(doc.id),\n    // the actual date ranges the set used (3.85.0)\n    windows: stages.windowsOfSet(doc),'), 'the route sends the date ranges');
     // and the help says it, in the words on the screen
@@ -1245,29 +1244,6 @@ module.exports = {
 
   // THE ONE-TIME RENAME (3.269.0, RULE TEN): a stage 1 set stopped by the old Stop
   // reads paused; nothing else changes
-  async aStoppedStageOneSetReadsPausedAndNothingElseChanges() {
-    const mk = (over) => {
-      const id = `s1-test-${stamp()}-rn`;
-      writeSet({ id, stage: 1, seq: 999970, name: `ZZZ pause rename ${stamp()}`, status: 'cancelled', createdAt: new Date().toISOString(), params: {}, ...over });
-      return id;
-    };
-    const withList = mk({ plan: { units: 1, unitList: [{ trade: A, geometry: 'daily-1d' }] } });
-    const without = mk({ plan: { units: 1 } });
-    const s3 = `s3-test-${stamp()}-rn`;
-    writeSet({ id: s3, stage: 3, seq: 999969, name: `ZZZ pause rename 3 ${stamp()}`, status: 'cancelled', createdAt: new Date().toISOString(), params: {}, plan: { units: 1, settings: 1 } });
-    const before = JSON.parse(fs.readFileSync(path.join(SETS_DIR, `${withList}.json`), 'utf8'));
-    const out = stages.repairStoppedStageOnesToPaused();
-    assert.ok(out.changed >= 1 && out.named.includes(before.name), 'the stopped stage 1 set is not renamed');
-    const after = JSON.parse(fs.readFileSync(path.join(SETS_DIR, `${withList}.json`), 'utf8'));
-    assert.deepStrictEqual({ ...after, status: before.status }, before, 'something other than the status changed');
-    assert.strictEqual(after.status, 'paused');
-    assert.strictEqual(stages.getSet(without).status, 'cancelled', 'a set that records no plan cannot be started again, so it is not called paused');
-    assert.strictEqual(stages.getSet(s3).status, 'cancelled', 'a stage 3 set is not the rename\'s');
-    assert.strictEqual(stages.repairStoppedStageOnesToPaused().named.includes(before.name), false, 'the rename runs twice on one set');
-    const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-    assert.ok(srv.includes('const done = stages.repairStoppedStageOnesToPaused();'), 'the service does not run the rename at start-up');
-  },
-
   async everythingTheRehearsalWroteIsRemoved() {
     for (const c of children) { try { c.kill('SIGKILL'); } catch (_) { /* gone */ } }
     for (const id of made) removeSet(id);
@@ -1281,6 +1257,11 @@ module.exports = {
     assert.strictEqual(settingsBefore, undefined, 'the settings file is back as it was');
     const left = stages.listSets().filter((x) => /^ZZZ pause/.test(x.name || '') || made.includes(x.id));
     assert.deepStrictEqual(left.map((x) => x.id), [], 'no rehearsal set is left on the box');
+    // and the hours the rehearsal's sets kept (3.271.0)
+    const HOURS = path.join(ROOT, 'data', 'hours');
+    for (const f of (() => { try { return fs.readdirSync(HOURS); } catch (_) { return []; } })()) {
+      if (f.startsWith(`${A}-`) || f.startsWith(`${B}-`)) { try { fs.rmSync(path.join(HOURS, f), { force: true }); } catch (_) { /* best effort */ } }
+    }
     const caches = (() => { try { return fs.readdirSync(CACHE).filter((f) => f.includes('ZZZPAUSE')); } catch (_) { return []; } })();
     assert.deepStrictEqual(caches, [], 'no fabricated price file is left');
     for (const id of made) assert.ok(!fs.existsSync(rowstore.storeDir(id)), `${id}'s records are gone`);

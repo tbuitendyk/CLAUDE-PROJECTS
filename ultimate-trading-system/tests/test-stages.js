@@ -20,8 +20,23 @@ const SETS_DIR = path.join(ROOT, 'data', 'stagesets');
 // units from is written on the stage 1 alone and every reader of it walks up.
 // Left out, the stage 2 has no parent at all -- which is a chain that took its
 // units from the boxes, and reads as `none`.
+// A PRICE RECORD WHOSE HOURS HOLD NOTHING (3.271.0): the set keeps hours for
+// its coin and the copy holds none, so every gate passes and the unit behind a
+// launch fails at once with "no data" -- which is what these fixtures had from a
+// coin with no price files before the hours were kept with the set.
+function emptyHoursFor(universe) {
+  const text = '[]';
+  const sha256 = require('crypto').createHash('sha256').update(text).digest('hex');
+  const coins = {};
+  fs.mkdirSync(path.join(ROOT, 'data', 'hours'), { recursive: true });
+  for (const sym of universe) {
+    const file = `hours/${sym}-${sha256.slice(0, 32)}.json.gz`;
+    fs.writeFileSync(path.join(ROOT, 'data', file), require('zlib').gzipSync(text));
+    coins[sym] = { fromTs: null, toTs: null, count: 0, sha256, file };
+  }
+  return require('../lib/keephours').recordOf(coins);
+}
 function writeLaunchParent(tag, source = null) {
-  const { stampManifest } = require('../lib/manifest');
   const pid = `s2-test-${Date.now().toString(36)}-${tag}`;
   const universe = ['ZZZTESTUSDT'];
   fs.mkdirSync(SETS_DIR, { recursive: true });
@@ -38,7 +53,7 @@ function writeLaunchParent(tag, source = null) {
     engineVersion: require('../package.json').version, measurements: require('../lib/features').MEASUREMENTS_VERSION,
     parent: root ? { id: root, name: `S1 #${tag}` } : undefined,
     params: { universe, allLoaded: true, windowLayout: 'reserve61', startMonth: '2024-01', endMonth: '2024-03', nullN: 3 },
-    dataManifest: stampManifest(pid, universe), plan: { units: 1 },
+    hours: emptyHoursFor(universe), plan: { units: 1 },
   }));
   const rec = rowstore.writer(pid, 'records');
   rec.push({ u: 0, carriedRank: 1, s1rank: 1, trade: 'ZZZTESTUSDT', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', bandPct: 2,
@@ -88,14 +103,12 @@ function cleanLaunchParent(pid) {
     const up = JSON.parse(fs.readFileSync(path.join(SETS_DIR, `${pid}.json`), 'utf8'));
     if (up && up.parent && up.parent.id) { try { fs.unlinkSync(path.join(SETS_DIR, `${up.parent.id}.json`)); } catch (_) { /* gone */ } }
   } catch (_) { /* the parent is already gone */ }
-  const { MANIFEST_DIR } = require('../lib/manifest');
   const kids = stages.listSets().filter((x) => ((x.parent || {}).id === pid || (x.params || {}).from === pid)).map((x) => x.id);
   for (const id of [pid, ...kids]) {
     try { fs.rmSync(path.join(SETS_DIR, `${id}.json`), { force: true }); } catch (_) { /* fixture */ }
     try { fs.rmSync(path.join(SETS_DIR, `${id}-tally.json.gz`), { force: true }); } catch (_) { /* fixture */ }
     try { fs.rmSync(path.join(SETS_DIR, `${id}-agreed.json.gz`), { force: true }); } catch (_) { /* fixture */ }
     try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
-    try { fs.rmSync(path.join(MANIFEST_DIR, `${id}.json`), { force: true }); } catch (_) { /* fixture */ }
   }
 }
 
@@ -387,7 +400,7 @@ module.exports = {
       'the name check rewrites t own as the hours one unit priced at, so every t own block reads as misnamed');
     const sw = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
     assert.ok(sw.includes('async function unreadChunksFor(combo, geometry, fromTs, extras = []) {')
-      && sw.includes("{ allLoaded: true, pinnedFiles: null, extras: Array.isArray(extras) ? extras : [] }")
+      && sw.includes("{ allLoaded: true, hours: null, extras: Array.isArray(extras) ? extras : [] }")
       && sw.includes('if (Array.isArray(extras) && extras.length) markExtraGates(chunks, extras.map((e) => e.bandPct));'),
       'the unread window is built without the extras, so a member added from a walk set has no columns to read there');
     assert.ok(sw.includes('const got = await unreadChunksFor(combo, geometry, task.unread.fromTs, extras);'), 'the reserve grade does not hand the unit\'s extras to the unread window');
@@ -467,7 +480,6 @@ module.exports = {
   // both. This one presses the button against a small stage 2 parent and
   // reads what comes back, then waits for the run behind it to end.
   async theStageThreeLaunchAnswersWithTheCountItWorkedOut() {
-    const { stampManifest, MANIFEST_DIR } = require('../lib/manifest');
     const pid = `s2-test-${Date.now().toString(36)}-launch`;
     const pfile = path.join(SETS_DIR, `${pid}.json`);
     const universe = ['ZZZTESTUSDT'];
@@ -478,7 +490,7 @@ module.exports = {
         id: pid, stage: 2, seq: 999984, name: 'S2 #launch', status: 'done', createdAt: new Date().toISOString(),
         engineVersion: require('../package.json').version, measurements: require('../lib/features').MEASUREMENTS_VERSION,
         params: { universe, allLoaded: true, windowLayout: 'reserve61', startMonth: '2024-01', endMonth: '2024-03', nullN: 3 },
-        dataManifest: stampManifest(pid, universe), plan: { units: 1 },
+        hours: emptyHoursFor(universe), plan: { units: 1 },
       }));
       const rec = rowstore.writer(pid, 'records');
       rec.push({ u: 0, carriedRank: 1, s1rank: 1, trade: 'ZZZTESTUSDT', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', bandPct: 2,
@@ -512,7 +524,6 @@ module.exports = {
         try { fs.rmSync(path.join(SETS_DIR, `${id}-tally.json.gz`), { force: true }); } catch (_) { /* fixture */ }
         try { fs.rmSync(path.join(SETS_DIR, `${id}-agreed.json.gz`), { force: true }); } catch (_) { /* fixture */ }
         try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
-        try { fs.rmSync(path.join(MANIFEST_DIR, `${id}.json`), { force: true }); } catch (_) { /* fixture */ }
       }
     }
   },
@@ -2158,7 +2169,6 @@ module.exports = {
         createdAt: new Date().toISOString(), engineVersion: require('../package.json').version,
         measurements: require('../lib/features').MEASUREMENTS_VERSION,
         params: { universe: ['ZZZTESTUSDT'], allLoaded: true, windowLayout: 'reserve61' },
-        dataManifest: { overallDigest: 'not-what-the-files-say', symbols: { ZZZTESTUSDT: { digest: 'x' } } },
         plan: { units: 1 },
         ...over,
       };
@@ -2177,8 +2187,8 @@ module.exports = {
         /is a stage 1 set/i, 'a stage 3 launch must refuse a stage 1 parent by name');
       const drifted = mkSet({});
       cleanup.push(drifted.id);
-      // a parent whose record of the files it read is gone cannot be proved unchanged (3.84.0: the pin)
-      assert.throws(() => stages.startStage2({ from: drifted.id }), /cannot be proved unchanged: the record of which price files it read is gone/);
+      // a parent that keeps no hours of its own cannot be read as it was launched (3.271.0)
+      assert.throws(() => stages.startStage2({ from: drifted.id }), /cannot be read as it was launched: it keeps no hours of its own — a mismatch refuses, it never mixes/);
       assert.throws(() => stages.startStage2({ from: drifted.id, orderBy: 'beat' }), /order by is gone/i,
         'the removed order by must be refused loudly, never silently ignored — the carry follows the saved sort now');
     } finally {
@@ -5548,54 +5558,38 @@ module.exports = {
   theCoinsReadAgainAreTheOnesTheRecordWasFingerprintedOver() {
     const seventeen = ['LTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT', 'ADAUSDT', 'SOLUSDT', 'DOGEUSDT', 'LINKUSDT',
       'DOTUSDT', 'AVAXUSDT', 'TRXUSDT', 'XLMUSDT', 'ETCUSDT', 'ATOMUSDT', 'BCHUSDT', 'UNIUSDT', 'ZECUSDT'];
-    const manifest = { overallDigest: 'abc', symbols: Object.fromEntries(seventeen.map((c) => [c, { digest: 'd', files: 1, bytes: 1 }])) };
+    const hours = { at: 'x', digest: 'abc', coins: Object.fromEntries(seventeen.map((c) => [c, { file: `hours/${c}-${'0'.repeat(32)}.json.gz`, sha256: 'd', count: 1 }])) };
 
     // the owner's own stage 2 set: a plan with a count and no unit list
-    const s2 = { name: 'S2 #1', stage: 2, plan: { units: 600 }, params: { universe: ['LTCUSDT'] }, dataManifest: manifest };
+    const s2 = { name: 'S2 #1', stage: 2, plan: { units: 600 }, params: { universe: ['LTCUSDT'] }, hours };
     assert.deepStrictEqual(stages.coinsFingerprinted(s2).slice().sort(), seventeen.slice().sort(),
-      'the coins read again come from the set\'s trade coins rather than from what it was actually fingerprinted over, '
-      + 'so a seventeen-coin record is held up to a one-coin reading and sixteen coins report as changed');
+      'the coins asked about come from the set\'s trade coins rather than from the hours it keeps, '
+      + 'so a seventeen-coin record is held up to a one-coin reading');
 
     // a stage 1 set answers the same, off the same record
     const s1 = {
-      name: 'S1 #1', stage: 1, dataManifest: manifest,
+      name: 'S1 #1', stage: 1, hours,
       plan: { units: 2, unitList: [{ trade: 'LTCUSDT', ctx1: 'ETHUSDT', ctx2: 'BNBUSDT' }] },
       params: { universe: ['LTCUSDT'] },
     };
     assert.deepStrictEqual(stages.coinsFingerprinted(s1).slice().sort(), seventeen.slice().sort(),
-      'a set with a unit list is read over something other than its own price-file record');
+      'a set with a unit list is read over something other than the hours it keeps');
 
     // and a set with no record at all still answers, off its units
     const bare = { name: 'S1 #new', stage: 1, plan: { units: 1, unitList: [{ trade: 'AAAUSDT', ctx1: 'BBBUSDT' }] }, params: {} };
     assert.deepStrictEqual(stages.coinsFingerprinted(bare), ['AAAUSDT', 'BBBUSDT'],
-      'a set carrying no price-file record yet cannot say which coins to read');
-
-    // A COVERAGE DIFFERENCE IS NOT A PRICE-FILE CHANGE, and must not say it is.
-    const moved = stages.manifestComplaint({ same: false, changed: ['LTCUSDT'], onlyA: [], onlyB: [] }, 'S2 #1');
-    assert.ok(/price files changed since S2 #1 was written \(LTCUSDT\)/.test(moved), moved);
-    const uneven = stages.manifestComplaint({ same: false, changed: [], onlyA: ['ETHUSDT', 'BNBUSDT'], onlyB: [] }, 'S2 #1');
-    assert.ok(!/price files changed/.test(uneven),
-      `two fingerprints over different coins are reported as changed data: ${uneven}`);
-    assert.ok(/not measured over the same coins/.test(uneven) && /ETHUSDT, BNBUSDT/.test(uneven), uneven);
-    // a real change is named even when the coverage differs too -- the moved
-    // file is the thing that stops a launch, and it is what gets said
-    const both = stages.manifestComplaint({ same: false, changed: ['XRPUSDT'], onlyA: ['ETHUSDT'], onlyB: [] }, 'S2 #1');
-    assert.ok(/price files changed/.test(both) && /XRPUSDT/.test(both), both);
+      'a set carrying no record yet cannot say which coins to read');
 
     // and both readers read the record itself, so neither can drift: since
-    // 3.84.0 a set is pinned to the files its stamp lists, and the chain check
-    // and the fill ask whether THOSE files are intact -- nothing is stamped
-    // afresh over coins worked out some other way
+    // 3.271.0 a chain reads the hours kept with its stage 1 set, and the chain
+    // check and the fill ask whether THOSE copies are whole -- nothing keeps
+    // hours afresh but the stage 1 launch
     const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
-    for (const who of ['check-', 'unitfill-']) {
-      assert.ok(!src.includes(`stampManifest(\`${who}`), `the ${who.replace('-', '')} check stamps afresh instead of reading the pinned files off the record`);
-    }
+    assert.strictEqual((src.match(/keepHours\(/g) || []).length, 1, 'something other than the stage 1 launch keeps hours afresh');
     const chain = src.slice(src.indexOf('function parentOrRefuse('), src.indexOf('const recordsInHand'));
-    assert.ok(chain.includes('pinnedIntact(parent.dataManifest)') && chain.includes('pinComplaint(pinned, parent.name)'), 'the chain check asks whether the parent\'s pinned files are intact, and names the files');
+    assert.ok(chain.includes('checkKept(parent.hours)') && chain.includes('keptComplaint(kept, parent.name)'), 'the chain check asks whether the parent\'s kept hours are whole, and names the coins');
     const fill = src.slice(src.indexOf('function unitFillRefusal('), src.indexOf('function parentOrRefuse('));
-    assert.ok(fill.includes('pinnedIntact(doc.dataManifest)') && fill.includes('pinComplaint(pinned, doc.name)'), 'the fill asks whether the set\'s pinned files are intact, and names the files');
-    assert.ok(!/\[\.\.\.diff\.changed, \.\.\.diff\.onlyA, \.\.\.diff\.onlyB\]/.test(src),
-      'a refusal still lumps coins that moved together with coins that were never read, and calls them all changed');
+    assert.ok(fill.includes('checkKept(doc.hours)') && fill.includes('keptComplaint(kept, doc.name)'), 'the fill asks whether the set\'s kept hours are whole, and names the coins');
   },
 
   // A FIELD THE CHECK READS AND THE SERVICE DOES NOT SEND (3.76.5, owner:
@@ -6086,33 +6080,30 @@ theStageHeadingsFollowTheOwnersTruthTableRowForRow() {
         'a different measurement block must refuse: the new unit would be trained on numbers the rest has never seen');
       assert.match(String(stages.unitFillRefusal(withDoc({ engineVersion: '1.0.0' }))), /engine 1\.0\.0/,
         'a different first digit of the release must refuse by name');
-      assert.match(String(stages.unitFillRefusal(withDoc({ dataManifest: null }))), /no readable price-file record/,
-        'a set that cannot prove its data is unchanged must refuse');
-      // AND A SET WHOSE PRICE FILES HAVE MOVED, which is the one that actually
-      // bites: the record is perfectly readable and simply no longer describes
-      // what is on disk. A unit trained on today's candles would join units
-      // trained on yesterday's with nothing able to tell them apart, so the
-      // refusal has to NAME what moved. Since 3.84.0 a set is pinned to the
-      // files it was launched on, so what moved is a FILE: one is stamped,
-      // then rewritten with other candles.
-      const { stampManifest, MANIFEST_DIR } = require('../lib/manifest');
+      assert.match(String(stages.unitFillRefusal(withDoc({ hours: null }))), /cannot be read as it was launched: it keeps no hours of its own/,
+        'a set that keeps no hours cannot be filled in on the prices it was launched on, and must refuse');
+      // AND WHAT MOVES ON THE BOX IS NOT THE SET'S (3.271.0). A unit put back
+      // reads the hours kept with the set, so a price file rewritten with other
+      // candles refuses nothing -- and a copy that is damaged or gone refuses,
+      // naming the coin, because only then would a unit be trained on other data.
       const priceFile = path.join(ROOT, 'data', 'cache', 'ZZZTESTUSDT-1h-2024-01.json');
       fs.mkdirSync(path.dirname(priceFile), { recursive: true });
       fs.writeFileSync(priceFile, JSON.stringify([{ ts: 1704067200000, open: 1, high: 2, low: 1, close: 1, quoteVolume: 1 }]));
+      const kept = require('../lib/keephours').keepHours(['ZZZTESTUSDT'], { allLoaded: true });
+      const copy = path.join(ROOT, 'data', kept.coins.ZZZTESTUSDT.file);
       try {
-        const moved = stampManifest(`${pid}-moved`, ['ZZZTESTUSDT']);
-        assert.strictEqual(stages.unitFillRefusal(withDoc({ dataManifest: moved })), null, 'freshly stamped, the pinned file is intact');
+        assert.strictEqual(stages.unitFillRefusal(withDoc({ hours: kept })), null, 'freshly kept, the copy is whole');
         fs.writeFileSync(priceFile, JSON.stringify([{ ts: 1704067200000, open: 1, high: 2, low: 1, close: 9, quoteVolume: 1 }]));
-        assert.match(String(stages.unitFillRefusal(withDoc({ dataManifest: moved }))), /1 of the price files .* was launched on has changed since/,
-          'price files that moved since the set was written must refuse rather than mixing two kinds of unit');
-        assert.match(String(stages.unitFillRefusal(withDoc({ dataManifest: moved }))), /\(ZZZTESTUSDT-1h-2024-01\.json\)/,
-          'and the refusal must name the file that moved, or there is nothing to act on');
-        // a record whose list of files is gone cannot be proved either way
-        assert.match(String(stages.unitFillRefusal(withDoc({ dataManifest: { ...moved, detailFile: 'manifests/zzz-gone.json' } }))), /cannot be proved unchanged/,
-          'a set whose record of its files is gone must refuse');
+        assert.strictEqual(stages.unitFillRefusal(withDoc({ hours: kept })), null, 'a price file that moved on the box is not the set\'s, and refuses nothing');
+        fs.writeFileSync(copy, require('zlib').gzipSync('[]'));
+        assert.match(String(stages.unitFillRefusal(withDoc({ hours: kept }))), /the hours kept for ZZZTESTUSDT no longer match what was kept/,
+          'a damaged copy must refuse, and name the coin');
+        fs.rmSync(copy, { force: true });
+        assert.match(String(stages.unitFillRefusal(withDoc({ hours: kept }))), /the hours kept for ZZZTESTUSDT are gone/,
+          'and so must a copy that is gone');
       } finally {
         fs.rmSync(priceFile, { force: true });
-        fs.rmSync(path.join(MANIFEST_DIR, `${pid}-moved.json`), { force: true });
+        fs.rmSync(copy, { force: true });
       }
       assert.match(String(stages.unitFillRefusal(withDoc({ stage: 3 }))), /only a stage 1 record set/,
         'only stage 1 holds units to put back');

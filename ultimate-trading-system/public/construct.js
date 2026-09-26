@@ -2267,21 +2267,34 @@ function windowsLineHtml(win) {
   const state = win.known >= win.units && win.units > 0 ? '' : win.known ? ` — ${win.known} of ${win.units} units so far` : '';
   return `<p class="note"><b>Date ranges:</b> ${parts.length ? parts.map((x) => esc(x)).join(' · ') : (win.units ? 'not recorded on this run yet' : 'no units')}${state}</p>`;
 }
-function runIdentityPanelHtml(sizeLine, dm, win = null) {
+// WHAT A RUN READS, ON ITS HEADER (3.271.0, owner order 2026-09-26: "FIX the
+// data dates by the exact dates every coin HAD at the time of starting sweep 1
+// so there's never any constraint due to newer data"). The hours are kept with
+// the chain's stage 1 set when it is launched; this says, coin by coin, the
+// first and last hour kept -- written the way the Data screen writes an hour --
+// and says plainly when a set keeps none.
+function hoursLinesHtml(h) {
+  if (!h) return '';
+  if (h.lost) return `<p class="note"><b>Data fingerprint:</b> none · <b class="warn">no hours kept — ${esc(String(h.lost))}</b></p>`;
+  const coins = Object.entries(h.coins || {});
+  if (!coins.length) return '';
+  const hour = (ts) => {
+    if (!Number.isFinite(ts)) return '?';
+    const d = new Date(ts);
+    const p2 = (n) => String(n).padStart(2, '0');
+    return `${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())}-${p2(d.getUTCHours())}:00:00`;
+  };
+  const total = coins.reduce((n, [, e]) => n + (Number(e.count) || 0), 0);
+  return `<p class="note"><b>Data fingerprint:</b> <code>${esc(String(h.digest || '—').slice(0, 24))}</code>
+            · ${coins.length} coin(s), ${total.toLocaleString()} hours · kept ${esc(String(h.at || '').slice(0, 16))}
+            <span title="taken when stage 1 was launched, over every hour each coin held then. Every stage of this chain reads exactly those hours, whatever the box has fetched since. Two runs are data-comparable exactly when these match.">(?)</span></p>
+          <p class="note"><b>Hours kept:</b> ${coins.map(([sym, e]) => `${esc(sym)} ${hour(e.fromTs)} → ${hour(e.toTs)}`).join(' · ')} (UTC)</p>`;
+}
+function runIdentityPanelHtml(sizeLine, hours, win = null) {
   return `<div class="panel"><h3 style="margin-top:0">What this run actually is</h3>
           ${sizeLine || ''}
           ${windowsLineHtml(win)}
-          <!-- dm.overallDigest / dm.symbols / dm.at are what lib/manifest.js
-               actually writes. This read dm.digest, dm.coins, dm.files and
-               dm.utc — four names nothing has ever written — so the fingerprint
-               that decides whether two runs are comparable at all rendered as
-               "—" with no coin or file count and no stamp time, on every run
-               that had one (audit 2026-08-17). -->
-          ${dm ? `<p class="note"><b>Data fingerprint:</b> <code>${esc(String(dm.overallDigest || dm.error || '—')).slice(0, 24)}</code>
-            ${dm.symbols ? `· ${Object.keys(dm.symbols).length} coin(s), ${Object.values(dm.symbols).reduce((a, x) => a + (x.files || 0), 0)} file(s)` : ''}
-            ${dm.at ? `· stamped ${esc(String(dm.at).slice(0, 16))}` : ''}
-            <span title="taken at launch, over every candle file this run read. Two runs are data-comparable exactly when these match — a different fingerprint means the cache moved between the fire times.">(?)</span>
-            ${dm.error ? ' <b class="warn">STAMP FAILED — this run cannot be proved comparable to any other</b>' : ''}</p>` : ''}
+          ${hoursLinesHtml(hours)}
           </div>`;
 }
 // One save wiring for both screens; only the address differs. Re-render from
@@ -5615,10 +5628,10 @@ async function drawBoards() {
           ? `carried ${Number(c.parent.carry).toLocaleString()} by ${c.parent.sortedBy || (c.parent.orderBy === 'lead' ? 'lead over null set' : 'beat its own null set')}${c.parent.kept != null && c.parent.kept !== c.parent.of ? `, from the ${Number(c.parent.kept).toLocaleString()} its saved filters keep of ${Number(c.parent.of).toLocaleString()}` : ''}`
           : null,
       esc(c.status),
-    ].filter(Boolean).join(' · ')})`).join(' → ')}${chain.length > 1 ? ' · price files fingerprint-checked at every launch' : ''}</p>` : '';
+    ].filter(Boolean).join(' · ')})`).join(' → ')}${chain.length > 1 ? ' · every stage reads the hours kept at stage 1' : ''}</p>` : '';
     mount.innerHTML = `${chainLine}${descriptionPanelHtml(doc.desc, true)}
       ${stage === 1 ? namePanel1(doc) : stage === 2 ? namePanel2(doc) : namePanel3(doc)}${stage === 1 ? notesPanel1(doc) : stage === 2 ? notesPanel2(doc) : notesPanel3(doc)}${bKeptFillPanel(doc)}
-      ${runIdentityPanelHtml(doc.plan && doc.plan.units ? `<p class="note"><b>Size:</b> <b>${Number(doc.plan.units).toLocaleString()}</b> units${doc.plan.settings ? ` × ${Number(doc.plan.settings).toLocaleString()} settings` : ''}${doc.plan.pricings ? ` · ${Number(doc.plan.pricings).toLocaleString()} records, each unit holding only the settings that place different orders on it` : ''}${(doc.params || {}).nullN ? ` · null set size ${doc.params.nullN}` : ''}.</p>` : '', doc.dataManifest || null, got.windows || null)}
+      ${runIdentityPanelHtml(doc.plan && doc.plan.units ? `<p class="note"><b>Size:</b> <b>${Number(doc.plan.units).toLocaleString()}</b> units${doc.plan.settings ? ` × ${Number(doc.plan.settings).toLocaleString()} settings` : ''}${doc.plan.pricings ? ` · ${Number(doc.plan.pricings).toLocaleString()} records, each unit holding only the settings that place different orders on it` : ''}${(doc.params || {}).nullN ? ` · null set size ${doc.params.nullN}` : ''}.</p>` : '', doc.hours || null, got.windows || null)}
       <div id="bT${stage}"></div>`;
     wireNotesSave(`api/stageset/${encodeURIComponent(doc.id)}/notes`, null, String(stage));
     wireRename(`api/stageset/${encodeURIComponent(doc.id)}/name`, String(stage));

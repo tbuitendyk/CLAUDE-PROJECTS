@@ -73,8 +73,8 @@ function halfLifeWeights(p, trainChunks, fee, halfLifeDays) {
 async function hlTrainTask(task) {
   const { combo, geometry, specs, fee, halfLifeMonths } = task;
   const halfLifeDays = daysOfMonths(halfLifeMonths);
-  const pin = task.pin && typeof task.pin === 'string' ? require('./pin').pinnedEntriesOf({ detailFile: task.pin }) : null;
-  const p = { ...task.params, pinnedFiles: pin };
+  // the hours kept with the stage 1 set the chain was launched from (3.271.0)
+  const p = { ...task.params, hours: task.hours && typeof task.hours === 'object' ? task.hours : null };
   const { geo, split, windows } = await sw.unitChunks(combo, geometry, p);
   const { trainChunks, testChunks, holdChunks } = split;
   const { weights, effectiveDays, weighedByMoney } = halfLifeWeights(p, trainChunks, fee, halfLifeDays);

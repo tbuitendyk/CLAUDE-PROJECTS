@@ -71,12 +71,13 @@ function between(src, from, to, label) {
 const PAIRS = [
   {
     label: 'data fingerprint',
-    reader: () => between(CX, '<b>Data fingerprint:</b>', '</p>`', 'fingerprint reader'),
-    varName: 'dm',
-    // the one writer of the stamp's summary since 3.269.0 (writeStamp), for a launch and a child alike
-    writer: () => between(read('lib/manifest.js'), 'return {\n    at: new Date', '\n  };', 'manifest return'),
-    // the catch branch's own shape, and the one path that already worked
-    allowExtra: ['error'],
+    reader: () => between(CX, '<b>Data fingerprint:</b> <code>', '</p>`', 'fingerprint reader'),
+    varName: 'h',
+    // the one writer of a set's kept hours since 3.271.0 (recordOf), for a
+    // launch, a child and a set brought forward alike
+    writer: () => between(read('lib/keephours.js'), 'return { at, digest', '};', 'kept hours record'),
+    // a set whose hours could not be kept says so instead, on its own line
+    allowExtra: ['lost'],
   },
   // REMOVED 2026-08-28 with the screen it read: the inspect panel was on the
   // deleted Boards, and its module went with the older sweep path (3.97.0).
@@ -111,23 +112,23 @@ function everyFieldAScreenReadsIsAFieldItsProducerWrites() {
   assert.deepStrictEqual(problems, [], problems.join('\n     '));
 }
 
-// The fingerprint reader uses derived reads (Object.keys/values) rather than
-// top-level fields, so pin the three names it does depend on explicitly —
+// The fingerprint reader walks the coins with Object.entries rather than
+// reading top-level fields, so pin the names it does depend on explicitly --
 // otherwise the pairing above could pass on a reader that reads nothing.
-function theFingerprintReadsTheThreeNamesTheManifestActuallyWrites() {
-  const src = between(CX, '<b>Data fingerprint:</b>', '</p>`', 'fingerprint reader');
-  for (const f of ['overallDigest', 'symbols', 'at']) {
-    assert(new RegExp(`dm\\.${f}\\b`).test(src),
-      `the data fingerprint no longer reads dm.${f} — that is a name lib/manifest.js writes`);
+function theFingerprintReadsTheNamesTheKeptHoursRecordWrites() {
+  const fn = between(CX, 'function hoursLinesHtml(h) {', '\nfunction runIdentityPanelHtml(', 'hours lines');
+  const src = between(CX, '<b>Data fingerprint:</b> <code>', '</p>`', 'fingerprint reader');
+  for (const f of ['digest', 'at']) {
+    assert(new RegExp(`h\\.${f}\\b`).test(src), `the data fingerprint no longer reads h.${f} — that is a name lib/keephours.js writes`);
   }
-  for (const dead of ['digest', 'coins', 'files', 'utc']) {
-    assert(!new RegExp(`dm\\.${dead}\\b`).test(src),
-      `the data fingerprint reads dm.${dead} again — nothing writes it, so the panel renders blank`);
+  assert(/h\.coins\b/.test(fn), 'the hours lines no longer read h.coins — that is where each coin\'s hours are');
+  for (const dead of ['overallDigest', 'symbols', 'files', 'detailFile']) {
+    assert(!new RegExp(`h\\.${dead}\\b`).test(fn), `the hours lines read h.${dead} — nothing writes it since 3.271.0, so the panel renders blank`);
   }
 }
 
 
 module.exports = {
   everyFieldAScreenReadsIsAFieldItsProducerWrites,
-  theFingerprintReadsTheThreeNamesTheManifestActuallyWrites,
+  theFingerprintReadsTheNamesTheKeptHoursRecordWrites,
 };

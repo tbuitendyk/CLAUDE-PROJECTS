@@ -2069,12 +2069,20 @@ const listener = app.listen(PORT, '127.0.0.1', () => {
     if (done.moved) console.log(`walk sets: ${done.moved} of ${done.sets} had their promotions moved beside them (${done.named.join(', ')})`);
     if (done.failed.length) console.log(`walk sets: ${done.failed.length} could NOT be moved — ${done.failed.join('; ')}`);
   } catch (err) { console.log(`walk sets could not be checked: ${err.message}`); }
-  // A STOPPED STAGE 1 SET IS PAUSED (3.269.0, RULE NINE; the block it calls is
-  // written to be deleted, RULE TEN -- lib/stages.js repairStoppedStageOnesToPaused)
+  // A SET'S PRICE RECORD BECOMES THE HOURS IT READ (3.271.0, RULE NINE; the
+  // block it calls is written to be deleted, RULE TEN -- lib/stages.js
+  // keepHoursOfOlderSets). Here in the listen callback like the walk sets'
+  // move above, so not one request is served against a set whose hours are not
+  // kept yet: a health check connects and waits. Measured on the box before it
+  // was written: 74 coins' worth of hours across 48 sets, half a minute at most.
   try {
-    const done = stages.repairStoppedStageOnesToPaused();
-    if (done.changed) console.log(`stage 1 sets: ${done.changed} stopped set(s) now read paused, and can be started again (${done.named.join(', ')})`);
-  } catch (err) { console.log(`stopped stage 1 sets could not be checked: ${err.message}`); }
+    const t0 = Date.now();
+    const done = stages.keepHoursOfOlderSets();
+    if (done.of) {
+      console.log(`record sets: ${done.kept.length} of ${done.of} now keep the hours they read, in ${((Date.now() - t0) / 1000).toFixed(1)}s`
+        + (done.lost.length ? `; ${done.lost.length} could NOT, and say so: ${done.lost.join('; ')}` : ''));
+    }
+  } catch (err) { console.log(`the older record sets could not be brought forward: ${err.message}`); }
   // A SAVED SCREEN SPEAKS TODAY'S VOCABULARY (3.193.0, RULE NINE). One pass,
   // announced, once -- and the block it calls is written to be deleted the day
   // every screen on the box has been through it (lib/coinsscreens.js).

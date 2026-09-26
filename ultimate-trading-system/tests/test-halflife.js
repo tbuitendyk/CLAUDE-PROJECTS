@@ -141,7 +141,7 @@ module.exports = {
     Pl.generateFabricated(SPAN, G.PLANT, G.SEEDS[G.PLANT], 0);
     try {
       const combo = { trade: G.PLANT, ctx1: null, ctx2: null, size: 1 };
-      const base = { allLoaded: false, startMonth: S1.startMonth, endMonth: S1.endMonth, trainOn: 'direction', weightCap: sw.WEIGHT_CAP_DEFAULT, pinnedFiles: null };
+      const base = { allLoaded: false, startMonth: S1.startMonth, endMonth: S1.endMonth, trainOn: 'direction', weightCap: sw.WEIGHT_CAP_DEFAULT, hours: null };
       const sealed = await sw.unitChunks(combo, S1.geometry, { ...base, windowLayout: 'reserve61' });
       assert.ok(sealed.split.holdChunks.length > 0, 'the set\'s own layout keeps a held-back slice for the judge');
       assert.ok(sealed.reserve && sealed.reserve.chunks > 0, 'and the reserve is sealed off the end');

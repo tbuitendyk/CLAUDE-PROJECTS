@@ -2,22 +2,23 @@
 // over the pure tasks in stagework.js.
 //
 // A record set is written PLAN FIRST: the closed list of units, the settings,
-// and the price-file manifest go to disk before any training starts, so what
-// was asked can never quietly bend after answers exist. One record per unit
+// and the hours it reads go to disk before any training starts, so what was
+// asked can never quietly bend after answers exist. One record per unit
 // (stages 1 and 2) or per setting x unit (stage 3) fills the plan in; a set
 // whose records do not match its own plan reports itself incomplete rather
 // than looking finished.
 //
-// The chain rail: a stage refuses a parent that is not done, and refuses to
-// launch when the price files no longer fingerprint identically to the ones
-// the parent read (lib/manifest.js, the same manifest the sweep resume
-// trusts). It refuses by name — which symbols changed — and never mixes.
+// The chain rail: a stage refuses a parent that is not done, and every stage
+// of a chain reads the hours kept with its stage 1 set (lib/hours.js, 3.271.0),
+// so nothing the box fetches later can put two histories inside one chain. A
+// kept copy that is gone or damaged refuses by name, and nothing ever mixes.
 const fs = require('fs');
 const path = require('path');
 
 const rowstore = require('./rowstore');
 const { createPool: buildPool } = require('./pool');
-const { stampManifest, stampFromEntries, readDetail, manifestDiff, pinnedIntact } = require('./manifest');
+const { checkKept, filesOf } = require('./hours');
+const { keepHours, recordOf, removeUnused } = require('./keephours');
 const { GEOMETRIES } = require('./dataset');
 // CALLED THROUGH THE MODULE, never pulled out at require time: what a blank
 // coin box means is now read off the cache, and a test that cannot stand in for
@@ -555,59 +556,43 @@ const coinsOfParent = (parent) => {
 // THOSE answers the only question being asked -- have those files moved --
 // and the two sides cover the same coins by construction, so the comparison
 // can never again be between different sets of them.
+// AND SINCE 3.271.0 THE RECORD IS THE HOURS KEPT WITH THE SET: the coins it
+// names are every coin its units read, so those are the coins asked about.
 const coinsFingerprinted = (doc) => {
-  const was = ((doc || {}).dataManifest || {}).symbols;
+  const was = (((doc || {}).hours || {}).coins);
   const names = was && typeof was === 'object' ? Object.keys(was) : [];
   return names.length ? names.sort() : coinsOfParent(doc);
 };
-// AND A COVERAGE DIFFERENCE IS NOT A PRICE-FILE CHANGE. Lumping the two
-// together is what let the fault above read as a data problem for a whole
-// afternoon. `changed` is a file that moved; a coin on one side and not the
-// other is the two fingerprints not covering the same ground, which is a fault
-// in the asking, not in the data, and it says so.
-// A RUN READS THE PRICE FILES IT WAS LAUNCHED ON (3.84.0, owner report
-// 2026-09-07: "the price files changed since S3 #1c was written (LTCUSDT) ...
-// that is false"). The complaint below names the pinned files that have
-// changed or gone, never a coin, and never a file that has merely appeared
-// beside them -- that one is not this run's.
-function pinComplaint(check, name) {
-  if (check.why) return `${name} cannot be proved unchanged: ${check.why}`;
+// A SET READS THE HOURS KEPT WITH IT (3.271.0, owner order 2026-09-26: "FIX the
+// data dates by the exact dates every coin HAD at the time of starting sweep 1
+// so there's never any constraint due to newer data"). Nothing the box fetches,
+// bundles, refreshes or purges can change them, so the only ways they can fail
+// are a copy that is gone, a copy that no longer matches what was kept, or a set
+// whose hours could not be kept when it was brought forward -- and the sentence
+// names which, and for which coins.
+function keptComplaint(check, name) {
+  if (check.why) return `${name} cannot be read as it was launched: ${check.why}`;
   const list = (xs) => xs.slice(0, 5).join(', ') + (xs.length > 5 ? ` and ${xs.length - 5} more` : '');
   const parts = [];
-  if (check.changed.length) {
-    parts.push(`${check.changed.length} of the price files ${name} was launched on ${check.changed.length === 1 ? 'has' : 'have'} changed since (${list(check.changed)})`);
-  }
-  if (check.gone.length) parts.push(`${check.gone.length} of the price files ${name} was launched on ${check.gone.length === 1 ? 'is' : 'are'} gone (${list(check.gone)})`);
-  return parts.join(', and ');
+  if (check.missing.length) parts.push(`the hours kept for ${list(check.missing)} are gone`);
+  if (check.damaged.length) parts.push(`the hours kept for ${list(check.damaged)} no longer match what was kept`);
+  return `${name} cannot be read as it was launched: ${parts.join(', and ')}`;
 }
-// the pin a unit's task carries: the path of its set's stamp detail, the
-// list of files the launch read. A set that was never stamped carries none
-// and reads what is on disk, as it always did.
-const pinOf = (doc) => { const dm = (doc || {}).dataManifest; return dm && !dm.error && typeof dm.detailFile === 'string' ? dm.detailFile : null; };
-// A CHILD IS STAMPED OVER EVERY COIN ITS PARENT WAS STAMPED OVER (3.84.1,
-// found on the box the hour 3.84.0 shipped): S3 #1c's own stamp named one
-// coin, LTCUSDT, while every one of its units read sixteen more alongside it,
-// because the launch fell back to the parent's trade coin. A pin over one
-// coin leaves sixteen reading whatever is on disk. The parent's pin names the
-// coins its units read; a parent without one is read over its unit list, as
-// before.
-// AND IT IS STAMPED WITH THE PARENT'S OWN ENTRIES (3.269.0): each file at the
-// size and fingerprint the root's launch recorded, which parentOrRefuse has just
-// proved intact -- never the file hashed again as it is now, which for a day
-// file that has gained hours since would hand the child hours its parent never
-// read.
-function childStampFor(id, parent) {
-  const d = readDetail(parent.dataManifest);
-  if (d && d.detail && Object.keys(d.detail).length) return stampFromEntries(id, d.detail);
-  return stampManifest(id, coinsOfParent(parent));
+// THE HOURS A TASK CARRIES: its set's, one entry per coin -- where the copy is
+// and its fingerprint. A set that keeps none refuses here, before anything is
+// handed out; nothing ever reads the box in their place.
+function hoursOf(doc) {
+  const h = (doc || {}).hours;
+  if (h && h.coins && typeof h.coins === 'object' && Object.keys(h.coins).length) return h.coins;
+  throw new Error(`${(doc || {}).name || 'this record set'} keeps no hours of its own${h && h.lost ? ` — ${h.lost}` : ''}, so nothing can be priced on the prices it was launched on`);
 }
-function manifestComplaint(diff, name) {
-  if (diff.changed.length) {
-    return `the price files changed since ${name} was written (${diff.changed.join(', ')})`;
-  }
-  const off = [...diff.onlyA, ...diff.onlyB];
-  return `the price-file record of ${name} covers ${diff.onlyA.length ? 'coins this check did not read' : 'fewer coins than this check read'}`
-    + ` (${off.join(', ')}) — the two were not measured over the same coins, so nothing can be concluded about the data`;
+// A CHILD READS ITS PARENT'S HOURS, entry for entry (3.84.0, 3.84.1, 3.269.0,
+// 3.271.0): the same copies, the same fingerprints, the time the root kept them.
+// Every coin the parent's units read is in them, which parentOrRefuse has just
+// proved whole, so a child can never read hours its parent did not.
+function childHoursFor(parent) {
+  const h = parent.hours;
+  return { at: h.at, digest: h.digest, coins: { ...h.coins } };
 }
 const unitKeyOf = (u) => `${u.trade}|${u.ctx1 || ''}|${u.ctx2 || ''}|${u.geometry}`;
 
@@ -899,7 +884,10 @@ function startStage1(params) {
     failures: [],
     counts: null,
   };
-  doc.dataManifest = stampManifest(id, coinsOfUnits(units));
+  // THE HOURS THIS RUN READS, KEPT WITH IT BEFORE ANYTHING ELSE IS WRITTEN
+  // (3.271.0): every coin its units read, from its first to its last hour on
+  // the box at this press. A coin the box holds no hours of refuses the launch.
+  doc.hours = keepHours(coinsOfUnits(units), p);
   activeSet = doc;
   saveSet(doc);
 
@@ -937,7 +925,7 @@ function s1PayloadOf(doc, p, u, nullN, fee) {
     // launch; a unit's extras are its own, so they ride beside it. Units with
     // none get `p` exactly as before.
     geometry: u.geometry, params: (u.extras || []).length ? { ...p, extras: u.extras, plateaus: u.plateaus || [] } : p,
-    seed: doc.seed, unitKey: unitKeyOf(u), nullN, fee, pin: pinOf(doc),
+    seed: doc.seed, unitKey: unitKeyOf(u), nullN, fee, hours: hoursOf(doc),
   };
 }
 function s1RecordOf(i, u, res, ranges) {
@@ -1074,14 +1062,11 @@ function unitFillRefusal(doc) {
     return `${doc.name} was written by engine ${doc.engineVersion} and this box runs ${ENGINE_VERSION} — `
       + 'a unit trained here could not be compared with the ones already in it.';
   }
-  // the filled-in units read the same pinned files the rest of the set read
-  // (3.84.0); the only question is whether those files are still intact
-  if (!doc.dataManifest || doc.dataManifest.error || !doc.dataManifest.symbols) {
-    return `${doc.name} carries no readable price-file record, so nothing can prove the data is unchanged`;
-  }
-  const pinned = pinnedIntact(doc.dataManifest);
-  if (!pinned.intact) {
-    return `${pinComplaint(pinned, doc.name)} — a unit trained on other data would not be comparable `
+  // the filled-in units read the hours kept with the set (3.271.0), like the
+  // rest of it; the only question is whether those copies are still whole
+  const kept = checkKept(doc.hours);
+  if (!kept.intact) {
+    return `${keptComplaint(kept, doc.name)} — a unit trained on other data would not be comparable `
       + 'with the ones already in it, so this refuses rather than mixing them.';
   }
   return null;
@@ -1329,28 +1314,58 @@ function continueStage1(doc) {
   return { id: doc.id, name: doc.name, units: list.length };
 }
 
-// ---- REPAIR (3.269.0) -- A STOPPED STAGE 1 SET IS PAUSED -------------------------
-// RULE TEN: delete this block, its call in server.js, and its test, once no
-// stage 1 set on the box says "cancelled". Written 2026-09-26 for
-// S1-ALL-20260926, stopped by the owner under 3.268.0 so this release could be
-// deployed over it.
+// ---- REPAIR (3.271.0) -- A SET'S PRICE RECORD BECOMES THE HOURS IT READ ---------
+// RULE TEN: delete this block, lib/keephours-repair.js, its call in server.js,
+// its test and its guards once no record set on the box carries `dataManifest`
+// (vps-access/scripts/uts-hours-survey.sh counts them). Written 2026-09-26.
 //
-// Until this release a stage 1 Stop left its set "cancelled", which is the word
-// for a run that cannot be picked up again. Every stage 1 set that planned its
-// units can be (continueStage1), so the word it carries moves to today's. Only
-// the status in the set's document changes; nothing it holds is touched.
-// Announced once at start-up.
-function repairStoppedStageOnesToPaused() {
-  const named = [];
-  for (const row of listSets()) {
-    if (row.stage !== 1 || row.status !== 'cancelled') continue;
-    const d = getSet(row.id);
-    if (!d || d.status !== 'cancelled' || !planListed(d)) continue;
-    d.status = 'paused';
-    saveSet(d);
-    named.push(d.name || d.id);
+// A set written before 3.271.0 records the price files it was launched on, not
+// the hours. Each such set's hours are read exactly as its units read them,
+// every file proved against the fingerprint it had at launch
+// (lib/keephours-repair.js); kept beside it; read back and proved again; and
+// only then does its document swap the old record for the new one. Sets that
+// read the same hours share one copy. A set whose files are gone or changed can
+// never have its hours kept, and its record says so from then on. Announced
+// once, at start-up.
+function keepHoursOfOlderSets() {
+  const R = require('./keephours-repair');
+  const { keepCoin } = require('./keephours');
+  const { readCoin } = require('./hours');
+  const docs = listSets().filter((r) => r.stage === 1 || r.stage === 2 || r.stage === 3).map((r) => getSet(r.id)).filter(Boolean);
+  const todo = docs.filter((d) => d.dataManifest && !d.hours);
+  const kept = [];
+  const lost = [];
+  const memo = new Map();
+  for (const doc of todo) {
+    const detail = typeof doc.dataManifest.detailFile === 'string' ? doc.dataManifest.detailFile : null;
+    try {
+      if (doc.dataManifest.error) throw new Error(`its price record failed when it was launched (${doc.dataManifest.error})`);
+      const entries = R.oldEntriesOf(doc.dataManifest);
+      if (!entries || !Object.keys(entries).length) throw new Error('the record of which price files it read is gone');
+      const coins = {};
+      for (const sym of Object.keys(entries).sort()) {
+        const sig = R.signatureOf(sym, entries[sym]);
+        if (!memo.has(sig)) {
+          const entry = keepCoin(sym, R.oldPinnedRows(sym, entries[sym]));
+          readCoin(sym, entry);   // the copy reads back as exactly those hours, or this throws
+          memo.set(sig, entry);
+        }
+        coins[sym] = memo.get(sig);
+      }
+      doc.hours = recordOf(coins, doc.dataManifest.at || doc.createdAt || new Date().toISOString());
+      kept.push(doc.name || doc.id);
+    } catch (err) {
+      doc.hours = { lost: `its hours could not be kept when it was brought forward to release 3.271.0: ${err.message}` };
+      lost.push(`${doc.name || doc.id} (${err.message})`);
+    }
+    delete doc.dataManifest;
+    saveSet(doc);
+    // its old detail file goes once no set still names it
+    if (detail && !detail.includes('..') && !docs.some((d) => d.dataManifest && d.dataManifest.detailFile === detail)) {
+      try { fs.rmSync(path.join(__dirname, '..', 'data', detail), { force: true }); } catch (_) { /* gone already */ }
+    }
   }
-  return { changed: named.length, named };
+  return { of: todo.length, kept, lost };
 }
 
 // ---- parent checks ---------------------------------------------------------------
@@ -1382,16 +1397,12 @@ function parentOrRefuse(fromId, wantStage) {
       + 'votes kept by one version of the arithmetic cannot be priced by another without saying so. The first '
       + 'number is the one that means yesterday\'s records no longer compare, and it has moved.');
   }
-  // A CHILD READS EXACTLY THE PRICE FILES ITS PARENT READ (3.84.0): the pin
-  // is handed down, so the only question is whether those files are still
-  // there with the same bytes. A bundle or a day that has appeared since is
-  // not this chain's, and does not refuse it.
-  if (!parent.dataManifest || parent.dataManifest.error || !parent.dataManifest.symbols) {
-    throw new Error(`${parent.name} carries no readable price-file record, so nothing can prove the data is unchanged`);
-  }
-  const pinned = pinnedIntact(parent.dataManifest);
-  if (!pinned.intact) {
-    throw new Error(`${pinComplaint(pinned, parent.name)} — a mismatch refuses, it never mixes`);
+  // A CHILD READS EXACTLY THE HOURS ITS PARENT READ (3.84.0, 3.271.0): they are
+  // handed down, so the only question is whether the copies are still whole.
+  // Whatever the box has fetched since is not this chain's, and refuses nothing.
+  const kept = checkKept(parent.hours);
+  if (!kept.intact) {
+    throw new Error(`${keptComplaint(kept, parent.name)} — a mismatch refuses, it never mixes`);
   }
   return parent;
 }
@@ -1850,9 +1861,9 @@ function startStage2(params) {
     failures: [],
     counts: null,
   };
-  // the stamp lists the parent's pinned files -- what this run reads -- with
-  // their bytes as they are now, which parentOrRefuse has just proved equal
-  doc.dataManifest = childStampFor(id, parent);
+  // the parent's hours -- what this run reads -- which parentOrRefuse has just
+  // proved whole
+  doc.hours = childHoursFor(parent);
   activeSet = doc;
   saveSet(doc);
 
@@ -1907,7 +1918,7 @@ function s2PayloadOf(doc, parent, rec, u, p, parentNullN, parentFee) {
     // count that would not even line up, because the extras' warm-up
     // dropped the earliest chunks at stage 1.
     geometry: rec.geometry, params: (rec.extras || []).length ? { ...p, extras: rec.extras, plateaus: rec.plateaus || [] } : p,
-    pin: pinOf(doc),
+    hours: hoursOf(doc),
     s1: {
       probs,
       // AND WHAT EACH OF THOSE MEMBERS IS (3.195.0). Without the specs the
@@ -2058,13 +2069,11 @@ function continueStage2(doc) {
       + 'a unit trained here could not be compared with the ones already in it.');
   }
   // its parent as a launch finds it: finished, the same block and line, and
-  // the price files the chain was launched on intact
+  // the hours the chain was launched on whole
   const parent = parentOrRefuse((doc.parent || {}).id, 1);
-  if (doc.dataManifest && !doc.dataManifest.error && doc.dataManifest.symbols) {
-    const pinned = pinnedIntact(doc.dataManifest);
-    if (!pinned.intact) {
-      throw new Error(`${pinComplaint(pinned, doc.name)} — the rest of this run would be trained on different prices from the part already done`);
-    }
+  const kept = checkKept(doc.hours);
+  if (!kept.intact) {
+    throw new Error(`${keptComplaint(kept, doc.name)} — the rest of this run would be trained on different prices from the part already done`);
   }
   const { before, pool } = claimForStartAgain(doc);
   let w = null;
@@ -3471,9 +3480,9 @@ function startStage3(params) {
     failures: [],
     counts: null,
   };
-  // the stamp lists the parent's pinned files -- what this run reads -- with
-  // their bytes as they are now, which parentOrRefuse has just proved equal
-  doc.dataManifest = childStampFor(id, parent);
+  // the parent's hours -- what this run reads -- which parentOrRefuse has just
+  // proved whole
+  doc.hours = childHoursFor(parent);
   // the field's series, frozen beside the set, so what it was priced against
   // is on disk whatever happens to the field on Coins later
   if (fieldDoc) writeFieldSidecar(id, fieldDoc, fieldPairs);
@@ -3787,36 +3796,31 @@ function continueStage3(id) {
   claimOrRefuse();
   const parent = getSet((doc.parent || {}).id || (doc.params || {}).from || '');
   if (!parent || parent.stage !== 2) throw new Error('the stage 2 record set this was priced from is no longer on the box');
-  // THE SAME PRICES (3.84.0). The rest of this run reads exactly the price
-  // files the first part read -- the pin -- so the only question is whether
-  // those files are still there with the same bytes. A bundle that has
-  // appeared beside them since, a day that was filled in, a new day of data:
-  // none of it is this run's, and none of it refuses.
+  // THE SAME PRICES (3.84.0, 3.271.0). The rest of this run reads exactly the
+  // hours the first part read -- the ones kept with the chain's stage 1 set --
+  // so the only question is whether those copies are still whole. Nothing the
+  // box has fetched since is this run's, and none of it refuses.
   let pinWidened = null;
-  if (doc.dataManifest && !doc.dataManifest.error && doc.dataManifest.symbols) {
-    const pinned = pinnedIntact(doc.dataManifest);
-    if (!pinned.intact) {
-      throw new Error(`${pinComplaint(pinned, doc.name)} — the rest of this run would be priced on different prices from the part already done`);
+  const kept = checkKept(doc.hours);
+  if (!kept.intact) {
+    throw new Error(`${keptComplaint(kept, doc.name)} — the rest of this run would be priced on different prices from the part already done`);
+  }
+  // A NARROW RECORD IS WIDENED TO THE PARENT'S (3.84.1). A set stamped before
+  // 3.77.1 can name one coin where its units read seventeen; the coins its own
+  // record does not name are read from its parent's hours from here on, its own
+  // win for the coins it does name, and the start-again's record says so.
+  const ownCoins = doc.hours.coins;
+  const parentCoins = ((parent.hours || {}).coins) || null;
+  const missing = parentCoins ? Object.keys(parentCoins).filter((c) => !ownCoins[c]) : [];
+  if (missing.length) {
+    const pc = checkKept(parent.hours);
+    if (!pc.intact) {
+      throw new Error(`${keptComplaint(pc, parent.name)} — this run's own record names ${Object.keys(ownCoins).length} coin(s) and its units read `
+        + `${missing.length} more from its parent's hours`);
     }
-    // A NARROW PIN IS WIDENED TO THE PARENT'S (3.84.1). A set stamped before
-    // 3.77.1 can name one coin where its units read seventeen; the coins its
-    // own record does not name are read from its parent's files from here on,
-    // its own files win for the coins it does name, the launch's own detail
-    // file stays where it was, and the start-again's record says so.
-    const ownPin = (readDetail(doc.dataManifest) || {}).detail || {};
-    const parentPin = (readDetail(parent.dataManifest) || {}).detail || null;
-    const missing = parentPin ? Object.keys(parentPin).filter((c) => !ownPin[c]) : [];
-    if (missing.length) {
-      const pc = pinnedIntact(parent.dataManifest);
-      if (!pc.intact) {
-        throw new Error(`${pinComplaint(pc, parent.name)} — this run's own record names ${Object.keys(ownPin).length} coin(s) and its units read `
-          + `${missing.length} more from its parent's files, and those have moved`);
-      }
-      // the entries themselves, each at the size its launch recorded (3.269.0)
-      const merged = { ...parentPin, ...ownPin };
-      doc.dataManifest = stampFromEntries(`${id}-widened`, merged);
-      pinWidened = { from: Object.keys(ownPin).length, to: Object.keys(merged).length, added: missing.sort() };
-    }
+    const merged = { ...parentCoins, ...ownCoins };
+    doc.hours = recordOf(merged, doc.hours.at);
+    pinWidened = { from: Object.keys(ownCoins).length, to: Object.keys(merged).length, added: missing.sort() };
   }
   // THE SAME UNITS, IN THE ORDER THE RUN HAD THEM: by record number on the
   // parent, never by the parent's table, which may have been re-sorted or
@@ -5373,7 +5377,7 @@ function s3Payload({ doc, parent, rec, settings, fee, nullN, agreedOnly = false,
     // than priced on the wrong calendar. Every stage 3 pricing goes through
     // here: the launch, the fill of missing units, Held, Reserve, History,
     // Tune and the kept-scramble fill.
-    geometry: rec.geometry, params: (rec.extras || []).length ? { ...doc.params, extras: rec.extras, plateaus: rec.plateaus || [] } : doc.params, pin: pinOf(doc),
+    geometry: rec.geometry, params: (rec.extras || []).length ? { ...doc.params, extras: rec.extras, plateaus: rec.plateaus || [] } : doc.params, hours: hoursOf(doc),
     unit: {
       bandPct: rec.bandPct,
       probs: rec.specs.map((_, mi) => votes.map((v) => v.m[mi])),
@@ -5393,7 +5397,6 @@ function s3Payload({ doc, parent, rec, settings, fee, nullN, agreedOnly = false,
     // nothing on a launch reads.
     ...(wantTestControls ? { wantTestControls: true } : {}),
     unitKey: `${rec.trade}|${rec.ctx1 || ''}|${rec.ctx2 || ''}|${rec.geometry}`,
-    pin: pinOf(doc),
     ...(agreedOnly ? { agreedOnly: true } : {}),
     // THE TEST WINDOW ALONE (3.223.0): the pass that works out the test
     // history numbers keeps nothing from the held-back window, so it holds no
@@ -5890,6 +5893,10 @@ function deleteSet(id, confirm) {
   removeSetFiles(doc);
   return { deleted: true, id: doc.id, name: doc.name, rows, bytes, ...(plan ? { alsoDeleted: plan.judged.map((d) => ({ id: d.id, name: d.name })), readsKept: plan.reads.length } : {}) };
 }
+// every kept copy any set on the box still names (3.271.0)
+function keptFilesInUse() {
+  return listSets().flatMap((r) => filesOf((getSet(r.id) || {}).hours));
+}
 // EVERYTHING ONE SET OWNS, off the disk and out of every cache
 function removeSetFiles(doc) {
   rowstore.remove(doc.id);
@@ -5909,6 +5916,10 @@ function removeSetFiles(doc) {
   try { fs.rmSync(funnelRichDir(doc.id), { recursive: true, force: true }); } catch (_) { /* may not exist */ }
   for (const f of ownedFilesOf(doc.id)) { try { fs.rmSync(path.join(SETS_DIR, f), { force: true }); } catch (_) { /* gone already */ } }
   try { fs.rmSync(setFile(doc.id), { force: true }); } catch (_) { /* reported below */ }
+  // ITS KEPT HOURS GO WITH IT (3.271.0), unless another set still reads the
+  // same copy -- a child, or a launch on the same hours
+  const mine = filesOf(doc.hours);
+  if (mine.length) removeUnused(mine, keptFilesInUse());
   dropCheckpoint(doc.id);
   if (recordsInHand.id === doc.id) { recordsInHand.id = null; recordsInHand.rows = null; }
   if (tallyInHand.id === doc.id) { tallyInHand.id = null; tallyInHand.tally = null; }
@@ -6077,7 +6088,7 @@ function chainOf(id) {
       createdAt: cur.createdAt, desc: cur.desc || '',
       plan: cur.plan ? { units: cur.plan.units || 0, settings: cur.plan.settings || 0 } : null,
       counts: cur.counts, parent: cur.parent ? { id: cur.parent.id, name: cur.parent.name, orderBy: cur.parent.orderBy || null, carry: cur.parent.carry ?? null, sortedBy: cur.parent.sortedBy || null, selected: cur.parent.selected ?? null, of: cur.parent.of ?? null } : null,
-      manifestDigest: cur.dataManifest && cur.dataManifest.overallDigest ? cur.dataManifest.overallDigest.slice(0, 12) : null,
+      hoursDigest: cur.hours && cur.hours.digest ? cur.hours.digest.slice(0, 12) : null,
       params: publicParams(cur),
     });
     cur = cur.parent ? getSet(cur.parent.id) : null;
@@ -11234,7 +11245,7 @@ async function tunedOfRule(rule, labels) {
   const sw = require('./stagework');
   const { multFor } = require('./convictionsweep');
   const { entryOutcome } = require('./stoptuner');
-  const { maps } = await sw.tradeMapFor(cap.combo, cap.geometry, parent.params || {}, pinOf(parent));
+  const { maps } = await sw.tradeMapFor(cap.combo, cap.geometry, parent.params || {}, hoursOf(parent));
   const fee = Number((cap.fee || {}).feePerLeg) || 0;
   for (const L of wanted) {
     const sv = (cap.survivors || []).find((x) => x.label === L);
@@ -11404,7 +11415,7 @@ async function tuneOnCapture(body, tool) {
   const parent = getSet((t.doc.parent || {}).id);
   if (!parent) throw new Error('the stage 3 set this was cut from is gone, so the prices its trades were captured on cannot be read');
   const sw = require('./stagework');
-  const { maps } = await sw.tradeMapFor(cap.combo, cap.geometry, parent.params || {}, pinOf(parent));
+  const { maps } = await sw.tradeMapFor(cap.combo, cap.geometry, parent.params || {}, hoursOf(parent));
   const entries = svs.flatMap((s) => t.windows.flatMap((w) => (s.entries[w] || []).map((e) => ({ ...e, window: w, survivor: s.label, holdHours: s.tHours, breakout: (s.entry || 'breakout') !== 'market' })))).sort((a, b) => a.ts - b.ts);
   const fee = Number((cap.fee || {}).feePerLeg) || 0;
   // A BREAKOUT TRADE IS NOT PRICED FROM THE HOUR'S OPEN (3.235.0, owner order
@@ -11640,7 +11651,7 @@ async function halfLifeRunOn(doc, months, note = null) {
   // EVERY OTHER TRAINING CHOICE THE SET WAS MADE WITH, from the stage 2 set that trained the members
   const p2 = stage2.params || {};
   const trainParams = { allLoaded: p2.allLoaded !== false, startMonth: p2.startMonth || null, endMonth: p2.endMonth || null, trainOn: p2.trainOn || null, weightCap: p2.weightCap ?? null, windowLayout: layout.layout };
-  const pin = pinOf(parent);
+  const hours = hoursOf(parent);
   const of = months.length + 1 + months.length;
   let done = 0;
   const tick = () => { done++; if (note) note(done, of); };
@@ -11651,7 +11662,7 @@ async function halfLifeRunOn(doc, months, note = null) {
   const priced = [];
   try {
     // 1. the members retrained, once per half-life, across the workers
-    await pool.forEach('hlTrain', months.map((m) => ({ combo, geometry: rec.geometry, specs, fee, halfLifeMonths: m, params: trainParams, pin })), (settled, i) => {
+    await pool.forEach('hlTrain', months.map((m) => ({ combo, geometry: rec.geometry, specs, fee, halfLifeMonths: m, params: trainParams, hours })), (settled, i) => {
       trained[i] = settled.ok ? settled.value : { halfLifeMonths: months[i], halfLifeDays: HL.daysOfMonths(months[i]), effectiveDays: null, refused: `the retraining failed: ${String(settled.error || 'no answer')}` };
       tick();
     });
@@ -11954,7 +11965,7 @@ async function runStageGate(run) {
   let reference = null;
   try {
     const sw = require('./stagework');
-    const p1 = { windowLayout: G.STAGE1.windowLayout, allLoaded: false, startMonth: G.STAGE1.startMonth, endMonth: G.STAGE1.endMonth, trainOn: G.STAGE1.trainOn, weightCap: sw.WEIGHT_CAP_DEFAULT, pinnedFiles: null };
+    const p1 = { windowLayout: G.STAGE1.windowLayout, allLoaded: false, startMonth: G.STAGE1.startMonth, endMonth: G.STAGE1.endMonth, trainOn: G.STAGE1.trainOn, weightCap: sw.WEIGHT_CAP_DEFAULT, hours: null };
     const { geo, maps, split } = await sw.unitChunks({ trade: G.PLANT, ctx1: null, ctx2: null, size: 1 }, G.STAGE1.geometry, p1);
     const labelCalls = (chunks) => chunks.map((c) => (c.label > 0 ? 1 : c.label < 0 ? -1 : 0));
     const on = (chunks) => { const m = sw.directionMoney(chunks, labelCalls(chunks), maps.trade, geo, G.STAGE3.fee); return { pnl: m.pnl, trades: m.trades }; };
@@ -12801,11 +12812,11 @@ module.exports = {
   // the shape of its source, which rotted the moment a second share column
   // arrived
   sortValue,
-  coinsFingerprinted, manifestComplaint, sameEngineLine, stageBusy, claimOrRefuse, foldSameTradeSettings, heldOnFor, pricingsOf, stampUnitSettingsFromRows, SAME_TRADE_TOLERANCE,
+  coinsFingerprinted, sameEngineLine, stageBusy, claimOrRefuse, foldSameTradeSettings, heldOnFor, pricingsOf, stampUnitSettingsFromRows, SAME_TRADE_TOLERANCE,
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
   startStage1, startStage2, startStage3,
   missingUnitsOf, unitFillRefusal, fillMissingUnitsStart, fillMissingUnitsStatus, rebuildRanking,
-  continueStage, continueStage1, continueStage2, canStartAgain, ownRuns, repairStoppedStageOnesToPaused,
+  continueStage, continueStage1, continueStage2, canStartAgain, ownRuns, keepHoursOfOlderSets, hoursOf, childHoursFor, keptComplaint,
   s1TrainingOf, s1PayloadOf, s1RecordOf, s2TrainingOf,
   stage1Table, stage1Ordered, stage1Carry, stage1CarryPreview, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
   settingsFor, unitsFor, unitsForPassers, unitMembers, isSetDocument, shapesOf, foldPlateauShares, agreementsFor, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, variantsOf, confirmWanted, confirmLeansFor, coinsSourceOf, confirmLabel, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,

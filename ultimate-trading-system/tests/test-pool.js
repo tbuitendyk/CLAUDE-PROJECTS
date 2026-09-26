@@ -99,7 +99,7 @@ module.exports = {
       for (const m of src.matchAll(/require\('\.\/([\w-]+)'\)/g)) walk(`${m[1]}.js`);
     };
     walk('worker.js');
-    const FORBIDDEN = ['stages.js', 'campaign.js', 'manifest.js', 'jobs.js', 'stagegate.js'];
+    const FORBIDDEN = ['stages.js', 'campaign.js', 'keephours.js', 'jobs.js', 'stagegate.js'];
     for (const forbidden of FORBIDDEN) {
       // A name that is not in the tree cannot fail, and a guard that cannot
       // fail is not a guard.

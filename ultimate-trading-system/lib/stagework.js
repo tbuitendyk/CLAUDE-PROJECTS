@@ -762,18 +762,11 @@ async function trainProbMember({ model, viewIdx, trainChunks, predictChunks, wei
 // builds them, under the stages' fixed training branch — auto band, 24/7,
 // argmax-style labels (decision record #2). The reserve layout seals its
 // final 13% before the split, same as unitTask.
-// THE PIN A TASK CARRIES IS THE PATH OF ITS SET'S STAMP DETAIL (3.84.0),
-// read once per worker and kept: the list of files the run was launched on,
-// each with the size it had then (3.269.0).
-const pinCache = new Map();
-function pinnedFilesFor(pin) {
-  if (!pin || typeof pin !== 'string') return null;
-  if (pinCache.has(pin)) return pinCache.get(pin);
-  const got = require('./pin').pinnedEntriesOf({ detailFile: pin });
-  pinCache.set(pin, got);
-  if (pinCache.size > 8) pinCache.delete(pinCache.keys().next().value);
-  return got;
-}
+// THE HOURS A TASK READS RIDE ON THE TASK (3.271.0): its set's kept hours, one
+// entry per coin -- where the copy is and its fingerprint -- which lib/hours.js
+// reads back and proves. A task handed none reads the box, as the unread window,
+// the stage-engine check's reference and the Coins screens do on purpose.
+const hoursOf = (task) => (task && task.hours && typeof task.hours === 'object' ? task.hours : null);
 // THE SHAPE OF ONE PASS, WORKED OUT WITHOUT TOUCHING A CANDLE (3.111.0,
 // VERIFY-DESIGN.md Part 1). Its own function for three reasons: the screen
 // prints the whole plan BEFORE anything is run, a test can walk every pass of a
@@ -825,7 +818,7 @@ async function unitChunks(combo, geometry, p) {
   const extras = p.extras || [];
   const { geo, maps, chunks, tooEarly } = await buildCombo(combo, branch, {
     allLoaded: !!p.allLoaded, startMonth: p.startMonth, endMonth: p.endMonth,
-    pinnedFiles: p.pinnedFiles || null, extras,
+    hours: p.hours || null, extras,
   });
   let workChunks = chunks;
   let reserve = null;
@@ -952,7 +945,7 @@ function appendKept(existing, from, fresh) {
 // and read beat / lead. Returns everything the orchestrator writes.
 async function s1UnitTask(task) {
   const { combo, geometry, seed, unitKey, nullN, fee } = task;
-  const p = { ...task.params, pinnedFiles: pinnedFilesFor(task.pin) };
+  const p = { ...task.params, hours: hoursOf(task) };
   const { geo, maps, split, reserve, windows, extras, tooEarly } = await unitChunks(combo, geometry, p);
   const { trainChunks, testChunks, holdChunks, bandPct, extraBandPcts } = split;
   const plateaus = plateausOf(p, extras);
@@ -1042,12 +1035,13 @@ async function s1UnitTask(task) {
 // the stage 1 members alone and with every member pooled.
 async function s2UnitTask(task) {
   const { combo, geometry, s1, seed, unitKey, nullN, fee } = task;
-  const p = { ...task.params, pinnedFiles: pinnedFilesFor(task.pin) };
+  const p = { ...task.params, hours: hoursOf(task) };
   const { geo, maps, split, windows, extras, tooEarly } = await unitChunks(combo, geometry, p);
   const { trainChunks, testChunks, holdChunks } = split;
   // The stage 1 votes must be describing THESE chunks. Refuse a unit whose
-  // stored timestamps disagree with the rebuild — a manifest mismatch should
-  // make this impossible, but refusing beats guessing (decision record #14).
+  // stored timestamps disagree with the rebuild — reading the parent's kept
+  // hours should make this impossible, but refusing beats guessing (decision
+  // record #14).
   const ts = testChunks.map((c) => c.startTs);
   const tsH = holdChunks.map((c) => c.startTs);
   if (ts.length !== s1.ts.test.length || ts.some((t, i) => t !== s1.ts.test[i])
@@ -1250,8 +1244,9 @@ function forecastRows(saved, viewIdx, chunks) {
   throw new Error(`a saved model of kind '${saved.kind}' cannot forecast`);
 }
 // THE UNREAD WINDOW HAS A START AND NO END (decision 12): from where the seal
-// began to whatever the box holds on the day. The pin covers what the chain
-// was launched on; the unread window is everything after it, so it is built
+// began to whatever the box holds on the day. The hours kept with the chain's
+// stage 1 set cover what it was launched on; the unread window is everything
+// after them, so it is built
 // from the box's files as they are now, and only chunks whose whole trade
 // fits inside what the box holds are kept (the chunk builder drops the rest).
 // WHAT THE UNREAD WINDOW WAS PRICED ON, provably: the members' forecasts on
@@ -1262,11 +1257,11 @@ function forecastRows(saved, viewIdx, chunks) {
 function forecastHashOf(probsPerMember) {
   return crypto.createHash('sha256').update(JSON.stringify(probsPerMember)).digest('hex').slice(0, 24);
 }
-// THE PRICES A CAPTURE IS PRICED ON AGAIN (3.92.0): the same files the chain
-// was launched on, through the pin, so a tool run on Tune walks the candles the
-// entries were captured from and nothing newer.
-async function tradeMapFor(combo, geometry, params, pin) {
-  const { geo, maps } = await unitChunks(combo, geometry, { ...(params || {}), pinnedFiles: pinnedFilesFor(pin) });
+// THE PRICES A CAPTURE IS PRICED ON AGAIN (3.92.0): the hours the chain was
+// launched on, kept with its stage 1 set (3.271.0), so a tool run on Tune walks
+// the candles the entries were captured from and nothing newer.
+async function tradeMapFor(combo, geometry, params, hours) {
+  const { geo, maps } = await unitChunks(combo, geometry, { ...(params || {}), hours: hours || null });
   return { geo, maps };
 }
 // WITH THE UNIT'S EXTRAS (3.206.1): the blocks are built so a member added
@@ -1275,7 +1270,7 @@ async function tradeMapFor(combo, geometry, params, pin) {
 // so the forecasts on the unread window can be shut where the gate is shut.
 async function unreadChunksFor(combo, geometry, fromTs, extras = []) {
   const branch = { geometry, decision: 'argmax', band: 'auto', weekdaysOnly: false };
-  const { geo, maps, chunks } = await buildCombo(combo, branch, { allLoaded: true, pinnedFiles: null, extras: Array.isArray(extras) ? extras : [] });
+  const { geo, maps, chunks } = await buildCombo(combo, branch, { allLoaded: true, hours: null, extras: Array.isArray(extras) ? extras : [] });
   if (Array.isArray(extras) && extras.length) markExtraGates(chunks, extras.map((e) => e.bandPct));
   const reachOf = (c) => c.startTs + geo.exitOffsetH * 3600000;
   const mine = chunks.filter((c) => c.startTs >= fromTs);
@@ -1286,7 +1281,7 @@ async function unreadChunksFor(combo, geometry, fromTs, extras = []) {
 
 async function s3UnitTask(task) {
   const { combo, geometry, unit, settings, fee, nullN, seed, unitKey, agreedOnly = false } = task;
-  const p = { ...task.params, pinnedFiles: pinnedFilesFor(task.pin) };
+  const p = { ...task.params, hours: hoursOf(task) };
   // EVERY SETTING CARRIES ITS OWN PLACE IN THE BLOCK (3.52.0). A unit prices
   // only the settings that place different orders on it, so its list is not
   // the block and a position in the list says nothing; the record files under

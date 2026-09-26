@@ -29,11 +29,12 @@ const bracketLib = require('./bracket');
 // pricing task already reads.
 async function passTrainTask(task) {
   const { combo, geometry, specs, of, k } = task;
-  const pin = task.pin && typeof task.pin === 'string' ? require('./pin').pinnedEntriesOf({ detailFile: task.pin }) : null;
+  // the hours kept with the stage 1 set the chain was launched from (3.271.0)
+  const hours = task.hours && typeof task.hours === 'object' ? task.hours : null;
   // THE PARENT'S OWN LAYOUT TRAVELS UNTOUCHED in params.windowLayout, so
   // whatever it seals is sealed before the pass cuts anything (3.111.1). The
   // pass is a modifier on that layout, never a replacement for it.
-  const p = { ...task.params, pinnedFiles: pin, pass: { of, k } };
+  const p = { ...task.params, hours, pass: { of, k } };
   const { geo, split, windows } = await sw.unitChunks(combo, geometry, p);
   const { trainChunks, testChunks, holdChunks } = split;
   if (!holdChunks.length) throw new Error(`pass ${k} of ${of} came back with no judging stretch`);
