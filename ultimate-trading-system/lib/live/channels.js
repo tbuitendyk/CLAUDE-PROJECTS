@@ -110,7 +110,7 @@ function activate(greenlightId, channel, { by = OWNER_ID, clipUsd, name, trainPo
       if (open) parts.push(`${open} real`);
       if (paperOpen) parts.push(`${paperOpen} paper`);
       const e = new Error(`${channel} channel is still deactivating (${parts.join(' + ')} still open on this setup) `
-        + '— re-activating would reset its displayed run and hide them while the engine keeps managing them. Re-activate after close-out');
+        + '— re-activating would reset its displayed run and hide them while they are still being managed. Re-activate after close-out');
       e.code = 'DEACTIVATING'; throw e;
     }
   }

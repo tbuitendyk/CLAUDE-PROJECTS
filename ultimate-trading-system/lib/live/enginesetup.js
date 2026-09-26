@@ -44,30 +44,41 @@ const TEMPLATE = {
   steps: [
     {
       id: 'ready',
-      title: 'Here\'s what you need to get your trading engine off the ground',
+      title: 'Here\'s what you need to get your trading platform off the ground',
       guidance: [
         { paras: [
-          'The trading engine is the program that carries out Paper Books and Live Trading: it watches the price, opens and closes positions, and writes everything down. It runs on a machine of yours — a rented server, or this computer — and calls this system. Nothing here can sign in to that machine.',
+          'The trading platform is the program that carries out Paper Books and Live Trading: it watches the price, opens and closes positions, and writes everything down. It runs on a machine of yours — a rented server, or this computer — and calls this system. Nothing here can sign in to that machine.',
           'Whatever it runs on needs power and internet around the clock, because a plan waiting or a position open needs it watching prices; and it must be in a country where your exchange serves you and you are allowed to use it.',
           'A fixed public IP address is needed only if you tie your exchange keys to one address. That is your choice, where your exchange allows it: a tied key is safer, because if it ever leaks it is no use from anywhere else. You make the choice on the Account tab when you enter the keys.',
         ] },
         { when: { where: 'server' }, ifUnset: true, heading: 'A rented server', paras: [
           'Any cloud provider will do. Pick a country where your exchange serves you and you are allowed to use it. An exchange\'s servers sit in one place (Binance\'s, for example, are in Tokyo), so nearer is quicker, but for trades decided once a day a fraction of a second hardly matters.',
-          'The smallest size is plenty: 1 CPU, 1 GB of memory and 10 GB of disk, running Debian 12 or 13, or Ubuntu 24.04. The engine is held to 300 MB of memory and half a CPU.',
+          'The smallest size is plenty for the platform: 1 CPU, 1 GB of memory and 10 GB of disk. Linux is the usual choice, and the cheapest.',
           'If you will tie your exchange keys to its address, ask the provider for a fixed public IP address for it (on AWS, for example, it is called an Elastic IP).',
         ] },
         { when: { where: 'local' }, ifUnset: true, heading: 'This computer', paras: [
-          'Any computer made in the last several years is plenty: the engine is held to 300 MB of memory and half a CPU. Linux, Mac and Windows will all do.',
+          'Any computer made in the last several years is plenty. Linux, Mac and Windows will all do.',
           'It must stay on and awake whenever a plan is waiting or a position is open: set it never to sleep while it is plugged in.',
           'If you will tie your exchange keys to its address, that address must be fixed. Home addresses usually change from time to time; ask your internet provider for a static one.',
         ] },
-        { when: { where: 'local', os: 'linux' }, paras: ['Linux: any current release will do.'] },
-        { when: { where: 'local', os: 'mac' }, paras: ['Mac: in its power settings, stop it sleeping while it is plugged in, including when the display is off.'] },
-        { when: { where: 'local', os: 'windows' }, paras: ['Windows: in its power settings, set sleep to never while it is plugged in.'] },
+        // WHAT EACH SYSTEM NEEDS (owner, 2026-09-26: "A BIT MORE INFORMATION ABOUT THE
+        // REQUIRED WINDOWS INSTALLATION ENVIRONMENT WOULD BE USEFUL!"). The versions
+        // are the ones the pinned Node.js runs on (its platform list); the ceiling on
+        // memory and processor is said only where the install sets one.
+        { when: { os: 'linux' }, paras: ['Linux: Debian 12 or 13, or Ubuntu 24.04, or any other current release with systemd. The platform is held to 300 MB of memory and half a CPU.'] },
+        { when: { os: 'mac' }, paras: ['Mac: macOS 13.5 or newer. In its power settings, stop it sleeping while it is plugged in, including when the display is off.'] },
+        { when: { os: 'windows' }, paras: ['Windows: Windows 10 or 11, or Windows Server 2019 or newer, 64-bit. In its power settings, set sleep to never while it is plugged in.'] },
+        { when: { where: 'server', os: 'windows' }, paras: ['Windows itself needs more memory than the platform does: choose at least 2 GB.'] },
+        { when: { where: 'server', os: 'mac' }, paras: ['A rented Mac (on AWS, for example, an EC2 Mac instance) does the same job as a Linux server for a good deal more money.'] },
       ],
       choices: [
         { id: 'where', label: 'Where it runs', clears: true, clearsNote: 'changing this clears the ticks below, and any install command not used yet: they were about the other machine', options: [{ value: 'server', label: 'a rented server' }, { value: 'local', label: 'this computer' }] },
-        { id: 'os', label: 'Its operating system', when: { where: 'local' }, options: [{ value: 'linux', label: 'Linux' }, { value: 'mac', label: 'Mac' }, { value: 'windows', label: 'Windows' }] },
+        // ASKED FOR A RENTED SERVER TOO (owner, 2026-09-26): a rented server can run
+        // Windows. Once the platform has called in, the system it said it runs on
+        // answers it (engineSays): a checklist finished before this was asked is not
+        // asked it after the fact ("we don't need to change the O/S after the fact of
+        // setting up a trading platform").
+        { id: 'os', label: 'Its operating system', engineSays: 'platform', options: [{ value: 'linux', label: 'Linux' }, { value: 'mac', label: 'Mac' }, { value: 'windows', label: 'Windows' }] },
       ],
       ticks: [
         { id: 'binance', label: 'My exchange serves me there, and I may use it there' },
@@ -77,31 +88,34 @@ const TEMPLATE = {
     },
     {
       id: 'install',
-      title: 'Install the engine',
+      title: 'Install the platform',
       guidance: [
         { paras: [
-          'Press Make the install command, then paste the command into a terminal on the machine. It installs the engine as a service of its own, and the engine calls this system with the code in the command and is given a password of its own. The code works once, for an hour.',
-          'Nothing that can sign in to the machine is kept here: the engine calls out, and this system keeps only a fingerprint of the engine\'s password.',
-          'When the engine has called in, the command prints the fingerprint of the engine\'s lock. The Account tab shows the same fingerprint where you enter the keys for this engine: the keys are locked in your browser so that only this engine can open them.',
+          'Press Make the install command, then paste the command on the machine, where the note for its operating system below says. It installs the platform as a service of its own, and the platform calls this system with the code in the command and is given a password of its own. The code works once, for an hour.',
+          'Nothing that can sign in to the machine is kept here: the platform calls out, and this system keeps only a fingerprint of the platform\'s password.',
+          'When the platform has called in, the command prints the fingerprint of the platform\'s lock. The Account tab shows the same fingerprint where you enter the keys for this platform: the keys are locked in your browser so that only this platform can open them.',
         ] },
-        { when: { where: 'server' }, heading: 'A rented server', paras: [
-          'Sign in to it as an account that may install software (on AWS, for example, EC2 Instance Connect opens a terminal on it in your browser) and paste the command. It needs curl, and installs Node.js from the system\'s own packages if it is missing.',
+        { when: { os: 'linux' }, heading: 'Linux', paras: [
+          'Open a terminal on it and paste the command; it asks for your password if it needs one. On a rented server, sign in as an account that may install software (on AWS, for example, EC2 Instance Connect opens a terminal on it in your browser). It needs curl, and installs Node.js from the system\'s own packages if it is missing.',
         ] },
-        { when: { where: 'local', os: 'linux' }, heading: 'Linux', paras: ['Open a terminal and paste the command; it asks for your password. It installs Node.js from the system\'s own packages if it is missing.'] },
-        { when: { where: 'local', os: 'mac' }, heading: 'Mac', paras: ['Install Node.js 18 or newer first (from nodejs.org). Then open Terminal and paste the command; it asks for your password.'] },
-        { when: { where: 'local', os: 'windows' }, heading: 'Windows', paras: ['Install Node.js 18 or newer first (from nodejs.org). Then open PowerShell as administrator and paste the command.'] },
+        { when: { os: 'mac' }, heading: 'Mac', paras: [
+          'Open Terminal and paste the command; it asks for your password. Nothing needs installing first: it fetches its own copy of Node.js from nodejs.org, checks it against its fingerprint, and keeps it with the platform. Any other Node.js on the Mac is left alone and not used.',
+        ] },
+        { when: { os: 'windows' }, heading: 'Windows', paras: [
+          'Open PowerShell as administrator and paste the command; on a rented server, sign in to it with Remote Desktop first. Nothing needs installing first: it fetches its own copy of Node.js from nodejs.org, checks it against its fingerprint, and keeps it with the platform. Any other Node.js on the computer is left alone and not used.',
+        ] },
       ],
       // the install command, drawn by the page for this step
       panel: 'install',
-      checks: [{ id: 'called', label: 'The engine called in' }],
+      checks: [{ id: 'called', label: 'The platform called in' }],
     },
     {
       id: 'current',
       title: 'Keep it current',
       guidance: [
         { paras: [
-          'When this system moves to a new release, the engine should follow it. Make a new install command in step 2 and run it on the machine again: it replaces the engine\'s program and keeps its record, its lock and its keys, so nothing has to be entered again.',
-          'Run it when the engine holds no plan waiting or open: the engine stops for the few seconds the new program takes to start.',
+          'When this system moves to a new release, the platform should follow it. Make a new install command in step 2 and run it on the machine again: it replaces the platform\'s program and keeps its record, its lock and its keys, so nothing has to be entered again.',
+          'Run it when the platform holds no plan waiting or open: it stops for the few seconds the new program takes to start.',
         ] },
       ],
       panel: 'current',
@@ -131,21 +145,32 @@ function engineOf(setup) {
   return t ? { id: t.id, name: t.name, release: t.release || null, current: codeIsCurrent(t), lastSeenUtc: t.lastSeenUtc || null, enrolledUtc: t.enrolledUtc || null, lock: t.lock || null, machine: t.machine || null } : null;
 }
 
+// WHAT THE PLATFORM SAID OF ITSELF ANSWERS A CHOICE MARKED engineSays: once it
+// has called in, the system it runs on is the one it reported (process.platform)
+const OS_OF = { linux: 'linux', darwin: 'mac', win32: 'windows' };
+function saidOf(eng) {
+  const os = eng && eng.machine ? OS_OF[eng.machine.platform] : null;
+  return os ? { os } : {};
+}
+// the system the install command is made for: what the platform said, or what was chosen
+function systemOf(setup, eng = engineOf(setup)) { return saidOf(eng).os || (setup.choices || {}).os || null; }
+
 // each step: done, open, and what is still missing, in words
 function stepsOf(setup) {
   const out = [];
   let before = true;
   const eng = engineOf(setup);
+  const said = saidOf(eng);
   for (const step of TEMPLATE.steps) {
     const choices = setup.choices || {};
     const ticks = (setup.ticks || {})[step.id] || {};
     const missing = [];
     if (step.writing) missing.push('this step is still being written');
-    for (const c of choicesAsked(step, choices)) if (!choices[c.id]) missing.push(`choose ${c.label.toLowerCase()}`);
+    for (const c of choicesAsked(step, choices)) if (!choices[c.id] && !(c.engineSays && said[c.id])) missing.push(`choose ${c.label.toLowerCase()}`);
     for (const t of step.ticks || []) if (ticks[t.id] !== true) missing.push(`tick "${t.label}"`);
     if (step.panel === 'install' && !eng) missing.push(setup.install && !setup.install.usedUtc ? 'run the install command on the machine' : 'press Make the install command');
-    if (step.panel === 'current' && eng && !eng.current) missing.push(`bring the engine from ${eng.release || 'an unknown release'} to ${RELEASE()}`);
-    if (step.panel === 'current' && !eng) missing.push('install the engine');
+    if (step.panel === 'current' && eng && !eng.current) missing.push(`bring the platform from ${eng.release || 'an unknown release'} to ${RELEASE()}`);
+    if (step.panel === 'current' && !eng) missing.push('install the platform');
     const open = before;
     const done = open && missing.length === 0;
     out.push({ id: step.id, open, done, missing });
@@ -156,7 +181,7 @@ function stepsOf(setup) {
 
 // ---- THE CHECKLISTS ON DISK ----------------------------------------------------
 function fileOf(id) {
-  if (!ID_RE.test(String(id || ''))) { const e = new Error(`no engine setup ${id}`); e.status = 404; throw e; }
+  if (!ID_RE.test(String(id || ''))) { const e = new Error(`no platform setup ${id}`); e.status = 404; throw e; }
   return path.join(DIR(), `${id}.json`);
 }
 function write(rec) {
@@ -168,7 +193,7 @@ function write(rec) {
 }
 function read(id) {
   const f = fileOf(id);
-  if (!fs.existsSync(f)) { const e = new Error(`no engine setup ${id}`); e.status = 404; throw e; }
+  if (!fs.existsSync(f)) { const e = new Error(`no platform setup ${id}`); e.status = 404; throw e; }
   return JSON.parse(fs.readFileSync(f, 'utf8'));
 }
 function list() {
@@ -184,7 +209,8 @@ function list() {
 function withSteps(rec) {
   const { install, ...rest } = rec;
   const waiting = install && !install.usedUtc && Date.parse(install.expiresUtc) > Date.now();
-  return { ...rest, install: install ? { madeUtc: install.madeUtc, expiresUtc: install.expiresUtc, usedUtc: install.usedUtc || null, waiting: !!waiting } : null, engine: engineOf(rec), releaseHere: RELEASE(), steps: stepsOf(rec) };
+  const eng = engineOf(rec);
+  return { ...rest, install: install ? { madeUtc: install.madeUtc, expiresUtc: install.expiresUtc, usedUtc: install.usedUtc || null, waiting: !!waiting } : null, engine: eng, said: saidOf(eng), system: systemOf(rec, eng), releaseHere: RELEASE(), steps: stepsOf(rec) };
 }
 const bad = (m, status = 400) => { const e = new Error(m); e.status = status; throw e; };
 
@@ -199,7 +225,7 @@ function checkShort(shortName, selfId = null) {
   const other = list().find((x) => x.shortName === v && x.id !== selfId);
   if (other) bad(`short name: ${v} is already the short name of the setup for "${other.name}"`);
   const eng = require('./targets').listEngines().find((t) => t.id === v);
-  if (eng) bad(`short name: ${v} is already the short name of the engine record "${eng.name}"`);
+  if (eng) bad(`short name: ${v} is already the short name of the platform record "${eng.name}"`);
   return v;
 }
 
@@ -208,7 +234,7 @@ function create(name, shortName) {
   const n = String(name == null ? '' : name).trim();
   if (!n || n.length > NAME_MAX) bad(`descriptive name: 1 to ${NAME_MAX} characters`);
   const taken = list().find((x) => String(x.name).toLowerCase() === n.toLowerCase());
-  if (taken) bad(`there is already a setup for an engine called "${taken.name}" — one per engine`);
+  if (taken) bad(`there is already a setup for a platform called "${taken.name}" — one per platform`);
   const sn = checkShort(shortName);
   const now = new Date().toISOString();
   const rec = { id: `es-${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`, name: n, shortName: sn, templateVersion: TEMPLATE.version, createdUtc: now, updatedUtc: now, engineId: null, choices: {}, ticks: {}, install: null };
@@ -220,7 +246,7 @@ function create(name, shortName) {
 // while its engine has not called in yet
 function setShortName(id, shortName) {
   const rec = read(id);
-  if (rec.engineId) bad(`the engine is saved under ${rec.engineId}; its short name is the engine record's now`);
+  if (rec.engineId) bad(`the platform is saved under ${rec.engineId}; its short name is the platform record's now`);
   rec.shortName = checkShort(shortName, rec.id);
   rec.updatedUtc = new Date().toISOString();
   write(rec);
@@ -254,7 +280,7 @@ function setChoice(id, stepId, choiceId, value) {
   }
   const opt = c.options.find((o) => o.value === value);
   if (!opt) bad(`${c.label.toLowerCase()}: one of ${c.options.map((o) => o.label).join(', ')}`);
-  if (rec.choices[choiceId] !== value && rec.engineId && engineOf(rec)) bad(`the engine is installed and has called in; to run one on another machine, set up another engine with its own checklist (Set up another engine)`);
+  if (rec.choices[choiceId] !== value && rec.engineId && engineOf(rec)) bad(`the platform is installed and has called in; to run one on another machine, set up another platform with its own checklist (Set up another platform)`);
   if (rec.choices[choiceId] !== value && c.clears) {
     for (const other of step.choices || []) if (other.when && Object.keys(other.when).includes(choiceId)) delete rec.choices[other.id];
     rec.ticks[stepId] = {};
@@ -281,7 +307,7 @@ function setTick(id, stepId, tickId, on) {
 // the checklist goes; an engine it set up keeps its own record, deleted from its card
 function remove(id) {
   const f = fileOf(id);
-  if (!fs.existsSync(f)) bad(`no engine setup ${id}`, 404);
+  if (!fs.existsSync(f)) bad(`no platform setup ${id}`, 404);
   fs.unlinkSync(f);
   return { ok: true, id };
 }
@@ -303,7 +329,7 @@ const normalCode = (c) => String(c == null ? '' : c).trim().toUpperCase();
 function makeInstallCode(id, now = Date.now()) {
   const rec = read(id);
   mustBeOpen(rec, 'install');
-  if (!rec.shortName) bad('give the engine its short name first');
+  if (!rec.shortName) bad('give the platform its short name first');
   const code = newCode();
   rec.install = { codeHash: sha256(code), madeUtc: new Date(now).toISOString(), expiresUtc: new Date(now + CODE_MS).toISOString(), usedUtc: null };
   rec.updatedUtc = rec.install.madeUtc;
@@ -355,6 +381,6 @@ function enroll(code, info = {}, now = Date.now()) {
 }
 
 module.exports = {
-  TEMPLATE, stepsOf, list: () => list().map(withSteps), get: (id) => withSteps(read(id)), create, setShortName, setChoice, setTick, remove, DIR,
+  TEMPLATE, stepsOf, systemOf, list: () => list().map(withSteps), get: (id) => withSteps(read(id)), create, setShortName, setChoice, setTick, remove, DIR,
   makeInstallCode, enroll, lockOf, codeIsCurrent, CODE_MS,
 };

@@ -157,7 +157,7 @@ module.exports.aNewSetupRunsOnTheEngineTickedForNewSetupsAndOtherwiseWhereItAlwa
     const g = mkGreenlight();
     let err = null;
     try { ch.activate(g.id, 'paper'); } catch (e) { err = e; }
-    assert.ok(err && /the trading engine Channel engine does not answer through its link yet/.test(err.message), err && err.message);
+    assert.ok(err && /the trading platform Channel engine does not answer through its link yet/.test(err.message), err && err.message);
     link.mirrorFor(targets.getTarget('ch-engine')).lastHealth = { at: new Date().toISOString(), health: { realOrders: 'off' } };
     const onEngine = ch.activate(mkGreenlight().id, 'paper');
     assert.strictEqual(reg.getSetup(onEngine.id).executionTargetRef, 'ch-engine', 'the new setup names the engine ticked for new setups');

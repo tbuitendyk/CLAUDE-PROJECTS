@@ -346,8 +346,8 @@ function liveGateErrors(s, to) {
     const mirror = require('./enginelink').mirrorFor(target);
     const h = mirror.lastHealth;
     const fresh = h && Date.now() - Date.parse(h.at) < 60000;
-    if (!fresh) errs.push(`the trading engine ${target.name || target.id} does not answer through its link yet (${mirror.status.why || 'no word from it in the last minute'})`);
-    if (to === 'live' && !(fresh && h.health && h.health.realOrders === 'on')) errs.push(`real orders are switched off on the trading engine ${target.name || target.id}`);
+    if (!fresh) errs.push(`the trading platform ${target.name || target.id} does not answer through its link yet (${mirror.status.why || 'no word from it in the last minute'})`);
+    if (to === 'live' && !(fresh && h.health && h.health.realOrders === 'on')) errs.push(`real orders are switched off on the trading platform ${target.name || target.id}`);
     if (to === 'live' && !(typeof s.keyRef === 'string' && s.keyRef.trim())) {
       errs.push('a LIVE setup needs its own sub-account keyRef so its balance and borrow pool never mingle with another setup (set keyRef first)');
     }

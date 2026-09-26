@@ -4209,9 +4209,13 @@ const GL_SET_KEY = 'cx-greenlight-set';
 // WHAT THE LIVE EXECUTOR DOES NOT DO YET for the survivor picked (3.252.0,
 // owner 2026-09-25: "i want to be able to promote a row to Trade based on the
 // current design"): never a refusal, only said, so the press is made knowing
-function glNotYetHtml(list) {
+// AND ON A TRADING PLATFORM, WHAT IS TRUE THERE (3.268.0, owner 2026-09-26): a platform carries out
+// every shape the lab prices, so the setup can start on Paper Books, and only Live Trading waits
+function glNotYetHtml(list, on) {
+  if (on) return `<b>it goes to the Trade tab</b>, and can be started on Paper Books there, on ${esc(on.name)}; Live Trading waits until the trading platforms can place real orders`;
   return list && list.length ? `<b class="warn">it goes to the Trade tab, and cannot be started there yet:</b> ${list.map(esc).join('; ')}` : '';
 }
+const glOnWords = (on) => `It can be started on Paper Books, on ${on.name}; Live Trading waits until the trading platforms can place real orders.`;
 const glNotYetOf = (d, pick) => (!d ? [] : (pick == null || pick === 'depth' ? d.notYet : ((d.survivors || []).find((x) => x.label === pick) || {}).notYet) || []);
 function glRememberedSet(list) {
   let want = null;
@@ -4363,7 +4367,7 @@ function glStage4PanelHtml(list, chosen, d) {
     ${s4DeleteRowHtml(chosen)}
     ${d ? `${rebuildLineHtml(d)}<p class="note"><b>${rebuildPrefix(d)}${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${esc(d.ruleSentence || '')} · ${(d.survivors || []).length} survivors${d.from ? ` · read from <b>${esc(d.from.name)}</b>` : ''}${d.standsOn ? ` · stands on ${esc(d.standsOn.name)}` : ''}
       · verdict ${d.gate ? `<b class="pos">stood (PASS, release ${esc(d.gate.release || '?')})</b>` : `<b class="neg">does not stand</b> - ${esc(d.standing || '')}`}${d.heldAlone && d.kind === 'held' ? ` · ${esc(d.heldAlone)}` : ''}${d.members ? ` · ${d.members} members as the stage 2 set trained them` : ''}${d.refused ? ` · <b class="warn">refused:</b> ${esc(d.refused)}` : ''}</p>
-      ${d.refused ? '' : `<p class="note" id="gl4NotYet"${glNotYetOf(d, 'depth').length ? '' : ' hidden'}>${glNotYetHtml(glNotYetOf(d, 'depth'))}</p>`}
+      ${d.refused ? '' : `<p class="note" id="gl4NotYet"${glNotYetOf(d, 'depth').length || d.startsOn ? '' : ' hidden'}>${glNotYetHtml(glNotYetOf(d, 'depth'), d.startsOn)}</p>`}
       ${glPictureHtml(d)}
       ${d.refused ? '' : `<div class="row" style="align-items:flex-end">
         <label class="f" style="flex:1 1 auto;min-width:0" title="which survivor is taken forward. By depth is the survivor most surrounded by neighbouring settings that survived too, chosen without looking at money; naming one records it as your pick.">one survivor<select id="gl4Pick">
@@ -4440,7 +4444,7 @@ async function drawGreenlight() {
     const drawOne = () => {
       one.innerHTML = glOneHtml(gl4, picked);
       const ny = $('#gl4NotYet');
-      if (ny) { const list = glNotYetOf(gl4, picked); ny.innerHTML = glNotYetHtml(list); ny.hidden = !list.length; }
+      if (ny) { const list = glNotYetOf(gl4, picked); ny.innerHTML = glNotYetHtml(list, gl4.startsOn); ny.hidden = !list.length && !gl4.startsOn; }
     };
     if (pk) pk.addEventListener('change', () => { picked = pk.value; drawRows(); drawOne(); });
     drawRows();
@@ -4454,9 +4458,9 @@ async function drawGreenlight() {
     if (!why) { alert('why is required — the decision record is the point.'); return; }
     const pick = $('#gl4Pick').value;
     const ny = glNotYetOf(gl4, pick);
-    if (!confirm(`Greenlight ${pick === 'depth' ? `the survivor by depth (${gl4.depthPick ? gl4.depthPick.label : '?'})` : `the named survivor ${pick}`} of ${gl4.name}?\n\nNothing trades from this. It records the decision and puts the config on the Trade tab, where only a press of Activate paper or Activate real starts it.${ny.length ? `\n\nIt cannot be started there yet: ${ny.join('; ')}.` : ''}`)) return;
+    if (!confirm(`Greenlight ${pick === 'depth' ? `the survivor by depth (${gl4.depthPick ? gl4.depthPick.label : '?'})` : `the named survivor ${pick}`} of ${gl4.name}?\n\nNothing trades from this. It records the decision and puts the config on the Trade tab, where only a press of Activate paper or Activate real starts it.${gl4.startsOn ? `\n\n${glOnWords(gl4.startsOn)}` : ny.length ? `\n\nIt cannot be started there yet: ${ny.join('; ')}.` : ''}`)) return;
     const out = await tryPost('api/live/greenlight', { source: 'stage4', setId: glChosen, pick, why, name });
-    if (out) { alert(`Greenlighted: ${out.greenlight.id}\n\nIt is on the Trade tab, on Paper Books and on Live Trading.${(out.notYet || []).length ? `\n\nIt cannot be started on either yet: ${out.notYet.join('; ')}.` : ''}`); drawGreenlight(); }
+    if (out) { alert(`Greenlighted: ${out.greenlight.id}\n\nIt is on the Trade tab, on Paper Books and on Live Trading.${out.startsOn ? `\n\n${glOnWords(out.startsOn)}` : (out.notYet || []).length ? `\n\nIt cannot be started on either yet: ${out.notYet.join('; ')}.` : ''}`); drawGreenlight(); }
   };
 }
 

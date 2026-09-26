@@ -388,7 +388,7 @@ function engineNextActivity(st, setup, nowMs, eng) {
   const at = (h) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), h, 0, 0, 0);
   let nextEntry = at(entryHourUtc); if (nextEntry <= nowMs) nextEntry += 864e5;
   let nextEval = at(closeHourUtc); if (nextEval <= nowMs) nextEval += 864e5;
-  const name = (eng && eng.name) || 'the trading engine';
+  const name = (eng && eng.name) || 'the trading platform';
   const levelPct = cell.dMult != null && cfg.branch && Number.isFinite(Number(cfg.branch.band)) ? Math.round(cell.dMult * Math.abs(Number(cfg.branch.band)) * 1e4) / 1e4 : null;
   const plans = ((eng && eng.plans) || []).slice().sort((a, b) => String(a.entry_utc).localeCompare(String(b.entry_utc)));
   const sideOf = (c) => (c === 1 ? 'LONG' : c === -1 ? 'SHORT' : 'no call');
@@ -411,8 +411,8 @@ function engineNextActivity(st, setup, nowMs, eng) {
   for (const p of plans.filter((x) => x.phase === 'waiting' || x.phase === 'sent')) {
     items.push({ what: `Set the levels for the ${sideOf(p.call)} call of ${String(p.chunk_start).slice(0, 10)}`, whenUtc: p.entry_utc,
       why: cell.entry === 'breakout'
-        ? `at its entry hour the engine sets a buying level and a selling level${levelPct != null ? ` ${levelPct}%` : ''} either side of that hour's opening price; a printed trade reaching one opens the position.`
-        : `at its entry hour the engine opens the position at the market${Number(setup.stopPct) > 0 ? `, with a stop ${Math.round(Number(setup.stopPct) * 1e6) / 1e4}% against the price it opens at` : ''}.` });
+        ? `at its entry hour the platform sets a buying level and a selling level${levelPct != null ? ` ${levelPct}%` : ''} either side of that hour's opening price; a printed trade reaching one opens the position.`
+        : `at its entry hour the platform opens the position at the market${Number(setup.stopPct) > 0 ? `, with a stop ${Math.round(Number(setup.stopPct) * 1e6) / 1e4}% against the price it opens at` : ''}.` });
   }
   for (const p of plans.filter((x) => x.phase === 'armed')) {
     const lv = [p.buy != null ? `buying level ${px(p.buy)} opens a LONG` : null, p.sell != null ? `selling level ${px(p.sell)} opens a SHORT` : null].filter(Boolean).join('; ');

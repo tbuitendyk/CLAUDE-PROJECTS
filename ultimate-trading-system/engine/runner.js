@@ -90,8 +90,8 @@ class Runner {
   // ---- plans in ----
   addPlan(plan) {
     const problems = P.planProblems(plan);
-    if (plan && plan.mode === 'live' && !this.liveEnabled) problems.push('real orders are switched off on this engine: a live plan is refused until the owner switches them on');
-    if (plan && plan.mode === 'live' && !this.venues.live) problems.push('this engine has no live exchange module');
+    if (plan && plan.mode === 'live' && !this.liveEnabled) problems.push('real orders are switched off on this platform: a live plan is refused until the owner switches them on');
+    if (plan && plan.mode === 'live' && !this.venues.live) problems.push('this platform has no live exchange module');
     if (problems.length) return { ok: false, problems };
     const had = this.plans.get(plan.planId);
     if (had) return { ok: true, planId: plan.planId, already: true, phase: had.state.phase };
@@ -154,7 +154,7 @@ class Runner {
       const now = this.now();
       const c = r.plan.cell;
       if (c.entry === 'market') {
-        if (now - r.plan.entryTs > LATE_MARKET_MS) { this.skip(id, `late: the plan reached the engine ${Math.round((now - r.plan.entryTs) / 60000)} minutes after its entry hour began`); return; }
+        if (now - r.plan.entryTs > LATE_MARKET_MS) { this.skip(id, `late: the plan reached the platform ${Math.round((now - r.plan.entryTs) / 60000)} minutes after its entry hour began`); return; }
       } else {
         const d = (c.dMult * r.plan.bandPct) / 100;
         const buy = ref * (1 + d);
@@ -162,7 +162,7 @@ class Runner {
         const sides = P.sidesOf(r.plan);
         const mins = await this.market.minutes(r.plan.symbol, r.plan.entryTs, now);
         const hit = mins.find((m) => (sides.includes(1) && m.high >= buy) || (sides.includes(-1) && m.low <= sell));
-        if (hit) { this.skip(id, `late: the price reached a level at ${new Date(hit.ts).toISOString().slice(11, 16)} UTC, before the plan reached the engine`); return; }
+        if (hit) { this.skip(id, `late: the price reached a level at ${new Date(hit.ts).toISOString().slice(11, 16)} UTC, before the plan reached the platform`); return; }
       }
       this.feed(id, { type: 'ref', price: ref, ts: r.plan.entryTs, source: 'the hour\'s opening price asked of the exchange' });
     } catch (e) {
@@ -206,7 +206,7 @@ class Runner {
     const id = r.plan.planId;
     const venue = this.venueFor(a.mode);
     this.write({ type: 'order', planId: id, setupId: r.plan.setupId, mode: a.mode, order: a });
-    if (!venue) return this.refused(r, a, `no exchange module will take a ${a.mode} order on this engine`);
+    if (!venue) return this.refused(r, a, `no exchange module will take a ${a.mode} order on this platform`);
     let res;
     try {
       const fee = this.feeOf(r.plan);

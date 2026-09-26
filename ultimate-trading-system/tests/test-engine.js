@@ -198,7 +198,7 @@ module.exports.aPlanRunsThroughTheSimulatedExchangeAndEveryStepIsWrittenDown = a
   };
   // S5: a live plan is refused on an engine with real orders off
   const live = runner.addPlan({ ...plan, planId: 'x', mode: 'live' });
-  assert.ok(!live.ok && live.problems.some((p) => /real orders are switched off on this engine/.test(p)), JSON.stringify(live));
+  assert.ok(!live.ok && live.problems.some((p) => /real orders are switched off on this platform/.test(p)), JSON.stringify(live));
   assert.deepStrictEqual(runner.addPlan(plan).ok, true);
   assert.deepStrictEqual(runner.addPlan(plan).already, true, 'the same plan twice is the same plan');
   assert.ok(market.followed.has('LTCUSDT'), 'the engine follows the symbol a plan is on');
@@ -273,7 +273,7 @@ module.exports.aLatePlanIsSkippedWhenALevelWasAlreadyReached = async function ()
   await settle(); await settle();
   const st = runner.plans.get('late-1').state;
   assert.strictEqual(st.phase, 'skipped');
-  assert.ok(/late: the price reached a level at 01:05 UTC, before the plan reached the engine/.test(st.reason), st.reason);
+  assert.ok(/late: the price reached a level at 01:05 UTC, before the plan reached the platform/.test(st.reason), st.reason);
   // no level reached yet: the late plan is armed on the hour's opening price
   market.mins = [{ ts: t0 + 5 * 60000, open: 70, high: 71, low: 69.5, close: 70.5 }];
   runner.addPlan({ ...base, planId: 'late-2' });

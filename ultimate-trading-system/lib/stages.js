@@ -10100,6 +10100,8 @@ async function stage4GreenlightDry(setId) {
     refused,
     // what the live executor does not do yet for the survivor by depth (3.252.0): it goes to the Trade tab, and cannot be started there until it does
     notYet: src ? gl.notYetStartable(src.survivor) : [],
+    // or, with a trading platform ticked for new setups, the platform it starts on (3.268.0)
+    startsOn: gl.startsOn(),
     // the picture through every period (3.149.0): read, never priced, and drawn whatever the standing
     picture: await pictureOf(doc).catch((err) => ({ stretches: STRETCH_NAMES.slice(), priced: false, rule: {}, survivors: [], why: String((err && err.message) || err) })),
   };

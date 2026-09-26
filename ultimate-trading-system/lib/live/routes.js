@@ -337,7 +337,7 @@ function installLiveRoutes(app, { csrfGuard }) {
         const src = await require('../stages').stage4GreenlightSource(String(b.setId || ''), { pick: b.pick });
         const rec = gl.greenlightFromStage4(src, { by: 'owner', why: b.why, name: b.name });
         // and what the live executor does not do yet for it, so the screen can say so (3.252.0)
-        return res.json({ ok: true, greenlight: rec, notYet: gl.notYetStartable(rec.configSnapshot.cell) });
+        return res.json({ ok: true, greenlight: rec, notYet: gl.notYetStartable(rec.configSnapshot.cell), startsOn: gl.startsOn() });
       }
       return res.status(400).json({ error: "a greenlight is minted from a Stage 4 record set — send source: 'stage4' with the set and the pick" });
     } catch (e) { res.status(400).json({ error: e.message }); }

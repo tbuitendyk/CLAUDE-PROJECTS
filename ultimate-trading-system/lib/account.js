@@ -168,7 +168,7 @@ function saveTradingAccount({ id, exchange, note } = {}) {
   writeSettings((st) => {
     const all = st.account_trading || (st.account_trading = {});
     const had = all[name] || {};
-    saved = { id: name, exchange: known.id, note: typeof note === 'string' ? note.trim().slice(0, 200) : (had.note || ''), createdAt: had.createdAt || new Date().toISOString() };
+    saved = { id: name, exchange: known.id, note: typeof note === 'string' ? note.trim().slice(0, 200) : (had.note || ''), createdAt: had.createdAt || new Date().toISOString(), ...(had.setup ? { setup: had.setup } : {}) };
     all[name] = saved;
   });
   return saved;
@@ -189,4 +189,21 @@ function deleteTradingAccount(id, setups = []) {
   return { deleted: name };
 }
 
-module.exports = { EXCHANGES, exchanges, setExchange, systemFee, roundTripPct, tradingAccounts, saveTradingAccount, deleteTradingAccount, TRADING_ACCOUNT_RE };
+// ONE TRADING ACCOUNT, and ITS CHECKLIST (lib/accountsetup.js, 3.268.0): kept on
+// its own record, so a record saved again keeps it and a record deleted takes it
+function tradingAccount(id) {
+  const all = readSettings().account_trading || {};
+  const a = all[String(id == null ? '' : id)];
+  return a && TRADING_ACCOUNT_RE.test(a.id) ? a : null;
+}
+function saveAccountSetup(id, setup) {
+  const name = String(id == null ? '' : id);
+  writeSettings((st) => {
+    const had = (st.account_trading || {})[name];
+    if (!had) { const e = new Error(`no trading account called ${name}`); e.code = 'NOT_FOUND'; throw e; }
+    if (setup) had.setup = setup; else delete had.setup;
+  });
+  return tradingAccount(name);
+}
+
+module.exports = { EXCHANGES, exchanges, setExchange, systemFee, roundTripPct, tradingAccounts, tradingAccount, saveTradingAccount, saveAccountSetup, deleteTradingAccount, TRADING_ACCOUNT_RE };

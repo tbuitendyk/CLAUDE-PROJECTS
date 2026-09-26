@@ -295,7 +295,7 @@ const TH={
   // an operator (owner, 2026-08-19: "that's not how humans think"). They lead with
   // the ENTRY time now. The window is still named, but as supporting detail.
   entryUtc:'when this position was actually OPENED, UTC — the moment the order filled. This is the date to think in.',
-  what:'what the engine will do next, soonest first. Scheduled exits appear whether the profile is running or stopped.',
+  what:'what happens next, soonest first. Scheduled exits appear whether the profile is running or stopped.',
   whenUtc:'when it happens, absolute UTC. The countdown beside it is computed live from this, so a page left open does not drift.',
   countdown:'time remaining until that moment, counting down every second.',
   whyNext:'why it happens then — the rule or the schedule that fixes the timing.',
@@ -319,9 +319,9 @@ const TH={
   field:'what the coin’s own decision field said on this decision and what its gate made of the call. up / down / none is the field’s sign; agreement and certainty are its two reads, 0 to 100; then the gate’s verdict — blocked by sign, blocked by minimum, silent, or sized on a rung, which multiplies the clip. "—" means this configuration was not priced under a field.',
   outcome:'what the executor actually did with the call — filled, skipped, gave up, or killed on price drift.',
   // THE ENGINE'S PLANS (loop of 2026-09-25)
-  engEntry:'the hour this plan acts in, UTC — the feature window closed, and the engine starts watching the price at this hour. The date to think in.',
+  engEntry:'the hour this plan acts in, UTC — the feature window closed, and the platform starts watching the price at this hour. The date to think in.',
   engCall:'what the committee called for this plan: LONG = buy the pair, SHORT = sell it borrowed, no call = it stood aside.',
-  engPhase:'where the engine says this plan stands right now, in its own words, and why when there is a reason. Once a position opens, its side follows: with both levels live, either one may open it, whichever the call.',
+  engPhase:'where the platform says this plan stands right now, in its own words, and why when there is a reason. Once a position opens, its side follows: with both levels live, either one may open it, whichever the call.',
   engBuy:'the price level ABOVE the price at the entry hour, in quote currency (USDT). A printed trade at or above it opens a LONG. On a SHORT it is the stop until the position opens.',
   engSell:'the price level BELOW the price at the entry hour, in quote currency (USDT). A printed trade at or below it opens a SHORT. On a LONG it is the stop until the position opens.',
   engStop:'the price the position is closed at if a printed trade reaches it, in quote currency (USDT). Once the trail has armed it follows the best price, once an hour, and never moves back.',
@@ -380,8 +380,8 @@ function pendingHtml(p, next, engineName){
        +(p.holdHours!=null?` If neither is reached within ${esc(p.holdHours)} hours nothing opens, and a position still open then is closed.`:'')
       :`At ${hh} UTC the ${p.side} position opens at that hour's opening price${p.stopPct!=null?`, with a stop ${esc(p.stopPct)}% ${p.side==='LONG'?'below':'above'} the price it opens at,`:''}${p.holdHours!=null?` and is closed ${esc(p.holdHours)} hours later${p.stopPct!=null?' unless a printed trade goes past the stop first':''}`:''}.`);
   const eng=!p.engine?'':p.engine.taken
-    ?` <span class="pos">On ${esc(engineName||'the engine')}</span>, waiting for ${hh} UTC.`
-    :` <span class="warn">Not on ${esc(engineName||'the engine')} yet: ${esc(p.engine.said)}</span> — it is asked again every minute.`;
+    ?` <span class="pos">On ${esc(engineName||'the platform')}</span>, waiting for ${hh} UTC.`
+    :` <span class="warn">Not on ${esc(engineName||'the platform')} yet: ${esc(p.engine.said)}</span> — it is asked again every minute.`;
   return `<div class="panel"><div class="k">Pending decision <span style="text-transform:none;letter-spacing:0">— for the window of ${esc(String(p.chunk_start).slice(0,10))}, decided ${p.decided_utc?at(p.decided_utc)+' UTC':'(time not recorded)'}</span></div>
     <div class="grid" style="margin-top:.4rem">
       ${tile('Call','pendCall',`<b>${call[0]}</b>`,call[1])}
@@ -403,9 +403,9 @@ function trailChecksHtml(e){
   const rows=e.trailChecks||[];
   if(!v.on&&!rows.length) return '';
   const said=v.on
-    ?(v.engineHas?'<span class="pos">Verbose is on</span>: the engine writes down every hourly check of the trail'
-                 :'<span class="warn">Verbose is ticked and the engine has not taken it yet</span>: it is sent again every minute until it does')
-    :(v.engineHas?'<span class="warn">Verbose is off and the engine has not taken that yet</span>'
+    ?(v.engineHas?'<span class="pos">Verbose is on</span>: the platform writes down every hourly check of the trail'
+                 :'<span class="warn">Verbose is ticked and the platform has not taken it yet</span>: it is sent again every minute until it does')
+    :(v.engineHas?'<span class="warn">Verbose is off and the platform has not taken that yet</span>'
                  :'Verbose is off: these are the checks written down while it was on');
   return `<div class="panel"><div class="k">Trail checks <span style="text-transform:none;letter-spacing:0">— ${said}</span></div>
     <table style="margin-top:.4rem"><thead><tr>${th('hour (UTC)','tcHour')}${th('position of','tcPlan')}${th('hour’s best','tcHourBest')}${th('best so far','tcBest')}${th('arms at','tcArm')}${th('trail would put the stop at','tcWant')}${th('stop','tcStop')}${th('why','tcWhy','text-align:left')}</tr></thead><tbody>
@@ -418,7 +418,7 @@ function trailChecksHtml(e){
     </tbody></table></div>`;
 }
 function enginePlansHtml(e){
-  const link=e.link&&e.link.following?'<span class="pos">following the engine</span>':`<span class="neg">not following the engine</span> <span class="muted">(${esc((e.link&&e.link.why)||'not started')})</span>`;
+  const link=e.link&&e.link.following?'<span class="pos">following the platform</span>':`<span class="neg">not following the platform</span> <span class="muted">(${esc((e.link&&e.link.why)||'not started')})</span>`;
   const rows=(e.plans||[]).slice(0,12).map(p=>{
     const sz=p.size||{};
     const usd=p.pnl!=null?p.pnl:(p.mark?p.mark.openUsd:null);
@@ -433,9 +433,9 @@ function enginePlansHtml(e){
       <td title="clip ${esc(sz.clipUsd)} x the field's size ${esc(sz.fieldSize)} x the conviction multiplier ${esc(sz.multiplier)} (${esc(sz.agree)} members agreeing)">${sz.quoteUsd==null?'—':'$'+Number(sz.quoteUsd).toFixed(2)}</td>
       <td class="${cls(usd)}">${money(usd)}</td></tr>`;
   }).join('');
-  return `<div class="panel"><div class="k">The engine's plans <span style="text-transform:none;letter-spacing:0">— ${esc(e.name)} · ${link}</span></div>
+  return `<div class="panel"><div class="k">The platform's plans <span style="text-transform:none;letter-spacing:0">— ${esc(e.name)} · ${link}</span></div>
     <table style="margin-top:.4rem"><thead><tr>${th('entry (UTC)','engEntry')}${th('call','engCall')}${th('where it stands','engPhase','text-align:left')}${th('buying level','engBuy')}${th('selling level','engSell')}${th('stop now','engStop')}${th('best price','engBest')}${th('trail','engTrail')}${th('size','engSize')}${th('money $','engMoney')}</tr></thead>
-    <tbody>${rows||'<tr><td colspan="10" class="empty">no plan sent to the engine yet</td></tr>'}</tbody></table></div>`;
+    <tbody>${rows||'<tr><td colspan="10" class="empty">no plan sent to the platform yet</td></tr>'}</tbody></table></div>`;
 }
 
 // ONE cell renderer for every position table on this page, on BOTH the setup
@@ -915,7 +915,7 @@ async function drawDetail(){
       <!-- VERBOSE (owner, 2026-09-25): every hourly check of the trailing stop
            written down by the engine and shown on LIVE, on or off at any time. -->
       <div class="row" style="margin-top:.5rem">
-        <label class="muted" title="when ticked, the engine writes down every hourly check of this book's trailing stop — the hour's best price, where the trail would put the stop, whether it moved and why — shown on LIVE under The engine's plans. On or off at any time; it changes nothing about the trading."><input type="checkbox" id="verboseIn" ${s.verbose?'checked':''}> Verbose</label>
+        <label class="muted" title="when ticked, the platform writes down every hourly check of this book's trailing stop — the hour's best price, where the trail would put the stop, whether it moved and why — shown on LIVE under The engine's plans. On or off at any time; it changes nothing about the trading."><input type="checkbox" id="verboseIn" ${s.verbose?'checked':''}> Verbose</label>
       </div>
       <div class="row" style="margin-top:.5rem"><button id="saveCfg">Save</button></div>
       <!-- THE TWO FIELDS THE SCREEN DEMANDED AND DID NOT OFFER. Going live is

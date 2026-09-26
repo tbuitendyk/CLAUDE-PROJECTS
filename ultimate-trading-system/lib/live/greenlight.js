@@ -106,8 +106,19 @@ function stage4Refusal(src) {
   if (!Number.isFinite(sv.bandPct) || sv.bandPct <= 0) return 'the band this survivor was priced at is not on the record, so it cannot be frozen';
   return null;
 }
-// what the live executor does not do yet for this survivor or frozen cell, in words; empty when it does all of it
+// WHERE A NEW SETUP WOULD START (3.268.0, owner 2026-09-26: fix "it goes to the Trade tab, and cannot be
+// started there yet: its entry is breakout, and the live executor only does market entry ..."): on the
+// trading platform ticked for new setups (lib/live/channels.js), which carries out every shape the lab
+// prices -- breakout, the active gate, a trailing stop, an arm. Then the old order program's limits do
+// not apply at all, and only Live Trading waits, until the platforms can place real orders.
+function startsOn() {
+  const t = require('./targets').defaultEngine();
+  return t ? { id: t.id, name: t.name || t.id } : null;
+}
+// what the live executor does not do yet for this survivor or frozen cell, in words; empty when it does
+// all of it, and empty when a new setup starts on a trading platform instead
 function notYetStartable(cell) {
+  if (startsOn()) return [];
   const c = cell || {};
   return EXECUTOR_SHAPE({ entry: c.entry, gate: c.gate, trailMult: c.trailMult ?? null, armMult: c.armMult ?? null });
 }
@@ -369,5 +380,5 @@ function revoke(greenlightId, { by = 'owner' } = {}) {
 module.exports = {
   relabel, validName, NAME_MAX,
   getGreenlight, listGreenlights, shuttle, revoke, glDir,
-  greenlightFromStage4, configFromStage4, stage4Refusal, notYetStartable,
+  greenlightFromStage4, configFromStage4, stage4Refusal, notYetStartable, startsOn,
 };

@@ -16,19 +16,20 @@ const es = require('../lib/live/enginesetup');
 const targets = require('../lib/live/targets');
 const refused = (fn, rx) => { let err = null; try { fn(); } catch (e) { err = e; } assert.ok(err && rx.test(err.message), `refused in words matching ${rx}: ${err && err.message}`); return err; };
 const RELEASE = require('../package.json').version;
-const readyTicks = (id) => { es.setChoice(id, 'ready', 'where', 'server'); for (const t of ['binance', 'on', 'size']) es.setTick(id, 'ready', t, true); };
+const readyTicks = (id) => { es.setChoice(id, 'ready', 'where', 'server'); es.setChoice(id, 'ready', 'os', 'linux'); for (const t of ['binance', 'on', 'size']) es.setTick(id, 'ready', t, true); };
 
 module.exports = {
   // THE TEMPLATE: step 1 in full, step 2 the install command, step 3 keeping it current
   theTemplateHasStepOneInFullAndTheRestStillBeingWritten() {
     const [first, ...rest] = es.TEMPLATE.steps;
     assert.strictEqual(es.TEMPLATE.version, 2);
-    assert.strictEqual(first.title, 'Here\'s what you need to get your trading engine off the ground');
+    assert.strictEqual(first.title, 'Here\'s what you need to get your trading platform off the ground');
     assert.deepStrictEqual(first.choices.map((c) => [c.id, c.options.map((o) => o.label)]), [['where', ['a rented server', 'this computer']], ['os', ['Linux', 'Mac', 'Windows']]]);
-    assert.deepStrictEqual(first.choices[1].when, { where: 'local' }, 'the operating system is asked for this computer');
+    // ASKED FOR A RENTED SERVER TOO (3.268.0): a rented server can run Windows; once the platform has called in, what it said answers it
+    assert.deepStrictEqual([first.choices[1].when, first.choices[1].engineSays], [undefined, 'platform'], 'the operating system is asked wherever it runs');
     // TIED TO ONE ADDRESS IS THE OWNER'S CHOICE (owner, 2026-09-25): no tick demands a fixed address
     assert.deepStrictEqual(first.ticks.map((t) => t.label), ['My exchange serves me there, and I may use it there', 'It will be on and online around the clock', 'It meets the size above']);
-    assert.deepStrictEqual(rest.map((s) => [s.title, !!s.writing, s.panel]), [['Install the engine', false, 'install'], ['Keep it current', false, 'current']]);
+    assert.deepStrictEqual(rest.map((s) => [s.title, !!s.writing, s.panel]), [['Install the platform', false, 'install'], ['Keep it current', false, 'current']]);
     // THE PLATFORM IS THE OWNER'S CHOICE (owner, 2026-09-25): Binance only ever as an example
     const all = JSON.stringify(es.TEMPLATE.steps.map((x) => [x.title, x.guidance, (x.ticks || []).map((t) => t.label), (x.choices || []).map((c) => [c.label, c.options])]));
     for (const m of all.match(/[^.]*Binance[^.]*/g) || []) assert.ok(/for example/.test(m), `Binance named only as an example: ${m}`);
@@ -36,7 +37,18 @@ module.exports = {
     for (const m of all.match(/[^.]*(AWS|EC2)[^.]*/g) || []) assert.ok(/for example/.test(m), `a provider named only as an example: ${m}`);
     assert.ok(!/Mexico|running today/.test(all), 'the template says nothing about one installation\'s machines');
     const words = JSON.stringify(first.guidance);
-    for (const w of ['fixed public IP address is needed only if you tie your exchange keys to one address', 'Elastic IP', 'Debian 12 or 13', 'Ubuntu 24.04', '300 MB', 'static one', 'Mac:', 'Windows:', 'Linux:', 'Nothing here can sign in to that machine']) assert.ok(words.includes(w), `step 1 says ${w}`);
+    for (const w of ['fixed public IP address is needed only if you tie your exchange keys to one address', 'Elastic IP', 'Debian 12 or 13', 'Ubuntu 24.04', '300 MB', 'static one', 'Mac:', 'Windows:', 'Linux:', 'Nothing here can sign in to that machine', 'macOS 13.5 or newer', 'Windows 10 or 11, or Windows Server 2019 or newer, 64-bit', 'at least 2 GB']) assert.ok(words.includes(w), `step 1 says ${w}`);
+    // THE CEILING IS SAID ONLY WHERE THE INSTALL SETS ONE (3.268.0): the Linux service is held to it; Mac and Windows are not
+    for (const b of first.guidance.filter((x) => JSON.stringify(x.paras).includes('300 MB'))) assert.deepStrictEqual(b.when, { os: 'linux' }, 'the ceiling on memory is said for Linux alone');
+    // WHAT EACH SYSTEM NEEDS TO INSTALL IT (3.268.0): Mac and Windows need nothing installed first
+    const install = es.TEMPLATE.steps[1].guidance;
+    for (const os of ['mac', 'windows']) {
+      const b = install.find((x) => x.when && x.when.os === os);
+      assert.ok(b && /Nothing needs installing first: it fetches its own copy of Node\.js from nodejs\.org, checks it against its fingerprint/.test(b.paras.join(' ')), `${os}: nothing to install first`);
+    }
+    assert.ok(/PowerShell as administrator/.test(JSON.stringify(install.find((x) => x.when && x.when.os === 'windows'))), 'Windows: PowerShell opened as administrator');
+    // ONE NAME FOR IT (owner, 2026-09-26: "just change all the references to the trading 'engine' to 'platform'")
+    assert.ok(!/\bengine\b/i.test(all), `the checklist calls it the platform: ${(all.match(/[^."]*\bengine\b[^."]*/i) || [''])[0]}`);
     assert.ok(!/sign-in key|authorized_keys|private half/.test(all), 'nothing in the template keeps or asks for a key that signs in to the machine');
   },
 
@@ -44,14 +56,13 @@ module.exports = {
   aChecklistOpensEachStepOnlyWhenTheOneBeforeIsDone() {
     const a = es.create('Mexico engine', 'mx-engine-2');
     assert.deepStrictEqual(a.steps.map((s) => [s.open, s.done]), [[true, false], [false, false], [false, false]]);
-    refused(() => es.create(' mexico ENGINE ', 'other'), /already a setup for an engine called "Mexico engine" — one per engine/);
+    refused(() => es.create(' mexico ENGINE ', 'other'), /already a setup for a platform called "Mexico engine" — one per platform/);
     refused(() => es.create('', 'other'), /^descriptive name: 1 to 60 characters$/);
     refused(() => es.create('Another', 'Not Short'), /^short name: 2 to 30 of a-z, 0-9 and -, starting with a letter or digit$/);
     refused(() => es.create('Another', 'mx-engine-2'), /short name: mx-engine-2 is already the short name of the setup for "Mexico engine"/);
     refused(() => es.create('Another', 'mx-1'), /^short name: mx-1 is already taken$/);
     refused(() => es.makeInstallCode(a.id), /^step 2 opens when step 1 is done$/);
     refused(() => es.setTick(a.id, 'install', 'x', true), /^step 2 opens when step 1 is done$/);
-    refused(() => es.setChoice(a.id, 'ready', 'os', 'mac'), /^its operating system is asked only when where it runs is this computer$/);
     refused(() => es.setChoice(a.id, 'ready', 'where', 'moon'), /one of a rented server, this computer/);
     refused(() => es.setTick(a.id, 'ready', 'nope', true), /has no tick nope/);
     es.setChoice(a.id, 'ready', 'where', 'local');
@@ -65,13 +76,14 @@ module.exports = {
     // changing where it runs clears the ticks, the operating system and a command not used yet: they were about the other machine
     es.makeInstallCode(a.id);
     const moved = es.setChoice(a.id, 'ready', 'where', 'server');
-    assert.deepStrictEqual([moved.choices, moved.ticks.ready, moved.install], [{ where: 'server' }, {}, null]);
+    // the operating system stays: a rented server is asked it too, and may run the same one
+    assert.deepStrictEqual([moved.choices, moved.ticks.ready, moved.install], [{ where: 'server', os: 'windows' }, {}, null]);
     assert.deepStrictEqual(moved.steps.map((s) => s.open), [true, false, false]);
     // kept on this machine, and taken away
     assert.strictEqual(es.list().length, 1);
     assert.deepStrictEqual(es.remove(a.id), { ok: true, id: a.id });
     assert.strictEqual(es.list().length, 0);
-    refused(() => es.get('../../etc/passwd'), /no engine setup/);
+    refused(() => es.get('../../etc/passwd'), /no platform setup/);
   },
 
   // THE PAGE: the button in The trading platform section opens and closes the
@@ -80,13 +92,13 @@ module.exports = {
     const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
     const engine = src.slice(src.indexOf('function engineHtml('), src.indexOf('function wireEs('));
     assert.ok(/\+ esHtml\(\)/.test(engine), 'the area is drawn inside The trading platform section');
-    assert.ok(/<button id="esToggle"[^>]*>' \+ \(cEsOpen \? '▾' : '▸'\) \+ ' Set up a trading engine<\/button>/.test(src), 'one button opens and closes it');
+    assert.ok(/<button id="esToggle"[^>]*>' \+ \(cEsOpen \? '▾' : '▸'\) \+ ' Set up a trading platform<\/button>/.test(src), 'one button opens and closes it');
     assert.ok(/localStorage\.setItem\('setup-es-open'/.test(src), 'open or closed is remembered for this viewer');
     assert.ok(/getJson\('api\/live\/engine-setups'\)/.test(src) && /esSetupHtml\(sel, cEs\.template\)/.test(src), 'the steps are the service\'s template');
     assert.ok(/<div class="row" style="margin-top:\.5rem"><button id="esStart">Start its setup<\/button>/.test(src), 'Start its setup has a row of its own');
     assert.ok(/<div class="row" style="margin-top:\.9rem"><button id="esDelete" class="danger"/.test(src), 'Delete this setup has a row of its own');
     assert.ok(/opens when step ' \+ i \+ ' is done/.test(src) && /This step is still being written\./.test(src), 'a locked step and a step still being written say so');
-    assert.ok(/A new engine is added with Set up a trading engine\./.test(engine), 'the section says where a new engine comes from');
+    assert.ok(/A new platform is added with Set up a trading platform\./.test(engine), 'the section says where a new platform comes from');
     assert.ok(!/A new engine record/.test(engine) && !/Start a new record instead/.test(engine), 'no engine record is made by hand any more');
   },
 };
@@ -106,7 +118,7 @@ module.exports.aChecklistCarriesTheEnginesTwoNames = function () {
   assert.ok(/setups\.length > 1\s*\? '<div class="row" style="margin-bottom:\.5rem"><label class="c"><span class="muted">show the checklist for<\/span>/.test(src), 'the picker shows only with more than one checklist');
   assert.ok(/<b style="font-size:\.95rem">' \+ esc\(sel\.name\) \+ '<\/b>/.test(src), 'the checklist is headed with its engine\'s name');
   assert.ok(/id="esShortFix"/.test(src) && /<button id="esShortSave">Save the short name<\/button>/.test(src), 'a checklist without a short name asks for it');
-  assert.ok(/<button id="esNewToggle"[^>]*>' \+ \(cEsNew \? '▾' : '▸'\) \+ ' Set up another engine<\/button>/.test(src), 'another engine is set up behind its own button');
+  assert.ok(/<button id="esNewToggle"[^>]*>' \+ \(cEsNew \? '▾' : '▸'\) \+ ' Set up another platform<\/button>/.test(src), 'another platform is set up behind its own button');
   assert.ok(!/name for the new engine/.test(src), 'the name box that read as this engine\'s second name is gone');
   es.remove(id); es.remove(b.id);
 };
@@ -144,7 +156,7 @@ module.exports.stepTwoInstallsTheEngineWithAOneTimeCode = function () {
   // one running this system's code is current whatever release number it carries
   const here = require('../lib/live/enginehub').packageNow();
   targets.noteEngine('cdmx-engine', { release: '3.1.0', code: '0123456789abcdef' });
-  assert.deepStrictEqual(es.get(a.id).steps[2].missing, [`bring the engine from 3.1.0 to ${RELEASE}`]);
+  assert.deepStrictEqual(es.get(a.id).steps[2].missing, [`bring the platform from 3.1.0 to ${RELEASE}`]);
   targets.noteEngine('cdmx-engine', { release: '3.1.0', code: here.code });
   assert.deepStrictEqual([es.get(a.id).steps[2].done, es.get(a.id).engine.current], [true, true], 'a web-only release does not make an engine behind');
   targets.noteEngine('cdmx-engine', { release: '3.1.0', code: null });
@@ -159,12 +171,22 @@ module.exports.stepTwoInstallsTheEngineWithAOneTimeCode = function () {
   // a lock that is not a P-256 public half is not taken
   assert.strictEqual(es.lockOf({ publicKey: 'not a key' }), null);
   // once it has called in, where it runs is where it runs
-  refused(() => es.setChoice(a.id, 'ready', 'where', 'local'), /the engine is installed and has called in; to run one on another machine, set up another engine/);
+  // A CHECKLIST FINISHED BEFORE THE OPERATING SYSTEM WAS ASKED (3.268.0, owner 2026-09-26: "we don't need
+  // to change the O/S after the fact of setting up a trading platform"): what the platform said it runs on
+  // answers it -- step 1 stays done, and step 3's command is made for the system the platform is on
+  targets.noteEngine('cdmx-engine', { machine: { platform: 'linux', arch: 'x64', hostname: 'ip-172-31-5-9', node: 'v24.21.0' } });   // as its hello says on every call
+  const f = path.join(process.env.GC_ENGINE_SETUPS_DIR, `${a.id}.json`);
+  const kept = JSON.parse(fs.readFileSync(f, 'utf8'));
+  fs.writeFileSync(f, JSON.stringify({ ...kept, choices: { where: 'server' } }));
+  const old = es.get(a.id);
+  assert.deepStrictEqual([old.steps[0].done, old.said, old.system], [true, { os: 'linux' }, 'linux']);
+  fs.writeFileSync(f, JSON.stringify(kept));
+  refused(() => es.setChoice(a.id, 'ready', 'where', 'local'), /the platform is installed and has called in; to run one on another machine, set up another platform with its own checklist \(Set up another platform\)/);
   // a short name kept by a record of another kind is never taken by an install code, and the code is not spent
   fs.writeFileSync(process.env.GC_TARGETS_FILE, JSON.stringify({ ...JSON.parse(fs.readFileSync(process.env.GC_TARGETS_FILE, 'utf8')), 'box-3': { id: 'box-3', kind: 'ssh-box', host: 'h', user: 'u' } }));
   const boxId = 'es-muhgbox1-abcdef';
-  fs.writeFileSync(path.join(process.env.GC_ENGINE_SETUPS_DIR, `${boxId}.json`), JSON.stringify({ id: boxId, name: 'Box', shortName: 'box-3', templateVersion: 2, createdUtc: '2026-09-26T00:00:00.000Z', engineId: null, choices: { where: 'server' }, ticks: { ready: { binance: true, on: true, size: true } }, install: null }));
-  refused(() => es.enroll(es.makeInstallCode(boxId, t0).code, {}, t0 + 60000), /the short name box-3 already belongs to another engine/);
+  fs.writeFileSync(path.join(process.env.GC_ENGINE_SETUPS_DIR, `${boxId}.json`), JSON.stringify({ id: boxId, name: 'Box', shortName: 'box-3', templateVersion: 2, createdUtc: '2026-09-26T00:00:00.000Z', engineId: null, choices: { where: 'server', os: 'linux' }, ticks: { ready: { binance: true, on: true, size: true } }, install: null }));
+  refused(() => es.enroll(es.makeInstallCode(boxId, t0).code, {}, t0 + 60000), /the short name box-3 already belongs to another platform/);
   assert.strictEqual(es.get(boxId).install.usedUtc, null, 'a refused call does not use the code up');
   es.remove(boxId);
   es.remove(a.id);
@@ -180,16 +202,20 @@ module.exports.theComputeTabDrawsStepTwo = function () {
   assert.ok(/<div class="row" style="margin-top:\.3rem"><button id="esCmdCopy">Copy the command<\/button>/.test(fn), 'Copy the command has a row of its own');
   assert.ok(/<textarea id="esCmd" readonly/.test(fn), 'the command, to copy');
   assert.ok(/it is not shown again after this page is reloaded/.test(fn), 'the page says the code is shown once');
-  assert.ok(/<input type="checkbox" disabled' \+ \(e \? ' checked' : ''\) \+ '> ' \+ esc\(c\.label\)/.test(fn) && /ticked by this system when the engine calls in/.test(fn), 'the check is ticked by the system, not the owner');
+  assert.ok(/<input type="checkbox" disabled' \+ \(e \? ' checked' : ''\) \+ '> ' \+ esc\(c\.label\)/.test(fn) && /ticked by this system when the platform calls in/.test(fn), 'the check is ticked by the system, not the owner');
+  // EACH COMMAND SAYS WHICH SYSTEM IT IS FOR (3.268.0): a Linux command once went into PowerShell
+  assert.ok(/windows: 'for Windows, in PowerShell opened as administrator', mac: 'for Mac, in Terminal', linux: 'for Linux, in a terminal on the machine'/.test(fn), 'the command is headed with its system');
   assert.ok(!/privateKey|THE-PRIVATE|authorized_keys|esKeyMake|esSignIn/.test(src), 'nothing on the page makes, takes or shows a key that signs in to a machine');
   // the command: one per system, this system's own address, the short name and the code
   const cmdFn = new Function('PUBLIC_BASE', `${src.slice(src.indexOf('function esCommandFor('), src.indexOf('const hhmm ='))}; return esCommandFor;`)('https://www.example.test/uts/');
   assert.strictEqual(cmdFn('linux', 'cdmx-engine', 'UTS-AAAA-BBBB-CCCC-DDDD-EEEE-FFFF'), "curl -fsSL 'https://www.example.test/uts/engine-link/install/linux.sh' | sudo sh -s -- 'https://www.example.test/uts/' 'cdmx-engine' 'UTS-AAAA-BBBB-CCCC-DDDD-EEEE-FFFF'");
   assert.ok(/install\/mac\.sh' \| sudo sh -s --/.test(cmdFn('mac', 'x2', 'UTS-A')), 'Mac');
-  assert.strictEqual(cmdFn('windows', 'x2', 'UTS-A'), "& ([scriptblock]::Create((irm 'https://www.example.test/uts/engine-link/install/windows.ps1'))) 'https://www.example.test/uts/' 'x2' 'UTS-A'");
-  // a rented server is Linux; this computer is the system chosen in step 1
+  // A PLAIN WINDOWS POWERSHELL RUNS IT AS IT IS (3.268.0): scripts allowed for this window, and the secure connection older Windows 10 does not use by itself
+  assert.strictEqual(cmdFn('windows', 'x2', 'UTS-A'), "Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; & ([scriptblock]::Create((irm 'https://www.example.test/uts/engine-link/install/windows.ps1'))) 'https://www.example.test/uts/' 'x2' 'UTS-A'");
+  // the system is the service's word: what the platform said once it has called in, or what step 1 chose
   const sysFn = new Function(`${src.slice(src.indexOf('function esSystemOf('), src.indexOf('function esCommandFor('))}; return esSystemOf;`)();
-  assert.deepStrictEqual([sysFn({ choices: { where: 'server' } }), sysFn({ choices: { where: 'local', os: 'mac' } }), sysFn({ choices: {} })], ['linux', 'mac', null]);
+  assert.deepStrictEqual([sysFn({ system: 'linux' }), sysFn({ system: 'windows' }), sysFn({})], ['linux', 'windows', null]);
+  assert.deepStrictEqual([es.systemOf({ choices: { where: 'server', os: 'windows' } }, null), es.systemOf({ choices: { where: 'server' } }, { machine: { platform: 'linux' } }), es.systemOf({ choices: { os: 'mac' } }, { machine: { platform: 'win32' } }), es.systemOf({ choices: { where: 'server' } }, null)], ['windows', 'linux', 'windows', null], 'what the platform said comes before what was chosen');
   const cur = src.slice(src.indexOf('function esCurrentHtml('), src.indexOf('function esSetupHtml('));
   assert.ok(/make a new install command in step 2 and run it on the machine/.test(cur), 'step 3 says how to bring the engine forward');
 };
@@ -211,6 +237,24 @@ module.exports.theInstallScriptsCheckThePackageAndOpenNothing = function () {
   assert.ok(/rm -f "\$DATA\/link\.json"/.test(linux), 'linux: installed again with a new code, the engine calls in afresh');
   assert.ok(/<key>KeepAlive<\/key><true\/>/.test(mac) && /chmod 700 "\$DATA"/.test(mac), 'mac: kept running, its data its owner\'s alone');
   assert.ok(/icacls \$data \/inheritance:r/.test(win) && /-RestartCount 999/.test(win), 'windows: only SYSTEM and administrators read its data; restarted if it stops');
+  // THEIR OWN NODE.JS (3.268.0, owner 2026-09-26: "it should recognize and download / set-up prepackaged
+  // dependencies to not burden windows users"): one version, fetched from nodejs.org and refused unless it
+  // matches the fingerprint written in the script -- the fingerprints from the signed list published with it
+  const PINS = { 'win-x64': '158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541', 'win-arm64': '8779b1bde1d39f8d420e3b57aa657b39891af434d3de44a919044cec06785921', 'darwin-arm64': 'bed7eea5325e1108f32ce5228ddd6a5f0f08a499ee42aa7442aea583702f6057', 'darwin-x64': '1462cb3b3046b815cf8ea436d3da450ec1a9f11dac7e5a46b0ada5305d7e8097' };
+  for (const [name, src, plats] of [['windows', win, ['win-x64', 'win-arm64']], ['mac', mac, ['darwin-arm64', 'darwin-x64']]]) {
+    assert.ok(/v24\.21\.0/.test(src) && /https:\/\/nodejs\.org\/dist\//.test(src), `${name}: its own Node.js, from nodejs.org`);
+    for (const pl of plats) assert.ok(src.includes(PINS[pl]), `${name}: the fingerprint of ${pl}`);
+    assert.ok(/the Node\.js download did not match its fingerprint; nothing was installed/.test(src), `${name}: a download that does not match is not used`);
+    assert.ok(!/must already be installed|install Node\.js 18 or newer|Get-Command node|command -v node/.test(src), `${name}: nothing asks for a Node.js installed beforehand`);
+    assert.ok(/called in and is linked to this system/.test(src) && !/the engine called in/.test(src), `${name}: it says the platform called in`);
+  }
+  assert.ok(win.indexOf('Get-FileHash $zip') < win.indexOf('tar -xf $zip'), 'windows: the fingerprint is checked before anything is unpacked');
+  assert.ok(mac.indexOf('shasum -a 256 "$TMP/node.tgz"') < mac.indexOf('tar -xzf "$TMP/node.tgz"'), 'mac: the fingerprint is checked before anything is unpacked');
+  // AND IT WORKS IN A PLAIN WINDOWS POWERSHELL: its downloads are quick and secure, the program it replaces
+  // is stopped first, and the window stays open to be read (exit would close a window it was pasted into)
+  for (const w of ["$ProgressPreference = 'SilentlyContinue'", '[Net.SecurityProtocolType]::Tls12', 'Get-CimInstance Win32_Process', 'Stop-Process -Id $_.ProcessId -Force', 'PROCESSOR_ARCHITEW6432']) assert.ok(win.includes(w), `windows: ${w}`);
+  assert.ok(!/\bexit\b(?!,| would)/.test(win.replace(/#.*$/gm, '')), 'windows: no exit to close the window it was pasted into');
+  assert.ok(![...win].some((ch) => ch.charCodeAt(0) > 127), 'windows: plain letters only, as Windows PowerShell reads a script it is handed');
   // the package holds the engine and nothing of the install scripts or the tests
   const { unpack } = require('../engine/tar');
   const hub = require('../lib/live/enginehub');

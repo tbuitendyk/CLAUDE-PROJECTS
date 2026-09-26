@@ -29,13 +29,13 @@ module.exports = {
     assert.strictEqual(targets.defaultEngine().id, 'mx-engine');
     assert.ok(targets.getTarget('mx-1') && targets.getTarget('mx-1').kind === 'ssh-box', 'the old order program stays where it was');
     const bad = (rec, re) => { let e = null; try { targets.saveEngine(rec); } catch (x) { e = x; } assert.ok(e && e.code === 'BAD_ENGINE' && re.test(e.message), e && e.message); };
-    bad({ id: 'x2', name: 'X' }, /^no engine called x2: a new engine is added by installing it, with Set up a trading engine$/);
+    bad({ id: 'x2', name: 'X' }, /^no platform called x2: a new platform is added by installing it, with Set up a trading platform$/);
     bad({ id: 'mx-engine', name: '' }, /^descriptive name: 1 to 60 characters$/);
     assert.ok(targets.engineProblems({ id: 'mx-1', name: 'X', link: 'calls-out', tokenHash: hash }).includes('short name: mx-1 is already taken'), 'no engine record takes the old order program\'s name');
     // an engine calls this system, and that is the only way there is
     assert.deepStrictEqual(targets.LINKS, ['calls-out']);
-    assert.deepStrictEqual(targets.engineProblems({ id: 'x3', name: 'X', link: 'tunnel', tokenHash: hash }), ['the link: an engine calls this system']);
-    assert.deepStrictEqual(targets.engineProblems({ id: 'x3', name: 'X', link: 'calls-out' }), ['the engine\'s token fingerprint is missing']);
+    assert.deepStrictEqual(targets.engineProblems({ id: 'x3', name: 'X', link: 'tunnel', tokenHash: hash }), ['the link: a platform calls this system']);
+    assert.deepStrictEqual(targets.engineProblems({ id: 'x3', name: 'X', link: 'calls-out' }), ['the platform\'s token fingerprint is missing']);
     // AN ENGINE THAT CALLS OUT: made when it first calls; its token's fingerprint and its lock are its own, never the form's
     const out = targets.saveCallingEngine({ id: 'cdmx-engine', name: 'CDMX engine', tokenHash: hash, lock: { publicKey: 'x', fingerprint: 'abcd-ef01-2345-6789-abcd' }, machine: { platform: 'linux' }, release: '3.266.0' });
     assert.deepStrictEqual([out.link, out.tokenHash, out.isDefault], ['calls-out', hash, false]);
@@ -47,7 +47,7 @@ module.exports = {
     targets.saveEngine({ id: 'mx-engine', name: 'Mexico engine', isDefault: true });
     // a short name kept by a record of another kind is never taken by an engine calling in
     fs.writeFileSync(targets.targetsFile(), JSON.stringify({ ...JSON.parse(fs.readFileSync(targets.targetsFile(), 'utf8')), 'box-2': { id: 'box-2', kind: 'ssh-box', host: 'h', user: 'u' } }));
-    assert.throws(() => targets.saveCallingEngine({ id: 'box-2', name: 'Taken', tokenHash: hash }), /the short name box-2 already belongs to another engine/);
+    assert.throws(() => targets.saveCallingEngine({ id: 'box-2', name: 'Taken', tokenHash: hash }), /the short name box-2 already belongs to another platform/);
     // what it says of itself when it calls, and nothing else
     targets.noteEngine('cdmx-engine', { release: '3.266.1', lastSeenUtc: '2026-09-26T01:00:00.000Z', tokenHash: 'c'.repeat(64) });
     assert.deepStrictEqual([targets.getTarget('cdmx-engine').release, targets.getTarget('cdmx-engine').tokenHash], ['3.266.1', hash]);
@@ -344,11 +344,11 @@ module.exports = {
     const s = { id: 'setup-gate', executionTargetRef: 'mx-engine', configSnapshot: { cell: { entry: 'breakout' } }, tradedPair: 'LTCUSDT', keyRef: 'k' };
     m.lastHealth = null;
     const quiet = reg.liveGateErrors(s, 'paper');
-    assert.ok(quiet.length === 1 && /the trading engine Mexico engine does not answer through its link yet/.test(quiet[0]), quiet.join(' | '));
+    assert.ok(quiet.length === 1 && /the trading platform Mexico engine does not answer through its link yet/.test(quiet[0]), quiet.join(' | '));
     m.lastHealth = { at: new Date().toISOString(), health: { realOrders: 'off' } };
     assert.deepStrictEqual(reg.liveGateErrors(s, 'paper'), [], 'the breakout shape goes to paper on the engine');
     const live = reg.liveGateErrors(s, 'live');
-    assert.ok(live.some((x) => /real orders are switched off on the trading engine Mexico engine/.test(x)), live.join(' | '));
+    assert.ok(live.some((x) => /real orders are switched off on the trading platform Mexico engine/.test(x)), live.join(' | '));
     m.lastHealth = null;
   },
 };
@@ -371,9 +371,9 @@ module.exports.theEngineCardSaysWhatItsPricesMean = function () {
 module.exports.theEngineRecordFormSaysWhichNameIsWhich = function () {
   const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
   // the checklist asks for both when an engine's setup starts; the record's form changes the descriptive one
-  assert.ok(/<span class="muted">short name — letters, digits, dashes<\/span><input id="esShort"[^>]*placeholder="engine-2"/.test(src), 'the short name says so, with an example');
-  assert.ok(/<span class="muted">descriptive name — what you see on screen<\/span><input id="esName"[^>]*placeholder="Engine 2"/.test(src), 'the descriptive name says so, with an example');
-  assert.ok(/<span class="muted">descriptive name — what you see on screen<\/span><input id="engName"[^>]*placeholder="Engine 2"/.test(src), 'and the record\'s form says the same');
+  assert.ok(/<span class="muted">short name — letters, digits, dashes<\/span><input id="esShort"[^>]*placeholder="platform-2"/.test(src), 'the short name says so, with an example');
+  assert.ok(/<span class="muted">descriptive name — what you see on screen<\/span><input id="esName"[^>]*placeholder="Platform 2"/.test(src), 'the descriptive name says so, with an example');
+  assert.ok(/<span class="muted">descriptive name — what you see on screen<\/span><input id="engName"[^>]*placeholder="Platform 2"/.test(src), 'and the record\'s form says the same');
   assert.ok(/>Changing ' \+ esc\(ed\.name\) \+ ' <span class="muted">\(' \+ esc\(ed\.id\) \+ '\)<\/span>/.test(src), 'the record being changed is headed with both names');
   assert.ok(!/>record id</.test(src) && !/id="engId"/.test(src), 'the old label and the short name box are gone from the form: a record keeps its short name');
   assert.deepStrictEqual(targets.engineProblems({ id: '', name: '', link: 'calls-out', tokenHash: 'a'.repeat(64) }), ['short name: 2 to 30 of a-z, 0-9 and -, starting with a letter or digit', 'descriptive name: 1 to 60 characters'], 'a refusal names the two fields the same way');

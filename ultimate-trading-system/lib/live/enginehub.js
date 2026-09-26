@@ -69,7 +69,7 @@ function engineByToken(token) {
 
 function status(engineId) {
   const c = conns.get(engineId);
-  if (!c) return { linked: false, since: null, lastAt: null, why: 'the engine has not called in since this service started' };
+  if (!c) return { linked: false, since: null, lastAt: null, why: 'the platform has not called in since this service started' };
   return { linked: true, since: c.since, lastAt: new Date(c.lastAt).toISOString(), release: c.hello ? c.hello.release : null, why: null };
 }
 
@@ -78,7 +78,7 @@ function onUpgrade(req, socket, head) {
   if (u.pathname !== '/engine-link/ws') { ws.refuse(socket, 404, 'no such address'); return; }
   const m = /^Bearer\s+(\S+)$/.exec(String(req.headers.authorization || ''));
   const eng = m ? engineByToken(m[1]) : null;
-  if (!eng) { ws.refuse(socket, 401, 'this system does not know that engine\'s password: install the engine again with a new install command'); return; }
+  if (!eng) { ws.refuse(socket, 401, 'this system does not know that platform\'s password: install the platform again with a new install command'); return; }
   const conn = ws.accept(req, socket, head);
   if (!conn) return;
   const id = eng.id;
@@ -122,7 +122,7 @@ function onUpgrade(req, socket, head) {
   conn.on('close', () => {
     clearInterval(quiet);
     clearTimeout(helloWait);
-    for (const p of me.pending.values()) { clearTimeout(p.timer); p.resolve({ ok: false, status: 0, why: 'the link to the engine closed before it answered', ms: Date.now() - p.started }); }
+    for (const p of me.pending.values()) { clearTimeout(p.timer); p.resolve({ ok: false, status: 0, why: 'the link to the platform closed before it answered', ms: Date.now() - p.started }); }
     me.pending.clear();
     if (conns.get(id) === me) conns.delete(id);
     try { require('./targets').noteEngine(id, { lastSeenUtc: new Date().toISOString() }); } catch (_) { /* the record may be gone */ }
@@ -133,12 +133,12 @@ function onUpgrade(req, socket, head) {
 function call(engineId, method, p, body = null, timeoutMs = 4000) {
   if (!attached) return relay(engineId, method, p, body, timeoutMs);
   const c = conns.get(engineId);
-  if (!c || !c.conn.open || !c.hello) return Promise.resolve({ ok: false, status: 0, why: 'the engine is not linked to this system right now: it calls in by itself when it runs', ms: 0 });
+  if (!c || !c.conn.open || !c.hello) return Promise.resolve({ ok: false, status: 0, why: 'the platform is not linked to this system right now: it calls in by itself when it runs', ms: 0 });
   return new Promise((resolve) => {
     seq += 1;
     const id = `q${Date.now().toString(36)}${seq}`;
     const started = Date.now();
-    const timer = setTimeout(() => { c.pending.delete(id); resolve({ ok: false, status: 0, why: `the engine sent nothing for ${timeoutMs / 1000} seconds`, ms: Date.now() - started }); }, timeoutMs);
+    const timer = setTimeout(() => { c.pending.delete(id); resolve({ ok: false, status: 0, why: `the platform sent nothing for ${timeoutMs / 1000} seconds`, ms: Date.now() - started }); }, timeoutMs);
     timer.unref();
     c.pending.set(id, { resolve, timer, started });
     c.conn.send(JSON.stringify({ t: 'request', id, method, path: p, body }));
@@ -149,7 +149,7 @@ function call(engineId, method, p, body = null, timeoutMs = 4000) {
 function relay(engineId, method, p, body, timeoutMs) {
   let r;
   try { r = JSON.parse(process.env.GC_ENGINE_RELAY || 'null'); } catch (_) { r = null; }
-  if (!r || !r.port || !r.secret) return Promise.resolve({ ok: false, status: 0, why: 'no link to the engine from here', ms: 0 });
+  if (!r || !r.port || !r.secret) return Promise.resolve({ ok: false, status: 0, why: 'no link to the platform from here', ms: 0 });
   const data = JSON.stringify({ method, path: p, body, timeoutMs });
   return new Promise((resolve) => {
     const req = http.request({ host: '127.0.0.1', port: r.port, method: 'POST', path: `/engine-link/relay/${encodeURIComponent(engineId)}`, timeout: timeoutMs + 3000, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data), 'X-UTS-Relay': r.secret } }, (res) => {

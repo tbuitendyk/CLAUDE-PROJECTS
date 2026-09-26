@@ -153,6 +153,9 @@ module.exports.aStage4GreenlightRefusesInWordsAndShuttlesOnlyIntoADraft = functi
 // live executor does not do yet is said in words; and the one door into Paper
 // Books and Live Trading still refuses it, so nothing built from it can trade.
 module.exports.aBreakoutSurvivorIsGreenlightedAsPricedAndCannotBeStartedUntilTheExecutorDoesIt = function () {
+  // no trading platform on record: a new setup would go where it always did (3.268.0)
+  const savedTargets = process.env.GC_TARGETS_FILE;
+  process.env.GC_TARGETS_FILE = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gc-gl-none-')), 'targets.json');
   const shape = { entry: 'breakout', gate: 'active', dMult: 0.75, tHours: 65, trailMult: 1, armMult: 0.5 };
   const src = stage4Src({ survivor: { ...stage4Src().survivor, ...shape } });
   assert.strictEqual(gl.stage4Refusal(src), null, 'the shape is not a refusal');
@@ -179,6 +182,33 @@ module.exports.aBreakoutSurvivorIsGreenlightedAsPricedAndCannotBeStartedUntilThe
     try { reg.transition(setup.id, to, 'owner', 'test'); } catch (e) { threw = e; }
     assert.ok(threw && threw.code === 'NOT_LIVE_EXECUTABLE' && /only does MARKET entry/.test(threw.message), `${to}: ${threw && threw.message}`);
     assert.strictEqual(reg.getSetup(setup.id).state, 'draft', `${to}: still a draft`);
+  }
+  if (savedTargets === undefined) delete process.env.GC_TARGETS_FILE; else process.env.GC_TARGETS_FILE = savedTargets;
+};
+
+// ON A TRADING PLATFORM, WHAT IS TRUE THERE (3.268.0, owner 2026-09-26: fix "it goes to the Trade tab,
+// and cannot be started there yet: its entry is breakout, and the live executor only does market entry
+// ..."): with a platform ticked for new setups the setup starts on it, and a platform carries out every
+// shape the lab prices -- so none of the old order program's limits is said, and the Greenlight page says
+// it can be started on Paper Books there while Live Trading waits for real orders
+module.exports.onATradingPlatformTheGreenlightSaysPaperNowAndLiveWaits = function () {
+  const saved = process.env.GC_TARGETS_FILE;
+  process.env.GC_TARGETS_FILE = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gc-gl-plat-')), 'targets.json');
+  try {
+    const breakout = { entry: 'breakout', gate: 'active', trailMult: 1, armMult: 0.5 };
+    assert.strictEqual(gl.startsOn(), null, 'no platform on record');
+    assert.strictEqual(gl.notYetStartable(breakout).length, 4, 'the old order program\'s limits, said while a new setup would go there');
+    require('../lib/live/targets').saveCallingEngine({ id: 'home-pc', name: 'Home PC', tokenHash: 'a'.repeat(64) });
+    assert.deepStrictEqual(gl.startsOn(), { id: 'home-pc', name: 'Home PC' }, 'the platform ticked for new setups');
+    assert.deepStrictEqual(gl.notYetStartable(breakout), [], 'none of the old limits apply on a platform');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const fn = new Function('esc', `${src.slice(src.indexOf('function glNotYetHtml('), src.indexOf('function glRememberedSet('))}; return { glNotYetHtml, glOnWords };`)((t) => String(t));
+    assert.strictEqual(fn.glNotYetHtml([], { name: 'Home PC' }), '<b>it goes to the Trade tab</b>, and can be started on Paper Books there, on Home PC; Live Trading waits until the trading platforms can place real orders');
+    assert.ok(/cannot be started there yet:<\/b> its entry is breakout/.test(fn.glNotYetHtml(['its entry is breakout, and the live executor only does market entry'], null)), 'the old words only when no platform is ticked');
+    assert.strictEqual(fn.glNotYetHtml([], null), '', 'nothing to say about a shape the old order program does');
+    assert.ok(/d\.startsOn \? '' : ' hidden'/.test(src) && /glNotYetHtml\(list, gl4\.startsOn\)/.test(src) && /glOnWords\(out\.startsOn\)/.test(src), 'the note, the press and its answer all say it');
+  } finally {
+    if (saved === undefined) delete process.env.GC_TARGETS_FILE; else process.env.GC_TARGETS_FILE = saved;
   }
 };
 

@@ -25,7 +25,7 @@ function call(target, method, p, body = null, timeoutMs = 4000) {
 
 async function health(target) {
   const r = await call(target, 'GET', '/health', null, 3000);
-  return r.ok ? { answers: true, ms: r.ms, health: r.json } : { answers: false, ms: r.ms, why: r.why || `the engine answered ${r.status}` };
+  return r.ok ? { answers: true, ms: r.ms, health: r.json } : { answers: false, ms: r.ms, why: r.why || `the platform answered ${r.status}` };
 }
 async function postPlan(target, plan) { return call(target, 'POST', '/plans', plan, 8000); }
 async function cancelPlan(target, planId, why, { entriesOnly = false } = {}) { return call(target, 'POST', `/plans/${encodeURIComponent(planId)}/cancel`, { why, entriesOnly }, 8000); }
@@ -179,7 +179,7 @@ async function cancelLeftovers(engines, setups, asked = new Map(), now = Date.no
         asked.set(id, now);
         // eslint-disable-next-line no-await-in-loop
         const r = await cancelPlan(t, id, `the setup is ${s.state}: it takes no new entry`, { entriesOnly: true });
-        out.push({ engine: t.id, setup: s.id, planId: id, ok: !!r.ok, why: r.ok ? null : (r.why || (r.json && (r.json.problems || []).join('; ')) || `the engine answered ${r.status}`) });
+        out.push({ engine: t.id, setup: s.id, planId: id, ok: !!r.ok, why: r.ok ? null : (r.why || (r.json && (r.json.problems || []).join('; ')) || `the platform answered ${r.status}`) });
       }
     }
   }
@@ -208,7 +208,7 @@ async function syncVerbose(engines, setups, asked = new Map(), now = Date.now())
       asked.set(key, now);
       // eslint-disable-next-line no-await-in-loop
       const r = await setVerbose(t, s.id, want);
-      out.push({ engine: t.id, setup: s.id, on: want, ok: !!r.ok, why: r.ok ? null : (r.why || (r.json && (r.json.problems || []).join('; ')) || `the engine answered ${r.status}`) });
+      out.push({ engine: t.id, setup: s.id, on: want, ok: !!r.ok, why: r.ok ? null : (r.why || (r.json && (r.json.problems || []).join('; ')) || `the platform answered ${r.status}`) });
     }
   }
   return out;

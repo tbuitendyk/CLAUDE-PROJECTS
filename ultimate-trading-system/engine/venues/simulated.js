@@ -86,7 +86,7 @@ class SimulatedExchange {
     // THE FEE THE ORDER CARRIES: the account's own, read from the venue with its
     // key, or else the setup's; the engine's own setting only when neither came
     const feePerLeg = Number.isFinite(o.feePerLeg) ? o.feePerLeg : this.feePerLeg;
-    const feeSource = Number.isFinite(o.feePerLeg) ? (o.feeSource || 'the setup') : 'the engine\'s own setting';
+    const feeSource = Number.isFinite(o.feePerLeg) ? (o.feeSource || 'the setup') : 'the platform\'s own setting';
     const feeUsd = notional * feePerLeg;
     const wal = this.wallet(o.setupId, o.walletStartUsd);
     // the wallet moves as a margin wallet would: a long buys with quote; a short

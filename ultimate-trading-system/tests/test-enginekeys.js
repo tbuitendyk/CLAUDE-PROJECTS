@@ -161,10 +161,10 @@ module.exports = {
       assert.ok(![JSON.stringify(put.json), JSON.stringify(listed.json)].some((t) => t.includes(API_KEY) || t.includes(SECRET)), 'no answer carries the key');
       // unlocked, they are refused: nothing on the way may be able to read them
       const plain = await link.call(target, 'POST', '/keys/ltc-9', { apiKey: API_KEY, secret: SECRET });
-      assert.deepStrictEqual([plain.status, plain.json.error], [400, 'keys are taken only locked with this engine\'s lock: nothing on the way here may be able to read them']);
+      assert.deepStrictEqual([plain.status, plain.json.error], [400, 'keys are taken only locked with this platform\'s lock: nothing on the way here may be able to read them']);
       // locked for one account, they do not open under another's name
       const swapped = await link.call(target, 'POST', '/keys/ltc-8', { locked: await lockKeys(pub, 'ltc-1', API_KEY, SECRET) });
-      assert.deepStrictEqual([swapped.status, /could not be opened by this engine/.test(swapped.json.error)], [400, true]);
+      assert.deepStrictEqual([swapped.status, /could not be opened by this platform/.test(swapped.json.error)], [400, true]);
       // locked with another engine's lock, they do not open here
       const other = new Lock(path.join(dir, 'other-lock.json')).open();
       const elsewhere = await link.call(target, 'POST', '/keys/ltc-7', { locked: await lockKeys(other.info().publicKey, 'ltc-7', API_KEY, SECRET) });

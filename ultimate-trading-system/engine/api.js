@@ -46,7 +46,7 @@ function makeHandler({ runner, journal, health, keystore = null, checkKey = null
       // THE KEYS (item 7): stored and taken away here, never handed back. A key
       // that arrives is never written to the record, a log line or an answer.
       if (u.pathname === '/keys' || u.pathname.startsWith('/keys/')) {
-        if (!keystore) return { status: 503, json: { error: 'this engine has no key store' } };
+        if (!keystore) return { status: 503, json: { error: 'this platform has no key store' } };
         if (method === 'GET' && u.pathname === '/keys') return { status: 200, json: { keys: keystore.list(), lock: lock ? lock.info() : null } };
         const km = /^\/keys\/([^/]+)(\/delete)?$/.exec(u.pathname);
         if (method === 'POST' && km) {
@@ -54,15 +54,15 @@ function makeHandler({ runner, journal, health, keystore = null, checkKey = null
           try {
             if (km[2]) return { status: 200, json: keystore.remove(account) };
             keystore.fileOf(account);   // the account's name, checked before anything else
-            if (b.apiKey !== undefined || b.secret !== undefined) return { status: 400, json: { error: 'keys are taken only locked with this engine\'s lock: nothing on the way here may be able to read them' } };
-            if (!lock) return { status: 503, json: { error: 'this engine has no lock for keys, so it cannot take any' } };
+            if (b.apiKey !== undefined || b.secret !== undefined) return { status: 400, json: { error: 'keys are taken only locked with this platform\'s lock: nothing on the way here may be able to read them' } };
+            if (!lock) return { status: 503, json: { error: 'this platform has no lock for keys, so it cannot take any' } };
             const pair = lock.unlock(b.locked, account);
             require('./keystore').KeyStore.checkPair(pair);
             const anyAddress = b.anyAddress === true;
             // WHAT THE KEY MAY DO, asked of the exchange with the key itself BEFORE
             // it is kept: a key that can move money, or is open to any address
             // without the owner's tick, is never written down
-            if (!checkKey) return { status: 200, json: { ...keystore.put(account, pair, { anyAddress }), checked: false, why: 'this engine cannot ask the exchange what the key may do' } };
+            if (!checkKey) return { status: 200, json: { ...keystore.put(account, pair, { anyAddress }), checked: false, why: 'this platform cannot ask the exchange what the key may do' } };
             const v = await checkKey(account, pair, { anyAddress });
             if (v.checked && !v.ok) return { status: 400, json: { error: `the keys were not kept: ${v.refusals.join('; ')}` } };
             const kept = keystore.put(account, pair, { anyAddress, tied: v.checked ? v.tied : null });
@@ -77,7 +77,7 @@ function makeHandler({ runner, journal, health, keystore = null, checkKey = null
       if (method === 'GET' && u.pathname === '/journal') {
         return { status: 200, json: { records: journal.since(Number(u.searchParams.get('since')) || 1, Math.min(5000, Number(u.searchParams.get('limit')) || 1000)), n: journal.n } };
       }
-      return { status: 404, json: { error: 'no such address on the engine' } };
+      return { status: 404, json: { error: 'no such address on the platform' } };
     } catch (e) {
       return { status: 400, json: { error: e.message } };
     }

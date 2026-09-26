@@ -223,6 +223,11 @@ let aTr = null;              // the trading accounts, the engines, and what each
 let aTrErr = null;
 let aTrKeys = null;          // the trading account whose key form is open, or null
 let aTrTyped = {};           // the new-account form as typed, kept across a redraw (never the keys)
+// SETTING UP A TRADING ACCOUNT, STEP BY STEP (3.268.0): the checklist area, shaped as a platform's
+let aAsOpen = (() => { try { return localStorage.getItem('setup-as-open') === '1'; } catch (_) { return false; } })();
+let aAsSel = (() => { try { return localStorage.getItem('setup-as-sel'); } catch (_) { return null; } })();
+let aAsNew = false;          // the boxes for another account's setup shown or not
+let aAsTyped = { id: '', exchange: '' };   // what is typed for another account, kept across the redraw
 let vTimer = null;           // the five-second re-read, armed only while Version shows
 let vSg = null;              // last reading of the stage-engine check
 let vErr = null;             // why the check could not be read, when it could not
@@ -278,7 +283,7 @@ async function loadAccount() {
 // are there, and when they were entered (item 7 of the read-back).
 function tradingKeysLine(a) {
   const engines = aTr.engines || [];
-  if (!engines.length) return '<div class="row" style="align-items:baseline; margin-top:.35rem"><span class="note">no trading engine on record yet — one is added on the <b>Compute</b> tab</span></div>';
+  if (!engines.length) return '<div class="row" style="align-items:baseline; margin-top:.35rem"><span class="note">no trading platform on record yet — one is added on the <b>Compute</b> tab</span></div>';
   return engines.map((g) => {
     const k = (aTr.keys || {})[g.id] || { answers: false, why: 'not asked' };
     const mine = k.answers ? (k.keys || []).find((x) => x.account === a.id) : null;
@@ -304,18 +309,18 @@ function tradingAccountCard(a) {
       ? '<div class="row" style="align-items:flex-end; margin-top:.5rem">'
         + '<label class="f" title="the public half of the key, as the exchange shows it when the key is made">API key<input id="takKey" type="password" autocomplete="off" spellcheck="false" style="width:24rem"></label>'
         + '<label class="f" title="the secret half, shown by the exchange once, when the key is made">secret key<input id="takSec" type="password" autocomplete="off" spellcheck="false" style="width:24rem"></label>'
-        + (engines.length > 1 ? '<label class="f" title="the trading engine that keeps these keys">trading engine<select id="takEng">'
+        + (engines.length > 1 ? '<label class="f" title="the trading platform that keeps these keys">trading platform<select id="takEng">'
           + engines.map((g) => '<option value="' + esc(g.id) + '"' + (pick && g.id === pick.id ? ' selected' : '') + '>' + esc(g.name) + '</option>').join('') + '</select></label>' : '')
         + '<label class="c"><input type="checkbox" id="takAny"> these keys may trade from any address</label>'
         + '</div>'
-        + '<p class="note" style="margin-top:.4rem">Make the key on the exchange trade-only, with withdrawals off. Tying it to the engine machine&#39;s address is safer; '
+        + '<p class="note" style="margin-top:.4rem">Make the key on the exchange trade-only, with withdrawals off. Tying it to the address of the platform&#39;s machine is safer; '
         + 'if you leave it open to any address, tick the box, and what such a key may do is your exchange&#39;s rule. '
-        + 'The keys are locked in this browser with the engine&#39;s lock before they leave it, so this system passes them on without being able to read them.</p>'
-        + '<div class="row" style="align-items:baseline; margin-top:.2rem"><span class="k">the fingerprint of the engine&#39;s lock</span> <span id="takLockFp" class="note"></span></div>'
-        + '<div class="row" style="margin-top:.4rem"><button id="takSend" class="pri">Send the keys to the trading engine</button><button id="takCancel">Do not send</button><span id="takMsg" class="note"></span></div>'
+        + 'The keys are locked in this browser with the platform&#39;s lock before they leave it, so this system passes them on without being able to read them.</p>'
+        + '<div class="row" style="align-items:baseline; margin-top:.2rem"><span class="k">the fingerprint of the platform&#39;s lock</span> <span id="takLockFp" class="note"></span></div>'
+        + '<div class="row" style="margin-top:.4rem"><button id="takSend" class="pri">Send the keys to the trading platform</button><button id="takCancel">Do not send</button><span id="takMsg" class="note"></span></div>'
       : '<div class="row" style="margin-top:.5rem">'
         + (engines.length ? '<button data-takeys="' + esc(a.id) + '">' + (keysHere ? 'Replace the keys' : 'Enter the keys') + '</button>' : '')
-        + (keysHere ? '<button data-tarm="' + esc(a.id) + '" class="danger" title="takes the keys off the trading engine; the account record stays">Remove the keys</button>' : '')
+        + (keysHere ? '<button data-tarm="' + esc(a.id) + '" class="danger" title="takes the keys off the trading platform; the account record stays">Remove the keys</button>' : '')
         + '<button data-tadel="' + esc(a.id) + '" class="danger" title="takes the record away; refused while any setup names it as its account">Delete the trading account</button>'
         + '<span id="taOut_' + esc(a.id) + '" class="note"></span></div>')
     + '</div>';
@@ -325,8 +330,9 @@ function tradingAccountsHtml() {
   const v = (k) => esc(aTrTyped[k] || '');
   return '<div class="panel"><h3 style="margin-top:0">Trading accounts</h3>'
     + '<p class="note">One record for each trading account a setup trades through, named the way the setup names its account. '
-    + 'Its keys are locked in this browser with the trading engine&#39;s lock before they are sent, so this system passes them on without being able to read them, '
-    + 'and the engine keeps them encrypted on its machine. Nothing shows them again — only whether they are there.</p>'
+    + 'Its keys are locked in this browser with the trading platform&#39;s lock before they are sent, so this system passes them on without being able to read them, '
+    + 'and the platform keeps them encrypted on its machine. Nothing shows them again — only whether they are there.</p>'
+    + asHtml()
     + ((aTr.accounts || []).length ? aTr.accounts.map(tradingAccountCard).join('') : '<p class="note">no trading account yet</p>')
     + '<div class="tile"><div class="k" style="margin-bottom:.35rem">A new trading account</div>'
     + '<div class="row" style="align-items:flex-end">'
@@ -337,10 +343,95 @@ function tradingAccountsHtml() {
     + '<div class="row" style="margin-top:.5rem"><button id="taSave" class="pri">Save the trading account</button><span id="taMsg" class="note"></span></div>'
     + '</div></div>';
 }
+// ---- SETTING UP A TRADING ACCOUNT, STEP BY STEP (3.268.0, owner 2026-09-26) ----
+// "we're going to follow the same build while setting-up pattern with a new
+// account set-up on Binance". One checklist per trading account, kept on its
+// record (lib/accountsetup.js), opened and closed by the button in this
+// section and drawn by the same code as a platform's checklist on the Compute
+// tab (checklistStepsHtml), so the two cannot come to look different.
+const asList = () => ((aTr && aTr.accounts) || []).filter((a) => a.setup);
+function currentAs() { const l = asList(); return l.find((x) => x.id === aAsSel) || l[l.length - 1] || null; }
+function asProgress(a) {
+  const n = ((a.setup && a.setup.steps) || []).findIndex((st) => !st.done);
+  return n < 0 ? 'every step done' : 'step ' + (n + 1) + ' of ' + a.setup.steps.length;
+}
+function asNewHtml() {
+  return '<div class="row" style="margin-top:.5rem">'
+    + '<label class="c"><span class="muted">account name — letters, digits, dot, dash and underscore</span><input id="asId" value="' + esc(aAsTyped.id) + '" placeholder="binance-sub-1" style="width:12rem"></label>'
+    + '<label class="c"><span class="muted">exchange</span><select id="asEx">' + (aTr.offered || []).map((x) => '<option value="' + esc(x.id) + '"' + (aAsTyped.exchange === x.id ? ' selected' : '') + '>' + esc(x.label) + '</option>').join('') + '</select></label></div>'
+    + '<div class="row" style="margin-top:.5rem"><button id="asStart">Start its setup</button><span id="asMsg" class="note"></span></div>';
+}
+function asHtml() {
+  let body = '';
+  if (aAsOpen) {
+    const l = asList();
+    const sel = currentAs();
+    if (!sel) {
+      body = '<p class="note" style="margin:0">no trading account is being set up yet: give it its name and its exchange, and start its setup. A name already on a record below starts the setup for that account.</p>' + asNewHtml();
+    } else {
+      const ex = ((aTr.offered || []).find((x) => x.id === sel.exchange) || {}).label || sel.exchange;
+      body = (l.length > 1
+        ? '<div class="row" style="margin-bottom:.5rem"><label class="c"><span class="muted">show the checklist for</span><select id="asSel">'
+          + l.map((x) => '<option value="' + esc(x.id) + '"' + (x.id === sel.id ? ' selected' : '') + '>' + esc(x.id) + ' — ' + asProgress(x) + '</option>').join('') + '</select></label></div>'
+        : '')
+        + '<div class="row" style="align-items:baseline"><b style="font-size:.95rem">' + esc(sel.id) + '</b><span class="note">' + esc(ex) + '</span><span class="note">' + asProgress(sel) + '</span></div>'
+        + checklistStepsHtml('as', sel.setup, aTr.setupTemplate, null)
+        + '<div class="row" style="margin-top:.9rem"><button id="asDelete" class="danger" title="takes this checklist away; the trading account record and its keys stay">Delete this setup</button></div>'
+        + '<div class="row" style="margin-top:1rem;border-top:1px solid var(--line);padding-top:.7rem"><button id="asNewToggle" aria-expanded="' + aAsNew + '">' + (aAsNew ? '▾' : '▸') + ' Set up another account</button></div>'
+        + (aAsNew ? asNewHtml() : '');
+    }
+  }
+  return '<div class="row" style="margin-top:.4rem"><button id="asToggle" aria-expanded="' + aAsOpen + '" title="opens and closes the checklist that takes a trading account from nothing to trading, one step at a time">' + (aAsOpen ? '▾' : '▸') + ' Set up a trading account</button></div>'
+    + (aAsOpen ? '<div class="tile" style="margin:.5rem 0 .8rem">' + body + '</div>' : '');
+}
+function wireAs(redraw) {
+  const tg = $('#asToggle');
+  if (tg) tg.onclick = () => { aAsOpen = !aAsOpen; try { localStorage.setItem('setup-as-open', aAsOpen ? '1' : '0'); } catch (_) { /* not remembered */ } drawAccount(); };
+  const nm = $('#asId');
+  if (nm) nm.oninput = () => { aAsTyped.id = nm.value; };
+  const ex = $('#asEx');
+  if (ex) ex.onchange = () => { aAsTyped.exchange = ex.value; };
+  const nt = $('#asNewToggle');
+  if (nt) nt.onclick = () => { aAsNew = !aAsNew; drawAccount(); };
+  const sl = $('#asSel');
+  if (sl) sl.onchange = () => { aAsSel = sl.value; try { localStorage.setItem('setup-as-sel', aAsSel); } catch (_) { /* not remembered */ } drawAccount(); };
+  const st = $('#asStart');
+  if (st) st.onclick = async () => {
+    const msg = $('#asMsg');
+    st.disabled = true;
+    msg.innerHTML = 'starting…';
+    try {
+      const got = await postJson('api/account/setups', { id: $('#asId').value.trim(), exchange: $('#asEx').value });
+      aAsSel = got.setup.id;
+      aAsTyped = { id: '', exchange: '' };
+      aAsNew = false;
+      try { localStorage.setItem('setup-as-sel', aAsSel); } catch (_) { /* not remembered */ }
+      await redraw();
+    } catch (e) { msg.innerHTML = '<span class="neg">not started — ' + esc(e.message) + '</span>'; st.disabled = false; }
+  };
+  const post = async (what, body) => {
+    const sel = currentAs();
+    if (!sel) return;
+    try { await postJson('api/account/setups/' + encodeURIComponent(sel.id) + '/' + what, body); }
+    catch (e) { alert('Not saved — ' + e.message); }
+    await redraw();
+  };
+  document.querySelectorAll('[data-as-choice]').forEach((r) => { r.onchange = () => { const [step, choice] = r.dataset.asChoice.split('|'); post('choice', { step, choice, value: r.value }); }; });
+  document.querySelectorAll('[data-as-tick]').forEach((c) => { c.onchange = () => { const [step, tick] = c.dataset.asTick.split('|'); post('tick', { step, tick, on: c.checked }); }; });
+  const del = $('#asDelete');
+  if (del) del.onclick = async () => {
+    const sel = currentAs();
+    if (!sel || !confirm('Delete the setup for "' + sel.id + '"?\n\nThe checklist is taken away. The trading account record and its keys stay.')) return;
+    try { await postJson('api/account/setups/' + encodeURIComponent(sel.id) + '/delete', {}); aAsSel = null; }
+    catch (e) { alert('Not deleted — ' + e.message); }
+    await redraw();
+  };
+}
 function wireTradingAccounts() {
   if (!aTr) return;
   for (const [sel, key] of [['#taId', 'id'], ['#taNote', 'note']]) { const el = $(sel); if (el) el.oninput = () => { aTrTyped[key] = el.value; }; }
   const redraw = async () => { await loadAccount(); drawAccount(); };
+  wireAs(redraw);
   const sv = $('#taSave');
   if (sv) sv.onclick = async () => {
     const msg = $('#taMsg');
@@ -355,7 +446,7 @@ function wireTradingAccounts() {
   document.querySelectorAll('[data-takeys]').forEach((b) => { b.onclick = () => { aTrKeys = b.dataset.takeys; drawAccount(); const k = $('#takKey'); if (k) k.focus(); }; });
   document.querySelectorAll('[data-tadel]').forEach((b) => {
     b.onclick = async () => {
-      if (!confirm('Delete the trading account "' + b.dataset.tadel + '"?\n\nRefused while any setup names it as its account. Its keys on the trading engine are not touched — remove them first if they should go too.')) return;
+      if (!confirm('Delete the trading account "' + b.dataset.tadel + '"?\n\nRefused while any setup names it as its account. Its keys on the trading platform are not touched — remove them first if they should go too.')) return;
       try { await postJson('api/account/trading/' + encodeURIComponent(b.dataset.tadel) + '/delete', {}); await redraw(); }
       catch (e) { const o = $('#taOut_' + b.dataset.tadel); if (o) o.innerHTML = '<span class="neg">not deleted — ' + esc(e.message) + '</span>'; }
     };
@@ -363,7 +454,7 @@ function wireTradingAccounts() {
   const enginePick = () => { const sel = $('#takEng'); if (sel) return sel.value; const g = (aTr.engines || []).find((x) => x.isDefault) || (aTr.engines || [])[0]; return g ? g.id : ''; };
   document.querySelectorAll('[data-tarm]').forEach((b) => {
     b.onclick = async () => {
-      if (!confirm('Take the keys of "' + b.dataset.tarm + '" off the trading engine?\n\nA setup that trades through this account cannot place a real order until keys are entered again.')) return;
+      if (!confirm('Take the keys of "' + b.dataset.tarm + '" off the trading platform?\n\nA setup that trades through this account cannot place a real order until keys are entered again.')) return;
       try { await postJson('api/account/trading/' + encodeURIComponent(b.dataset.tarm) + '/keys', { engine: enginePick(), remove: true }); await redraw(); }
       catch (e) { const o = $('#taOut_' + b.dataset.tarm); if (o) o.innerHTML = '<span class="neg">not removed — ' + esc(e.message) + '</span>'; }
     };
@@ -376,8 +467,8 @@ function wireTradingAccounts() {
     const fp = $('#takLockFp');
     if (!fp) return;
     const k = lockOf();
-    fp.innerHTML = k ? '<b>' + esc(k.lockHere) + '</b> — the install command printed the same on the engine&#39;s machine'
-      : '<span class="neg">this engine has not said what its lock is, so no keys can be locked for it — it needs this system&#39;s release, installed with a new install command</span>';
+    fp.innerHTML = k ? '<b>' + esc(k.lockHere) + '</b> — the install command printed the same on the platform&#39;s machine'
+      : '<span class="neg">this platform has not said what its lock is, so no keys can be locked for it — it needs this system&#39;s release, installed with a new install command</span>';
   };
   showLock();
   const pickEl = $('#takEng');
@@ -387,7 +478,7 @@ function wireTradingAccounts() {
     const msg = $('#takMsg');
     const key = $('#takKey'); const sec = $('#takSec');
     const k = lockOf();
-    if (!k) { msg.innerHTML = '<span class="neg">not sent — this engine has no lock for keys</span>'; return; }
+    if (!k) { msg.innerHTML = '<span class="neg">not sent — this platform has no lock for keys</span>'; return; }
     send.disabled = true; msg.innerHTML = 'locking and sending…';
     try {
       const acct = aTrKeys;
@@ -401,7 +492,7 @@ function wireTradingAccounts() {
       const o = $('#taOut_' + acct);
       if (o) o.innerHTML = got.checked
         ? '<span class="pos">kept — the exchange says the key can trade and borrow, cannot move money, and ' + (got.tied ? 'is tied to one address' : 'is open to any address, as you ticked') + '</span>'
-        : '<span class="warn">kept, but not checked — ' + esc(got.why || 'the engine could not ask the exchange') + '</span>';
+        : '<span class="warn">kept, but not checked — ' + esc(got.why || 'the platform could not ask the exchange') + '</span>';
     } catch (e) {
       key.value = ''; sec.value = '';
       msg.innerHTML = '<span class="neg">not stored — ' + esc(e.message) + '</span>';
@@ -568,9 +659,9 @@ function engineCard(e) {
     + '<span><span class="k">the fingerprint of its lock</span> <b>' + esc(e.lock ? e.lock.fingerprint : '—') + '</b></span>';
   return '<div class="tile" style="margin-bottom:.55rem">'
     + '<div class="row" style="align-items:baseline"><b>' + esc(e.name) + '</b><span class="note">' + esc(e.id) + '</span>'
-    + (e.isDefault ? '<span class="note pos">new setups run on this engine</span>' : '') + '<span class="spacer"></span>' + said + '</div>'
+    + (e.isDefault ? '<span class="note pos">new setups run on this platform</span>' : '') + '<span class="spacer"></span>' + said + '</div>'
     + '<div class="row" style="align-items:baseline; margin-top:.35rem; gap:1.2rem">' + reach + '</div>'
-    + (behind ? '<div class="row" style="align-items:baseline; margin-top:.25rem"><span class="note warn">this system runs ' + esc(e.releaseHere) + ' — make a new install command in its checklist and run it on the machine to bring the engine up to it</span></div>' : '')
+    + (behind ? '<div class="row" style="align-items:baseline; margin-top:.25rem"><span class="note warn">this system runs ' + esc(e.releaseHere) + ' — make a new install command in its checklist and run it on the machine to bring the platform up to it</span></div>' : '')
     + '<div class="row" style="align-items:baseline; margin-top:.35rem; gap:1.2rem">'
     + '<span><span class="k">prices</span> ' + feeds + '</span>'
     + '<span><span class="k">plans held</span> <b>' + (h.plans ? h.plans.held + ' (' + h.plans.active + ' open or waiting)' : '—') + '</b></span>'
@@ -580,11 +671,11 @@ function engineCard(e) {
     + '<div class="row" style="align-items:baseline; margin-top:.35rem"><span class="k">setups on it</span> <span class="note">'
     + (e.setups.length ? e.setups.map((s) => esc(s.name || s.id) + ' (' + esc(s.state) + ')').join(', ') : 'none') + '</span></div>'
     + '<div class="row" style="margin-top:.5rem"><button data-engedit="' + esc(e.id) + '">Change this record</button>'
-    + '<button data-engdel="' + esc(e.id) + '" class="danger" title="takes the record away; refused while any setup runs on it">Delete the engine record</button></div>'
+    + '<button data-engdel="' + esc(e.id) + '" class="danger" title="takes the record away; refused while any setup runs on it">Delete the platform record</button></div>'
     + '</div>';
 }
 function engineHtml() {
-  if (!cEng) return '<div class="panel"><h3 style="margin-top:0">The trading platform</h3><p class="note neg">the trading service did not answer, so the engine records cannot be shown' + (cErrEng ? ' — ' + esc(cErrEng) : '') + '</p></div>';
+  if (!cEng) return '<div class="panel"><h3 style="margin-top:0">The trading platform</h3><p class="note neg">the trading service did not answer, so the platform records cannot be shown' + (cErrEng ? ' — ' + esc(cErrEng) : '') + '</p></div>';
   const ed = cEngEdit ? (cEng.engines || []).find((x) => x.id === cEngEdit) || null : null;
   // WHAT IS TYPED OUTLIVES THE REDRAW: this tab reads everything again every
   // thirty seconds, and a form that emptied itself under the owner's fingers
@@ -592,17 +683,17 @@ function engineHtml() {
   const v = (k, d) => esc(k in cEngTyped ? cEngTyped[k] : (ed ? ed[k] : d));
   return '<div class="panel"><h3 style="margin-top:0">The trading platform</h3>'
     + '<p class="note">The program that carries out Paper Books and Live Trading for this system. It runs on a machine of yours and calls this system; '
-    + 'nothing here can sign in to that machine. A new engine is added with Set up a trading engine. '
-    + 'A new setup runs on the engine ticked for new setups; a setup already running stays where it is.</p>'
+    + 'nothing here can sign in to that machine. A new platform is added with Set up a trading platform. '
+    + 'A new setup runs on the platform ticked for new setups; a setup already running stays where it is.</p>'
     + esHtml()
-    + ((cEng.engines || []).length ? (cEng.engines || []).map(engineCard).join('') : '<p class="note">no engine yet</p>')
+    + ((cEng.engines || []).length ? (cEng.engines || []).map(engineCard).join('') : '<p class="note">no platform yet</p>')
     + (ed ? '<div class="tile">'
       + '<div class="k" style="margin-bottom:.35rem">Changing ' + esc(ed.name) + ' <span class="muted">(' + esc(ed.id) + ')</span></div>'
       + '<div class="row" style="align-items:flex-end">'
-      + '<label class="c"><span class="muted">descriptive name — what you see on screen</span><input id="engName" value="' + v('name', '') + '" placeholder="Engine 2" style="width:14rem"></label>'
-      + '<label class="c"><input type="checkbox" id="engDefault"' + (('isDefault' in cEngTyped ? cEngTyped.isDefault : ed.isDefault) ? ' checked' : '') + '> new setups run on this engine</label>'
+      + '<label class="c"><span class="muted">descriptive name — what you see on screen</span><input id="engName" value="' + v('name', '') + '" placeholder="Platform 2" style="width:14rem"></label>'
+      + '<label class="c"><input type="checkbox" id="engDefault"' + (('isDefault' in cEngTyped ? cEngTyped.isDefault : ed.isDefault) ? ' checked' : '') + '> new setups run on this platform</label>'
       + '</div>'
-      + '<div class="row" style="margin-top:.5rem"><button id="engSave" class="pri">Save the engine record</button><button id="engNew">Close the form</button><span id="engMsg" class="note"></span></div>'
+      + '<div class="row" style="margin-top:.5rem"><button id="engSave" class="pri">Save the platform record</button><button id="engNew">Close the form</button><span id="engMsg" class="note"></span></div>'
       + '</div>' : '')
     + '</div>';
 }
@@ -628,13 +719,15 @@ function esProgress(x) {
 // calls this system with the code and is given a password of its own. Only this
 // page ever sees the code: the service keeps its fingerprint.
 const PUBLIC_BASE = location.origin + ENGINE_DIR;
-function esSystemOf(s) {
-  const ch = s.choices || {};
-  return ch.where === 'server' ? 'linux' : ch.os || null;
-}
+// the system the install command is for: what the platform said of itself once it
+// has called in, or the operating system chosen in step 1 (lib/live/enginesetup.js systemOf)
+function esSystemOf(s) { return s.system || null; }
 function esCommandFor(system, shortName, code) {
   const q = (x) => "'" + String(x).replace(/'/g, '') + "'";
-  if (system === 'windows') return '& ([scriptblock]::Create((irm ' + q(PUBLIC_BASE + 'engine-link/install/windows.ps1') + '))) ' + q(PUBLIC_BASE) + ' ' + q(shortName) + ' ' + q(code);
+  // A PLAIN WINDOWS POWERSHELL RUNS IT AS IT IS (owner, 2026-09-26: "the scripting should be smart
+  // enough to actually just *work* in a default windows env elevated ps"): scripts allowed for this
+  // window only, and the secure connection older Windows 10 does not use for a download by itself
+  if (system === 'windows') return 'Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; & ([scriptblock]::Create((irm ' + q(PUBLIC_BASE + 'engine-link/install/windows.ps1') + '))) ' + q(PUBLIC_BASE) + ' ' + q(shortName) + ' ' + q(code);
   const file = system === 'mac' ? 'mac.sh' : 'linux.sh';
   return 'curl -fsSL ' + q(PUBLIC_BASE + 'engine-link/install/' + file) + ' | sudo sh -s -- ' + q(PUBLIC_BASE) + ' ' + q(shortName) + ' ' + q(code);
 }
@@ -645,19 +738,21 @@ function esInstallHtml(s, step) {
   const mine = cEsCode && cEsCode.setupId === s.id ? cEsCode : null;
   let cmd = '';
   if (mine) {
-    cmd = '<div class="k" style="margin-top:.6rem">the install command — for ' + (sys === 'windows' ? 'PowerShell opened as administrator' : 'a terminal on the machine') + '</div>'
+    // EACH COMMAND SAYS WHICH SYSTEM IT IS FOR (owner, 2026-09-26): a Linux command that said only
+    // "for a terminal on the machine" was pasted into PowerShell
+    cmd = '<div class="k" style="margin-top:.6rem">the install command — ' + ({ windows: 'for Windows, in PowerShell opened as administrator', mac: 'for Mac, in Terminal', linux: 'for Linux, in a terminal on the machine' }[sys] || '') + '</div>'
       + '<textarea id="esCmd" readonly rows="3" spellcheck="false" style="' + box + '">' + esc(esCommandFor(sys, s.shortName, mine.code)) + '</textarea>'
       + '<div class="row" style="margin-top:.3rem"><button id="esCmdCopy">Copy the command</button><span class="note">works once, until ' + esc(hhmm(mine.expiresUtc)) + ' UTC; it is not shown again after this page is reloaded</span></div>';
   } else if (s.install && s.install.waiting) {
     cmd = '<div class="row" style="margin-top:.6rem"><span class="note">an install command made at ' + esc(hhmm(s.install.madeUtc)) + ' UTC is waiting to be run, until ' + esc(hhmm(s.install.expiresUtc)) + ' UTC; it is not shown again — make a new one to see one</span></div>';
   }
   const make = '<div class="row" style="margin-top:.6rem"><button id="esInstallMake"' + (sys ? '' : ' disabled') + '>' + (s.engine || mine || (s.install && s.install.waiting) ? 'Make a new install command' : 'Make the install command') + '</button>'
-    + '<span id="esInstallMsg" class="note">' + (sys ? '' : 'choose where it runs in step 1 first') + '</span></div>';
+    + '<span id="esInstallMsg" class="note">' + (sys ? '' : 'choose where it runs and its operating system in step 1 first') + '</span></div>';
   const e = s.engine;
   const called = e
-    ? '<span class="note">ticked by this system when the engine called in, ' + esc(String(e.enrolledUtc || '').slice(0, 16).replace('T', ' ')) + ' UTC'
+    ? '<span class="note">ticked by this system when the platform called in, ' + esc(String(e.enrolledUtc || '').slice(0, 16).replace('T', ' ')) + ' UTC'
       + (e.lock ? ' · the fingerprint of its lock ' + esc(e.lock.fingerprint) : '') + '</span>'
-    : '<span class="note">ticked by this system when the engine calls in</span>';
+    : '<span class="note">ticked by this system when the platform calls in</span>';
   const checks = (step.checks || []).map((c) => '<div class="row" style="margin-top:.3rem"><label class="c"><input type="checkbox" disabled' + (e ? ' checked' : '') + '> ' + esc(c.label) + '</label>' + called + '</div>').join('');
   return make + cmd + checks;
 }
@@ -666,13 +761,18 @@ function esCurrentHtml(s, step) {
   const e = s.engine;
   const ok = !!(e && e.current);
   const said = !e ? '<span class="muted">installed in step 2 first</span>'
-    : ok ? '<span class="pos">it runs the engine this system serves (release ' + esc(e.release || '?') + ')</span>'
+    : ok ? '<span class="pos">it runs the program this system serves (release ' + esc(e.release || '?') + ')</span>'
       : '<span class="warn">it runs ' + esc(e.release || 'a release it has not said') + '; this system runs ' + esc(s.releaseHere) + '</span> <span class="muted">— make a new install command in step 2 and run it on the machine</span>';
-  const checks = (step.checks || []).map((c) => '<div class="row" style="margin-top:.3rem"><label class="c"><input type="checkbox" disabled' + (ok ? ' checked' : '') + '> ' + esc(c.label) + '</label><span class="note">ticked by this system from what the engine says when it calls</span></div>').join('');
+  const checks = (step.checks || []).map((c) => '<div class="row" style="margin-top:.3rem"><label class="c"><input type="checkbox" disabled' + (ok ? ' checked' : '') + '> ' + esc(c.label) + '</label><span class="note">ticked by this system from what the platform says when it calls</span></div>').join('');
   return '<div class="row" style="margin-top:.6rem">' + said + '</div>' + checks;
 }
-function esSetupHtml(s, t) {
-  const ch = s.choices || {};
+// ONE WAY TO DRAW A CHECKLIST'S STEPS (RULE ELEVEN: the same job gets the same
+// shape on every screen): a platform's on the Compute tab, a trading account's
+// on the Account tab. `kind` names the data attributes its wiring reads (es-,
+// as-); `panel` draws a step's own panel, where the step has one.
+function checklistStepsHtml(kind, s, t, panel) {
+  // a choice the platform answered by saying what it runs on counts as made (lib/live/enginesetup.js saidOf)
+  const ch = { ...(s.said || {}), ...(s.choices || {}) };
   const shows = (b) => Object.entries(b.when || {}).every(([k, v]) => ch[k] === v || (b.ifUnset && ch[k] == null));
   const asked = (c) => !c.when || Object.entries(c.when).every(([k, v]) => ch[k] === v);
   const blocks = t.steps.map((step, i) => {
@@ -685,14 +785,17 @@ function esSetupHtml(s, t) {
       + b.paras.map((p) => '<p style="margin:.3rem 0;font-size:.82rem;line-height:1.45;max-width:60rem">' + esc(p) + '</p>').join('')).join('');
     const choices = (step.choices || []).filter(asked).map((c) => '<div class="row" style="margin-top:.55rem">'
       + '<span class="muted" style="font-size:.8rem">' + esc(c.label) + '</span>'
-      + c.options.map((o) => '<label class="c"><input type="radio" name="es-' + esc(step.id) + '-' + esc(c.id) + '" data-es-choice="' + esc(step.id) + '|' + esc(c.id) + '" value="' + esc(o.value) + '"' + (ch[c.id] === o.value ? ' checked' : '') + '> ' + esc(o.label) + '</label>').join('')
+      + c.options.map((o) => '<label class="c"><input type="radio" name="' + kind + '-' + esc(step.id) + '-' + esc(c.id) + '" data-' + kind + '-choice="' + esc(step.id) + '|' + esc(c.id) + '" value="' + esc(o.value) + '"' + (ch[c.id] === o.value ? ' checked' : '') + '> ' + esc(o.label) + '</label>').join('')
       + (c.clearsNote && ch[c.id] ? '<span class="note">' + esc(c.clearsNote) + '</span>' : '')
       + '</div>').join('');
     const tk = (s.ticks || {})[step.id] || {};
-    const ticks = (step.ticks || []).map((x) => '<div class="row" style="margin-top:.3rem"><label class="c"><input type="checkbox" data-es-tick="' + esc(step.id) + '|' + esc(x.id) + '"' + (tk[x.id] ? ' checked' : '') + '> ' + esc(x.label) + '</label></div>').join('');
-    return head + guide + choices + (step.panel === 'install' ? esInstallHtml(s, step) : step.panel === 'current' ? esCurrentHtml(s, step) : '') + (ticks ? '<div style="margin-top:.45rem">' + ticks + '</div>' : '');
+    const ticks = (step.ticks || []).map((x) => '<div class="row" style="margin-top:.3rem"><label class="c"><input type="checkbox" data-' + kind + '-tick="' + esc(step.id) + '|' + esc(x.id) + '"' + (tk[x.id] ? ' checked' : '') + '> ' + esc(x.label) + '</label></div>').join('');
+    return head + guide + choices + (panel ? panel(s, step) : '') + (ticks ? '<div style="margin-top:.45rem">' + ticks + '</div>' : '');
   }).join('');
-  return '<div style="border-top:1px solid var(--line);margin-top:.7rem">' + blocks + '</div>'
+  return '<div style="border-top:1px solid var(--line);margin-top:.7rem">' + blocks + '</div>';
+}
+function esSetupHtml(s, t) {
+  return checklistStepsHtml('es', s, t, (x, step) => (step.panel === 'install' ? esInstallHtml(x, step) : step.panel === 'current' ? esCurrentHtml(x, step) : ''))
     + '<div class="row" style="margin-top:.9rem"><button id="esDelete" class="danger" title="takes this checklist away; nothing on any machine is touched">Delete this setup</button></div>';
 }
 // THE TOP OF THE CHECKLIST SAYS WHOSE IT IS (owner, 2026-09-25). A picker of
@@ -703,8 +806,8 @@ function esSetupHtml(s, t) {
 // same two names the engine record asks for.
 function esNewHtml() {
   return '<div class="row" style="margin-top:.5rem">'
-    + '<label class="c"><span class="muted">short name — letters, digits, dashes</span><input id="esShort" value="' + esc(cEsTypedShort) + '" placeholder="engine-2" style="width:11rem"></label>'
-    + '<label class="c"><span class="muted">descriptive name — what you see on screen</span><input id="esName" value="' + esc(cEsTyped) + '" placeholder="Engine 2" style="width:16rem"></label></div>'
+    + '<label class="c"><span class="muted">short name — letters, digits, dashes</span><input id="esShort" value="' + esc(cEsTypedShort) + '" placeholder="platform-2" style="width:11rem"></label>'
+    + '<label class="c"><span class="muted">descriptive name — what you see on screen</span><input id="esName" value="' + esc(cEsTyped) + '" placeholder="Platform 2" style="width:16rem"></label></div>'
     + '<div class="row" style="margin-top:.5rem"><button id="esStart">Start its setup</button><span id="esMsg" class="note"></span></div>';
 }
 function esHtml() {
@@ -715,7 +818,7 @@ function esHtml() {
       const setups = cEs.setups || [];
       const sel = currentEs();
       if (!sel) {
-        body = '<p class="note" style="margin:0">no engine is being set up yet: give the engine its two names, and start its setup</p>' + esNewHtml();
+        body = '<p class="note" style="margin:0">no platform is being set up yet: give the platform its two names, and start its setup</p>' + esNewHtml();
       } else {
         body = (setups.length > 1
           ? '<div class="row" style="margin-bottom:.5rem"><label class="c"><span class="muted">show the checklist for</span><select id="esSel">'
@@ -724,16 +827,16 @@ function esHtml() {
           + '<div class="row" style="align-items:baseline"><b style="font-size:.95rem">' + esc(sel.name) + '</b>'
           + (sel.shortName ? '<span class="note">short name ' + esc(sel.shortName) + '</span>' : '') + '<span class="note">' + esProgress(sel) + '</span></div>'
           // a checklist started before the short name was asked for asks for it here
-          + (sel.shortName ? '' : '<div class="row" style="margin-top:.5rem"><label class="c"><span class="muted">short name — letters, digits, dashes</span><input id="esShortFix" value="' + esc(cEsTypedFix) + '" placeholder="engine-2" style="width:11rem"></label>'
-            + '<span class="note">this engine has no short name yet: it is the one the engine is saved under at step 6</span></div>'
+          + (sel.shortName ? '' : '<div class="row" style="margin-top:.5rem"><label class="c"><span class="muted">short name — letters, digits, dashes</span><input id="esShortFix" value="' + esc(cEsTypedFix) + '" placeholder="platform-2" style="width:11rem"></label>'
+            + '<span class="note">this platform has no short name yet: it is the one the platform is saved under at step 6</span></div>'
             + '<div class="row" style="margin-top:.5rem"><button id="esShortSave">Save the short name</button><span id="esShortMsg" class="note"></span></div>')
           + esSetupHtml(sel, cEs.template)
-          + '<div class="row" style="margin-top:1rem;border-top:1px solid var(--line);padding-top:.7rem"><button id="esNewToggle" aria-expanded="' + cEsNew + '">' + (cEsNew ? '▾' : '▸') + ' Set up another engine</button></div>'
+          + '<div class="row" style="margin-top:1rem;border-top:1px solid var(--line);padding-top:.7rem"><button id="esNewToggle" aria-expanded="' + cEsNew + '">' + (cEsNew ? '▾' : '▸') + ' Set up another platform</button></div>'
           + (cEsNew ? esNewHtml() : '');
       }
     }
   }
-  return '<div class="row" style="margin-top:.4rem"><button id="esToggle" aria-expanded="' + cEsOpen + '" title="opens and closes the checklist that takes an engine from nothing to installed and running, one step at a time">' + (cEsOpen ? '▾' : '▸') + ' Set up a trading engine</button></div>'
+  return '<div class="row" style="margin-top:.4rem"><button id="esToggle" aria-expanded="' + cEsOpen + '" title="opens and closes the checklist that takes a platform from nothing to installed and running, one step at a time">' + (cEsOpen ? '▾' : '▸') + ' Set up a trading platform</button></div>'
     + (cEsOpen ? '<div class="tile" style="margin:.5rem 0 .8rem">' + body + '</div>' : '');
 }
 async function esReload() {
@@ -763,7 +866,7 @@ function wireEs() {
     const sel = currentEs();
     if (!sel) return;
     if ((sel.engine || (sel.install && sel.install.waiting)) && !confirm(sel.engine
-      ? 'Make a new install command?\n\nRun on the machine, it brings the engine to this system\'s release and keeps its record, its lock and its keys. It gives the engine a new password; the old one stops working when the engine calls in with the new code.'
+      ? 'Make a new install command?\n\nRun on the machine, it brings the platform to this system\'s release and keeps its record, its lock and its keys. It gives the platform a new password; the old one stops working when the platform calls in with the new code.'
       : 'Make a new install command?\n\nThe one made before stops working.')) return;
     im.disabled = true;
     try { const got = await postJson(esUrl(sel, 'install'), {}); cEsCode = { setupId: sel.id, code: got.code, expiresUtc: got.expiresUtc }; }
@@ -825,7 +928,7 @@ function wireEngine() {
   document.querySelectorAll('[data-engedit]').forEach((b) => { b.onclick = () => { cEngEdit = b.dataset.engedit; cEngTyped = {}; drawCompute(); }; });
   document.querySelectorAll('[data-engdel]').forEach((b) => {
     b.onclick = async () => {
-      if (!confirm('Delete the engine record "' + b.dataset.engdel + '"?\n\nRefused while any setup runs on it. The engine on the trading box is not touched.')) return;
+      if (!confirm('Delete the platform record "' + b.dataset.engdel + '"?\n\nRefused while any setup runs on it. Nothing on the platform\'s machine is touched.')) return;
       try { await postJson('api/live/engines/' + encodeURIComponent(b.dataset.engdel) + '/delete', {}); cEngEdit = null; }
       catch (e) { alert('Not deleted — ' + e.message); }
       refreshCompute(true);
@@ -874,8 +977,10 @@ function drawCompute() {
     // same letters and the note starting where "runs on" starts
     // (baseline, as every row of mixed-size text on this page; the line centred in the row's height)
     + '<div class="row" style="align-items:baseline; align-content:center; margin:.3rem 0; min-height:1.9rem; gap:.35rem"><b style="min-width:11rem; font-size:.8rem">trading platform</b>'
-    + '<span class="note" style="flex:1; min-width:16rem">chosen on each trading setup on the Trade tab — every setup names its own, '
-    + 'so two setups can trade in two places. Nothing about it is set here.</span></div>'
+    // SAID AS IT IS (owner, 2026-09-26: "the text shouldn't say 'Nothing about it is set here.' when
+    // below in The trading platform section that's exactly what we do")
+    + '<span class="note" style="flex:1; min-width:16rem">set up in The trading platform section below. Each trading setup names the one it runs on '
+    + '(Execution target, on the Trade tab), so two setups can trade in two places; a new setup starts on the one ticked for new setups.</span></div>'
     + '</div>'
 
     + engineHtml()

@@ -80,7 +80,7 @@ class Link {
   // THE FIRST START: the one-time code becomes this engine's own token
   async enroll() {
     if (this.token()) return this.token();
-    if (!this.code) throw new Error('this engine has no token and no install code: install it again with a new install command');
+    if (!this.code) throw new Error('this platform has no token and no install code: install it again with a new install command');
     const body = JSON.stringify({
       code: this.code,
       lock: this.lock ? { publicKey: this.lock.info().publicKey } : null,

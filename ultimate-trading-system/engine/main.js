@@ -33,13 +33,13 @@ const cfgFile = path.join(DATA, 'config.json');
 const cfg = { feePerLeg: 0.001, simDelayMs: 0, liveEnabled: false, ...(fs.existsSync(cfgFile) ? JSON.parse(fs.readFileSync(cfgFile, 'utf8')) : {}) };
 if (!cfg.link || typeof cfg.link.url !== 'string' || !cfg.link.url) {
   // THE ENGINE CALLS OUT, and only that: refused before anything is opened or written
-  console.error(`${cfgFile} names no web server to call: install the engine with an install command made on the Compute tab`);
+  console.error(`${cfgFile} names no web server to call: install the platform with an install command made on the Compute tab`);
   process.exit(2);
 }
 if (cfg.liveEnabled) {
   // A SWITCH THIS BUILD CANNOT FLIP: the live module is not in this release, so
   // a config asking for real orders is refused at start, loudly
-  console.error('config.json asks for real orders; this engine has no live exchange module yet -- starting with real orders OFF');
+  console.error('config.json asks for real orders; this platform has no live exchange module yet -- starting with real orders OFF');
   cfg.liveEnabled = false;
 }
 

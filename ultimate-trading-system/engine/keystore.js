@@ -45,7 +45,7 @@ class KeyStore {
     }
     const st = fs.statSync(this.masterFile);
     // on Windows the folder's access list does this job (set by the installer); the mode bits say nothing there
-    if (process.platform !== 'win32' && (st.mode & 0o077) !== 0) throw new Error('the key store\'s own key can be read by other users on this machine; it is refused until only the engine can read it');
+    if (process.platform !== 'win32' && (st.mode & 0o077) !== 0) throw new Error('the key store\'s own key can be read by other users on this machine; it is refused until only the platform can read it');
     const k = fs.readFileSync(this.masterFile);
     if (k.length !== 32) throw new Error('the key store\'s own key is not 32 bytes');
     this.master = k;

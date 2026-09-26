@@ -228,10 +228,12 @@ app.get('/api/account/trading', async (req, res) => {
       const r = await link.call(t, 'GET', '/keys', null, 4000);
       keys[t.id] = r.ok && r.json && Array.isArray(r.json.keys)
         ? { answers: true, keys: r.json.keys.map((k) => ({ account: k.account, present: !!k.present, addedAt: k.addedAt || null, anyAddress: k.anyAddress === true, tied: typeof k.tied === 'boolean' ? k.tied : null })), lock: r.json.lock && typeof r.json.lock.publicKey === 'string' ? { publicKey: r.json.lock.publicKey, fingerprint: r.json.lock.fingerprint } : null }
-        : { answers: false, why: r.why || (r.json && r.json.error) || `the engine answered ${r.status}` };
+        : { answers: false, why: r.why || (r.json && r.json.error) || `the platform answered ${r.status}` };
     }));
+    const as = require('./lib/accountsetup');
     res.json({
-      accounts: acc.tradingAccounts(), offered: acc.EXCHANGES,
+      // each account with its checklist and where every step stands (3.268.0)
+      accounts: acc.tradingAccounts().map(as.withSteps), offered: acc.EXCHANGES, setupTemplate: as.TEMPLATE,
       engines: engines.map((t) => ({ id: t.id, name: t.name, isDefault: !!t.isDefault })), keys,
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -239,6 +241,24 @@ app.get('/api/account/trading', async (req, res) => {
 app.post('/api/account/trading', csrfGuard, (req, res) => {
   try { res.json({ ok: true, account: require('./lib/account').saveTradingAccount(req.body || {}) }); }
   catch (err) { res.status(err.code === 'BAD_ACCOUNT' ? 400 : 500).json({ error: err.message }); }
+});
+// SETTING UP A TRADING ACCOUNT, STEP BY STEP (3.268.0, owner 2026-09-26): its
+// checklist, started under the account's name and kept on its record
+app.post('/api/account/setups', csrfGuard, (req, res) => {
+  const b = req.body || {};
+  try { res.json({ ok: true, setup: require('./lib/accountsetup').start(String(b.id == null ? '' : b.id), String(b.exchange == null ? '' : b.exchange)) }); }
+  catch (err) { res.status(err.status || 500).json({ error: err.message }); }
+});
+app.post('/api/account/setups/:id/:what', csrfGuard, (req, res) => {
+  const as = require('./lib/accountsetup');
+  const b = req.body || {};
+  const id = String(req.params.id);
+  try {
+    if (req.params.what === 'choice') return res.json({ ok: true, setup: as.setChoice(id, String(b.step || ''), String(b.choice || ''), String(b.value || '')) });
+    if (req.params.what === 'tick') return res.json({ ok: true, setup: as.setTick(id, String(b.step || ''), String(b.tick || ''), b.on === true) });
+    if (req.params.what === 'delete') return res.json({ ok: true, ...as.remove(id) });
+    return res.status(404).json({ error: 'no such address' });
+  } catch (err) { return res.status(err.status || 500).json({ error: err.message }); }
 });
 app.post('/api/account/trading/:id/delete', csrfGuard, (req, res) => {
   try { res.json({ ok: true, ...require('./lib/account').deleteTradingAccount(String(req.params.id), require('./lib/live/setups').listSetups()) }); }
@@ -256,15 +276,15 @@ app.post('/api/account/trading/:id/keys', csrfGuard, async (req, res) => {
     if (!target || target.kind !== 'engine') return res.status(400).json({ error: 'pick the trading engine the keys go to' });
     const link = require('./lib/live/enginelink');
     // ONLY LOCKED: a pair that reaches this machine readable is refused and goes nowhere
-    if (b.remove !== true && (b.apiKey !== undefined || b.secret !== undefined)) return res.status(400).json({ error: 'the keys must be locked in the browser with the engine\'s lock before they are sent: reload the page and send them again' });
+    if (b.remove !== true && (b.apiKey !== undefined || b.secret !== undefined)) return res.status(400).json({ error: 'the keys must be locked in the browser with the platform\'s lock before they are sent: reload the page and send them again' });
     const locked = b.locked;
     if (b.remove !== true && (!locked || typeof locked.epk !== 'string' || typeof locked.iv !== 'string' || typeof locked.data !== 'string' || locked.data.length > 4096)) return res.status(400).json({ error: 'the locked keys did not arrive whole: send them again' });
     const r = b.remove === true
       ? await link.call(target, 'POST', `/keys/${encodeURIComponent(id)}/delete`, {}, 8000)
       : await link.call(target, 'POST', `/keys/${encodeURIComponent(id)}`, { locked: { v: 1, epk: locked.epk, iv: locked.iv, data: locked.data }, anyAddress: b.anyAddress === true }, 15000);
-    if (!r.ok) return res.status(r.status >= 400 && r.status < 500 ? r.status : 502).json({ error: (r.json && r.json.error) || r.why || `the engine answered ${r.status}` });
+    if (!r.ok) return res.status(r.status >= 400 && r.status < 500 ? r.status : 502).json({ error: (r.json && r.json.error) || r.why || `the platform answered ${r.status}` });
     return res.json({ ok: true, account: id, engine: target.id, present: !!(r.json && r.json.present), addedAt: (r.json && r.json.addedAt) || null, anyAddress: !!(r.json && r.json.anyAddress), tied: r.json && typeof r.json.tied === 'boolean' ? r.json.tied : null, checked: !!(r.json && r.json.checked), why: (r.json && r.json.why) || null });
-  } catch (err) { return res.status(500).json({ error: 'the keys could not be passed to the engine' }); }
+  } catch (err) { return res.status(500).json({ error: 'the keys could not be passed to the platform' }); }
 });
 
 // WORKER SELF-TEST. The pool is created per job and torn down after it, so

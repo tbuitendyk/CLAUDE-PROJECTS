@@ -86,8 +86,8 @@ function engineProblems(r) {
   if (typeof x.id !== 'string' || !ENGINE_ID_RE.test(x.id)) out.push('short name: 2 to 30 of a-z, 0-9 and -, starting with a letter or digit');
   if (x.id === 'mx-1') out.push('short name: mx-1 is already taken');
   if (typeof x.name !== 'string' || !x.name.trim() || x.name.length > 60) out.push('descriptive name: 1 to 60 characters');
-  if (!LINKS.includes(x.link)) out.push('the link: an engine calls this system');
-  if (typeof x.tokenHash !== 'string' || !TOKEN_HASH_RE.test(x.tokenHash)) out.push('the engine\'s token fingerprint is missing');
+  if (!LINKS.includes(x.link)) out.push('the link: a platform calls this system');
+  if (typeof x.tokenHash !== 'string' || !TOKEN_HASH_RE.test(x.tokenHash)) out.push('the platform\'s token fingerprint is missing');
   return out;
 }
 
@@ -119,7 +119,7 @@ function saveEngine(rec) {
   const all = storedTargets();
   const id = String((rec || {}).id || '').trim();
   const was = all[id];
-  if (!was || was.kind !== 'engine') { const e = new Error(`no engine called ${id || '(none)'}: a new engine is added by installing it, with Set up a trading engine`); e.code = 'BAD_ENGINE'; throw e; }
+  if (!was || was.kind !== 'engine') { const e = new Error(`no platform called ${id || '(none)'}: a new platform is added by installing it, with Set up a trading platform`); e.code = 'BAD_ENGINE'; throw e; }
   const r = { ...was, name: String((rec || {}).name || '').trim(), isDefault: !!(rec || {}).isDefault, note: typeof (rec || {}).note === 'string' ? rec.note.slice(0, 200) : (was.note || '') };
   const problems = engineProblems(r);
   if (problems.length) { const e = new Error(problems.join('; ')); e.code = 'BAD_ENGINE'; throw e; }
@@ -135,7 +135,7 @@ function saveEngine(rec) {
 function saveCallingEngine({ id, name, tokenHash, lock = null, machine = null, release = null, setupRef = null }) {
   const all = storedTargets();
   const was = all[id];
-  if (was && (was.kind !== 'engine' || was.link !== 'calls-out')) { const e = new Error(`the short name ${id} already belongs to another engine`); e.code = 'BAD_ENGINE'; throw e; }
+  if (was && (was.kind !== 'engine' || was.link !== 'calls-out')) { const e = new Error(`the short name ${id} already belongs to another platform`); e.code = 'BAD_ENGINE'; throw e; }
   const r = {
     id, kind: 'engine', link: 'calls-out', name, isDefault: was ? !!was.isDefault : !listEngines().length, symbols: null, note: was ? was.note || '' : '',
     tokenHash, lock, machine, release, setupRef, enrolledUtc: new Date().toISOString(), lastSeenUtc: null,
@@ -162,7 +162,7 @@ function noteEngine(id, patch) {
 // an engine record goes only when no setup names it
 function deleteEngine(id, setups = []) {
   const all = storedTargets();
-  if (!all[id] || all[id].kind !== 'engine') { const e = new Error(`no engine called ${id}`); e.code = 'NOT_FOUND'; throw e; }
+  if (!all[id] || all[id].kind !== 'engine') { const e = new Error(`no platform called ${id}`); e.code = 'NOT_FOUND'; throw e; }
   const users = setups.filter((s) => s.executionTargetRef === id && s.state !== 'retired');
   if (users.length) { const e = new Error(`${users.length} setup(s) run on ${id} (${users.map((s) => s.name || s.id).join(', ')}) -- move or retire them first`); e.code = 'IN_USE'; throw e; }
   delete all[id];

@@ -1,18 +1,18 @@
 #!/bin/sh
-# INSTALL THE TRADING ENGINE ON THIS MACHINE (Linux with systemd).
-# Shown on the Compute tab, step 2 of the engine's checklist, as:
+# INSTALL THE TRADING PLATFORM ON THIS MACHINE (Linux with systemd).
+# Shown on the Compute tab, step 2 of the platform's checklist, as:
 #   curl -fsSL <this system>/engine-link/install/linux.sh | sudo sh -s -- <this system> <short name> <install code>
 #
 # What it does, and nothing else:
 #   * Node.js from the system's own packages if it is missing (nothing upgraded);
-#   * a system account of the engine's own, uts-<short name>, that cannot sign in;
+#   * a system account of the platform's own, uts-<short name>, that cannot sign in;
 #   * the engine's program in /opt/uts-engine-<short name>, its data (record,
 #     lock, keys) in /var/lib/uts-engine-<short name>, readable by that account alone;
 #   * a service, uts-engine-<short name>, that cannot read /home, is held to
 #     300 MB of memory and half a CPU, and starts with real orders off.
-# The engine then calls this system with the install code and is given a
+# The platform then calls this system with the install code and is given a
 # password of its own. Nothing is opened on this machine for anyone to come in:
-# the engine calls out, and this system keeps only a fingerprint of its password.
+# the platform calls out, and this system keeps only a fingerprint of its password.
 # Run again with a new code, it replaces the program and keeps the record, the
 # lock and the keys.
 set -eu
@@ -55,7 +55,7 @@ GOT=$(sha256sum "$TMP/engine.tgz" | cut -d' ' -f1)
 [ "$WANT" = "$GOT" ] || { echo "the package did not match its fingerprint; nothing was installed"; exit 5; }
 mkdir "$TMP/engine"
 tar -xzf "$TMP/engine.tgz" -C "$TMP/engine"
-[ -f "$TMP/engine/main.js" ] || { echo "the package has no engine in it; nothing was installed"; exit 5; }
+[ -f "$TMP/engine/main.js" ] || { echo "the package has no program in it; nothing was installed"; exit 5; }
 RELEASE=$("$NODE" -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).release)' "$TMP/engine/VERSION.json")
 
 # the program: owned by root, read by all, written by nobody else
@@ -75,7 +75,7 @@ chmod 600 "$DATA/config.json"
 
 cat > "/etc/systemd/system/$NAME.service" <<EOF
 [Unit]
-Description=UTS trading engine $SHORT (calls out to $BASE)
+Description=UTS trading platform $SHORT (calls out to $BASE)
 After=network-online.target
 Wants=network-online.target
 
@@ -108,8 +108,8 @@ i=0
 while [ $i -lt 30 ]; do
   if [ -f "$DATA/link-status.json" ] && grep -q '"linked":true' "$DATA/link-status.json"; then
     LOCK=$(sed -n 's/.*"lock":"\([^"]*\)".*/\1/p' "$DATA/link-status.json")
-    echo "done: the engine called in and is linked to this system."
-    echo "the fingerprint of its lock is $LOCK -- the Account tab shows the same beside the keys for this engine."
+    echo "done: the platform called in and is linked to this system."
+    echo "the fingerprint of its lock is $LOCK -- the Account tab shows the same beside the keys for this platform."
     exit 0
   fi
   i=$((i + 1))

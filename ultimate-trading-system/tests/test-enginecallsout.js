@@ -54,6 +54,7 @@ module.exports = {
       const made = await req(port, 'POST', '/api/live/engine-setups', { name: 'CDMX engine', shortName: 'cdmx-engine' });
       const id = made.json.setup.id;
       await req(port, 'POST', `/api/live/engine-setups/${id}/choice`, { step: 'ready', choice: 'where', value: 'server' });
+      await req(port, 'POST', `/api/live/engine-setups/${id}/choice`, { step: 'ready', choice: 'os', value: 'linux' });
       for (const t of ['binance', 'on', 'size']) await req(port, 'POST', `/api/live/engine-setups/${id}/tick`, { step: 'ready', tick: t, on: true });
       const code = (await req(port, 'POST', `/api/live/engine-setups/${id}/install`, {})).json.code;
       assert.ok(/^UTS-/.test(code), code);
@@ -125,7 +126,7 @@ module.exports = {
         execFile(process.execPath, ['engine/main.js'], { cwd: ROOT, env: { ...process.env, ENGINE_DATA: eng }, timeout: 15000 }, (err, stdout, stderr) => resolve({ code: err ? err.code : 0, stderr: String(stderr) }));
       });
       assert.strictEqual(out.code, 2, JSON.stringify(out));
-      assert.ok(/names no web server to call: install the engine with an install command made on the Compute tab/.test(out.stderr), out.stderr);
+      assert.ok(/names no web server to call: install the platform with an install command made on the Compute tab/.test(out.stderr), out.stderr);
       assert.deepStrictEqual(fs.readdirSync(eng), ['config.json'], 'nothing opened or written: no record, no lock, no key store');
     } finally { fs.rmSync(eng, { recursive: true, force: true }); }
   },

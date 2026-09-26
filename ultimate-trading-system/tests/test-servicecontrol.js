@@ -376,6 +376,10 @@ module.exports = {
     assert.ok(/<b style="min-width:11rem; font-size:\.8rem">trading platform<\/b>/.test(page), 'the row under Where each part runs says trading platform');
     assert.strictEqual(page.split('<h3 style="margin-top:0">The trading platform</h3>').length - 1, 2, 'both of the section\'s headings say The trading platform');
     assert.ok(!/>The trading engine<\/h3>/.test(page), 'no heading still says The trading engine');
+    // AND THE ROW SAYS WHERE IT IS SET (3.268.0, owner 2026-09-26: "the text shouldn't say 'Nothing about
+    // it is set here.' when below in The trading platform section that's exactly what we do")
+    const drawn = page.replace(/^\s*\/\/.*$/gm, '');   // what is drawn, not the comments that quote the owner
+    assert.ok(!/Nothing about it is set here/.test(drawn) && /set up in The trading platform section below\. Each trading setup names the one it runs on /.test(drawn), 'the row says the platform is set up below');
   },
 
   // The unit that runs it has to come back on its own: it is the way back.

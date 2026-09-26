@@ -54,7 +54,7 @@ class Lock {
       fs.closeSync(fd);
     }
     if (process.platform !== 'win32' && (fs.statSync(this.file).mode & 0o077) !== 0) {
-      throw new Error('the engine\'s lock can be read by other users on this machine; it is refused until only the engine can read it');
+      throw new Error('the platform\'s lock can be read by other users on this machine; it is refused until only the platform can read it');
     }
     const rec = JSON.parse(fs.readFileSync(this.file, 'utf8'));
     this.privateKey = crypto.createPrivateKey({ key: Buffer.from(rec.privateKey, 'base64'), format: 'der', type: 'pkcs8' });
@@ -67,7 +67,7 @@ class Lock {
 
   // a locked pair in, the pair out -- or a refusal that says nothing of what was sent
   unlock(locked, account) {
-    const bad = () => { const e = new Error('the locked keys could not be opened by this engine: lock them again with this engine\'s lock'); e.code = 'BAD_LOCK'; return e; };
+    const bad = () => { const e = new Error('the locked keys could not be opened by this platform: lock them again with this platform\'s lock'); e.code = 'BAD_LOCK'; return e; };
     if (!locked || typeof locked !== 'object' || typeof locked.epk !== 'string' || typeof locked.iv !== 'string' || typeof locked.data !== 'string') throw bad();
     try {
       const epk = crypto.createPublicKey({ key: Buffer.from(locked.epk, 'base64'), format: 'der', type: 'spki' });
