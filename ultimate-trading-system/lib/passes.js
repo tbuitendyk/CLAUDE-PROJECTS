@@ -29,7 +29,7 @@ const bracketLib = require('./bracket');
 // pricing task already reads.
 async function passTrainTask(task) {
   const { combo, geometry, specs, of, k } = task;
-  const pin = task.pin && typeof task.pin === 'string' ? require('./pin').pinnedFilesOf({ detailFile: task.pin }) : null;
+  const pin = task.pin && typeof task.pin === 'string' ? require('./pin').pinnedEntriesOf({ detailFile: task.pin }) : null;
   // THE PARENT'S OWN LAYOUT TRAVELS UNTOUCHED in params.windowLayout, so
   // whatever it seals is sealed before the pass cuts anything (3.111.1). The
   // pass is a modifier on that layout, never a replacement for it.

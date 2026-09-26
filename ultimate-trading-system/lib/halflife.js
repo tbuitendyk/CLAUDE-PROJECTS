@@ -73,7 +73,7 @@ function halfLifeWeights(p, trainChunks, fee, halfLifeDays) {
 async function hlTrainTask(task) {
   const { combo, geometry, specs, fee, halfLifeMonths } = task;
   const halfLifeDays = daysOfMonths(halfLifeMonths);
-  const pin = task.pin && typeof task.pin === 'string' ? require('./pin').pinnedFilesOf({ detailFile: task.pin }) : null;
+  const pin = task.pin && typeof task.pin === 'string' ? require('./pin').pinnedEntriesOf({ detailFile: task.pin }) : null;
   const p = { ...task.params, pinnedFiles: pin };
   const { geo, split, windows } = await sw.unitChunks(combo, geometry, p);
   const { trainChunks, testChunks, holdChunks } = split;

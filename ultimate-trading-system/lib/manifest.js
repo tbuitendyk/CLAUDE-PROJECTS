@@ -99,25 +99,47 @@ function symbolManifest(symbol, onlyFiles = null) {
 // not kill a launch; it returns { error } instead so the absence is loud.
 function stampManifest(stampId, symbols, { onlyFiles = null } = {}) {
   try {
-    const per = [...new Set(symbols.filter(Boolean))].sort().map((s) => symbolManifest(s, onlyFiles ? (onlyFiles[s] || []) : null));
-    const overall = crypto.createHash('sha256');
-    for (const p of per) overall.update(`${p.symbol}:${p.digest}\n`);
-    const safe = String(stampId).replace(/[^A-Za-z0-9._-]+/g, '_');
-    fs.mkdirSync(MANIFEST_DIR, { recursive: true });
-    const file = path.join(MANIFEST_DIR, `${safe}.json`);
-    const tmp = `${file}.tmp${process.pid}-${++tmpSeq}`;
-    fs.writeFileSync(tmp, JSON.stringify({
-      stampId,
-      at: new Date().toISOString(),
-      detail: Object.fromEntries(per.map((p) => [p.symbol, p.detail])),
-    }));
-    fs.renameSync(tmp, file);
-    return {
-      at: new Date().toISOString(),
-      overallDigest: overall.digest('hex'),
-      detailFile: `manifests/${safe}.json`,
-      symbols: Object.fromEntries(per.map((p) => [p.symbol, { files: p.files, bytes: p.bytes, digest: p.digest }])),
-    };
+    return writeStamp(stampId, [...new Set(symbols.filter(Boolean))].sort().map((s) => symbolManifest(s, onlyFiles ? (onlyFiles[s] || []) : null)));
+  } catch (err) {
+    return { error: `manifest failed: ${err.message}` };
+  }
+}
+// the detail beside the set and the summary on it, from one list per coin
+function writeStamp(stampId, per) {
+  const overall = crypto.createHash('sha256');
+  for (const p of per) overall.update(`${p.symbol}:${p.digest}\n`);
+  const safe = String(stampId).replace(/[^A-Za-z0-9._-]+/g, '_');
+  fs.mkdirSync(MANIFEST_DIR, { recursive: true });
+  const file = path.join(MANIFEST_DIR, `${safe}.json`);
+  const tmp = `${file}.tmp${process.pid}-${++tmpSeq}`;
+  fs.writeFileSync(tmp, JSON.stringify({
+    stampId,
+    at: new Date().toISOString(),
+    detail: Object.fromEntries(per.map((p) => [p.symbol, p.detail])),
+  }));
+  fs.renameSync(tmp, file);
+  return {
+    at: new Date().toISOString(),
+    overallDigest: overall.digest('hex'),
+    detailFile: `manifests/${safe}.json`,
+    symbols: Object.fromEntries(per.map((p) => [p.symbol, { files: p.files, bytes: p.bytes, digest: p.digest }])),
+  };
+}
+// A CHILD'S STAMP IS ITS PARENT'S, ENTRY FOR ENTRY (3.269.0). It used to hash the
+// parent's files again as they are now, and a file that had gained hours since
+// the parent's launch went into the child at its new size -- so the child read
+// hours its parent never read. The parent's own entries say what the chain
+// reads: each file at the size and with the fingerprint it had at the root's
+// launch. Nothing is read here; the caller has just proved them intact.
+function stampFromEntries(stampId, detail) {
+  try {
+    const per = Object.keys(detail || {}).sort().map((symbol) => {
+      const list = (Array.isArray(detail[symbol]) ? detail[symbol] : []).slice().sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
+      const roll = crypto.createHash('sha256');
+      for (const d of list) roll.update(`${d.file}|${d.bytes}|${d.sha256}\n`);
+      return { symbol, files: list.length, bytes: list.reduce((n, d) => n + (d.bytes || 0), 0), digest: list.length ? roll.digest('hex') : null, detail: list };
+    });
+    return writeStamp(stampId, per);
   } catch (err) {
     return { error: `manifest failed: ${err.message}` };
   }
@@ -143,7 +165,20 @@ function stampManifest(stampId, symbols, { onlyFiles = null } = {}) {
 // day that gets filled, a new day of data: none of it is this run's.
 // the readers live in lib/pin.js, which holds no state, because the pricing
 // workers need them and may not reach this module
-const { readDetail, pinnedFilesOf } = require('./pin');
+const { readDetail, pinnedFilesOf, pinnedEntriesOf, launchBytesOf } = require('./pin');
+// THE FINGERPRINT OF WHAT THE LAUNCH READ (3.269.0): the whole file when it is
+// the size it was, else the bytes it held at launch cut out of it as it is now
+// (lib/pin.js launchBytesOf) -- a file that only gained hours at its end is
+// intact, one whose earlier hours changed is not. A file of the same size keeps
+// using the known hash; a grown one is small (a day of hours) and is read.
+function launchHashOf(file, bytes) {
+  const full = path.join(CACHE_DIR, file);
+  const st = fs.statSync(full);
+  if (!Number.isFinite(bytes) || st.size === bytes) return hashOfFile(file);
+  const cut = launchBytesOf(fs.readFileSync(full), bytes);
+  if (cut.why) return { bytes: st.size, sha256: null, fresh: false };
+  return { bytes, sha256: crypto.createHash('sha256').update(cut.buf).digest('hex'), fresh: false };
+}
 // Are the pinned files still there with the same bytes? Never throws. A set
 // whose detail is gone cannot be proved intact, and says so.
 function pinnedIntact(summary) {
@@ -160,7 +195,7 @@ function pinnedIntact(summary) {
       if (!x || typeof x.file !== 'string' || !x.sha256) continue;
       checked++;
       let h;
-      try { h = hashOfFile(x.file); } catch { gone.push(x.file); continue; }
+      try { h = launchHashOf(x.file, x.bytes); } catch { gone.push(x.file); continue; }
       if (h.fresh) learned = true;
       if (h.sha256 !== x.sha256) changed.push(x.file);
     }
@@ -185,4 +220,4 @@ function manifestDiff(a, b) {
   return { same: false, changed, onlyA, onlyB };
 }
 
-module.exports = { symbolManifest, stampManifest, manifestDiff, pinnedFilesOf, pinnedIntact, readDetail, MANIFEST_DIR, CACHE_DIR, HASHES_FILE };
+module.exports = { symbolManifest, stampManifest, stampFromEntries, manifestDiff, pinnedFilesOf, pinnedEntriesOf, pinnedIntact, readDetail, MANIFEST_DIR, CACHE_DIR, HASHES_FILE };

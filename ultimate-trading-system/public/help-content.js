@@ -298,9 +298,13 @@ window.HELP = {
       },
       swDesc1: { what: 'Why this stage 1 exists. Kept on the record set and shown wherever it is named.' },
 
-      swGo1: { what: 'Starts stage 1. Progress shows at the top of this screen, and the finished set lands on Boards.' },
+      swGo1: { what: 'Starts stage 1. Progress shows at the top of this screen, and the finished set lands on Boards. With a paused run chosen in the box above, starts that run again where it stopped.' },
+      swDelete1: {
+        what: 'Deletes the paused stage 1 run chosen in stage 1 record set, after asking you to type its record set id back. Everything it had trained goes with it.',
+        more: 'Live only while a paused run is chosen in that box, because that is all it acts on. A finished record set is deleted on Boards, with the same two steps. A run another record set names as its parent is refused, and nothing is deleted while a stage run is going.',
+      },
       swFrom2: {
-        what: 'At the top of the stage 1 section: a stage 1 record set of the campaign that is set, or new. Picking only chooses. Open opens the set chosen: the boxes below are filled from it and stay live, Start stage 1 runs a new set from what they hold, and it becomes the set stage 2 comes out of. New, opened, frees the boxes to set up a stage 1 and start it.',
+        what: 'At the top of the stage 1 section: a stage 1 record set of the campaign that is set, or new. Picking only chooses. Open opens the set chosen: the boxes below are filled from it and stay live, Start stage 1 runs a new set from what they hold, and it becomes the set stage 2 comes out of. New, opened, frees the boxes to set up a stage 1 and start it. A paused stage 1 run is offered here too; opened, Start stage 1 starts it again where it stopped.',
         more: 'Only the stage 1 sets of the campaign that is set are offered, every status, each saying which. Picking another set here lets go of whatever was picked in the stage 2 and stage 3 sections, because those came out of this one. A stage 2 set names its parent forever, and the launch refuses when the price files no longer fingerprint identically to the ones the parent read. Start stage 1 refuses while no campaign is set: every stage 1 record set belongs to one.',
       },
       swCarry: {
@@ -312,9 +316,13 @@ window.HELP = {
         more: 'Left empty, it takes the next free number, which is what the box shows greyed. A name another record set already has is refused, so no two sets can share one; rename the other on Boards first.',
       },
       swDesc2: { what: 'Why this stage 2 exists. Kept on the record set.' },
-      swGo2: { what: 'Starts stage 2 on the stage 1 record set picked in the stage 1 section. Only the BOOST members train.' },
+      swGo2: { what: 'Starts stage 2 on the stage 1 record set picked in the stage 1 section. Only the BOOST members train. With a paused run chosen in the box above, starts that run again where it stopped.' },
+      swDelete2: {
+        what: 'Deletes the paused stage 2 run chosen in stage 2 record set, after asking you to type its record set id back. Everything it had trained goes with it.',
+        more: 'Live only while a paused run is chosen in that box, because that is all it acts on. A finished record set is deleted on Boards, with the same two steps. A run another record set names as its parent is refused, and nothing is deleted while a stage run is going.',
+      },
       swFrom3: {
-        what: 'At the top of the stage 2 section: a stage 2 record set that came out of the stage 1 set picked above, or new. Picking only chooses. Open opens the set chosen: the boxes below are filled from it and stay live, Start stage 2 runs a new set from what they hold, and it becomes the set stage 3 prices from. New, opened, frees the boxes to build a stage 2 from the stage 1 set open above.',
+        what: 'At the top of the stage 2 section: a stage 2 record set that came out of the stage 1 set picked above, or new. Picking only chooses. Open opens the set chosen: the boxes below are filled from it and stay live, Start stage 2 runs a new set from what they hold, and it becomes the set stage 3 prices from. New, opened, frees the boxes to build a stage 2 from the stage 1 set open above. A paused stage 2 run is offered here too; opened, Start stage 2 starts it again where it stopped.',
         more: 'Only the stage 2 sets of the stage 1 set picked above are offered, every status, each saying which; with new picked above there is nothing to offer and nothing to build from. Picking another set here lets go of whatever was picked in the stage 3 section. A stage 2 set belongs to the same campaign as the stage 1 set it came out of.',
       },
       swSet3: {
@@ -532,7 +540,7 @@ window.HELP = {
         what: 'Deletes the paused stage 3 run chosen in stage 3 record set, after asking you to type its record set id back. Everything it had priced goes with it.',
         more: 'Live only while a paused run is chosen in that box, because that is all it acts on. A finished record set is deleted on Boards, with the same two steps. A run another record set names as its parent is refused, and nothing is deleted while a stage run is going.',
       },
-      swStop: { what: 'Pauses a stage 3 run, or stops a stage 1 or 2 run. Everything already written stays. A paused stage 3 run keeps the state it held in memory as well, and is offered in the stage 3 section\'s box to be started again; a stopped stage 1 or 2 run reports itself cancelled and cannot be.' },
+      swStop: { what: 'Pauses the run going. Everything already written stays, and the run is offered in its own stage\'s box to be started again where it stopped: at stage 1 and 2 every unit that landed is kept and only the rest are trained; a paused stage 3 run keeps the state it held in memory as well.', more: 'The units being worked the moment it is pressed are dropped and trained again when the run starts again; a unit already written is never trained twice. The run reads paused only once every unit it had written is on disk.' },
 
     },
   },

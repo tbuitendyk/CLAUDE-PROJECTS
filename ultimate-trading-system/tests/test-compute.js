@@ -118,9 +118,15 @@ module.exports = {
       'a pool is built past the backstop');
     assert.ok(/sweepRunsHereOr\(\)/.test(slice('function stageGateBlockedBy(', '\n}\n')),
       'the stage-engine check\'s status no longer carries it, so its press does not sleep on it and the deploy gate cannot see it');
-    for (const fn of ['startStage1', 'startStage2', 'startStage3', 'continueStage3', 'fillMissingUnitsStart', 'funnelRichStart']) {
+    for (const fn of ['startStage1', 'startStage2', 'startStage3', 'continueStage3', 'claimForStartAgain', 'funnelRichStart']) {
       assert.ok(/claimOrRefuse\(/.test(slice(`function ${fn}(`, '\n}\n')), `${fn} does not go through the gate that reads the choice`);
     }
+    // a stage 1 or 2 start-again, and putting back the units a run lost, are
+    // claimed through the one start-again claim (3.269.0)
+    for (const fn of ['continueStage1', 'continueStage2']) {
+      assert.ok(/claimForStartAgain\(doc\)/.test(slice(`function ${fn}(`, '\n}\n')), `${fn} does not go through the gate that reads the choice`);
+    }
+    assert.ok(/continueStage1\(doc\)/.test(slice('function fillMissingUnitsStart(', '\n}\n')), 'putting the missing units back is no longer the start-again, and so no longer through the gate');
     const stages = require('../lib/stages');
     const compute = require('../lib/compute');
     assert.strictEqual(typeof stages.claimOrRefuse, 'function', 'the gate is not reachable to be driven');

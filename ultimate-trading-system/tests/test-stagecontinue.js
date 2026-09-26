@@ -249,6 +249,72 @@ function writeCheckpointFile(id, extra) {
   }));
 }
 
+// ---- STAGES 1 AND 2, STARTED AGAIN (3.269.0) ----------------------------------------
+// WHAT A PAUSE AFTER `keep` UNITS LEAVES ON DISK, made out of a finished set: its
+// first `keep` records and exactly the blocks they point at, the ordering gone
+// (it is written only when a run ends), the set saying `status`. Units land one
+// callback at a time and every store is flushed per unit, so the first `keep`
+// records own the first blocks of every store, and nothing else does.
+function cutBackTo(id, keep, status = 'paused') {
+  const metaOf = (name) => `${rowstore.storeFile(id, name)}.meta.json`;
+  const rm = JSON.parse(fs.readFileSync(metaOf('records'), 'utf8'));
+  const kept = rowstore.readBlocks(id, 'records', rm.blocks.slice(0, keep).map((_, i) => i)).map((x) => x.row);
+  const ends = { votes: 0, tau: 0, models: 0 };
+  for (const r of kept) for (const k of Object.keys(ends)) ends[k] = Math.max(ends[k], r.blocks[k][1]);
+  const cut = (name, n) => {
+    const m = JSON.parse(fs.readFileSync(metaOf(name), 'utf8'));
+    const blocks = m.blocks.slice(0, n);
+    const last = blocks[blocks.length - 1];
+    fs.truncateSync(rowstore.storeFile(id, name), last ? last.at + last.bytes : 0);
+    fs.writeFileSync(metaOf(name), JSON.stringify({ ...m, blocks, rows: last ? last.firstRow + last.rows : 0 }));
+  };
+  cut('records', keep);
+  for (const k of Object.keys(ends)) cut(k, ends[k]);
+  for (const f of [rowstore.gzFile(id, 'ranking'), `${rowstore.gzFile(id, 'ranking')}.meta.json`]) fs.rmSync(f, { force: true });
+  const doc = stages.getSet(id);
+  fs.writeFileSync(path.join(SETS_DIR, `${id}.json`), JSON.stringify({
+    ...doc, status, progress: '', finishedAt: null, counts: null, failures: [],
+    perf: { ...doc.perf, unitsDone: keep, etaMs: null },
+  }));
+  return kept.map((r) => r.u).sort((a, b) => a - b);
+}
+// every record of a set by its unit number, its block pointers aside (a unit
+// trained after a pause lands in other blocks), and each unit's rows in the
+// other three stores, read through those pointers
+function unitsOf(id) {
+  const out = new Map();
+  for (const r of rowstore.readAll(id, 'records')) {
+    const rows = {};
+    for (const k of ['votes', 'tau', 'models']) {
+      const idx = [];
+      for (let b = r.blocks[k][0]; b < r.blocks[k][1]; b++) idx.push(b);
+      rows[k] = rowstore.readBlocks(id, k, idx).map((x) => x.row);
+      assert.ok(rows[k].length && rows[k].every((x) => x.u === r.u), `${id}: unit ${r.u}'s ${k} blocks hold rows that are not its own`);
+    }
+    const { blocks, ...rec } = r;
+    void blocks;
+    assert.ok(!out.has(r.u), `${id}: unit ${r.u} is on disk twice`);
+    out.set(r.u, { rec, rows });
+  }
+  return out;
+}
+function sameUnits(id, ref, what) {
+  const mine = unitsOf(id);
+  assert.deepStrictEqual([...mine.keys()].sort((a, b) => a - b), [...ref.keys()].sort((a, b) => a - b), `${what}: not the same units`);
+  for (const [u, r] of ref) {
+    assert.deepStrictEqual(mine.get(u).rec, r.rec, `${what}: unit ${u}'s record is not the one the run that was never paused wrote`);
+    for (const k of ['votes', 'tau', 'models']) assert.deepStrictEqual(mine.get(u).rows[k], r.rows[k], `${what}: unit ${u}'s ${k} rows differ`);
+  }
+}
+// the seed-free half of a stage 1 record: a set's null deals are seeded from its
+// own id, so two sets of the same plan agree on everything but the deals
+const SEED_FREE = ['u', 'trade', 'ctx1', 'ctx2', 'size', 'geometry', 'bandPct', 'counts', 'reserve', 'windows', 'specs', 'voices', 'extras', 'plateaus', 'extraBandPcts', 'tooEarly', 'score', 'money', 'moneyTrades', 'moneyChunks', 'trainedOn'];
+const S1_PLAN = () => ({
+  universe: [A, B], compare: [A, B], sizes: { singles: true, doubles: true }, geometry: 'daily-1d',
+  windowLayout: 'reserve61', allLoaded: false, startMonth: '2024-01', endMonth: '2024-12',
+  nullN: NULL_N, fee: FEE, desc: 'pause rehearsal',
+});
+
 module.exports = {
   // the exam's two coins and their stage 2 parent, built once for every
   // rehearsal below (stage 1 trains for real; the rest is pricing)
@@ -433,7 +499,7 @@ module.exports = {
     assert.ok(Object.keys(cp.controlsMap).length >= 1, 'and so are the comparisons');
     const row = stages.listSets().find((x) => x.id === s3.id);
     assert.strictEqual(row.status, 'paused');
-    assert.strictEqual(row.checkpoint, true, 'the list says it can be started again');
+    assert.strictEqual(row.startsAgain, true, 'the list says it can be started again');
     assert.strictEqual(row.continued, 0);
 
     // THE REFRESH LANDS WHILE THE RUN IS PAUSED (3.84.0): June becomes a
@@ -443,7 +509,7 @@ module.exports = {
     // equal to the reference, which never saw the bundle either.
     fs.writeFileSync(path.join(CACHE, `${A}-1h-2024-06.json`), JSON.stringify(state.juneBundle));
     const onDisk = await require('../lib/pipeline').loadSymbolAll(A, () => {});
-    const pinnedNow = require('../lib/pipeline').loadSymbolPinned(A, require('../lib/manifest').pinnedFilesOf(stages.getSet(s3.id).dataManifest)[A]);
+    const pinnedNow = require('../lib/pipeline').loadSymbolPinned(A, require('../lib/manifest').pinnedEntriesOf(stages.getSet(s3.id).dataManifest)[A]);
     assert.strictEqual(onDisk.rows.length - pinnedNow.rows.length, 17, 'the bundle would hand the run seventeen candles it never read');
 
     const again = stages.continueStage3(s3.id);
@@ -600,9 +666,12 @@ module.exports = {
     const corpse = stages.getSet(id);
     assert.strictEqual(corpse.status, 'running', 'a killed process leaves its set saying running');
     assert.ok(corpse.perf.partsDone >= seen.perf.partsDone);
-    const row = stages.listSets().find((x) => x.id === id);
+    // the SERVICE's listing marks a corpse (3.269.0): this process stands in for it
+    const was = stages.ownRuns(true);
+    let row;
+    try { row = stages.listSets().find((x) => x.id === id); } finally { stages.ownRuns(was); }
     assert.strictEqual(row.status, 'interrupted', 'the list marks a corpse the moment it is seen');
-    assert.strictEqual(row.checkpoint, true, 'and says it can be started again');
+    assert.strictEqual(row.startsAgain, true, 'and says it can be started again');
     const cp = stages.readCheckpoint(id);
     assert.ok(cp && cp.writtenBy === 'the run', 'the checkpoint from the start of the pricing is there');
     assert.ok(cp.partsDone <= corpse.perf.partsDone, 'the checkpoint is at or behind the set');
@@ -689,7 +758,9 @@ module.exports = {
         assert.ok(catchAt > 0 && body.slice(catchAt, catchAt + 1600).includes('writeCheckpoint(doc, live)'), `${fn.slice(9, -1)} writes it when the run fails`);
       }
       const fail = src.slice(src.indexOf('function finishFail('), src.indexOf('function feeOrRefuse('));
-      assert.ok(fail.includes("doc.stage === 3 && hasCheckpoint(doc.id) ? 'paused' : 'cancelled'"), 'a stopped stage 3 run with a checkpoint is paused; without one, cancelled, as before');
+      assert.ok(fail.includes("doc.status = doc.cancelRequested ? (canStartAgain(doc) ? 'paused' : 'cancelled') : 'error';"), 'a stopped run that can be started again is paused; one that cannot, cancelled');
+      const can = src.slice(src.indexOf('function canStartAgain('), src.indexOf('function finishFail('));
+      assert.ok(can.includes("return doc.stage === 3 ? hasCheckpoint(doc.id) : planListed(doc);"), 'a stage 3 run can be started again by its checkpoint, a stage 1 or 2 run by its planned units');
     } finally {
       fs.rmSync(stages.checkpointFile(id), { force: true });
     }
@@ -795,9 +866,11 @@ module.exports = {
   // Boards and the Funnel delete through, and is live only while one is chosen.
   async aPausedRunCanBeDeletedFromWhereItIsChosen() {
     const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
-    // drawn beside the start press, dead until a paused run is chosen
-    assert.ok(src.includes('<button id="swGo3" class="pri">Start stage 3</button>\n      <button id="swDelete3" class="danger" disabled'), 'the delete is not drawn beside Start stage 3, or is not dead to begin with');
-    assert.ok(/<button id="swDelete3" class="danger" disabled title="[^"]*">Delete record set…<\/button>/.test(src), 'the delete is not named as Boards names it');
+    // drawn beside each stage's start press, dead until a paused run is chosen (every stage since 3.269.0)
+    for (const n of [1, 2, 3]) {
+      assert.ok(src.includes(`<button id="swGo${n}" class="pri">Start stage ${n}</button>\n      <button id="swDelete${n}" class="danger" disabled`), `the delete is not drawn beside Start stage ${n}, or is not dead to begin with`);
+      assert.ok(new RegExp(`<button id="swDelete${n}" class="danger" disabled title="[^"]*">Delete record set…</button>`).test(src), `stage ${n}'s delete is not named as Boards names it`);
+    }
     // the ghosting runs the other way for it: live exactly while a paused run is
     // chosen. The boxes themselves are ghosted as one by the section's fieldset
     // since 3.240.0 (swLockSections), whatever is picked in stage 3 record set.
@@ -806,23 +879,24 @@ module.exports = {
     let locked = 0;
     // eslint-disable-next-line no-new-func
     const swContinueMode = new Function('$', 'swLockSections', `${ghost}\nreturn swContinueMode;`)((sel) => (sel === '#swDelete3' ? del : null), () => { locked++; });
-    swContinueMode(true);
+    swContinueMode(3, true);
     assert.deepStrictEqual([del.disabled, del.off], [false, false], 'with a paused run chosen the delete is not live');
-    swContinueMode(false);
+    swContinueMode(3, false);
     assert.deepStrictEqual([del.disabled, del.off], [true, true], 'with no paused run chosen the delete is live');
     assert.strictEqual(locked, 2, 'the section is not locked to what stage 3 record set names');
     const lock = src.slice(src.indexOf('function swLockSections() {'), src.indexOf('\n}\n', src.indexOf('function swLockSections() {')));
     // a picked set opens with every box live and Start awake (3.241.7, owner order
     // 2026-09-24: "they should open as normal with all fields active"); only a
-    // paused run chosen in stage 3 greys its section, since nothing under it is read
-    assert.ok(lock.includes("const shut = n === 3 && !!swContinueOf();") && lock.includes("if (body) { body.disabled = shut; body.classList.toggle('ctl-off', shut); }"),
+    // paused run chosen in a stage's box greys that section, since nothing under it is read
+    assert.ok(lock.includes("const shut = !!swContinueOf(n);") && lock.includes("if (body) { body.disabled = shut; body.classList.toggle('ctl-off', shut); }"),
       'a picked set greys its section, or a paused run leaves its section live');
     assert.ok(lock.includes('if (go) go.disabled = !!swPressed || !!swHeldNow;'), 'a picked set puts Start to sleep');
     // the press: the chosen run, through the one flow, then the boxes refill and the count line is asked again
-    const wire = src.slice(src.indexOf("$('#swDelete3').onclick = async () => {"), src.indexOf("$('#swGo3').onclick = async () => {"));
-    assert.ok(wire.includes('const cont = swContinueOf();\n    if (!cont) return;'), 'the delete acts on something other than the paused run the box names');
-    assert.ok(wire.includes('const done = await deleteSetFlow(cont);\n    if (!done) return;'), 'the delete does not go through the one flow, or carries on after nothing was deleted');
-    assert.ok(wire.includes('await swProgress();\n    swCountsSoon();'), 'the boxes are not refilled and the count line not asked again after a delete');
+    const wire = src.slice(src.indexOf("$(`#swDelete${n}`).onclick = async () => {"), src.indexOf("$('#swGo3').onclick = async () => {"));
+    assert.ok(src.includes('  for (const n of [1, 2, 3]) {\n    $(`#swDelete${n}`).onclick = async () => {'), 'every stage\'s delete is wired');
+    assert.ok(wire.includes('const cont = swContinueOf(n);\n      if (!cont) return;'), 'the delete acts on something other than the paused run the box names');
+    assert.ok(wire.includes('const done = await deleteSetFlow(cont);\n      if (!done) return;'), 'the delete does not go through the one flow, or carries on after nothing was deleted');
+    assert.ok(wire.includes('await swProgress();\n      swCountsSoon();'), 'the boxes are not refilled and the count line not asked again after a delete');
     // ONE FLOW: Boards and the Funnel go through the same function, and neither keeps a copy of its words
     const boards = src.slice(src.indexOf("const del = $(`#bDelete${stage}`);"), src.indexOf("document.querySelectorAll('[data-bfold]')"));
     assert.ok(boards.includes('const done = await deleteSetFlow(id);'), 'Boards keeps its own delete flow');
@@ -851,7 +925,7 @@ module.exports = {
     assert.deepStrictEqual([odd.out, odd.posts.length], [null, 1], 'a strange answer to the preview is deleted through anyway');
     // and the help names it
     const help = fs.readFileSync(path.join(ROOT, 'public', 'help-content.js'), 'utf8');
-    assert.ok(help.includes('swDelete3: {'), 'the delete has no help entry');
+    for (const n of [1, 2, 3]) assert.ok(help.includes(`swDelete${n}: {`), `stage ${n}'s delete has no help entry`);
   },
 
   async theSweepOffersAPausedRunWhereANewOneIsSetUp() {
@@ -861,13 +935,16 @@ module.exports = {
     // eslint-disable-next-line no-new-func
     const { swPausedOptions, swSetOptions } = new Function('esc', 'rebuildPrefix', '$', `${seg}\nreturn { swPausedOptions, swSetOptions };`)((s) => String(s), () => '', () => null);
     const sets = [
-      { id: 'p1', stage: 3, status: 'paused', checkpoint: true, name: 'S3 #9', createdAt: '2026-09-07T01:02:03Z', perf: { unitsDone: 3, unitsTotal: 8 }, plan: { units: 8, settings: 5 } },
-      { id: 'p2', stage: 3, status: 'interrupted', checkpoint: true, name: 'S3 #10', createdAt: '2026-09-06T01:02:03Z', perf: { unitsDone: 0, unitsTotal: 2 }, plan: { units: 2, settings: 5 } },
-      { id: 'p3', stage: 3, status: 'error', checkpoint: true, name: 'S3 #11', createdAt: '2026-09-05T01:02:03Z', perf: { unitsDone: 1, unitsTotal: 2 }, plan: { units: 2, settings: 5 } },
-      { id: 'p4', stage: 3, status: 'paused', checkpoint: false, name: 'S3 #12', createdAt: '2026-09-04T01:02:03Z', perf: {}, plan: { units: 2, settings: 5 } },
-      { id: 'd3', stage: 3, status: 'done', checkpoint: false, name: 'S3 #8', createdAt: '2026-09-03T01:02:03Z', perf: {}, plan: { units: 2, settings: 5 } },
-      { id: 'd2', stage: 2, status: 'done', checkpoint: false, name: 'S2 #4', createdAt: '2026-09-02T01:02:03Z', perf: {}, plan: { units: 2, settings: 0 } },
-      { id: 'd1', stage: 1, status: 'done', checkpoint: false, name: 'S1 #2', createdAt: '2026-09-01T01:02:03Z', perf: {}, plan: { units: 9, settings: 0 } },
+      { id: 'p1', stage: 3, status: 'paused', startsAgain: true, name: 'S3 #9', createdAt: '2026-09-07T01:02:03Z', perf: { unitsDone: 3, unitsTotal: 8 }, plan: { units: 8, settings: 5 } },
+      { id: 'p2', stage: 3, status: 'interrupted', startsAgain: true, name: 'S3 #10', createdAt: '2026-09-06T01:02:03Z', perf: { unitsDone: 0, unitsTotal: 2 }, plan: { units: 2, settings: 5 } },
+      { id: 'p3', stage: 3, status: 'error', startsAgain: true, name: 'S3 #11', createdAt: '2026-09-05T01:02:03Z', perf: { unitsDone: 1, unitsTotal: 2 }, plan: { units: 2, settings: 5 } },
+      { id: 'p4', stage: 3, status: 'paused', startsAgain: false, name: 'S3 #12', createdAt: '2026-09-04T01:02:03Z', perf: {}, plan: { units: 2, settings: 5 } },
+      { id: 'd3', stage: 3, status: 'done', startsAgain: false, name: 'S3 #8', createdAt: '2026-09-03T01:02:03Z', perf: {}, plan: { units: 2, settings: 5 } },
+      { id: 'd2', stage: 2, status: 'done', startsAgain: false, name: 'S2 #4', createdAt: '2026-09-02T01:02:03Z', perf: {}, plan: { units: 2, settings: 0 } },
+      { id: 'd1', stage: 1, status: 'done', startsAgain: false, name: 'S1 #2', createdAt: '2026-09-01T01:02:03Z', perf: {}, plan: { units: 9, settings: 0 } },
+      // AND A PAUSED STAGE 1 AND STAGE 2 RUN, EACH IN ITS OWN STAGE'S BOX (3.269.0)
+      { id: 'q1', stage: 1, status: 'paused', startsAgain: true, name: 'S1-ALL', createdAt: '2026-09-08T01:02:03Z', perf: { unitsDone: 5329, unitsTotal: 12240 }, plan: { units: 12240 } },
+      { id: 'q2', stage: 2, status: 'paused', startsAgain: true, name: 'S2 #5', parent: { id: 'd1' }, createdAt: '2026-09-08T01:02:03Z', perf: { unitsDone: 1, unitsTotal: 2 }, plan: { units: 2 } },
     ];
     const paused = swPausedOptions(sets, '');
     // BY ITS NAME ALONE (3.242.1, owner order 2026-09-24: "the NAME THAT THE USER
@@ -887,27 +964,39 @@ module.exports = {
     assert.ok(box3.includes('<option value="d3">S3 #8</option>'), 'and the other stage 3 sets after them, each by its name alone (3.242.1)');
     assert.ok(!box3.includes('value="p1"'), 'a paused run is offered twice');
     assert.ok(!swSetOptions(kids, 3, '', 'someone-else').includes('continue:'), 'a paused run of another stage 2 set is offered');
-    assert.ok(!swSetOptions(sets, 2, '', 'd1').includes('continue:'), 'the stage 2 section\'s box offers a paused stage 3 run');
+    assert.ok(!swSetOptions(sets, 2, '', 'd1').includes('continue:p'), 'the stage 2 section\'s box offers a paused stage 3 run');
+    const box1 = swSetOptions(sets, 1, '', null);
+    assert.ok(box1.startsWith('<option value="" selected>— new stage 1 sweep —</option><option value="continue:q1">S1-ALL</option>'), `the stage 1 section's box lists its paused run right after new: ${box1.slice(0, 140)}`);
+    assert.ok(!box1.includes('value="q1"') && !box1.includes('continue:q2') && !box1.includes('continue:p1'), 'a paused run is offered twice, or in another stage\'s box');
+    const box2 = swSetOptions(sets, 2, '', 'd1');
+    assert.ok(box2.includes('<option value="continue:q2">S2 #5</option>') && !box2.includes('value="q2"'), 'the stage 2 section\'s box does not offer its paused run, or offers it twice');
     // the section reads that value: ghosted boxes, the count line, the start
     // button, and the provenance colours through the paused run's own parent
     // a paused run is started again once it is OPEN at stage 3 (3.242.0)
-    assert.ok(src.includes("const swContinueOf = () => { const v = swOpened(3); return v.startsWith('continue:') ? v.slice('continue:'.length) : null; };"));
+    assert.ok(src.includes("const swContinueOf = (n) => { const v = swOpened(n); return v.startsWith('continue:') ? v.slice('continue:'.length) : null; };"));
+    for (const n of [1, 2]) assert.ok(src.includes(`<fieldset id="swBody${n}" class="swbody">`), `the stage ${n} section's boxes are not ghosted as one while a paused run is picked`);
     assert.ok(src.includes('<fieldset id="swBody3" class="swbody">'), 'the stage 3 section\'s boxes are not ghosted as one while a set or a paused run is picked');
     assert.ok(src.includes('starts again where it was paused:') && src.includes('the boxes below are this run\'s own and cannot be changed here'), 'the count line says what a start-again does');
+    assert.ok(src.includes('are already trained and are kept') && src.includes('the boxes above are this run\\\'s own and cannot be changed here'), 'the stage 1 and 2 count line says what a start-again does');
+    assert.ok(src.includes('<p class="note" style="margin:.4rem 0 0" id="swCost2"></p>'), 'stage 2 has a line to say it on');
+    for (const n of [1, 2, 3]) {
+      const at = src.indexOf(`$('#swGo${n}').onclick = async () => {`);
+      assert.ok(src.slice(at, at + 400).includes(`const cont = swContinueOf(${n});\n    if (cont) { await swStartAgain(${n}, cont); return; }`), `Start stage ${n} does not start the paused run chosen in its box again`);
+    }
     assert.ok(src.includes('await startPost(`api/stageset/${encodeURIComponent(cont)}/continue`, {});'), 'start stage 3 posts the start-again for the chosen run, through the post that does not put up a dialog when the gateway gives up');
     assert.ok(src.includes('started again <b>${esc(again.name)}</b> — progress above; the set lands on Boards.'), 'the message beside the button points at the running line, which carries the reading and then the pricing');
-    assert.ok(src.includes("<button id=\"swStop\" class=\"danger\">${row.stage === 3 ? 'Pause' : 'Stop'}</button>"), 'the running line\'s control reads Pause on a stage 3 run and Stop on the others');
+    assert.ok(src.includes('<button id="swStop" class="danger">Pause</button>'), 'the running line\'s control does not read Pause on every stage\'s run (3.269.0)');
     // a paused run picked there reads red and says it is paused (3.241.0; the
     // owner's truth table in test-stages.js runs it)
     assert.ok(src.includes("const id = raw.startsWith('continue:') ? raw.slice('continue:'.length) : raw;"), 'the heading does not read a paused run picked in stage 3 record set');
     // Boards says a paused set can be started again, and where
-    assert.ok(src.includes("const canContinue = !!((sets.find((x) => x.id === doc.id) || {}).checkpoint);"), 'Boards reads whether a set can be started again off its LIST row — the set document does not carry it');
-    assert.ok(src.includes("${canContinue ? ' It can be started again from the stage 3 section on Sweep.' : ''}"), 'Boards points at the control');
+    assert.ok(src.includes("const canContinue = !!((sets.find((x) => x.id === doc.id) || {}).startsAgain);"), 'Boards reads whether a set can be started again off its LIST row — the set document does not carry it');
+    assert.ok(src.includes("${canContinue ? ` It can be started again from the stage ${doc.stage} section on Sweep.` : ''}"), 'Boards points at the control, in the set\'s own stage');
     // the service answers the start-again, and refuses by sentence
     const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
     const route = server.slice(server.indexOf("app.post('/api/stageset/:id/continue'"));
     assert.ok(route.startsWith("app.post('/api/stageset/:id/continue'"), 'the route exists');
-    assert.ok(route.slice(0, 300).includes("stages.continueStage3(String(req.params.id || ''))") && route.slice(0, 300).includes('res.status(409).json({ error: String(err.message || err) })'));
+    assert.ok(route.slice(0, 400).includes("stages.continueStage(String(req.params.id || ''))") && route.slice(0, 400).includes('res.status(409).json({ error: String(err.message || err) })'));
     // THE DATE RANGES ARE ON THE HEADER OF EVERY RUN ON BOARDS (3.85.0), and
     // the Funnel says where the unread window runs
     assert.ok(src.includes('function windowsLineHtml(win)') && src.includes('${windowsLineHtml(win)}'), 'the header carries the date ranges line');
@@ -923,7 +1012,8 @@ module.exports = {
     assert.ok(h.swSet3.what.includes('A paused stage 3 run is offered here too; opened, Start stage 3 starts it again where it stopped.'));
     assert.ok(h.swSet3.more.includes('While a paused run is chosen the boxes below are ghosted'));
     assert.ok(h.swGo3.what.includes('With a paused run chosen in the box above, starts that run again where it stopped.'));
-    assert.ok(h.swStop.what.startsWith('Pauses a stage 3 run, or stops a stage 1 or 2 run.'));
+    assert.ok(h.swStop.what.startsWith('Pauses the run going.'));
+    for (const n of [1, 2]) assert.ok(h[`swGo${n}`].what.includes('With a paused run chosen in the box above, starts that run again where it stopped.'), `swGo${n}'s help does not say it starts a paused run again`);
   },
 
   // THE START BUTTONS SLEEP ON THE PRESS AND THE LINE AT THE TOP SAYS STARTING
@@ -942,7 +1032,9 @@ module.exports = {
     const go = (n) => { const at = src.indexOf(`$('#swGo${n}').onclick`); return src.slice(at, src.indexOf('\n  };', at)); };   // the whole press
     assert.ok(go(1).includes('swStarting(1);') && go(1).indexOf('swStarting(1);') < go(1).indexOf('startPost('), 'stage 1 says starting before it asks');
     assert.ok(go(2).includes('swStarting(2);') && go(2).indexOf('swStarting(2);') < go(2).indexOf('startPost('), 'stage 2 says starting before it asks');
-    assert.ok(go(3).includes("swStarting(cont ? 'again' : 3);") && go(3).indexOf('swStarting(') < go(3).indexOf('startPost('), 'stage 3 says starting — or starting again — before it asks');
+    assert.ok(go(3).includes('swStarting(3);') && go(3).indexOf('swStarting(3);') < go(3).indexOf('startPost('), 'stage 3 says starting before it asks');
+    const again = src.slice(src.indexOf('async function swStartAgain('), src.indexOf('function swStarting('));
+    assert.ok(again.includes("swStarting('again');") && again.indexOf("swStarting('again');") < again.indexOf('startPost('), 'a start-again says starting again before it asks');
     assert.ok(!/tryPost\('api\/stage[123]'/.test(src) && !src.includes('tryPost(`api/stageset/${encodeURIComponent(cont)}/continue`'), 'no start goes through the post that puts up a dialog when the gateway gives up');
     // a gateway that gave up is not a refusal, and not a dialog
     const sp = src.slice(src.indexOf('async function startPost('), src.indexOf('function swAfterStart('));
@@ -975,24 +1067,192 @@ module.exports = {
     const doc = { id, stage: 3, seq: 999978, name: `ZZZ pause list ${stamp()}`, status: 'paused', createdAt: new Date().toISOString(), plan: { units: 2, settings: 3 }, params: {} };
     writeSet(doc);
     const rowOf = () => stages.listSets().find((x) => x.id === id);
-    assert.strictEqual(rowOf().checkpoint, false, 'paused, but nothing to start again from');
+    assert.strictEqual(rowOf().startsAgain, false, 'paused, but nothing to start again from');
     writeCheckpointFile(id, {});
-    assert.strictEqual(rowOf().checkpoint, true);
+    assert.strictEqual(rowOf().startsAgain, true);
     assert.strictEqual(rowOf().continued, 0);
     writeSet({ ...doc, continued: [{ at: 'x' }, { at: 'y' }] });
     assert.strictEqual(rowOf().continued, 2, 'how many times it was started again');
     // a set the service restarted out from under: marked interrupted on
     // sight, and offered for a start-again because its checkpoint is there
     writeSet({ ...doc, status: 'running' });
-    const seen = rowOf();
+    const was = stages.ownRuns(true);            // the service's own listing (3.269.0)
+    let seen;
+    try { seen = rowOf(); } finally { stages.ownRuns(was); }
     assert.strictEqual(seen.status, 'interrupted');
-    assert.strictEqual(seen.checkpoint, true);
+    assert.strictEqual(seen.startsAgain, true);
     assert.strictEqual(stages.getSet(id).progress, 'the service restarted while this set was being written');
-    // a stage 2 set never has one, whatever is on disk beside it
+    // A STAGE 2 SET NEEDS NO CHECKPOINT (3.269.0): it can be started again when it
+    // records the stage 1 units it carried, and not otherwise, whatever is beside it
     const s2 = `s2-test-${stamp()}-ls`;
     writeSet({ id: s2, stage: 2, seq: 999977, name: `ZZZ pause list 2 ${stamp()}`, status: 'paused', createdAt: new Date().toISOString(), plan: { units: 2 }, params: {} });
     writeCheckpointFile(s2, {});
-    assert.strictEqual(stages.listSets().find((x) => x.id === s2).checkpoint, false);
+    assert.strictEqual(stages.listSets().find((x) => x.id === s2).startsAgain, false, 'a stage 2 set that does not record what it carried cannot be started again');
+    writeSet({ id: s2, stage: 2, seq: 999977, name: `ZZZ pause list 2 ${stamp()}`, status: 'paused', createdAt: new Date().toISOString(), plan: { units: 2, carried: [4, 1] }, params: {} });
+    assert.strictEqual(stages.listSets().find((x) => x.id === s2).startsAgain, true, 'one that does can');
+    const s1 = `s1-test-${stamp()}-ls`;
+    writeSet({ id: s1, stage: 1, seq: 999976, name: `ZZZ pause list 1 ${stamp()}`, status: 'error', createdAt: new Date().toISOString(), plan: { units: 1, unitList: [{ trade: A, geometry: 'daily-1d' }] }, params: {} });
+    assert.strictEqual(stages.listSets().find((x) => x.id === s1).startsAgain, true, 'a stage 1 set that failed, with its planned units, can be started again');
+    writeSet({ id: s1, stage: 1, seq: 999976, name: `ZZZ pause list 1 ${stamp()}`, status: 'done', createdAt: new Date().toISOString(), plan: { units: 1, unitList: [{ trade: A, geometry: 'daily-1d' }] }, params: {} });
+    assert.strictEqual(stages.listSets().find((x) => x.id === s1).startsAgain, false, 'a finished one is not offered');
+  },
+
+  // A STAGE 1 SET PAUSED PART WAY AND STARTED AGAIN IS THE RUN THAT WAS NEVER
+  // PAUSED (3.269.0, owner 2026-09-26: "yes stage 2 gets the fix too"). Same
+  // set, so the same seed: every record, every block it points at and the
+  // ordering must come out byte for byte what the uninterrupted run wrote --
+  // including the fields the old fill-in never wrote. And the same again when
+  // Put the missing units back finishes an incomplete set.
+  async aStageOneSetPausedPartWayAndStartedAgainIsTheRunNeverPaused() {
+    needFixture();
+    await idle();
+    const s1 = stages.startStage1({ ...S1_PLAN(), name: `ZZZ pause s1 again ${stamp()}` });
+    made.push(s1.id);
+    assert.strictEqual(s1.units, 4, 'two coins alone and each read alongside the other, one shape: four units');
+    const d = await untilLanded(s1.id);
+    assert.strictEqual(d.status, 'done', `the reference ended ${d.status}: ${JSON.stringify(d.failures)}`);
+    const ref = unitsOf(s1.id);
+    const refRanking = rowstore.readAll(s1.id, 'ranking');
+    for (const [, x] of ref) assert.ok(x.rec.perMember && Array.isArray(x.rec.specs) && x.rec.specs.length, 'the launch writes each member\'s own reading');
+    // PAUSED AFTER TWO UNITS, STARTED AGAIN BY START STAGE 1
+    const kept = cutBackTo(s1.id, 2);
+    assert.strictEqual(kept.length, 2);
+    assert.strictEqual(stages.listSets().find((x) => x.id === s1.id).startsAgain, true, 'the paused set is not offered to be started again');
+    const answer = stages.continueStage(s1.id);
+    assert.deepStrictEqual({ id: answer.id, units: answer.units }, { id: s1.id, units: 4 }, 'the answer names the set and its plan');
+    assert.strictEqual(stages.stageRunning(), s1.id, 'the start-again is the one heavy job');
+    assert.throws(() => stages.continueStage(s1.id), /is running — only a paused run can be started again/, 'a second press starts it twice');
+    const again = await untilLanded(s1.id);
+    assert.strictEqual(again.status, 'done', `started again, it ended ${again.status}: ${again.progress} ${JSON.stringify(again.failures)}`);
+    sameUnits(s1.id, ref, 'started again');
+    assert.deepStrictEqual(rowstore.readAll(s1.id, 'ranking'), refRanking, 'the ordering is not the uninterrupted run\'s');
+    assert.strictEqual(again.continued.length, 1);
+    assert.deepStrictEqual({ from: again.continued[0].from, kept: again.continued[0].unitsKept, left: again.continued[0].unitsToTrain },
+      { from: 'paused', kept: 2, left: 2 }, 'the set does not say what it kept and what it trained');
+    assert.strictEqual(again.perf.unitsDone, 4);
+    assert.strictEqual(again.perf.cyclesDone, again.perf.cyclesTotal, 'the trainings are not all counted done');
+    // PUT THE MISSING UNITS BACK: an incomplete set, finished by the same path
+    cutBackTo(s1.id, 1, 'incomplete');
+    const fill = stages.fillMissingUnitsStart(s1.id);
+    assert.deepStrictEqual({ started: fill.started, total: fill.total }, { started: true, total: 3 });
+    const st = stages.fillMissingUnitsStatus(s1.id);
+    assert.strictEqual(st.running, true, 'the fill is not watched as the set\'s run');
+    const filled = await untilLanded(s1.id);
+    assert.strictEqual(filled.status, 'done', `filled, it ended ${filled.status}: ${filled.progress}`);
+    sameUnits(s1.id, ref, 'put back');
+    assert.deepStrictEqual(rowstore.readAll(s1.id, 'ranking'), refRanking, 'the ordering after the fill is not the uninterrupted run\'s');
+    assert.strictEqual(stages.fillMissingUnitsStatus(s1.id).missing, 0);
+    state.s1again = s1.id;
+    state.s1ref = ref;
+  },
+
+  // THE PAUSE ITSELF, PRESSED ON A RUN THAT IS GOING: the set says paused only
+  // once every unit it had written is on disk, and the start-again takes it on
+  // from there. A different set from the one above, so a different seed: it is
+  // held to the reference on everything that does not depend on the deals.
+  async aStageOnePausedWhileGoingKeepsEveryUnitItWroteAndStartsAgain() {
+    needFixture();
+    await idle();
+    const s1 = stages.startStage1({ ...S1_PLAN(), name: `ZZZ pause s1 live ${stamp()}` });
+    made.push(s1.id);
+    const t0 = Date.now();
+    while (rowstore.count(s1.id, 'records') < 1 && Date.now() - t0 < 60000) await sleep(5);
+    const at = stages.getSet(s1.id);
+    if (at.status !== 'running' || rowstore.count(s1.id, 'records') >= 4) throw new Error('every unit landed before the pause could be pressed — the plan is too small to pause in the middle');
+    assert.deepStrictEqual(stages.cancelStage(s1.id), { stopped: true });
+    const d = await untilLanded(s1.id);
+    assert.strictEqual(d.status, 'paused', `a stage 1 run paused reads ${d.status}, not paused`);
+    const onDisk = rowstore.count(s1.id, 'records');
+    assert.ok(onDisk >= 1 && onDisk < 4, `the pause landed ${onDisk} of 4 units`);
+    assert.strictEqual(onDisk, d.perf.unitsDone - d.failures.length, 'the set counts units done that are not on disk');
+    unitsOf(s1.id);   // every record points at blocks that are on disk, and hold its own rows
+    const row = stages.listSets().find((x) => x.id === s1.id);
+    assert.strictEqual(row.startsAgain, true, 'the paused set is not offered in the stage 1 box');
+    stages.continueStage(s1.id);
+    const again = await untilLanded(s1.id);
+    assert.strictEqual(again.status, 'done', `started again, it ended ${again.status}: ${again.progress}`);
+    const mine = unitsOf(s1.id);
+    for (const [u, r] of state.s1ref) {
+      const pick = (x) => Object.fromEntries(SEED_FREE.map((k) => [k, x[k]]));
+      assert.deepStrictEqual(pick(mine.get(u).rec), pick(r.rec), `unit ${u} differs from the uninterrupted run on what does not depend on the deals`);
+      assert.deepStrictEqual(mine.get(u).rows.votes, r.rows.votes, `unit ${u}'s votes differ`);
+    }
+  },
+
+  // AND STAGE 2, THE SAME WAY: the carried units are recorded at the launch, and a
+  // stage 2 set cut back to its first units and started again is its own
+  // uninterrupted run, record for record and block for block.
+  async aStageTwoSetPausedPartWayAndStartedAgainIsTheRunNeverPaused() {
+    needFixture();
+    await idle();
+    assert.ok(state.s1again, 'the stage 1 set above was not built');
+    const s2 = stages.startStage2({ from: state.s1again, carry: 0, name: `ZZZ pause s2 again ${stamp()}`, desc: 'pause rehearsal' });
+    made.push(s2.id);
+    const d = await untilLanded(s2.id);
+    assert.strictEqual(d.status, 'done', `the stage 2 reference ended ${d.status}: ${JSON.stringify(d.failures)}`);
+    assert.ok(Array.isArray(d.plan.carried) && d.plan.carried.length === 4, 'a stage 2 set does not record the stage 1 units it carried');
+    assert.deepStrictEqual([...d.plan.carried].sort((a, b) => a - b), [0, 1, 2, 3], 'the carried units are the parent\'s, by their number');
+    const ref = unitsOf(s2.id);
+    for (const [i, x] of ref) assert.strictEqual(x.rec.s1u, d.plan.carried[i], 'each record is the carried unit its place says');
+    cutBackTo(s2.id, 2);
+    assert.strictEqual(stages.listSets().find((x) => x.id === s2.id).startsAgain, true, 'the paused stage 2 set is not offered in the stage 2 box');
+    stages.continueStage(s2.id);
+    const again = await untilLanded(s2.id);
+    assert.strictEqual(again.status, 'done', `started again, the stage 2 set ended ${again.status}: ${again.progress} ${JSON.stringify(again.failures)}`);
+    sameUnits(s2.id, ref, 'stage 2 started again');
+    assert.strictEqual(again.continued.length, 1);
+    assert.strictEqual(again.continued[0].unitsKept, 2);
+  },
+
+  // WHAT A STAGE 1 OR 2 START-AGAIN REFUSES, each by its sentence, and a refusal
+  // found after the answer leaves the set exactly as it was
+  async aStageOneOrTwoStartAgainRefusesWhatItCannotResume() {
+    needFixture();
+    await idle();
+    const s2 = `s2-test-${stamp()}-nc`;
+    writeSet({ id: s2, stage: 2, seq: 999975, name: `ZZZ pause no carry ${stamp()}`, status: 'paused', createdAt: new Date().toISOString(), plan: { units: 2 }, params: {}, parent: { id: state.s1again } });
+    assert.throws(() => stages.continueStage(s2), /does not record which stage 1 units it carried, so it cannot be started again/, 'a stage 2 set with no carried list is started again');
+    const done = stages.getSet(state.s1again);
+    assert.throws(() => stages.continueStage(done.id), /is done — only a paused run can be started again/, 'a finished set is started again');
+    // a unit on disk twice: refused after the answer, and the set is put back as it was
+    const s1 = stages.startStage1({ ...S1_PLAN(), name: `ZZZ pause s1 dup ${stamp()}` });
+    made.push(s1.id);
+    await untilLanded(s1.id);
+    cutBackTo(s1.id, 2, 'error');
+    const w = rowstore.writer(s1.id, 'records');
+    const first = rowstore.readBlocks(s1.id, 'records', [0])[0].row;
+    w.push(first);
+    await w.close();
+    stages.continueStage(s1.id);
+    const back = await untilLanded(s1.id);
+    assert.strictEqual(back.status, 'error', 'a set refused after the answer is not put back as it was');
+    assert.ok(/not started again — unit \d+ is on disk twice/.test(back.progress), `the refusal is not on the set: ${back.progress}`);
+    assert.strictEqual(rowstore.count(s1.id, 'records'), 3, 'a refused start-again wrote something');
+  },
+
+  // THE ONE-TIME RENAME (3.269.0, RULE TEN): a stage 1 set stopped by the old Stop
+  // reads paused; nothing else changes
+  async aStoppedStageOneSetReadsPausedAndNothingElseChanges() {
+    const mk = (over) => {
+      const id = `s1-test-${stamp()}-rn`;
+      writeSet({ id, stage: 1, seq: 999970, name: `ZZZ pause rename ${stamp()}`, status: 'cancelled', createdAt: new Date().toISOString(), params: {}, ...over });
+      return id;
+    };
+    const withList = mk({ plan: { units: 1, unitList: [{ trade: A, geometry: 'daily-1d' }] } });
+    const without = mk({ plan: { units: 1 } });
+    const s3 = `s3-test-${stamp()}-rn`;
+    writeSet({ id: s3, stage: 3, seq: 999969, name: `ZZZ pause rename 3 ${stamp()}`, status: 'cancelled', createdAt: new Date().toISOString(), params: {}, plan: { units: 1, settings: 1 } });
+    const before = JSON.parse(fs.readFileSync(path.join(SETS_DIR, `${withList}.json`), 'utf8'));
+    const out = stages.repairStoppedStageOnesToPaused();
+    assert.ok(out.changed >= 1 && out.named.includes(before.name), 'the stopped stage 1 set is not renamed');
+    const after = JSON.parse(fs.readFileSync(path.join(SETS_DIR, `${withList}.json`), 'utf8'));
+    assert.deepStrictEqual({ ...after, status: before.status }, before, 'something other than the status changed');
+    assert.strictEqual(after.status, 'paused');
+    assert.strictEqual(stages.getSet(without).status, 'cancelled', 'a set that records no plan cannot be started again, so it is not called paused');
+    assert.strictEqual(stages.getSet(s3).status, 'cancelled', 'a stage 3 set is not the rename\'s');
+    assert.strictEqual(stages.repairStoppedStageOnesToPaused().named.includes(before.name), false, 'the rename runs twice on one set');
+    const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+    assert.ok(srv.includes('const done = stages.repairStoppedStageOnesToPaused();'), 'the service does not run the rename at start-up');
   },
 
   async everythingTheRehearsalWroteIsRemoved() {

@@ -300,9 +300,16 @@ async function loadSymbolAll(symbol, onProgress) {
 // the pinned day files, in date order -- and nothing that has appeared since.
 // A pinned file that is gone is an error here, never a fetch: the run's data
 // has changed and the caller has already been told so by pinnedIntact.
-function loadSymbolPinned(symbol, files, onProgress = () => {}) {
+// EACH FILE IS READ AS IT WAS AT LAUNCH (3.269.0): `entries` are { file, bytes }
+// off the stamp, and a file that has gained hours since is read up to the hours
+// the launch saw (lib/pin.js launchBytesOf) -- never the hours after them.
+function loadSymbolPinned(symbol, entries, onProgress = () => {}) {
+  const { launchBytesOf } = require('./pin');
   const byMonth = new Map();   // 'YYYY-MM' -> { bundle: file|null, days: [file...] }
-  for (const f of files || []) {
+  const sizeAtLaunch = new Map();
+  for (const x of entries || []) {
+    const f = x.file;
+    sizeAtLaunch.set(f, x.bytes);
     let m = new RegExp(`^${symbol}-1h-(\\d{4}-\\d{2})\\.json$`).exec(f);
     if (m) { const e = byMonth.get(m[1]) || { bundle: null, days: [] }; e.bundle = f; byMonth.set(m[1], e); continue; }
     m = new RegExp(`^${symbol}-1h-(\\d{4}-\\d{2})-\\d{2}\\.json$`).exec(f);
@@ -311,7 +318,9 @@ function loadSymbolPinned(symbol, files, onProgress = () => {}) {
   const rows = [];
   const monthCounts = {};
   const read = (f) => {
-    const got = JSON.parse(fs.readFileSync(path.join(CACHE_DIR, f), 'utf8'));
+    const cut = launchBytesOf(fs.readFileSync(path.join(CACHE_DIR, f)), sizeAtLaunch.get(f));
+    if (cut.why) throw new Error(`${f} has changed since the run was launched: ${cut.why}`);
+    const got = JSON.parse(cut.buf.toString('utf8'));
     if (!Array.isArray(got)) throw new Error(`the pinned price file ${f} does not hold a list of candles`);
     return got;
   };

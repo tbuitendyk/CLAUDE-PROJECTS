@@ -793,6 +793,20 @@ let swPoll = null;
 // the line says the box has not answered yet and the poll goes and looks.
 let swPressed = null;      // which start is in flight
 let swPressedAt = 0;
+// A PAUSED RUN CHOSEN IN A STAGE'S BOX IS STARTED AGAIN BY THAT STAGE'S START
+// (3.82.0 at stage 3; 3.269.0 at stages 1 and 2). Nothing is launched. The box
+// answers before it has read what is on disk; the line at the top says how far
+// that reading has got, then how far the run has.
+async function swStartAgain(n, cont) {
+  swStarting('again');
+  const again = await startPost(`api/stageset/${encodeURIComponent(cont)}/continue`, {});
+  if (again && !again.pending) {
+    rememberSweepForm();
+    say(`#swOut${n}`, `started again <b>${esc(again.name)}</b> — progress above; the set lands on Boards.`);
+    swStartedFor[n] = { id: cont, name: again.name, what: null, seen: false };
+  }
+  swAfterStart(again);
+}
 function swStarting(what) {
   swPressed = String(what);
   swPressedAt = Date.now();
@@ -845,9 +859,12 @@ function swAfterStart(got) {
 // its own, and start stage 3 starts it again instead of launching.
 // Since 3.240.0 the paused runs are offered in the stage 3 section's own box,
 // stage 3 record set, among the stage 3 sets of the stage 2 picked above.
-const swContinueOf = () => { const v = swOpened(3); return v.startsWith('continue:') ? v.slice('continue:'.length) : null; };
+// AND AT EVERY STAGE (3.269.0, owner 2026-09-26: "yes stage 2 gets the fix
+// too"): a stage 1 or stage 2 run paused is offered in its own stage's box the
+// same way, and that stage's Start starts it again.
+const swContinueOf = (n) => { const v = swOpened(n); return v.startsWith('continue:') ? v.slice('continue:'.length) : null; };
 function swPausedOptions(sets, selected) {
-  const list = sets.filter((x) => x.stage === 3 && x.checkpoint && ['paused', 'interrupted', 'error'].includes(x.status));
+  const list = sets.filter((x) => swPausedRow(x));
   return list.map((x) => {
     const v = `continue:${x.id}`;
     // the name alone (3.242.1); that it is paused is on its heading once it is open
@@ -871,13 +888,14 @@ function swPausedOptions(sets, selected) {
 // entry every picker carries, 3.77.0, is this one).
 let swCampNow = null;              // the campaign in force, as drawSweep last read it
 const swCampOf = (x) => ((x && x.params) || {}).campaign || null;
-const swPausedRow = (x) => !!(x && x.stage === 3 && x.checkpoint && ['paused', 'interrupted', 'error'].includes(x.status));
+// the list row says whether a set can be started again where it stopped
+const swPausedRow = (x) => !!(x && x.startsAgain);
 function swSetOptions(sets, stage, selected, parentId) {
   const mine = sets.filter((x) => x.stage === stage && swCampOf(x) === (swCampNow || null)
     && (stage === 1 || (!!parentId && !!x.parent && x.parent.id === parentId)));
   const on = selected ? '' : ' selected';
   const head = `<option value=""${on}>— new stage ${stage} sweep —</option>`;
-  const paused = stage === 3 ? swPausedOptions(mine, selected) : '';
+  const paused = swPausedOptions(mine, selected);
   // THE NAME IS THE NAME (3.242.1, owner order 2026-09-24: "fix the crazy long
   // name that you end up making for the record set. the NAME THAT THE USER
   // ENTERED SHOULD BE THE NAME!"): a set is offered by the name typed for it and
@@ -924,7 +942,7 @@ const swDiffers = (k) => (k === 'c' ? swCampChosen() !== swCampInForce() : swCho
 let swHeldNow = null;              // what holds the box, as the poll last read it
 function swLockSections() {
   for (const n of [1, 2, 3]) {
-    const shut = n === 3 && !!swContinueOf();
+    const shut = !!swContinueOf(n);
     const body = $(`#swBody${n}`);
     if (body) { body.disabled = shut; body.classList.toggle('ctl-off', shut); }
     const go = $(`#swGo${n}`);
@@ -993,10 +1011,10 @@ function swApplyAway() {
 // keeps the settings it was launched with, and a live box that is not read is
 // worse than a dead one (RULE FOUR's sibling). Turned off again the moment a
 // parent is chosen instead; the count line then re-applies its own ghosting.
-function swContinueMode(on) {
+function swContinueMode(n, on) {
   // the delete runs the other way: it acts on the paused run, so it is live
-  // exactly while one is chosen (3.133.0)
-  const del = $('#swDelete3');
+  // exactly while one is chosen (3.133.0; every stage since 3.269.0)
+  const del = $(`#swDelete${n}`);
   if (del) { del.disabled = !on; del.classList.toggle('ctl-off', !on); }
   swLockSections();
 }
@@ -1064,8 +1082,8 @@ function swSayEnded(sets) {
     const size = s.what ? ` — ${s.what}` : '';
     if (row.status === 'done') { swLine(n, `finished <b>${esc(s.name)}</b>${size}. It is on Boards.`); continue; }
     const how = row.status === 'paused' ? 'paused' : row.status === 'interrupted' ? 'was paused by a restart'
-      : row.checkpoint ? 'was paused by a failure' : `ended ${esc(row.status)}`;
-    const again = n === 3 && row.checkpoint ? ' Choose it in stage 3 record set, press Open, and Start stage 3 starts it again where it stopped.' : '';
+      : row.startsAgain ? 'was paused by a failure' : `ended ${esc(row.status)}`;
+    const again = row.startsAgain ? ` Choose it in stage ${n} record set, press Open, and Start stage ${n} starts it again where it stopped.` : '';
     swLine(n, `<b>${esc(s.name)}</b> ${how}${size}.${again}`, true);
   }
 }
@@ -1190,7 +1208,7 @@ async function swProgress() {
       ? `<span class="muted">no estimate until the first ${esc(String(pf.phaseWord || 'unit').replace(/s$/, ''))} lands</span>` : null,
   ].filter(Boolean).join(' · ');
   el.innerHTML = row
-    ? `<b>${esc(row.name)}</b> is going: ${esc(row.progress || '…')}${tail ? ` · ${tail}` : ''} <button id="swStop" class="danger">${row.stage === 3 ? 'Pause' : 'Stop'}</button>`
+    ? `<b>${esc(row.name)}</b> is going: ${esc(row.progress || '…')}${tail ? ` · ${tail}` : ''} <button id="swStop" class="danger">Pause</button>`
     : `a stage run is going (${esc(st.running)})`;
   const stop = $('#swStop');
   if (stop) stop.onclick = async () => { await tryPost(`api/stageset/${st.running}/stop`, {}); swProgress(); };
@@ -1475,7 +1493,21 @@ async function swCounts() {
     swGhostGroup('#swGrpCompare', !($('#swDoubles') && $('#swDoubles').checked)
       && !($('#swTriples') && $('#swTriples').checked));
   }
-  const c1 = $('#swCost1');
+  // A PAUSED RUN CHOSEN AT STAGE 1 OR 2 (3.269.0): nothing to count, everything
+  // to say -- the same sentence stage 3's paused run has always had
+  for (const n of [1, 2]) {
+    const line = $(`#swCost${n}`);
+    const cont = swContinueOf(n);
+    swContinueMode(n, !!cont);
+    if (!line || !cont) { if (line && n === 2) line.innerHTML = ''; continue; }
+    const x = (swSetsCache || []).find((y) => y.id === cont);
+    const pf = (x && x.perf) || {};
+    swSayCount(line, x
+      ? `starts again where it was paused: <b>${Number(pf.unitsDone || 0).toLocaleString()} of ${Number(pf.unitsTotal || 0).toLocaleString()} units</b> are already trained and are kept`
+        + ' · the boxes above are this run\'s own and cannot be changed here'
+      : null, x ? null : 'the paused record set named here is not on this box any more');
+  }
+  const c1 = !swContinueOf(1) && $('#swCost1');
   if (c1) {
     const body = {
       universe: ($('#swUni').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
@@ -1497,11 +1529,11 @@ async function swCounts() {
   }
   if (!current()) return;   // a newer ask is in flight; its answer is the one to draw
   const c3 = $('#swCount');
-  if (c3 && swContinueOf()) {
+  if (c3 && swContinueOf(3)) {
     // a paused run: nothing to count, everything to say
     const sets = swSetsCache || [];
-    const x = sets.find((y) => y.id === swContinueOf());
-    swContinueMode(!!x);
+    const x = sets.find((y) => y.id === swContinueOf(3));
+    swContinueMode(3, !!x);
     const pf = (x && x.perf) || {};
     const left = Math.max(0, Number(pf.cyclesTotal || 0) - Number(pf.cyclesDone || 0));
     swSayCount(c3, x
@@ -1510,7 +1542,7 @@ async function swCounts() {
       : null, x ? null : 'the paused record set named here is not on this box any more');
     return;
   }
-  swContinueMode(false);
+  swContinueMode(3, false);
   if (c3) {
     const sets = swSetsCache || [];
     const parent = sets.find((x) => x.id === swOpened(2));
@@ -4558,7 +4590,7 @@ async function drawSweep() {
     <p class="note warn" id="swWhy1" style="margin:.2rem 0 .5rem;display:none"></p>
     <div class="row" style="align-items:flex-end">
       ${putAwayBtn('swfold', '1', !swAway('1'), 'this stage, and the stages under it')}
-      <label class="f" title="a stage 1 record set of the campaign that is set, to open with Open: the boxes below are filled from it and stay live, and Start stage 1 runs a new set from what they hold. Picking alone only chooses — or new, to set one up and start it. Stage 2 comes out of the set picked here.">stage 1 record set<select id="swFrom2" style="min-width:24rem">${swOpt1}</select></label>
+      <label class="f" title="a stage 1 record set of the campaign that is set, to open with Open: the boxes below are filled from it and stay live, and Start stage 1 runs a new set from what they hold. Picking alone only chooses — or new, to set one up and start it. Stage 2 comes out of the set picked here. A paused run is offered here too, and Start stage 1 then starts it again where it stopped.">stage 1 record set<select id="swFrom2" style="min-width:24rem">${swOpt1}</select></label>
     </div>
     <div id="swSec1"${swAway('1') ? ' hidden' : ''}>
     <fieldset id="swBody1" class="swbody">
@@ -4615,6 +4647,7 @@ async function drawSweep() {
     </fieldset>
     <div class="row">
       <button id="swGo1" class="pri">Start stage 1</button>
+      <button id="swDelete1" class="danger" disabled title="deletes the paused run chosen in stage 1 record set, after asking you to type its record set id back. Everything it had trained goes with it. Live only while a paused run is chosen there; a finished record set is deleted on Boards.">Delete record set…</button>
 </div>
     <p class="note" style="margin:.4rem 0 0" id="swCost1">…</p>
     <div id="swOut1"></div>
@@ -4626,7 +4659,7 @@ async function drawSweep() {
     <p class="note warn" id="swWhy2" style="margin:.2rem 0 .5rem;display:none"></p>
     <div class="row" style="align-items:flex-end">
       ${putAwayBtn('swfold', '2', !swAway('2'), 'this stage, and the stage under it')}
-      <label class="f" title="a stage 2 record set that came out of the stage 1 set picked above, to open with Open: the boxes below are filled from it and stay live, and Start stage 2 runs a new set from what they hold. Picking alone only chooses — or new, to build one from that stage 1 set. Stage 3 comes out of the set picked here.">stage 2 record set<select id="swFrom3" style="min-width:24rem">${swOpt2}</select></label>
+      <label class="f" title="a stage 2 record set that came out of the stage 1 set picked above, to open with Open: the boxes below are filled from it and stay live, and Start stage 2 runs a new set from what they hold. Picking alone only chooses — or new, to build one from that stage 1 set. Stage 3 comes out of the set picked here. A paused run is offered here too, and Start stage 2 then starts it again where it stopped.">stage 2 record set<select id="swFrom3" style="min-width:24rem">${swOpt2}</select></label>
     </div>
     <div id="swSec2"${swAway('2') ? ' hidden' : ''}>
     <fieldset id="swBody2" class="swbody">
@@ -4641,7 +4674,9 @@ async function drawSweep() {
     </fieldset>
     <div class="row">
       <button id="swGo2" class="pri">Start stage 2</button>
+      <button id="swDelete2" class="danger" disabled title="deletes the paused run chosen in stage 2 record set, after asking you to type its record set id back. Everything it had trained goes with it. Live only while a paused run is chosen there; a finished record set is deleted on Boards.">Delete record set…</button>
 </div>
+    <p class="note" style="margin:.4rem 0 0" id="swCost2"></p>
     <p class="note" style="margin:.4rem 0 0">BOOST is the second kind of member — a different way of working out a forecast from the same prices.
       The LOGREG members are reused, never retrained; only the BOOST members train (4 per coin on its own, 5 alongside others),
       so a carried unit ends up with both kinds voting side by side.</p>
@@ -4830,6 +4865,8 @@ async function drawSweep() {
   // alone is the whole fix -- and a second start under the same name is refused
   // by the service, in words, which is better than an empty box that hides it.
   $('#swGo1').onclick = async () => {
+    const cont = swContinueOf(1);
+    if (cont) { await swStartAgain(1, cont); return; }
     // every stage 1 record set belongs to a campaign (3.240.0)
     if (!swCampNow) { say('#swOut1', 'no campaign is set — set one in the Campaign box first: every stage 1 record set belongs to a campaign', true); return; }
     swStarting(1);
@@ -4862,6 +4899,8 @@ async function drawSweep() {
     swAfterStart(got);
   };
   $('#swGo2').onclick = async () => {
+    const cont = swContinueOf(2);
+    if (cont) { await swStartAgain(2, cont); return; }
     swStarting(2);
     const got = await startPost('api/stage2', {
       from: swOpened(1),
@@ -4876,25 +4915,29 @@ async function drawSweep() {
     swAfterStart(got);
   };
   // DELETE A PAUSED RUN FROM WHERE IT IS CHOSEN (3.133.0, owner order: "there
-  // has to be a way to select and DELETE paused jobs also"). The one flow
-  // Boards and the Funnel use, on the run the box names. The boxes then
-  // refill off the list the poll reads, as they do when a run ends, and the
-  // count line is asked again so the section reads as it would on a fresh draw.
-  $('#swDelete3').onclick = async () => {
-    const cont = swContinueOf();
-    if (!cont) return;
-    const done = await deleteSetFlow(cont);
-    if (!done) return;
-    say('#swOut3', `deleted <b>${esc(done.name)}</b> — it is gone from the box above.`);
-    await swProgress();
-    swCountsSoon();
-  };
+  // has to be a way to select and DELETE paused jobs also"; every stage since
+  // 3.269.0). The one flow Boards and the Funnel use, on the run the box names.
+  // The boxes then refill off the list the poll reads, as they do when a run
+  // ends, and the count line is asked again so the section reads as it would on
+  // a fresh draw.
+  for (const n of [1, 2, 3]) {
+    $(`#swDelete${n}`).onclick = async () => {
+      const cont = swContinueOf(n);
+      if (!cont) return;
+      const done = await deleteSetFlow(cont);
+      if (!done) return;
+      say(`#swOut${n}`, `deleted <b>${esc(done.name)}</b> — it is gone from the box above.`);
+      await swProgress();
+      swCountsSoon();
+    };
+  }
   $('#swGo3').onclick = async () => {
     // with a paused run chosen in the box nothing is launched: it is started
-    // again instead, below, with everything it had
-    const cont = swContinueOf();
-    swStarting(cont ? 'again' : 3);
-    const got = cont ? null : await startPost('api/stage3', {
+    // again instead, with everything it had
+    const cont = swContinueOf(3);
+    if (cont) { await swStartAgain(3, cont); return; }
+    swStarting(3);
+    const got = await startPost('api/stage3', {
       from: swOpened(2), fee: Number($('#swFee').value) / 100,
       carry: Number($('#swCarry3').value) || 0,
       pick: $('#swPick3').value,
@@ -4908,18 +4951,6 @@ async function drawSweep() {
     if (got && !got.pending) {
       rememberSweepForm(); say('#swOut3', `started <b>${esc(got.name)}</b> — ${got.settings.toLocaleString()} settings × ${got.units.toLocaleString()} units.`);
       swStartedFor[3] = { id: got.id, name: got.name, what: `${got.settings.toLocaleString()} settings × ${got.units.toLocaleString()} units`, seen: false };
-    }
-    if (cont) {
-      // the box answers before it has read what is on disk; the line above
-      // says how far that reading has got, then how far the pricing has
-      const again = await startPost(`api/stageset/${encodeURIComponent(cont)}/continue`, {});
-      if (again && !again.pending) {
-        rememberSweepForm();
-        say('#swOut3', `started again <b>${esc(again.name)}</b> — progress above; the set lands on Boards.`);
-        swStartedFor[3] = { id: cont, name: again.name, what: null, seen: false };
-      }
-      swAfterStart(again);
-      return;
     }
     swAfterStart(got);
   };
@@ -5595,8 +5626,8 @@ async function drawBoards() {
     if (doc.status !== 'done' && doc.status !== 'incomplete') {
       // whether it can be started again is on the LIST row (the set document
       // itself does not carry it), and the list is already in hand
-      const canContinue = !!((sets.find((x) => x.id === doc.id) || {}).checkpoint);
-      $(`#bT${stage}`).innerHTML = `<div class="panel"><p class="note">${esc(doc.name)} is ${esc(doc.status)}${doc.progress ? ` — ${esc(doc.progress)}` : ''}.${canContinue ? ' It can be started again from the stage 3 section on Sweep.' : ''} Its tables appear when it lands.</p></div>`;
+      const canContinue = !!((sets.find((x) => x.id === doc.id) || {}).startsAgain);
+      $(`#bT${stage}`).innerHTML = `<div class="panel"><p class="note">${esc(doc.name)} is ${esc(doc.status)}${doc.progress ? ` — ${esc(doc.progress)}` : ''}.${canContinue ? ` It can be started again from the stage ${doc.stage} section on Sweep.` : ''} Its tables appear when it lands.</p></div>`;
       continue;
     }
     bDrawn[stage] = doc.id;

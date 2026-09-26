@@ -2121,17 +2121,29 @@ module.exports = {
 
   // A 'running' set the service restarted out from under is marked the
   // moment the list is read — a corpse must never show as alive.
-  async aStrandedRunningSetIsMarkedInterrupted() {
+  // A STRANDED RUNNING SET IS MARKED BY THE SERVICE, AND ONLY BY THE SERVICE
+  // (3.269.0). Any other process that loads lib/stages.js -- a script on the box
+  // that lists the sets -- knows nothing of the service's run, and was marking
+  // the set the service was writing as broken off and rewriting its document.
+  async aStrandedRunningSetIsMarkedInterruptedByTheServiceAlone() {
     const id = `s1-test-${Date.now().toString(36)}`;
     const file = path.join(SETS_DIR, `${id}.json`);
+    const was = stages.ownRuns(false);
     try {
       fs.mkdirSync(SETS_DIR, { recursive: true });
       fs.writeFileSync(file, JSON.stringify({ id, stage: 1, seq: 999999, name: 'S1 #test', status: 'running', createdAt: new Date().toISOString(), plan: { units: 1 } }));
+      const seen = stages.listSets().find((x) => x.id === id);
+      assert.ok(seen, 'the set must list');
+      assert.strictEqual(seen.status, 'running', 'a process that does not run the sets called a running set broken off');
+      assert.strictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).status, 'running', 'and rewrote the document of a set it does not run');
+      stages.ownRuns(true);
       const row = stages.listSets().find((x) => x.id === id);
-      assert.ok(row, 'the set must list');
-      assert.strictEqual(row.status, 'interrupted');
+      assert.strictEqual(row.status, 'interrupted', 'the service does not mark a set a restart left running');
       assert.strictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).status, 'interrupted', 'and the doc itself is rewritten');
+      const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+      assert.ok(/const stages = require\('\.\/lib\/stages'\);\n(\/\/.*\n)*stages\.ownRuns\(\);/.test(srv), 'the service does not say it runs the sets the moment it loads them');
     } finally {
+      stages.ownRuns(was);
       try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
     }
   },
@@ -5624,7 +5636,7 @@ module.exports = {
     assert.ok(from > 0 && to > from, 'the ended line is gone');
     assert.ok(UI.slice(to, to + 400).includes('swSayEnded(st.sets || []);'), 'the poll that watches the run never rewrites the line');
     for (const n of [1, 2, 3]) assert.ok(UI.includes(`swStartedFor[${n}] = { id: got.id, name: got.name, what:`), `stage ${n}'s start does not say what its line was written for`);
-    assert.ok(UI.includes('swStartedFor[3] = { id: cont, name: again.name, what: null, seen: false };'), 'a paused run started again does not say what its line was written for');
+    assert.ok(UI.includes('swStartedFor[n] = { id: cont, name: again.name, what: null, seen: false };'), 'a paused run started again does not say what its line was written for');
     const el = {};
     // eslint-disable-next-line no-unused-vars
     const $ = (sel) => { el[sel] = el[sel] || { innerHTML: '' }; return el[sel]; };
@@ -5640,11 +5652,18 @@ module.exports = {
     assert.ok(line(1).includes('finished <b>S1-LTC</b> — 1 units. It is on Boards.'), `a finished run does not say so: ${line(1)}`);
     assert.ok(!api.swStartedFor[1], 'a line already rewritten is rewritten again on every tick');
     api.swStartedFor[3] = { id: 'p', name: 'S3 #9', what: null, seen: false };
-    api.swSayEnded([{ id: 'p', status: 'paused', checkpoint: true }]);
+    api.swSayEnded([{ id: 'p', status: 'paused', startsAgain: true }]);
     assert.strictEqual(line(3), '', 'a paused run started again reads as paused before the box has it running');
     api.swSayEnded([{ id: 'p', status: 'running' }]);
-    api.swSayEnded([{ id: 'p', status: 'interrupted', checkpoint: true }]);
+    api.swSayEnded([{ id: 'p', status: 'interrupted', startsAgain: true }]);
     assert.ok(line(3).includes('<b>S3 #9</b> was paused by a restart.') && line(3).includes('press Open, and Start stage 3 starts it again'), `a restart does not say so, or where to start it again: ${line(3)}`);
+    // AND A PAUSED STAGE 1 OR 2 RUN SAYS WHERE IT IS STARTED AGAIN: its own
+    // stage's box and its own stage's Start (3.269.0)
+    api.swStartedFor[1] = { id: 'q', name: 'S1-ALL', what: '12,240 units', seen: false };
+    api.swSayEnded([{ id: 'q', status: 'running' }]);
+    api.swSayEnded([{ id: 'q', status: 'paused', startsAgain: true }]);
+    assert.ok(line(1).includes('<b>S1-ALL</b> paused — 12,240 units.') && line(1).includes('Choose it in stage 1 record set, press Open, and Start stage 1 starts it again where it stopped.'),
+      `a paused stage 1 run does not say where it is started again: ${line(1)}`);
     // a run over between two ticks still says it finished
     api.swStartedFor[2] = { id: 'b', name: 'S2 #4', what: '3 carried units', seen: false };
     api.swSayEnded([{ id: 'b', status: 'done' }]);
@@ -5665,7 +5684,7 @@ theStageHeadingsFollowTheOwnersTruthTableRowForRow() {
       { id: 's1-a', stage: 1, name: 'S1 #1', status: 'done' },
       { id: 's1-r', stage: 1, name: 'S1 #2', status: 'running' },
       { id: 's2-a', stage: 2, name: 'S2 #1', status: 'done', parent: { id: 's1-a' } },
-      { id: 's3-p', stage: 3, name: 'S3 #1', status: 'paused', checkpoint: true, parent: { id: 's2-a' } },
+      { id: 's3-p', stage: 3, name: 'S3 #1', status: 'paused', startsAgain: true, parent: { id: 's2-a' } },
       { id: 's3-a', stage: 3, name: 'S3 #2', status: 'done', parent: { id: 's2-a' } },
     ];
     const run = (camp, picks) => {
@@ -6232,12 +6251,25 @@ theStageHeadingsFollowTheOwnersTruthTableRowForRow() {
         for (const r of list) w.push(r);
         await w.close();
       }
+      // ...and its record points at them, as a record a run wrote does (the
+      // start-again refuses a record whose blocks are not on disk, 3.269.0)
+      fs.rmSync(path.join(rowstore.storeDir(pid), 'records.jsonl.gz'), { force: true });
+      fs.rmSync(path.join(rowstore.storeDir(pid), 'records.jsonl.gz.meta.json'), { force: true });
+      {
+        const rw = rowstore.writer(pid, 'records');
+        rw.push({ u: 0, trade: 'ZZZTESTUSDT', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', bandPct: 2, specs: [],
+          score: 1, beat: 0, pairs: 3, lead: 0, blocks: { votes: [0, 1], tau: [0, 1], models: [0, 1] } });
+        await rw.close();
+      }
       const gaps = stages.missingUnitsOf(stages.getSet(pid));
       assert.deepStrictEqual(gaps.missing.map((m) => m.i), [1], 'the fixture must be short exactly one unit');
+      // PUTTING THE UNITS BACK IS STARTING THE SET AGAIN (3.269.0): its own run,
+      // watched by the one readout every run is watched by
       const run = stages.fillMissingUnitsStart(pid);
-      await run.promise;
+      assert.deepStrictEqual({ started: run.started, total: run.total }, { started: true, total: 1 }, 'the fill starts the set again, for the one unit it lacks');
+      assert.strictEqual(stages.stageRunning(), pid, 'and it is the one heavy job while it runs');
+      await untilEnded(pid);
       // NOTHING TRAINED, AND NOTHING WAS LOST
-      assert.strictEqual(run.added, 0, 'a coin with no price files cannot train');
       for (const [name, list] of Object.entries(before)) {
         assert.strictEqual(rowstore.count(pid, name), list.length,
           `the fill destroyed ${name} — a fill that achieves nothing must leave the set exactly as it found it`);

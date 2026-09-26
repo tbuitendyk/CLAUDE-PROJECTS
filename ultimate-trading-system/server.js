@@ -865,6 +865,9 @@ setTimeout(() => refreshNewMonths().catch((err) => console.error('auto-refresh f
 // All the arithmetic lives in lib/stages.js + lib/stagework.js; these routes
 // only validate shapes and put refusals on the wire as plain sentences.
 const stages = require('./lib/stages');
+// this process runs the sets, so it alone marks one it finds left running by a
+// restart as broken off (3.269.0; lib/stages.js ownRuns)
+stages.ownRuns();
 
 // THE STAGE ENGINE'S OWN PLANTED CHECK (3.87.0): its state, and the press that
 // runs it. It fabricates two coins and runs all three stages, so it refuses
@@ -1489,10 +1492,12 @@ app.get('/api/stageset/:id/fill-units/status', (req, res) => {
   catch (err) { return res.status(400).json({ error: String(err.message || err) }); }
 });
 app.post('/api/stageset/:id/stop', (req, res) => res.json(stages.cancelStage(req.params.id)));
-// A PAUSED STAGE 3 RUN, STARTED AGAIN (3.82.0, owner order). The same gate a
-// launch goes through: one heavy job at a time, refused in a sentence.
+// A PAUSED RUN, STARTED AGAIN (3.82.0 at stage 3, owner order; 3.269.0 at stages
+// 1 and 2). The same gate a launch goes through: one heavy job at a time,
+// refused in a sentence.
 app.post('/api/stageset/:id/continue', (req, res) => {
-  try { return res.json(stages.continueStage3(String(req.params.id || ''))); }
+  // any stage: stage 3 from its checkpoint, stages 1 and 2 from their planned units (3.269.0)
+  try { return res.json(stages.continueStage(String(req.params.id || ''))); }
   catch (err) { return res.status(409).json({ error: String(err.message || err) }); }
 });
 app.post('/api/stageset/:id/notes', (req, res) => {
@@ -2056,6 +2061,12 @@ const listener = app.listen(PORT, '127.0.0.1', () => {
     if (done.moved) console.log(`walk sets: ${done.moved} of ${done.sets} had their promotions moved beside them (${done.named.join(', ')})`);
     if (done.failed.length) console.log(`walk sets: ${done.failed.length} could NOT be moved — ${done.failed.join('; ')}`);
   } catch (err) { console.log(`walk sets could not be checked: ${err.message}`); }
+  // A STOPPED STAGE 1 SET IS PAUSED (3.269.0, RULE NINE; the block it calls is
+  // written to be deleted, RULE TEN -- lib/stages.js repairStoppedStageOnesToPaused)
+  try {
+    const done = stages.repairStoppedStageOnesToPaused();
+    if (done.changed) console.log(`stage 1 sets: ${done.changed} stopped set(s) now read paused, and can be started again (${done.named.join(', ')})`);
+  } catch (err) { console.log(`stopped stage 1 sets could not be checked: ${err.message}`); }
   // A SAVED SCREEN SPEAKS TODAY'S VOCABULARY (3.193.0, RULE NINE). One pass,
   // announced, once -- and the block it calls is written to be deleted the day
   // every screen on the box has been through it (lib/coinsscreens.js).

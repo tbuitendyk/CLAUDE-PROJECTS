@@ -577,7 +577,10 @@ function setupStatus(setup, file = null) {
       out.paperUnrealizedPnl = sum((out.openPositions || []).filter((p) => p.paper));
     }
     out.engine = {
-      target: eng.id, name: eng.name || eng.id, link: mirror.status, lastHealth: mirror.lastHealth,
+      // WHETHER THE PLATFORM IS LINKED NOW, asked of the link itself (3.269.0).
+      // mirror.status said following from the moment the screen began to watch
+      // and never took it back, so a platform that had gone read as followed.
+      target: eng.id, name: eng.name || eng.id, link: mirror.linkStatus(), lastHealth: mirror.lastHealth,
       plans: mirror.plansOf(setup.id).map((x) => ({
         planId: x.plan.planId, chunk_start: x.plan.chunkStart, entry_utc: new Date(x.plan.entryTs).toISOString(), call: x.plan.call,
         phase: x.state ? x.state.phase : 'sent', reason: x.state ? x.state.reason : null, ref: x.state ? x.state.ref : null,

@@ -763,12 +763,13 @@ async function trainProbMember({ model, viewIdx, trainChunks, predictChunks, wei
 // argmax-style labels (decision record #2). The reserve layout seals its
 // final 13% before the split, same as unitTask.
 // THE PIN A TASK CARRIES IS THE PATH OF ITS SET'S STAMP DETAIL (3.84.0),
-// read once per worker and kept: the list of files the run was launched on.
+// read once per worker and kept: the list of files the run was launched on,
+// each with the size it had then (3.269.0).
 const pinCache = new Map();
 function pinnedFilesFor(pin) {
   if (!pin || typeof pin !== 'string') return null;
   if (pinCache.has(pin)) return pinCache.get(pin);
-  const got = require('./pin').pinnedFilesOf({ detailFile: pin });
+  const got = require('./pin').pinnedEntriesOf({ detailFile: pin });
   pinCache.set(pin, got);
   if (pinCache.size > 8) pinCache.delete(pinCache.keys().next().value);
   return got;

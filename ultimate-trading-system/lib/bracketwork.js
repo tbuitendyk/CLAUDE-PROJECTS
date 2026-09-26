@@ -38,8 +38,10 @@ async function getMap(sym, p) {
   // jobs; that is luck, not protection.
   // A PINNED RUN READS ITS OWN FILES (3.84.0), and the key says which files,
   // or a worker that priced one run's unit would hand the next run the map
+  // (each pinned file with the size it had at launch, 3.269.0: the same names
+  // cut at other sizes are other prices, so they are another key)
   const pin = p.pinnedFiles && Array.isArray(p.pinnedFiles[sym]) ? p.pinnedFiles[sym] : null;
-  const rangeKey = pin ? `pin:${require('crypto').createHash('sha256').update(pin.join('\n')).digest('hex').slice(0, 16)}`
+  const rangeKey = pin ? `pin:${require('crypto').createHash('sha256').update(pin.map((x) => `${x.file}:${x.bytes}`).join('\n')).digest('hex').slice(0, 16)}`
     : (p.allLoaded ? 'all' : `${p.startMonth || ''}..${p.endMonth || ''}`);
   const key = `${sym}|${rangeKey}`;
   if (mapCache.has(key)) {

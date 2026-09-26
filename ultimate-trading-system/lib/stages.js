@@ -17,7 +17,7 @@ const path = require('path');
 
 const rowstore = require('./rowstore');
 const { createPool: buildPool } = require('./pool');
-const { stampManifest, manifestDiff, pinnedFilesOf, pinnedIntact } = require('./manifest');
+const { stampManifest, stampFromEntries, readDetail, manifestDiff, pinnedIntact } = require('./manifest');
 const { GEOMETRIES } = require('./dataset');
 // CALLED THROUGH THE MODULE, never pulled out at require time: what a blank
 // coin box means is now read off the cache, and a test that cannot stand in for
@@ -232,7 +232,7 @@ function listSets() {
       // A 'running' doc while nothing is running here is a set the service
       // restarted out from under — marked the moment it is seen, the same
       // lazy sweep the run list does, so a corpse never shows as alive.
-      if (d.status === 'running' && (!activeSet || activeSet.id !== d.id)) {
+      if (ownsRuns && d.status === 'running' && (!activeSet || activeSet.id !== d.id)) {
         d.status = 'interrupted';
         d.progress = 'the service restarted while this set was being written';
         saveSet(d);
@@ -246,9 +246,10 @@ function listSets() {
         // how many records are picked on a stage 2 set's table -- what the
         // stage 3 set-up prices when it is told Selected records
         picked: Array.isArray(d.picked) ? d.picked.length : 0,
-        // a paused stage 3 set can be started again when its checkpoint is
-        // there; the Sweep's stage 3 box offers exactly those (3.82.0)
-        checkpoint: d.stage === 3 && d.status !== 'running' && hasCheckpoint(d.id),
+        // a paused set that can be started again where it stopped: stage 3
+        // with its checkpoint (3.82.0), stages 1 and 2 with their planned
+        // units (3.269.0). Each stage's box on Sweep offers exactly those.
+        startsAgain: ['paused', 'interrupted', 'error'].includes(d.status) && canStartAgain(d),
         continued: Array.isArray(d.continued) ? d.continued.length : 0,
         // the stage-engine check's own sets, kept off every screen's list (3.87.0)
         exam: !!d.exam,
@@ -361,6 +362,15 @@ function seedOf(id) {
 // ---- one heavy job at a time ---------------------------------------------------
 let activeSet = null;   // the running set's doc
 let activePool = null;
+// ONLY THE SERVICE MARKS A SET IT FINDS RUNNING AS BROKEN OFF (3.269.0). The
+// lazy marking in listSets exists for the service, which knows what it is
+// running. Any other process that loads this file -- a script on the box that
+// lists the sets, a test -- knows nothing of the service's run, and was marking
+// the set the service was writing as broken off and rewriting its document.
+// server.js says so once, at start-up; nothing else does.
+let ownsRuns = false;
+// on, or off again; the answer is what it was, so a test can put it back
+function ownRuns(on = true) { const was = ownsRuns; ownsRuns = !!on; return was; }
 function stageRunning() { return activeSet ? activeSet.id : null; }
 // EVERYTHING HEAVY THIS FILE OWNS, in one answer, so the other side of the box
 // can ask (owner order, 2026-08-29: "fix both guards so neither can fire during
@@ -581,10 +591,15 @@ const pinOf = (doc) => { const dm = (doc || {}).dataManifest; return dm && !dm.e
 // coin leaves sixteen reading whatever is on disk. The parent's pin names the
 // coins its units read; a parent without one is read over its unit list, as
 // before.
+// AND IT IS STAMPED WITH THE PARENT'S OWN ENTRIES (3.269.0): each file at the
+// size and fingerprint the root's launch recorded, which parentOrRefuse has just
+// proved intact -- never the file hashed again as it is now, which for a day
+// file that has gained hours since would hand the child hours its parent never
+// read.
 function childStampFor(id, parent) {
-  const parentPin = pinnedFilesOf(parent.dataManifest);
-  const coins = parentPin && Object.keys(parentPin).length ? Object.keys(parentPin).sort() : coinsOfParent(parent);
-  return stampManifest(id, coins, { onlyFiles: parentPin });
+  const d = readDetail(parent.dataManifest);
+  if (d && d.detail && Object.keys(d.detail).length) return stampFromEntries(id, d.detail);
+  return stampManifest(id, coinsOfParent(parent));
 }
 function manifestComplaint(diff, name) {
   if (diff.changed.length) {
@@ -606,6 +621,17 @@ function writers(id) {
     models: rowstore.writer(id, 'models', { offThread: true }),
     records: rowstore.writer(id, 'records', { offThread: true }),
   };
+}
+// EVERY STORE A RUN WRITES, DRAINED (3.269.0). The four pack their blocks off
+// the thread that answers pages, so a block handed over can still be in flight
+// when the run ends; this resolves when every one of them is on disk. A run
+// that stops does not say paused until it is.
+async function closeWriters(w) {
+  let first = null;
+  for (const k of Object.keys(w || {})) {
+    try { await w[k].close(); } catch (err) { first = first || err; }
+  }
+  if (first) throw first;
 }
 // Write one unit's stores, flushing per store so every unit owns whole
 // blocks; the record carries each store's block range so the unit can be
@@ -644,11 +670,21 @@ function unitRows(id, name, range, unitIdx) {
   return rowstore.readBlocks(id, name, idxs).map((x) => x.row).filter((r) => r.u === unitIdx);
 }
 
+// WHETHER A STOPPED SET CAN BE STARTED AGAIN WHERE IT STOPPED: stage 3 with its
+// checkpoint (3.82.0); stages 1 and 2 with the list of units they planned
+// (3.269.0), because every unit that landed there is its own record.
+function planListed(doc) {
+  const plan = (doc || {}).plan || {};
+  if (doc.stage === 1) return Array.isArray(plan.unitList) && plan.unitList.length > 0;
+  if (doc.stage === 2) return Array.isArray(plan.carried) && plan.carried.length > 0;
+  return false;
+}
+function canStartAgain(doc) { return doc.stage === 3 ? hasCheckpoint(doc.id) : planListed(doc); }
 function finishFail(doc, err, pool) {
-  // A STOPPED STAGE 3 RUN THAT KEPT ITS CHECKPOINT IS PAUSED, NOT CANCELLED
-  // (3.82.0): the word says what can be done with it. Everything else ends the
-  // way it always did.
-  doc.status = doc.cancelRequested ? (doc.stage === 3 && hasCheckpoint(doc.id) ? 'paused' : 'cancelled') : 'error';
+  // A STOPPED RUN THAT CAN BE STARTED AGAIN IS PAUSED, NOT CANCELLED (3.82.0 at
+  // stage 3; 3.269.0 at stages 1 and 2): the word says what can be done with
+  // it. Everything else ends the way it always did.
+  doc.status = doc.cancelRequested ? (canStartAgain(doc) ? 'paused' : 'cancelled') : 'error';
   doc.error = err ? String(err.message || err) : null;
   doc.finishedAt = new Date().toISOString();
   saveSet(doc);
@@ -874,100 +910,115 @@ function startStage1(params) {
   const t0 = Date.now();
   const w = writers(id);
   (async () => {
-    const payloads = units.map((u) => ({
-      combo: { trade: u.trade, ctx1: u.ctx1, ctx2: u.ctx2, size: u.size },
-      // PER UNIT, NOT PER RUN (3.184.0). `p` is one object shared by the whole
-      // launch; a unit's extras are its own, so they ride beside it. Units with
-      // none get `p` exactly as before.
-      geometry: u.geometry, params: (u.extras || []).length ? { ...p, extras: u.extras, plateaus: u.plateaus || [] } : p,
-      seed: doc.seed, unitKey: unitKeyOf(u), nullN, fee, pin: pinOf(doc),
-    }));
-    const records = new Array(units.length).fill(null);
-    await pool.forEach('s1Unit', payloads, (settled, i) => {
-      if (doc.cancelRequested) return;
-      const u = units[i];
-      if (settled.ok && settled.value) {
-        const res = settled.value;
-        const ranges = writeUnitStores(w, u, i, res);
-        records[i] = {
-          u: i, trade: u.trade, ctx1: u.ctx1, ctx2: u.ctx2, size: u.size, geometry: u.geometry,
-          bandPct: res.bandPct, counts: res.counts, reserve: res.reserve || null, windows: res.windows || null,
-          // A MEMBER THAT COULD NOT BE TRAINED SAYS SO ON ITS SPEC (3.205.0), so
-          // the fold at stage 3 and every screen can know who speaks without
-          // opening the models store, which holds every boosted tree.
-          specs: res.members.map((m) => ({ ...m.spec, picked: m.picked, ...(m.saved && m.saved.kind === 'silent' ? { silent: m.saved.why } : {}) })),
-          voices: voicesOf(res.members, (res.counts || {}).test || 0),
-          // WHAT THIS UNIT WAS BUILT WITH, on the row itself (3.184.0). The
-          // extras are what a child must rebuild with and what makes every
-          // number here readable later: the bands are stored, so each member's
-          // own answers can be worked out again without keeping a second copy
-          // of every label. tooEarly is what the extras' warm-up cost.
-          extras: res.extras && res.extras.length ? res.extras : null,
-          // and which of them belong together around a promoted row (3.203.0)
-          plateaus: res.plateaus && res.plateaus.length ? res.plateaus : null,
-          extraBandPcts: res.extraBandPcts && res.extraBandPcts.length ? res.extraBandPcts : null,
-          tooEarly: res.tooEarly || 0,
-          // AND EACH MEMBER READ ON THE QUESTION IT WAS ASKED, with its own
-          // deals beside it. This is what stops a member that never speaks
-          // hiding inside the pooled number.
-          perMember: res.perMember || null,
-          score: res.score, beat: res.beat, pairs: res.pairs, lead: res.lead,
-          nullScores: res.nullScores,
-          // the tuning-slice money (3.46.0): the probe votes priced on the slice
-          // they were cast on, and every copy of its null set in cents
-          money: res.tuning.money, moneyTrades: res.tuning.trades, moneyChunks: res.tuning.chunks,
-          nullMoney: res.tuning.nullMoney, beatMoney: res.tuning.beat, leadMoney: res.tuning.lead,
-          // WHAT THIS UNIT WAS ACTUALLY TRAINED UNDER (3.121.0), including how
-          // big the biggest training weight would have been with nothing
-          // holding it down and how many were held at the ceiling. The task
-          // has returned this since 3.69.0 and no writer ever copied it, so it
-          // reached disk for the first time here.
-          trainedOn: res.trainedOn || null,
-          blocks: ranges,
-        };
-        w.records.push(records[i]);
-        w.records.flush();
-      } else if (!settled.ok) {
-        doc.failures.push({ unit: unitKeyOf(u), error: String(settled.error || 'failed') });
-      }
-      doc.perf.unitsDone++;
-      doc.perf.elapsedMs = Date.now() - t0;
-      doc.perf.etaMs = doc.perf.unitsDone ? Math.round((doc.perf.elapsedMs / doc.perf.unitsDone) * (units.length - doc.perf.unitsDone)) : null;
-      doc.perf.cyclesDone += trainingsPerUnit(u);
-      phaseNote(doc, {
-        phase: 'training the LOGREG members', done: doc.perf.unitsDone, total: units.length, word: 'units', startedMs: t0,
-        extra: `${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} trainings (${unitKeyOf(u)})`,
-      });
-      saveSet(doc);
-    });
-    if (doc.cancelRequested) { finishFail(doc, null, pool); return; }
-    // The ordering, finalized once: beat desc, lead desc, then unit index —
-    // a TOTAL order, so two runs of the same set rank identically.
-    const done = records.filter(Boolean);
-    done.sort((a, b) => (b.beat - a.beat) || ((b.lead ?? -1e9) - (a.lead ?? -1e9)) || (a.u - b.u));
-    const rk = rowstore.writer(id, 'ranking');
-    for (let r = 0; r < done.length; r++) {
-      rk.push({
-        rank: r + 1, u: done[r].u, beat: done[r].beat, pairs: done[r].pairs, lead: done[r].lead, score: done[r].score,
-        money: done[r].money, beatMoney: done[r].beatMoney, leadMoney: done[r].leadMoney,
-      });
-    }
-    await rk.close();
-    for (const k of ['votes', 'tau', 'models', 'records']) await w[k].close();
-    doc.counts = { unitsScored: done.length, failures: doc.failures.length };
-    doc.status = done.length === units.length ? 'done' : 'incomplete';
-    if (doc.status === 'incomplete') {
-      doc.progress = `finished with ${doc.failures.length} unit(s) missing — the set does not match its own plan`;
-    } else {
-      doc.progress = '';
-    }
-    doc.finishedAt = new Date().toISOString();
-    doc.perf.elapsedMs = Date.now() - t0;
-    saveSet(doc);
-    if (activeSet && activeSet.id === doc.id) { activeSet = null; activePool = null; }
-    pool.abort();
-  })().catch((err) => finishFail(doc, err, pool));
+    const payloads = units.map((u) => s1PayloadOf(doc, p, u, nullN, fee));
+    await pool.forEach('s1Unit', payloads, (settled, i) => landS1Unit(doc, w, units[i], i, settled, t0, units.length));
+    if (doc.cancelRequested) { await closeWriters(w).catch(() => {}); finishFail(doc, null, pool); return; }
+    await finishStage1(doc, pool, w, t0);
+  })().catch(async (err) => { await closeWriters(w).catch(() => {}); finishFail(doc, err, pool); });
   return { id, name: doc.name, units: units.length };
+}
+
+// ---- ONE STAGE 1 UNIT: what its task is handed, the record it leaves, and the
+// end of the run (3.269.0). One copy of each, used by the launch and by a
+// start-again alike, so a unit trained after a pause is trained and written
+// exactly as the launch would have written it. The fill-in that stood below
+// kept a record of its own, and it had fallen five fields behind this one.
+const S1_TRAINING_KEYS = ['allLoaded', 'startMonth', 'endMonth', 'windowLayout', 'extraTrainShare', 'trainOn', 'weightCap'];
+// what every unit of a run is trained under, read back off the set's own params
+function s1TrainingOf(params) {
+  const p = {};
+  for (const k of S1_TRAINING_KEYS) p[k] = (params || {})[k];
+  return p;
+}
+function s1PayloadOf(doc, p, u, nullN, fee) {
+  return {
+    combo: { trade: u.trade, ctx1: u.ctx1, ctx2: u.ctx2, size: u.size },
+    // PER UNIT, NOT PER RUN (3.184.0). `p` is one object shared by the whole
+    // launch; a unit's extras are its own, so they ride beside it. Units with
+    // none get `p` exactly as before.
+    geometry: u.geometry, params: (u.extras || []).length ? { ...p, extras: u.extras, plateaus: u.plateaus || [] } : p,
+    seed: doc.seed, unitKey: unitKeyOf(u), nullN, fee, pin: pinOf(doc),
+  };
+}
+function s1RecordOf(i, u, res, ranges) {
+  return {
+    u: i, trade: u.trade, ctx1: u.ctx1, ctx2: u.ctx2, size: u.size, geometry: u.geometry,
+    bandPct: res.bandPct, counts: res.counts, reserve: res.reserve || null, windows: res.windows || null,
+    // A MEMBER THAT COULD NOT BE TRAINED SAYS SO ON ITS SPEC (3.205.0), so
+    // the fold at stage 3 and every screen can know who speaks without
+    // opening the models store, which holds every boosted tree.
+    specs: res.members.map((m) => ({ ...m.spec, picked: m.picked, ...(m.saved && m.saved.kind === 'silent' ? { silent: m.saved.why } : {}) })),
+    voices: voicesOf(res.members, (res.counts || {}).test || 0),
+    // WHAT THIS UNIT WAS BUILT WITH, on the row itself (3.184.0). The
+    // extras are what a child must rebuild with and what makes every
+    // number here readable later: the bands are stored, so each member's
+    // own answers can be worked out again without keeping a second copy
+    // of every label. tooEarly is what the extras' warm-up cost.
+    extras: res.extras && res.extras.length ? res.extras : null,
+    // and which of them belong together around a promoted row (3.203.0)
+    plateaus: res.plateaus && res.plateaus.length ? res.plateaus : null,
+    extraBandPcts: res.extraBandPcts && res.extraBandPcts.length ? res.extraBandPcts : null,
+    tooEarly: res.tooEarly || 0,
+    // AND EACH MEMBER READ ON THE QUESTION IT WAS ASKED, with its own
+    // deals beside it. This is what stops a member that never speaks
+    // hiding inside the pooled number.
+    perMember: res.perMember || null,
+    score: res.score, beat: res.beat, pairs: res.pairs, lead: res.lead,
+    nullScores: res.nullScores,
+    // the tuning-slice money (3.46.0): the probe votes priced on the slice
+    // they were cast on, and every copy of its null set in cents
+    money: res.tuning.money, moneyTrades: res.tuning.trades, moneyChunks: res.tuning.chunks,
+    nullMoney: res.tuning.nullMoney, beatMoney: res.tuning.beat, leadMoney: res.tuning.lead,
+    // WHAT THIS UNIT WAS ACTUALLY TRAINED UNDER (3.121.0), including how
+    // big the biggest training weight would have been with nothing
+    // holding it down and how many were held at the ceiling. The task
+    // has returned this since 3.69.0 and no writer ever copied it, so it
+    // reached disk for the first time here.
+    trainedOn: res.trainedOn || null,
+    blocks: ranges,
+  };
+}
+// ONE UNIT LANDED: its stores and its record written, the count moved on. A
+// unit that lands after a pause was asked is not written -- the run is ending.
+function landS1Unit(doc, w, u, i, settled, t0, total) {
+  if (doc.cancelRequested) return;
+  if (settled.ok && settled.value) {
+    const res = settled.value;
+    const ranges = writeUnitStores(w, u, i, res);
+    w.records.push(s1RecordOf(i, u, res, ranges));
+    w.records.flush();
+  } else if (!settled.ok) {
+    doc.failures.push({ unit: unitKeyOf(u), error: String(settled.error || 'failed') });
+  }
+  doc.perf.unitsDone++;
+  doc.perf.elapsedMs = Date.now() - t0;
+  doc.perf.etaMs = doc.perf.unitsDone ? Math.round((doc.perf.elapsedMs / doc.perf.unitsDone) * (total - doc.perf.unitsDone)) : null;
+  doc.perf.cyclesDone += trainingsPerUnit(u);
+  phaseNote(doc, {
+    phase: 'training the LOGREG members', done: doc.perf.unitsDone, total, word: 'units', startedMs: t0,
+    extra: `${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} trainings (${unitKeyOf(u)})`,
+  });
+  saveSet(doc);
+}
+// THE END OF A STAGE 1 RUN. Every store drained; the ordering built from the
+// records ON DISK -- the launch's and a start-again's alike -- beside the set,
+// verified and swapped in (rebuildRanking); the set finished when every
+// planned unit has its record.
+async function finishStage1(doc, pool, w, t0) {
+  await closeWriters(w);
+  recordsInHand.id = null; recordsInHand.rows = null;
+  const all = allRecords(doc.id).slice();
+  await rebuildRanking(doc.id, all);
+  const planned = ((doc.plan || {}).unitList || []).length || Number((doc.plan || {}).units) || all.length;
+  doc.counts = { unitsScored: all.length, failures: doc.failures.length };
+  doc.status = all.length === planned ? 'done' : 'incomplete';
+  doc.progress = doc.status === 'incomplete'
+    ? `finished with ${planned - all.length} unit(s) missing — the set does not match its own plan` : '';
+  doc.finishedAt = new Date().toISOString();
+  doc.perf.elapsedMs = Date.now() - t0;
+  saveSet(doc);
+  if (activeSet && activeSet.id === doc.id) { activeSet = null; activePool = null; }
+  pool.abort();
 }
 
 // ---- THE UNITS A RUN LOST, PUT BACK (3.73.0) --------------------------------
@@ -1098,96 +1149,29 @@ async function rebuildRanking(id, records) {
   return { rows: got };
 }
 
-const unitFills = new Map();
+// PUTTING BACK THE UNITS A RUN LOST IS STARTING IT AGAIN (3.269.0). The same
+// subtraction, the same unit builder, the same record and the same ending as
+// a paused run started again (continueStage1 below). It had its own until
+// now: a record five fields behind the launch's, a unit trained without its
+// extra members, and a run the one-heavy-job gate could not see. It is the
+// set's own run now, with the progress line, Pause and the gate.
 function fillMissingUnitsStart(id) {
-  if (unitFills.has(id)) return unitFills.get(id);
   const doc = getSet(id);
   if (!doc) throw new Error(`no record set called "${id}"`);
-  const why = unitFillRefusal(doc);
-  if (why) throw new Error(why);
-  claimOrRefuse();
+  if (doc.stage !== 1) throw new Error('only a stage 1 record set holds units to put back');
   const gaps = missingUnitsOf(doc);
   if (!gaps) throw new Error(`${doc.name} does not record which units it planned, so nothing can be put back safely`);
-  if (!gaps.missing.length) return { id, already: true, done: 0, total: 0, added: 0, error: null, promise: Promise.resolve() };
-
-  const run = {
-    id, done: 0, total: gaps.missing.length, added: 0, error: null, failures: [], promise: null,
-  };
-  unitFills.set(id, run);
-  const p = doc.params || {};
-  const nullN = Math.max(0, Math.floor(num(p.nullN, 19)));
-  const fee = Number(p.fee) || 0;
-  run.promise = (async () => {
-    const w = writers(id);
-    const pool = createPool();
-    const payloads = gaps.missing.map(({ unit }) => ({
-      combo: { trade: unit.trade, ctx1: unit.ctx1, ctx2: unit.ctx2, size: unit.size },
-      geometry: unit.geometry, params: p, seed: doc.seed, unitKey: unitKeyOf(unit), nullN, fee, pin: pinOf(doc),
-    }));
-    const stillFailed = [];
-    try {
-      await pool.forEach('s1Unit', payloads, (settled, k) => {
-        const { i, unit } = gaps.missing[k];
-        if (settled.ok && settled.value) {
-          const res = settled.value;
-          // THE RECORD IS FILED UNDER ITS OWN PLACE IN THE PLAN, never at the
-          // end of the file. Everything downstream joins on that number, and
-          // the stores are append-only, so a unit put back years later still
-          // lands where the plan always said it was.
-          const ranges = writeUnitStores(w, unit, i, res);
-          w.records.push({
-            u: i, trade: unit.trade, ctx1: unit.ctx1, ctx2: unit.ctx2, size: unit.size, geometry: unit.geometry,
-            bandPct: res.bandPct, counts: res.counts, reserve: res.reserve || null, windows: res.windows || null,
-            specs: res.members.map((m) => ({ ...m.spec, picked: m.picked })),
-            voices: voicesOf(res.members, (res.counts || {}).test || 0),
-            score: res.score, beat: res.beat, pairs: res.pairs, lead: res.lead,
-            nullScores: res.nullScores,
-            money: res.tuning.money, moneyTrades: res.tuning.trades, moneyChunks: res.tuning.chunks,
-            nullMoney: res.tuning.nullMoney, beatMoney: res.tuning.beat, leadMoney: res.tuning.lead,
-            // see the stage 1 writer above: what this unit was trained under
-            trainedOn: res.trainedOn || null,
-            blocks: ranges,
-          });
-          w.records.flush();
-          run.added++;
-        } else if (!settled.ok) {
-          stillFailed.push({ unit: unitKeyOf(unit), error: String(settled.error || 'failed') });
-        }
-        run.done++;
-      });
-    } finally {
-      for (const k of ['votes', 'tau', 'models', 'records']) await w[k].close();
-      pool.abort();
-    }
-    recordsInHand.id = null; recordsInHand.rows = null;      // the appended rows must be served, not the old list
-    const all = allRecords(id).slice();
-    await rebuildRanking(id, all);
-    const fresh = getSet(id);
-    if (fresh) {
-      const left = missingUnitsOf(fresh);
-      fresh.failures = stillFailed;
-      fresh.counts = { unitsScored: all.length, failures: stillFailed.length };
-      // A SET THAT MATCHES ITS OWN PLAN AGAIN IS FINISHED, and saying so is the
-      // whole point: an incomplete set is refused as a parent, so a fill-in
-      // that left the stamp alone would have fixed nothing anybody can use.
-      fresh.status = (left && left.missing.length === 0) ? 'done' : 'incomplete';
-      fresh.progress = fresh.status === 'done' ? ''
-        : `finished with ${left ? left.missing.length : stillFailed.length} unit(s) missing — the set does not match its own plan`;
-      fresh.unitsFilledAt = new Date().toISOString();
-      saveSet(fresh);
-    }
-    run.failures = stillFailed;
-  })().catch((err) => { run.error = String((err && err.message) || err); })
-    .finally(() => { unitFills.delete(id); });
-  return run;
+  if (!gaps.missing.length) return { id, already: true, total: 0 };
+  const got = continueStage1(doc);
+  return { id, name: got.name, started: true, total: gaps.missing.length };
 }
 function fillMissingUnitsStatus(id) {
-  const going = unitFills.get(id);
-  if (going) {
-    return { running: true, done: going.done, total: going.total, added: going.added, error: going.error };
-  }
   const doc = getSet(id);
   if (!doc) return { idle: true };
+  if (activeSet && activeSet.id === id) {
+    const pf = activeSet.perf || {};
+    return { running: true, done: Number(pf.unitsDone) || 0, total: Number(pf.unitsTotal) || 0, error: null };
+  }
   const gaps = missingUnitsOf(doc);
   return {
     idle: true,
@@ -1197,6 +1181,176 @@ function fillMissingUnitsStatus(id) {
     status: doc.status,
     why: unitFillRefusal(doc),
   };
+}
+
+// ---- A STAGE 1 OR STAGE 2 RUN, STARTED AGAIN (3.269.0, owner 2026-09-26: "that
+// stop button on the stage 1 sweep: does it allow restarts like stage 3?" -- it
+// did not -- and "yes stage 2 gets the fix too").
+//
+// No checkpoint is needed at these two stages: every unit that lands is its
+// own record, and the set carries the list of units it planned, so what is
+// left to do is subtraction. What it keeps: every record on disk, untouched --
+// the stores only ever gain rows. What it trains: every planned unit with no
+// record, in plan order, built and written by the same code the launch uses,
+// so a unit trained after a pause is the unit the launch would have trained.
+// What it refuses, in the answer: a set that is running or finished; one built
+// on another measurement block or under another first digit of the release;
+// price files that changed since the launch (a file that has only gained hours
+// has not changed -- lib/pin.js); one heavy job at a time. And after the
+// answer, before anything is trained: a unit on disk twice, a record numbered
+// outside the plan, or a record whose blocks the other stores do not hold puts
+// the set back exactly as it was, with the sentence on it.
+const START_AGAIN_FROM = ['paused', 'interrupted', 'error', 'incomplete'];
+const notStartedBecause = (m) => { const e = new Error(m); e.notStarted = true; return e; };
+const yieldTurn = () => new Promise((resolve) => { setImmediate(resolve); });
+function continueStage(id) {
+  const doc = getSet(String(id || ''));
+  if (!doc) throw new Error(`no record set called "${id}"`);
+  if (doc.stage === 1) return continueStage1(doc);
+  if (doc.stage === 2) return continueStage2(doc);
+  return continueStage3(doc.id);
+}
+// WHAT A STAGE 1 OR 2 SET ALREADY HOLDS, read block by block with the loop let
+// go in between (the stage 3 start-again's lesson, 3.83.0). A block the writer
+// reserved and never finished is cut off first, so each file ends where its
+// index says.
+async function unitsOnDisk(doc, total) {
+  const id = doc.id;
+  let trimmed = 0;
+  for (const k of ['votes', 'tau', 'models', 'records']) trimmed += rowstore.trimToMeta(id, k);
+  const held = {};
+  for (const k of ['votes', 'tau', 'models']) held[k] = (rowstore.blocksOf(id, k) || []).length;
+  const have = new Set();
+  const out = { have, dup: null, outside: null, past: null, trimmed };
+  const take = (row) => {
+    if (!Number.isInteger(row.u) || row.u < 0 || row.u >= total) { if (out.outside == null) out.outside = row.u; return; }
+    if (have.has(row.u) && out.dup == null) out.dup = row.u;
+    have.add(row.u);
+    for (const k of ['votes', 'tau', 'models']) {
+      const rg = (row.blocks || {})[k];
+      if ((!Array.isArray(rg) || rg[1] > held[k] || rg[1] <= rg[0]) && out.past == null) out.past = row.u;
+    }
+  };
+  const blocks = rowstore.blocksOf(id, 'records');
+  if (!blocks) { rowstore.each(id, 'records', take); return out; }
+  for (let b = 0; b < blocks.length; b += 64) {
+    const idx = [];
+    for (let j = b; j < Math.min(blocks.length, b + 64); j++) idx.push(j);
+    for (const { row } of rowstore.readBlocks(id, 'records', idx) || []) take(row);
+    // eslint-disable-next-line no-await-in-loop
+    await yieldTurn();
+  }
+  return out;
+}
+function refuseWhatIsOnDisk(disk, total) {
+  if (disk.dup != null) throw notStartedBecause(`unit ${disk.dup} is on disk twice — a store that already holds a unit twice cannot be added to safely, so nothing was trained`);
+  if (disk.outside != null) throw notStartedBecause(`a record on disk is numbered ${disk.outside}, which is not one of the ${total} planned units — nothing was trained`);
+  if (disk.past != null) throw notStartedBecause(`the record of unit ${disk.past} points at blocks its other stores do not hold — nothing was trained`);
+}
+// the set claimed and answered: the one heavy job, with its pool
+function claimForStartAgain(doc) {
+  claimOrRefuse();
+  const before = { status: doc.status, failures: doc.failures || [] };
+  doc.status = 'running';
+  doc.cancelRequested = null;
+  doc.error = null;
+  doc.finishedAt = null;
+  doc.failures = [];                          // a unit that failed last time is tried again
+  doc.progress = 'starting again: reading what is already on disk';
+  activeSet = doc;
+  saveSet(doc);
+  const pool = createPool();
+  activePool = pool;
+  doc.perf = { ...(doc.perf || {}), workers: pool.parallel ? pool.workers.length : 1, etaMs: null };
+  saveSet(doc);
+  return { before, pool };
+}
+// refused after the answer: nothing was trained, so the set goes back exactly
+// as it was, with the sentence on it -- or to paused, when a pause was asked
+function putBack(doc, before, err, pool) {
+  if (doc.cancelRequested) {
+    doc.status = 'paused';
+    doc.progress = 'paused before it trained anything';
+    doc.error = null;
+  } else {
+    doc.status = before.status;
+    doc.progress = `not started again — ${err.message}`;
+    doc.error = err.message;
+  }
+  doc.failures = before.failures;
+  doc.finishedAt = new Date().toISOString();
+  saveSet(doc);
+  if (activeSet && activeSet.id === doc.id) { activeSet = null; activePool = null; }
+  pool.abort();
+}
+function continueStage1(doc) {
+  if (!START_AGAIN_FROM.includes(doc.status)) throw new Error(`${doc.name} is ${doc.status} — only a paused run can be started again`);
+  const why = unitFillRefusal(doc);
+  if (why) throw new Error(why);
+  const list = (doc.plan || {}).unitList || [];
+  if (!list.length) throw new Error(`${doc.name} does not record which units it planned, so it cannot be started again`);
+  const { before, pool } = claimForStartAgain(doc);
+  const p = s1TrainingOf(doc.params);
+  const nullN = Math.max(0, Math.floor(num((doc.params || {}).nullN, 19)));
+  const fee = Number((doc.params || {}).fee) || 0;
+  let w = null;
+  (async () => {
+    await yieldTurn();
+    const disk = await unitsOnDisk(doc, list.length);
+    refuseWhatIsOnDisk(disk, list.length);
+    if (doc.cancelRequested) throw notStartedBecause('paused before it trained anything');
+    const work = [];
+    for (let i = 0; i < list.length; i++) if (!disk.have.has(i)) work.push(i);
+    let kept = 0;
+    for (const i of disk.have) kept += trainingsPerUnit(list[i]);
+    doc.continued = [...(doc.continued || []), {
+      at: new Date().toISOString(), from: before.status, release: ENGINE_VERSION,
+      unitsKept: disk.have.size, unitsToTrain: work.length, bytesTrimmed: disk.trimmed,
+    }];
+    doc.perf = {
+      ...doc.perf, unitsDone: disk.have.size, unitsTotal: list.length, etaMs: null,
+      cyclesDone: kept, cyclesTotal: list.reduce((n, u) => n + trainingsPerUnit(u), 0),
+    };
+    doc.progress = `starting again: ${disk.have.size.toLocaleString()} of ${list.length.toLocaleString()} units were already trained`;
+    saveSet(doc);
+    const t0 = Date.now() - Number(doc.perf.elapsedMs || 0);   // the clock carries on from where it was
+    w = writers(doc.id);
+    if (work.length) {
+      await pool.forEach('s1Unit', work.map((i) => s1PayloadOf(doc, p, list[i], nullN, fee)),
+        (settled, k) => landS1Unit(doc, w, list[work[k]], work[k], settled, t0, list.length));
+    }
+    if (doc.cancelRequested) { await closeWriters(w).catch(() => {}); finishFail(doc, null, pool); return; }
+    await finishStage1(doc, pool, w, t0);
+  })().catch(async (err) => {
+    if (w) await closeWriters(w).catch(() => {});
+    if (err && err.notStarted) { putBack(doc, before, err, pool); return; }
+    finishFail(doc, err, pool);
+  });
+  return { id: doc.id, name: doc.name, units: list.length };
+}
+
+// ---- REPAIR (3.269.0) -- A STOPPED STAGE 1 SET IS PAUSED -------------------------
+// RULE TEN: delete this block, its call in server.js, and its test, once no
+// stage 1 set on the box says "cancelled". Written 2026-09-26 for
+// S1-ALL-20260926, stopped by the owner under 3.268.0 so this release could be
+// deployed over it.
+//
+// Until this release a stage 1 Stop left its set "cancelled", which is the word
+// for a run that cannot be picked up again. Every stage 1 set that planned its
+// units can be (continueStage1), so the word it carries moves to today's. Only
+// the status in the set's document changes; nothing it holds is touched.
+// Announced once at start-up.
+function repairStoppedStageOnesToPaused() {
+  const named = [];
+  for (const row of listSets()) {
+    if (row.stage !== 1 || row.status !== 'cancelled') continue;
+    const d = getSet(row.id);
+    if (!d || d.status !== 'cancelled' || !planListed(d)) continue;
+    d.status = 'paused';
+    saveSet(d);
+    named.push(d.name || d.id);
+  }
+  return { changed: named.length, named };
 }
 
 // ---- parent checks ---------------------------------------------------------------
@@ -1684,7 +1838,11 @@ function startStage2(params) {
     // campaign from the stage 1 it came out of.
     params: { ...parent.params, carry: carried.length, from: parent.id, campaign: (parent.params || {}).campaign || null },
     seed: seedOf(id),
-    plan: { units: carried.length },
+    // THE UNITS CARRIED, BY THEIR NUMBER ON THE PARENT, IN CARRY ORDER (3.269.0):
+    // what a start-again trains the rest of. The carry is worked out from the
+    // parent's table as it is saved at the launch, and the table can be sorted
+    // or filtered again afterwards, so the list is kept rather than worked out twice.
+    plan: { units: carried.length, carried: carried.map((row) => row.u) },
     perf: {
       unitsDone: 0, unitsTotal: carried.length, elapsedMs: 0, etaMs: null, workers: null,
       cyclesDone: 0, cyclesTotal: carried.reduce((nn, row) => nn + trainingsPerUnit(parentRecords.get(row.u) || {}), 0), cyclesWord: 'trainings',
@@ -1704,172 +1862,253 @@ function startStage2(params) {
   saveSet(doc);
   const t0 = Date.now();
   const w = writers(id);
-  const p = {
-    allLoaded: parent.params.allLoaded, startMonth: parent.params.startMonth,
-    endMonth: parent.params.endMonth, windowLayout: parent.params.windowLayout,
-    // the parent's split for its extra members (3.202.0), so the BOOST half of
-    // a committee is cut the way the LOGREG half was
-    extraTrainShare: parent.params.extraTrainShare,
-  };
+  const p = s2TrainingOf(parent.params);
   (async () => {
     const payloads = [];
-    for (const row of carried) {
-      const rec = parentRecords.get(row.u);
-      if (!rec) throw new Error(`the parent's record for unit ${row.u} is missing — the set does not match its own ranking`);
-      const votes = unitRows(parent.id, 'votes', rec.blocks.votes, rec.u);
-      const tauRows = unitRows(parent.id, 'tau', rec.blocks.tau, rec.u);
-      const nTest = votes.filter((v) => v.w === 0).length;
-      const probs = rec.specs.map((_, mi) => votes.map((v) => v.m[mi]));
-      // THE PARENT'S EXTRA MEMBERS' SAVED MODELS RIDE ALONG (3.202.0), so the
-      // child can read each of them on its own stretch of the history from the
-      // model that was actually fitted -- the votes stored cover the test and
-      // held-back windows only. Base members carry nothing here: they are read
-      // where they always were.
-      const hasExtras = (rec.specs || []).some((sp) => sp && sp.at != null);
-      const models = hasExtras ? unitRows(parent.id, 'models', rec.blocks.models, rec.u) : [];
-      const saved = hasExtras ? rec.specs.map((sp, mi) => (sp && sp.at != null ? ((models.find((m) => m.mi === mi) || {}).saved || null) : null)) : null;
-      payloads.push({
-        combo: { trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size },
-        // THE CHILD REBUILDS WITH ITS PARENT'S EXTRAS (3.184.0). Without this
-        // the stage 1 half of the committee read a vector with the extra
-        // blocks on it and the stage 2 half would read one without -- half a
-        // committee looking at columns the other half never saw, and a chunk
-        // count that would not even line up, because the extras' warm-up
-        // dropped the earliest chunks at stage 1.
-        geometry: rec.geometry, params: (rec.extras || []).length ? { ...p, extras: rec.extras, plateaus: rec.plateaus || [] } : p,
-        pin: pinOf(doc),
-        s1: {
-          probs,
-          // AND WHAT EACH OF THOSE MEMBERS IS (3.195.0). Without the specs the
-          // child cannot read a parent member on its own: which answers it was
-          // marked against is spec.at, and an extra member is marked against
-          // different ones from the rest.
-          specs: rec.specs || [],
-          saved,
-          // the stage 1 members' votes on the tuning slice, so their money
-          // can be read again here and held against the parent's record
-          tauProbs: rec.specs.map((_, mi) => (tauRows.find((t) => t.mi === mi) || {}).probs || []),
-          ts: { test: votes.filter((v) => v.w === 0).map((v) => v.ts), hold: votes.filter((v) => v.w === 1).map((v) => v.ts) }, nTest,
-        },
-        // ONE NULL SET, DECLARED AT STAGE 1 AND DEALT AGAIN HERE (3.46.0): the
-        // parent's seed and size, so every member faces the copies the stage 1
-        // members faced
-        seed: parent.seed, unitKey: unitKeyOf(rec), nullN: parentNullN, fee: parentFee,
-        rec: { u: rec.u },
-      });
-    }
-    await pool.forEach('s2Unit', payloads.map(({ rec, ...pl }) => pl), (settled, i) => {
-      if (doc.cancelRequested) return;
-      const row = carried[i];
-      const rec = parentRecords.get(row.u);
-      if (settled.ok && settled.value && moneyDriftOf(settled.value, rec)) {
-        // THE STAGE 1 MEMBERS' MONEY MUST COME OUT AS THE PARENT RECORDED IT:
-        // same votes, same slice, same fee, same deals. A cent of difference
-        // means the votes or the price files changed underneath the set, and
-        // the unit is refused rather than written -- the timestamp check's mould.
-        doc.failures.push({ unit: `${rec.trade}|${rec.geometry}`, error: `${moneyDriftOf(settled.value, rec)} on ${parent.name}` });
-      } else if (settled.ok && settled.value) {
-        const res = settled.value;
-        // Self-contained set (decision record #4): parent's logreg members are
-        // copied beside the new boost ones, votes, tau votes and models alike.
-        const votes = unitRows(parent.id, 'votes', rec.blocks.votes, rec.u);
-        const tau = unitRows(parent.id, 'tau', rec.blocks.tau, rec.u);
-        const models = unitRows(parent.id, 'models', rec.blocks.models, rec.u);
-        const nTest = votes.filter((v) => v.w === 0).length;
-        const merged = {
-          bandPct: rec.bandPct,
-          reserve: rec.reserve,
-          counts: rec.counts,
-          ts: { test: votes.filter((v) => v.w === 0).map((v) => v.ts), hold: votes.filter((v) => v.w === 1).map((v) => v.ts) },
-          labels: { test: votes.filter((v) => v.w === 0).map((v) => v.y), hold: votes.filter((v) => v.w === 1).map((v) => v.y) },
-          members: [
-            // THE WHOLE SPEC, NOT TWO FIELDS OF IT (3.198.0, owner: "the logreg
-            // ... not so much"). Rebuilt from model and view alone, this threw
-            // away `at` and `from` on every LOGREG member -- so the extra one
-            // came out of stage 2 looking like a base member. Three things went
-            // with it: the screen showed it at the unit's own band with no
-            // look-back and no set it came from; memberReadings picks a
-            // member's answers with specs[mi].at, so it was TRAINED against its
-            // own answers and SCORED against the unit's, which is why it read
-            // 5.6x its own null set while the BOOST half of the same extra read
-            // 0.7x; and a greenlight built from such a set carried at: null
-            // into the live path, where stagesignal reads it to pick the label.
-            ...rec.specs.map((spec, mi) => ({
-              spec, picked: spec.picked,
-              saved: (models.find((m) => m.mi === mi) || {}).saved,
-              tauProbs: (tau.find((t) => t.mi === mi) || {}).probs || [],
-              probs: votes.map((v) => v.m[mi]),
-            })),
-            ...res.members,
-          ],
-        };
-        const ranges = writeUnitStores(w, rec, i, merged);
-        const record = {
-          u: i, s1u: rec.u, s1rank: ranking.find((r) => r.u === rec.u)?.rank ?? null,
-          carriedRank: i + 1,
-          trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size, geometry: rec.geometry,
-          bandPct: rec.bandPct, counts: rec.counts,
-          // THE SEALED BOUNDS RIDE ON THE RECORD (3.51.0): a stage 3 set's
-          // units are these records, and the sealed window is read off them
-          reserve: rec.reserve || null,
-          // and the actual date ranges this stage used (3.85.0); pinned to its
-          // parent's files, they are the parent's, and are stored on this record
-          // in their own right
-          windows: res.windows || rec.windows || null,
-          specs: merged.members.map((m) => ({ ...m.spec, picked: m.picked })),
-          voices: voicesOf(merged.members, merged.ts.test.length),
-          voices3: voicesOf(merged.members.slice(0, rec.specs.length), merged.ts.test.length),
-          score3: res.score3, scoreAll: res.scoreAll, helped: res.helped,
-          // WHAT THIS UNIT WAS BUILT WITH, on the row itself (3.184.0 at stage
-          // 1; 3.195.0 here). The stage 2 record carried none of these four and
-          // the stage 2 task had been returning three of them the whole time --
-          // so every stage 2 set read as a committee with no extra members and
-          // no member readings at all, which is what the owner saw.
-          extras: (rec.extras || []).length ? rec.extras : null,
-          plateaus: (rec.plateaus || []).length ? rec.plateaus : null,
-          extraBandPcts: res.extraBandPcts && res.extraBandPcts.length ? res.extraBandPcts : null,
-          tooEarly: res.tooEarly || rec.tooEarly || 0,
-          // AND EACH MEMBER READ ON THE QUESTION IT WAS ASKED, both halves of
-          // the committee, in the same order as specs above.
-          perMember: res.perMember || null,
-          // every member's own reading against the parent's null set (3.46.0),
-          // no longer the stage 1 numbers copied across
-          beat: res.beat, pairs: res.pairs, lead: res.lead, nullScores: res.nullScores,
-          money3: res.tuning3.money, money: res.tuning.money, moneyTrades: res.tuning.trades, moneyChunks: res.tuning.chunks,
-          nullMoney: res.tuning.nullMoney, beatMoney: res.tuning.beat, leadMoney: res.tuning.lead,
-          // what this unit was trained under (3.121.0). This stage retrains, so
-          // its own answer is the one that counts; the parent's stands only if
-          // this stage did not produce one.
-          trainedOn: res.trainedOn || rec.trainedOn || null,
-          blocks: ranges,
-        };
-        w.records.push(record);
-        w.records.flush();
-      } else if (!settled.ok) {
-        doc.failures.push({ unit: `${rec.trade}|${rec.geometry}`, error: String(settled.error || 'failed') });
-      }
-      doc.perf.unitsDone++;
-      doc.perf.elapsedMs = Date.now() - t0;
-      doc.perf.etaMs = doc.perf.unitsDone ? Math.round((doc.perf.elapsedMs / doc.perf.unitsDone) * (carried.length - doc.perf.unitsDone)) : null;
-      doc.perf.cyclesDone += trainingsPerUnit(rec);
-      phaseNote(doc, {
-        phase: 'training the BOOST members', done: doc.perf.unitsDone, total: carried.length, word: 'units', startedMs: t0,
-        extra: `${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} trainings`,
-      });
-      saveSet(doc);
-    });
-    if (doc.cancelRequested) { finishFail(doc, null, pool); return; }
-    for (const k of ['votes', 'tau', 'models', 'records']) await w[k].close();
-    const okN = carried.length - doc.failures.length;
-    doc.counts = { unitsScored: okN, failures: doc.failures.length };
-    doc.status = okN === carried.length ? 'done' : 'incomplete';
-    doc.progress = doc.status === 'incomplete' ? `finished with ${doc.failures.length} unit(s) missing — the set does not match its own plan` : '';
-    doc.finishedAt = new Date().toISOString();
-    saveSet(doc);
-    if (activeSet && activeSet.id === doc.id) { activeSet = null; activePool = null; }
-    pool.abort();
-  })().catch((err) => finishFail(doc, err, pool));
+    for (const row of carried) payloads.push(s2PayloadOf(doc, parent, parentRecords.get(row.u), row.u, p, parentNullN, parentFee));
+    await pool.forEach('s2Unit', payloads, (settled, i) => landS2Unit(doc, w, parent, ranking, parentRecords.get(carried[i].u), i, settled, t0, carried.length));
+    if (doc.cancelRequested) { await closeWriters(w).catch(() => {}); finishFail(doc, null, pool); return; }
+    await finishStage2(doc, pool, w, t0);
+  })().catch(async (err) => { await closeWriters(w).catch(() => {}); finishFail(doc, err, pool); });
   return { id, name: doc.name, units: carried.length };
+}
+
+// ---- ONE STAGE 2 UNIT: what its task is handed, the record it leaves, and the
+// end of the run (3.269.0) -- one copy each for the launch and a start-again.
+function s2TrainingOf(pp) {
+  return {
+    allLoaded: pp.allLoaded, startMonth: pp.startMonth,
+    endMonth: pp.endMonth, windowLayout: pp.windowLayout,
+    // the parent's split for its extra members (3.202.0), so the BOOST half of
+    // a committee is cut the way the LOGREG half was
+    extraTrainShare: pp.extraTrainShare,
+  };
+}
+function s2PayloadOf(doc, parent, rec, u, p, parentNullN, parentFee) {
+  if (!rec) throw new Error(`the parent's record for unit ${u} is missing — the set does not match its own ranking`);
+  const votes = unitRows(parent.id, 'votes', rec.blocks.votes, rec.u);
+  const tauRows = unitRows(parent.id, 'tau', rec.blocks.tau, rec.u);
+  const nTest = votes.filter((v) => v.w === 0).length;
+  const probs = rec.specs.map((_, mi) => votes.map((v) => v.m[mi]));
+  // THE PARENT'S EXTRA MEMBERS' SAVED MODELS RIDE ALONG (3.202.0), so the
+  // child can read each of them on its own stretch of the history from the
+  // model that was actually fitted -- the votes stored cover the test and
+  // held-back windows only. Base members carry nothing here: they are read
+  // where they always were.
+  const hasExtras = (rec.specs || []).some((sp) => sp && sp.at != null);
+  const models = hasExtras ? unitRows(parent.id, 'models', rec.blocks.models, rec.u) : [];
+  const saved = hasExtras ? rec.specs.map((sp, mi) => (sp && sp.at != null ? ((models.find((m) => m.mi === mi) || {}).saved || null) : null)) : null;
+  return {
+    combo: { trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size },
+    // THE CHILD REBUILDS WITH ITS PARENT'S EXTRAS (3.184.0). Without this
+    // the stage 1 half of the committee read a vector with the extra
+    // blocks on it and the stage 2 half would read one without -- half a
+    // committee looking at columns the other half never saw, and a chunk
+    // count that would not even line up, because the extras' warm-up
+    // dropped the earliest chunks at stage 1.
+    geometry: rec.geometry, params: (rec.extras || []).length ? { ...p, extras: rec.extras, plateaus: rec.plateaus || [] } : p,
+    pin: pinOf(doc),
+    s1: {
+      probs,
+      // AND WHAT EACH OF THOSE MEMBERS IS (3.195.0). Without the specs the
+      // child cannot read a parent member on its own: which answers it was
+      // marked against is spec.at, and an extra member is marked against
+      // different ones from the rest.
+      specs: rec.specs || [],
+      saved,
+      // the stage 1 members' votes on the tuning slice, so their money
+      // can be read again here and held against the parent's record
+      tauProbs: rec.specs.map((_, mi) => (tauRows.find((t) => t.mi === mi) || {}).probs || []),
+      ts: { test: votes.filter((v) => v.w === 0).map((v) => v.ts), hold: votes.filter((v) => v.w === 1).map((v) => v.ts) }, nTest,
+    },
+    // ONE NULL SET, DECLARED AT STAGE 1 AND DEALT AGAIN HERE (3.46.0): the
+    // parent's seed and size, so every member faces the copies the stage 1
+    // members faced
+    seed: parent.seed, unitKey: unitKeyOf(rec), nullN: parentNullN, fee: parentFee,
+  };
+}
+// ONE UNIT LANDED: its stores and its record written, the count moved on
+function landS2Unit(doc, w, parent, ranking, rec, i, settled, t0, total) {
+  if (doc.cancelRequested) return;
+  if (settled.ok && settled.value && moneyDriftOf(settled.value, rec)) {
+    // THE STAGE 1 MEMBERS' MONEY MUST COME OUT AS THE PARENT RECORDED IT:
+    // same votes, same slice, same fee, same deals. A cent of difference
+    // means the votes or the price files changed underneath the set, and
+    // the unit is refused rather than written -- the timestamp check's mould.
+    doc.failures.push({ unit: `${rec.trade}|${rec.geometry}`, error: `${moneyDriftOf(settled.value, rec)} on ${parent.name}` });
+  } else if (settled.ok && settled.value) {
+    const res = settled.value;
+    // Self-contained set (decision record #4): parent's logreg members are
+    // copied beside the new boost ones, votes, tau votes and models alike.
+    const votes = unitRows(parent.id, 'votes', rec.blocks.votes, rec.u);
+    const tau = unitRows(parent.id, 'tau', rec.blocks.tau, rec.u);
+    const models = unitRows(parent.id, 'models', rec.blocks.models, rec.u);
+    const merged = {
+      bandPct: rec.bandPct,
+      reserve: rec.reserve,
+      counts: rec.counts,
+      ts: { test: votes.filter((v) => v.w === 0).map((v) => v.ts), hold: votes.filter((v) => v.w === 1).map((v) => v.ts) },
+      labels: { test: votes.filter((v) => v.w === 0).map((v) => v.y), hold: votes.filter((v) => v.w === 1).map((v) => v.y) },
+      members: [
+        // THE WHOLE SPEC, NOT TWO FIELDS OF IT (3.198.0, owner: "the logreg
+        // ... not so much"). Rebuilt from model and view alone, this threw
+        // away `at` and `from` on every LOGREG member -- so the extra one
+        // came out of stage 2 looking like a base member. Three things went
+        // with it: the screen showed it at the unit's own band with no
+        // look-back and no set it came from; memberReadings picks a
+        // member's answers with specs[mi].at, so it was TRAINED against its
+        // own answers and SCORED against the unit's, which is why it read
+        // 5.6x its own null set while the BOOST half of the same extra read
+        // 0.7x; and a greenlight built from such a set carried at: null
+        // into the live path, where stagesignal reads it to pick the label.
+        ...rec.specs.map((spec, mi) => ({
+          spec, picked: spec.picked,
+          saved: (models.find((m) => m.mi === mi) || {}).saved,
+          tauProbs: (tau.find((t) => t.mi === mi) || {}).probs || [],
+          probs: votes.map((v) => v.m[mi]),
+        })),
+        ...res.members,
+      ],
+    };
+    const ranges = writeUnitStores(w, rec, i, merged);
+    w.records.push(s2RecordOf(i, rec, ranking, res, merged, ranges));
+    w.records.flush();
+  } else if (!settled.ok) {
+    doc.failures.push({ unit: `${rec.trade}|${rec.geometry}`, error: String(settled.error || 'failed') });
+  }
+  doc.perf.unitsDone++;
+  doc.perf.elapsedMs = Date.now() - t0;
+  doc.perf.etaMs = doc.perf.unitsDone ? Math.round((doc.perf.elapsedMs / doc.perf.unitsDone) * (total - doc.perf.unitsDone)) : null;
+  doc.perf.cyclesDone += trainingsPerUnit(rec);
+  phaseNote(doc, {
+    phase: 'training the BOOST members', done: doc.perf.unitsDone, total, word: 'units', startedMs: t0,
+    extra: `${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} trainings`,
+  });
+  saveSet(doc);
+}
+function s2RecordOf(i, rec, ranking, res, merged, ranges) {
+  return {
+    u: i, s1u: rec.u, s1rank: ranking.find((r) => r.u === rec.u)?.rank ?? null,
+    carriedRank: i + 1,
+    trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size, geometry: rec.geometry,
+    bandPct: rec.bandPct, counts: rec.counts,
+    // THE SEALED BOUNDS RIDE ON THE RECORD (3.51.0): a stage 3 set's
+    // units are these records, and the sealed window is read off them
+    reserve: rec.reserve || null,
+    // and the actual date ranges this stage used (3.85.0); pinned to its
+    // parent's files, they are the parent's, and are stored on this record
+    // in their own right
+    windows: res.windows || rec.windows || null,
+    specs: merged.members.map((m) => ({ ...m.spec, picked: m.picked })),
+    voices: voicesOf(merged.members, merged.ts.test.length),
+    voices3: voicesOf(merged.members.slice(0, rec.specs.length), merged.ts.test.length),
+    score3: res.score3, scoreAll: res.scoreAll, helped: res.helped,
+    // WHAT THIS UNIT WAS BUILT WITH, on the row itself (3.184.0 at stage
+    // 1; 3.195.0 here). The stage 2 record carried none of these four and
+    // the stage 2 task had been returning three of them the whole time --
+    // so every stage 2 set read as a committee with no extra members and
+    // no member readings at all, which is what the owner saw.
+    extras: (rec.extras || []).length ? rec.extras : null,
+    plateaus: (rec.plateaus || []).length ? rec.plateaus : null,
+    extraBandPcts: res.extraBandPcts && res.extraBandPcts.length ? res.extraBandPcts : null,
+    tooEarly: res.tooEarly || rec.tooEarly || 0,
+    // AND EACH MEMBER READ ON THE QUESTION IT WAS ASKED, both halves of
+    // the committee, in the same order as specs above.
+    perMember: res.perMember || null,
+    // every member's own reading against the parent's null set (3.46.0),
+    // no longer the stage 1 numbers copied across
+    beat: res.beat, pairs: res.pairs, lead: res.lead, nullScores: res.nullScores,
+    money3: res.tuning3.money, money: res.tuning.money, moneyTrades: res.tuning.trades, moneyChunks: res.tuning.chunks,
+    nullMoney: res.tuning.nullMoney, beatMoney: res.tuning.beat, leadMoney: res.tuning.lead,
+    // what this unit was trained under (3.121.0). This stage retrains, so
+    // its own answer is the one that counts; the parent's stands only if
+    // this stage did not produce one.
+    trainedOn: res.trainedOn || rec.trainedOn || null,
+    blocks: ranges,
+  };
+}
+// THE END OF A STAGE 2 RUN: every store drained, the set finished when every
+// carried unit has its record on disk
+async function finishStage2(doc, pool, w, t0) {
+  await closeWriters(w);
+  const planned = ((doc.plan || {}).carried || []).length || Number((doc.plan || {}).units) || 0;
+  const okN = rowstore.count(doc.id, 'records');
+  doc.counts = { unitsScored: okN, failures: doc.failures.length };
+  doc.status = okN === planned ? 'done' : 'incomplete';
+  doc.progress = doc.status === 'incomplete' ? `finished with ${planned - okN} unit(s) missing — the set does not match its own plan` : '';
+  doc.finishedAt = new Date().toISOString();
+  doc.perf.elapsedMs = Date.now() - t0;
+  saveSet(doc);
+  if (activeSet && activeSet.id === doc.id) { activeSet = null; activePool = null; }
+  pool.abort();
+}
+function continueStage2(doc) {
+  if (!START_AGAIN_FROM.includes(doc.status)) throw new Error(`${doc.name} is ${doc.status} — only a paused run can be started again`);
+  const carriedList = Array.isArray((doc.plan || {}).carried) ? doc.plan.carried : [];
+  if (!carriedList.length) {
+    throw new Error(`${doc.name} does not record which stage 1 units it carried, so it cannot be started again — start a new stage 2 from its stage 1 record set`);
+  }
+  const pm = doc.measurements || 0;
+  if (pm !== MEASUREMENTS_VERSION) {
+    throw new Error(`${doc.name} was built on measurement block ${pm || 'v2 or older'} and this box builds ${MEASUREMENTS_VERSION} — `
+      + 'a unit trained here would be trained on numbers the rest of the set has never seen. Start a new stage 2.');
+  }
+  if (doc.engineVersion && !sameEngineLine(doc.engineVersion, ENGINE_VERSION)) {
+    throw new Error(`${doc.name} was written by engine ${doc.engineVersion} and this box runs ${ENGINE_VERSION} — `
+      + 'a unit trained here could not be compared with the ones already in it.');
+  }
+  // its parent as a launch finds it: finished, the same block and line, and
+  // the price files the chain was launched on intact
+  const parent = parentOrRefuse((doc.parent || {}).id, 1);
+  if (doc.dataManifest && !doc.dataManifest.error && doc.dataManifest.symbols) {
+    const pinned = pinnedIntact(doc.dataManifest);
+    if (!pinned.intact) {
+      throw new Error(`${pinComplaint(pinned, doc.name)} — the rest of this run would be trained on different prices from the part already done`);
+    }
+  }
+  const { before, pool } = claimForStartAgain(doc);
+  let w = null;
+  (async () => {
+    await yieldTurn();
+    const disk = await unitsOnDisk(doc, carriedList.length);
+    refuseWhatIsOnDisk(disk, carriedList.length);
+    if (doc.cancelRequested) throw notStartedBecause('paused before it trained anything');
+    const parentRecords = new Map(allRecords(parent.id).map((r) => [r.u, r]));
+    const gone = carriedList.filter((u) => !parentRecords.has(u));
+    if (gone.length) throw notStartedBecause(`${gone.length} of the ${carriedList.length} stage 1 units this run carried are no longer on ${parent.name} — nothing was trained`);
+    const ranking = rankingOf(parent.id);
+    const work = [];
+    for (let i = 0; i < carriedList.length; i++) if (!disk.have.has(i)) work.push(i);
+    let kept = 0;
+    for (const i of disk.have) kept += trainingsPerUnit(parentRecords.get(carriedList[i]) || {});
+    doc.continued = [...(doc.continued || []), {
+      at: new Date().toISOString(), from: before.status, release: ENGINE_VERSION,
+      unitsKept: disk.have.size, unitsToTrain: work.length, bytesTrimmed: disk.trimmed,
+    }];
+    doc.perf = {
+      ...doc.perf, unitsDone: disk.have.size, unitsTotal: carriedList.length, etaMs: null,
+      cyclesDone: kept, cyclesTotal: carriedList.reduce((n, u) => n + trainingsPerUnit(parentRecords.get(u) || {}), 0),
+    };
+    doc.progress = `starting again: ${disk.have.size.toLocaleString()} of ${carriedList.length.toLocaleString()} units were already trained`;
+    saveSet(doc);
+    const t0 = Date.now() - Number(doc.perf.elapsedMs || 0);
+    w = writers(doc.id);
+    const p = s2TrainingOf(parent.params);
+    const parentFee = Number((parent.params || {}).fee);
+    const parentNullN = Math.max(0, Math.floor(num((parent.params || {}).nullN, 19)));
+    if (work.length) {
+      const payloads = work.map((i) => s2PayloadOf(doc, parent, parentRecords.get(carriedList[i]), carriedList[i], p, parentNullN, parentFee));
+      await pool.forEach('s2Unit', payloads,
+        (settled, k) => landS2Unit(doc, w, parent, ranking, parentRecords.get(carriedList[work[k]]), work[k], settled, t0, carriedList.length));
+    }
+    if (doc.cancelRequested) { await closeWriters(w).catch(() => {}); finishFail(doc, null, pool); return; }
+    await finishStage2(doc, pool, w, t0);
+  })().catch(async (err) => {
+    if (w) await closeWriters(w).catch(() => {});
+    if (err && err.notStarted) { putBack(doc, before, err, pool); return; }
+    finishFail(doc, err, pool);
+  });
+  return { id: doc.id, name: doc.name, units: carriedList.length };
 }
 
 // ---- STAGE 3 --------------------------------------------------------------------
@@ -3564,8 +3803,8 @@ function continueStage3(id) {
     // own record does not name are read from its parent's files from here on,
     // its own files win for the coins it does name, the launch's own detail
     // file stays where it was, and the start-again's record says so.
-    const ownPin = pinnedFilesOf(doc.dataManifest) || {};
-    const parentPin = pinnedFilesOf(parent.dataManifest);
+    const ownPin = (readDetail(doc.dataManifest) || {}).detail || {};
+    const parentPin = (readDetail(parent.dataManifest) || {}).detail || null;
     const missing = parentPin ? Object.keys(parentPin).filter((c) => !ownPin[c]) : [];
     if (missing.length) {
       const pc = pinnedIntact(parent.dataManifest);
@@ -3573,8 +3812,9 @@ function continueStage3(id) {
         throw new Error(`${pinComplaint(pc, parent.name)} — this run's own record names ${Object.keys(ownPin).length} coin(s) and its units read `
           + `${missing.length} more from its parent's files, and those have moved`);
       }
+      // the entries themselves, each at the size its launch recorded (3.269.0)
       const merged = { ...parentPin, ...ownPin };
-      doc.dataManifest = stampManifest(`${id}-widened`, Object.keys(merged).sort(), { onlyFiles: merged });
+      doc.dataManifest = stampFromEntries(`${id}-widened`, merged);
       pinWidened = { from: Object.keys(ownPin).length, to: Object.keys(merged).length, added: missing.sort() };
     }
   }
@@ -12565,6 +12805,8 @@ module.exports = {
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
   startStage1, startStage2, startStage3,
   missingUnitsOf, unitFillRefusal, fillMissingUnitsStart, fillMissingUnitsStatus, rebuildRanking,
+  continueStage, continueStage1, continueStage2, canStartAgain, ownRuns, repairStoppedStageOnesToPaused,
+  s1TrainingOf, s1PayloadOf, s1RecordOf, s2TrainingOf,
   stage1Table, stage1Ordered, stage1Carry, stage1CarryPreview, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
   settingsFor, unitsFor, unitsForPassers, unitMembers, isSetDocument, shapesOf, foldPlateauShares, agreementsFor, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, variantsOf, confirmWanted, confirmLeansFor, coinsSourceOf, confirmLabel, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
   fieldAxesFor, certaintyRefusal, fieldPairsFor, fieldFile, writeFieldSidecar, readFieldSidecar, fieldPayloadFor,

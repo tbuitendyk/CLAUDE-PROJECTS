@@ -828,7 +828,7 @@ function esHtml() {
           + (sel.shortName ? '<span class="note">short name ' + esc(sel.shortName) + '</span>' : '') + '<span class="note">' + esProgress(sel) + '</span></div>'
           // a checklist started before the short name was asked for asks for it here
           + (sel.shortName ? '' : '<div class="row" style="margin-top:.5rem"><label class="c"><span class="muted">short name — letters, digits, dashes</span><input id="esShortFix" value="' + esc(cEsTypedFix) + '" placeholder="platform-2" style="width:11rem"></label>'
-            + '<span class="note">this platform has no short name yet: it is the one the platform is saved under at step 6</span></div>'
+            + '<span class="note">this platform has no short name yet: it is the name the platform is saved under when it is installed, at step 2</span></div>'
             + '<div class="row" style="margin-top:.5rem"><button id="esShortSave">Save the short name</button><span id="esShortMsg" class="note"></span></div>')
           + esSetupHtml(sel, cEs.template)
           + '<div class="row" style="margin-top:1rem;border-top:1px solid var(--line);padding-top:.7rem"><button id="esNewToggle" aria-expanded="' + cEsNew + '">' + (cEsNew ? '▾' : '▸') + ' Set up another platform</button></div>'

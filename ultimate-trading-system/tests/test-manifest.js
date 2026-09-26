@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { assert } = require('./helpers');
-const { symbolManifest, stampManifest, manifestDiff, pinnedFilesOf, pinnedIntact, MANIFEST_DIR, HASHES_FILE } = require('../lib/manifest');
+const { symbolManifest, stampManifest, stampFromEntries, manifestDiff, pinnedFilesOf, pinnedEntriesOf, pinnedIntact, readDetail, MANIFEST_DIR, HASHES_FILE } = require('../lib/manifest');
 const { loadSymbolPinned, loadSymbolAll } = require('../lib/pipeline');
 
 const CACHE = path.join(__dirname, '..', 'data', 'cache');
@@ -117,7 +117,8 @@ module.exports = {
       const stamp = stampManifest('zzqa-manifest-test-pin', [SYM]);
       const pin = pinnedFilesOf(stamp);
       assert.deepStrictEqual(pin[SYM], [path.basename(d1), path.basename(d2), path.basename(d3)], 'the pin is the three day files');
-      const before = loadSymbolPinned(SYM, pin[SYM]);
+      const entries = pinnedEntriesOf(stamp);
+      const before = loadSymbolPinned(SYM, entries[SYM]);
       assert.strictEqual(before.rows.length, 24 + 7 + 24, 'the pinned load reads the three day files, hole and all');
       assert.strictEqual(before.pinned, true);
       // then the refresh consolidates the month into a bundle, hole filled, and adds a fourth day
@@ -127,7 +128,7 @@ module.exports = {
       try {
         const unpinned = await loadSymbolAll(SYM, () => {});
         assert.strictEqual(unpinned.rows.length, 72, 'what is on disk now reads the bundle (hole filled) for the whole month, day files of that month ignored');
-        const after = loadSymbolPinned(SYM, pin[SYM]);
+        const after = loadSymbolPinned(SYM, entries[SYM]);
         assert.strictEqual(after.rows.length, 24 + 7 + 24, 'the pinned load still reads the three day files: the bundle and the new day are not this run\'s');
         assert.deepStrictEqual(after.rows.map((r) => r.ts), before.rows.map((r) => r.ts), 'candle for candle');
         const check = pinnedIntact(stamp);
@@ -137,11 +138,34 @@ module.exports = {
         const stamp2 = stampManifest('zzqa-manifest-test-pin2', [SYM]);
         const pin2 = pinnedFilesOf(stamp2)[SYM];
         assert.ok(pin2.includes(path.basename(b3)) && pin2.includes(path.basename(d2)), 'both forms are on disk and both are listed');
-        assert.strictEqual(loadSymbolPinned(SYM, pin2).rows.length, 72, 'the pinned bundle is read for its month, and the pinned day files beside it are not read too');
+        assert.strictEqual(loadSymbolPinned(SYM, pinnedEntriesOf(stamp2)[SYM]).rows.length, 72, 'the pinned bundle is read for its month, and the pinned day files beside it are not read too');
         // a stamp over a NAMED list of files is exactly that list
         const child = stampManifest('zzqa-manifest-test-pin3', [SYM], { onlyFiles: pin });
         assert.deepStrictEqual(pinnedFilesOf(child)[SYM], pin[SYM], 'a child stamped over its parent\'s pin lists the parent\'s files and nothing that appeared since');
         assert.strictEqual(child.symbols[SYM].digest, stamp.symbols[SYM].digest, 'and carries the same digest, because the files have the same bytes');
+        // A DAY FILE THAT GAINS HOURS IS STILL THE LAUNCH'S (3.269.0, found on the
+        // box 2026-09-26): the launch held seven hours of the second day; the
+        // refresh then writes the rest of the day into the same file. The set is
+        // intact, and the loader reads the seven hours the launch read -- never
+        // the seventeen written after it.
+        fs.writeFileSync(d2, JSON.stringify(hours('2020-03-02', 24, 200)));
+        const grown = pinnedIntact(stamp);
+        assert.deepStrictEqual({ intact: grown.intact, changed: grown.changed, gone: grown.gone }, { intact: true, changed: [], gone: [] },
+          'a pinned day file that only gained hours at its end is intact');
+        const cut = loadSymbolPinned(SYM, entries[SYM]);
+        assert.deepStrictEqual(cut.rows.map((r) => r.ts), before.rows.map((r) => r.ts), 'and is read as the launch read it, the hours after the launch left out');
+        assert.deepStrictEqual(cut.rows.map((r) => r.close), before.rows.map((r) => r.close), 'candle for candle');
+        // ...but an hour the launch read that has CHANGED is a change, and the loader will not read it as the launch's
+        const moved = hours('2020-03-02', 24, 200);
+        moved[3] = { ...moved[3], close: moved[3].close + 1 };
+        fs.writeFileSync(d2, JSON.stringify(moved));
+        const bad = pinnedIntact(stamp);
+        assert.deepStrictEqual({ intact: bad.intact, changed: bad.changed }, { intact: false, changed: [path.basename(d2)] }, 'an hour the launch read that changed is named');
+        const shorter = hours('2020-03-02', 5, 200);
+        fs.writeFileSync(d2, JSON.stringify(shorter));
+        assert.throws(() => loadSymbolPinned(SYM, entries[SYM]), /has changed since the run was launched: it is shorter/, 'a file that lost hours is never read as the launch\'s');
+        fs.writeFileSync(d2, JSON.stringify(hours('2020-03-02', 7, 200)));
+        assert.strictEqual(pinnedIntact(stamp).intact, true, 'and put back as it was, it is the launch\'s again');
       } finally {
         fs.rmSync(path.join(CACHE, `${SYM}-1h-2020-03-04.json`), { force: true });
       }
@@ -152,7 +176,7 @@ module.exports = {
       fs.rmSync(d3, { force: true });
       check = pinnedIntact(stamp);
       assert.deepStrictEqual({ intact: check.intact, changed: check.changed, gone: check.gone }, { intact: false, changed: [path.basename(d2)], gone: [path.basename(d3)] }, 'a gone pinned file is named too');
-      assert.throws(() => loadSymbolPinned(SYM, pin[SYM]), /a price file this run was launched on cannot be read/, 'the pinned loader never fetches what is gone');
+      assert.throws(() => loadSymbolPinned(SYM, entries[SYM]), /a price file this run was launched on cannot be read/, 'the pinned loader never fetches what is gone');
       const noDetail = pinnedIntact({ overallDigest: 'x', symbols: { [SYM]: { digest: 'x' } } });
       assert.strictEqual(noDetail.intact, false);
       assert.ok(/record of which price files it read is gone/.test(noDetail.why));
@@ -177,13 +201,20 @@ module.exports = {
       const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
       assert.strictEqual((src.match(/doc\.dataManifest = childStampFor\(id, parent\);/g) || []).length, 2, 'both child launches stamp through the one helper');
       const helper = src.slice(src.indexOf('function childStampFor('), src.indexOf('function manifestComplaint('));
-      assert.ok(helper.includes('Object.keys(parentPin).sort() : coinsOfParent(parent)'), 'the coins are the parent\'s pinned coins, its unit list only when it has no pin');
+      assert.ok(helper.includes('return stampFromEntries(id, d.detail);'), 'a child is stamped with its parent\'s own entries (3.269.0)');
       // exercised: a parent whose unit list names ONE coin but whose pin names two
       const parent = { name: 'P', dataManifest: parentStamp, plan: { units: 1, unitList: [{ trade: SYM, ctx1: null, ctx2: null }] }, params: { universe: [SYM] } };
-      const fn = new Function('pinnedFilesOf', 'coinsOfParent', 'stampManifest', `${helper}; return childStampFor;`)(pinnedFilesOf, stages.coinsOfUnits ? () => [SYM] : () => [SYM], stampManifest);
+      const fn = new Function('readDetail', 'stampFromEntries', 'stampManifest', 'coinsOfParent', `${helper}; return childStampFor;`)(readDetail, stampFromEntries, stampManifest, () => [SYM]);
       const child = fn('zzqa-manifest-test-child', parent);
       assert.deepStrictEqual(Object.keys(child.symbols).sort(), [OTHER, SYM].sort(), 'the child is stamped over both coins, not the one its unit list names');
       assert.deepStrictEqual(pinnedFilesOf(child), pinnedFilesOf(parentStamp), 'and pinned to exactly the parent\'s files');
+      assert.deepStrictEqual(readDetail(child).detail, readDetail(parentStamp).detail, 'entry for entry: each file at the size and fingerprint the parent recorded');
+      assert.strictEqual(child.overallDigest, parentStamp.overallDigest, 'so the two fingerprints are the same fingerprint');
+      // AND A FILE THAT HAS GAINED HOURS SINCE GOES INTO THE CHILD AT ITS LAUNCH SIZE (3.269.0)
+      fs.writeFileSync(f1, JSON.stringify([...hours('2020-01-01', 24, 100), ...hours('2020-01-02', 3, 110)]));
+      const later = fn('zzqa-manifest-test-child3', parent);
+      assert.deepStrictEqual(readDetail(later).detail, readDetail(parentStamp).detail, 'a child made after the file grew still reads what the root read');
+      assert.strictEqual(pinnedIntact(later).intact, true, 'and is intact');
       const bare = fn('zzqa-manifest-test-child2', { name: 'P0', dataManifest: null, plan: { units: 1 }, params: { universe: [SYM] } });
       assert.deepStrictEqual(Object.keys(bare.symbols), [SYM], 'a parent without a pin is read over its unit list, as before');
     } finally {
