@@ -570,6 +570,23 @@ async function loadCompute() {
   await Promise.all([a, b, c, d]);
 }
 
+// WORKERS x SHARE, AND THE CEILING IT IS HELD UNDER (3.270.0, owner order
+// 2026-09-26: "the design should throttle the max allowable workers x
+// percentage to < allowed"). The service holds each worker's share so the
+// workers together stay under `allowed`; this says what is set, what is held
+// when the two differ, and plainly when the ceiling cannot be read at all.
+function knobsLine(c) {
+  const h = c.held || {};
+  const n = c.workers.inForce;
+  const at = (s) => n + ' &times; ' + s + '% = ' + (n * s) + '%';
+  let first;
+  if (c.pct == null) first = 'machine-wide that is workers &times; share — <b>' + n + ' &times; —</b>.';
+  else if (h.allowed == null) first = 'machine-wide that is workers &times; share — <b>' + at(c.pct) + '</b>. This service cannot read its own <b>allowed</b> ceiling, so nothing holds the workers under it.';
+  else if (h.pct < c.pct) first = 'machine-wide that is workers &times; share — <b>' + at(c.pct) + '</b> is set, which does not fit under <b>allowed</b> ' + h.allowed + '%, so each worker is held to ' + h.pct + '%: <b>' + at(h.pct) + '</b>.';
+  else first = 'machine-wide that is workers &times; share — <b>' + at(c.pct) + '</b>, under <b>allowed</b> ' + h.allowed + '%.';
+  return first + ' Each worker&#39;s share is always held so the workers together stay under <b>allowed</b>, which Set the ceiling above sets. '
+    + 'The share change reaches running work within seconds; the worker count takes effect when the next job starts. 0% parks running work in place until turned back up.';
+}
 function svcCard(u) {
   const state = u.active === 'active' ? '<span class="pos">running</span>'
     : u.active === 'failed' ? '<span class="neg">stopped badly</span>' : '<span class="muted">' + esc(u.active) + '</span>';
@@ -998,9 +1015,7 @@ function drawCompute() {
     + (cCfg ? '<div class="row">'
       + '<label class="c"><span class="muted">workers</span><input id="cWorkers" type="number" min="1" max="' + (cCfg.workers.max || 8) + '" step="1" value="' + (cCfg.workers.setting == null ? cCfg.workers.inForce : cCfg.workers.setting) + '" style="width:5.5rem"></label>'
       + '<label class="c"><span class="muted">each worker&#39;s share, %</span><input id="cPct" type="number" min="0" max="100" step="5" value="' + (cCfg.pct == null ? '' : cCfg.pct) + '" style="width:5.5rem"></label>'
-      + '<span class="note">machine-wide that is workers &times; share — '
-      + '<b>' + cCfg.workers.inForce + ' &times; ' + (cCfg.pct == null ? '—' : cCfg.pct + '%') + '</b> right now. '
-      + 'The share change reaches running work within seconds; the worker count takes effect when the next job starts. 0% parks running work in place until turned back up.</span>'
+      + '<span class="note">' + knobsLine(cCfg) + '</span>'
       + '</div>'
       + '<div class="row" style="margin-top:.5rem"><button id="cSaveKnobs">Set these</button><span class="note">' + (cSvcMsg.knobs || '') + '</span></div>'
       : '<p class="note neg">the trading service did not answer, so these cannot be shown' + (cErrCfg ? ' — ' + esc(cErrCfg) : '') + '</p>')

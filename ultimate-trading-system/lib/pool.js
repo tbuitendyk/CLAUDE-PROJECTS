@@ -104,7 +104,8 @@ class Pool {
     if (size > 1) {
       for (let i = 0; i < size; i++) {
         try {
-          const w = new Worker(path.join(__dirname, 'worker.js'));
+          // each worker is told how many share the ceiling with it (lib/throttle.js heldPct)
+          const w = new Worker(path.join(__dirname, 'worker.js'), { workerData: { poolSize: size } });
           w.on('message', (msg) => this._onMessage(w, msg));
           w.on('error', (err) => this._onWorkerError(w, err));
           // A hard thread exit (OOM kill, process.exit inside the worker)

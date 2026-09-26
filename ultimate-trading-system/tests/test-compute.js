@@ -143,4 +143,28 @@ module.exports = {
       assert.strictEqual(stages.stageGateStatus().blockedBy, null);
     } finally { compute.sweepRunsHereOr = real; }
   },
+
+  // THE COMPUTE TAB SAYS WHAT EACH WORKER IS HELD TO (3.270.0, owner order
+  // 2026-09-26: "the design should throttle the max allowable workers x
+  // percentage to < allowed"). The route serves the share as set beside what
+  // is held and the ceiling it is held under; the line says all three, and
+  // says plainly when the ceiling cannot be read.
+  theComputeTabSaysTheShareAsSetWhatIsHeldAndTheCeiling() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+    assert.ok(src.includes('pct: throttle.askedCpuPct(),'), 'the box no longer shows the share as set');
+    assert.ok(src.includes('return { allowed, workers, pct: throttle.heldPct(throttle.askedCpuPct(), workers, allowed) };'), 'the route no longer says what each worker is held to');
+    const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
+    const a = page.indexOf('function knobsLine(c) {');
+    const b = page.indexOf('\nfunction svcCard', a);
+    assert.ok(a > 0 && b > a, 'the line is not drawn by knobsLine');
+    const knobsLine = new Function(`${page.slice(a, b)}; return knobsLine;`)();
+    const cfg = (pct, allowed, held) => ({ pct, workers: { inForce: 5 }, held: { allowed, workers: 5, pct: held } });
+    const fits = knobsLine(cfg(99, 510, 99));
+    assert.ok(fits.includes('<b>5 &times; 99% = 495%</b>, under <b>allowed</b> 510%.'), fits);
+    const held = knobsLine(cfg(99, 400, 79));
+    assert.ok(held.includes('<b>5 &times; 99% = 495%</b> is set, which does not fit under <b>allowed</b> 400%, so each worker is held to 79%: <b>5 &times; 79% = 395%</b>.'), held);
+    const blind = knobsLine(cfg(99, null, 99));
+    assert.ok(blind.includes('This service cannot read its own <b>allowed</b> ceiling, so nothing holds the workers under it.'), blind);
+    assert.ok(page.includes("+ '<span class=\"note\">' + knobsLine(cCfg) + '</span>'"), 'the Compute tab no longer draws the line');
+  },
 };

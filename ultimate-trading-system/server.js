@@ -136,7 +136,15 @@ app.get('/api/compute-config', (req, res) => {
       })(),
       inForce: configuredSize(),
       max: require('os').cpus().length },
-      pct: throttle.currentCpuPct(),
+      pct: throttle.askedCpuPct(),
+      // WHAT EACH WORKER IS HELD TO, AND UNDER WHAT (3.270.0): the share as set,
+      // held so the workers the next job starts stay strictly under this
+      // service's `allowed` ceiling, which is read from the machine itself
+      held: (() => {
+        const allowed = throttle.allowedPct();
+        const workers = configuredSize();
+        return { allowed, workers, pct: throttle.heldPct(throttle.askedCpuPct(), workers, allowed) };
+      })(),
       // WHAT THIS ACCOUNT PAYS TO TRADE, shown here because it is a
       // system-wide setting and this is where they are read (3.166.0). It is
       // ENTERED on Account, under the exchange it belongs to, and this tab
