@@ -54,8 +54,47 @@ const TEMPLATE = {
         { id: 'margin', label: 'Margin trading is switched on for it' },
       ],
     },
+    // STEP 2 (3.273.0, owner 2026-09-27: "code step 2"): the key made on the
+    // exchange to the very rules the platform keeps a key by when it is sent
+    // (engine/venues/binance-account.js keyVerdict) -- it can trade and borrow,
+    // it can move no money out, and it is tied to one address or, at the owner's
+    // choice, open to any. The kind is the one with a secret key, because that is
+    // the only kind the platform's key store signs with (engine/keystore.js).
+    {
+      id: 'key',
+      title: 'The API key',
+      guidance: [
+        { paras: [
+          'Make one API key on the exchange for this account. Name it there after this record, so you can always tell which key trades where.',
+          'Choose the kind the exchange makes for you, which comes in two halves: an API key and a secret key. The platform signs every request with the secret key, and it cannot sign with the other kind, made from a key pair of your own. On Binance, for example, the kind to choose is called system-generated, and Binance now recommends the other kind; this platform cannot use that one.',
+          'The exchange shows the secret key only once, when the key is made. Keep both halves where only you can reach them until they are sent to the trading platform at step 3; once they are sent, nothing anywhere shows them again.',
+          'Allow the key to trade, and to borrow on margin: without borrowing it cannot open a short. On Binance, for example, those are the permissions called Enable Spot & Margin Trading and Enable Margin Loan, Repay & Transfer.',
+          'Leave off everything that can move money out of the account: withdrawals, and transfers to other accounts. When the keys are sent, the platform asks the exchange what the key may do and will not keep a key that can move money, cannot trade or cannot borrow, and it says so when the exchange could not be asked.',
+        ] },
+        { when: { kind: 'sub' }, heading: 'A sub-account', paras: [
+          'Make the key for the sub-account itself, not for your main account: a key trades only in the account it was made for.',
+        ] },
+        { when: { address: 'tied' }, ifUnset: true, heading: 'Tied to one address', paras: [
+          'Give the exchange the public address of the machine the trading platform runs on, and no other. The key then works from nowhere else, even for someone who has both halves.',
+          'For a rented server, that is the address its provider shows for it. If it ever changes, the key stops working until the exchange is given the new one.',
+        ] },
+        { when: { address: 'any' }, ifUnset: true, heading: 'Open to any address', paras: [
+          'The key then works from anywhere, so both halves are all anyone would need to trade in this account, though never to take money out of it, because the key cannot.',
+          'Tick "these keys may trade from any address" when the keys are sent at step 3, or the platform will not keep them. Some exchanges switch trading off on a key open to any address after a while; Binance, for example, has announced that it does.',
+        ] },
+      ],
+      choices: [
+        { id: 'address', label: 'Where it may trade from', clearsNote: 'changing this clears the last tick below: it was about the other choice',
+          options: [{ value: 'tied', label: 'tied to one address — the machine the trading platform runs on' }, { value: 'any', label: 'open to any address' }] },
+      ],
+      ticks: [
+        { id: 'made', label: 'The key is made for this account, as an API key and a secret key' },
+        { id: 'can', label: 'It can trade and borrow on margin' },
+        { id: 'cannot', label: 'It cannot withdraw money or transfer it to another account' },
+        { id: 'where', label: 'Where it may trade from is set on the exchange as chosen above', about: 'address' },
+      ],
+    },
     // the road ahead, written with the owner as the account is set up
-    { id: 'key', title: 'The API key', writing: true },
     { id: 'keys', title: 'The keys go to their platform', writing: true },
     { id: 'reads', title: 'The platform reads the account', writing: true },
     { id: 'setup', title: 'A setup trades from it', writing: true },
@@ -138,6 +177,13 @@ function setChoice(id, stepId, choiceId, value) {
   if (!c) bad(`step "${step.title}" asks no choice ${choiceId}`);
   if (c.when && !matches(c.when, s.choices)) bad(`${c.label.toLowerCase()} is not asked yet`);
   if (!c.options.find((o) => o.value === value)) bad(`${c.label.toLowerCase()}: one of ${c.options.map((o) => o.label).join(', ')}`);
+  // a tick that was about this choice goes when the choice changes: it said the
+  // exchange was set as chosen, and the choice is now the other one
+  if (s.choices[choiceId] != null && s.choices[choiceId] !== value) {
+    const kept = { ...(s.ticks[stepId] || {}) };
+    for (const t of step.ticks || []) if (t.about === choiceId) delete kept[t.id];
+    s.ticks[stepId] = kept;
+  }
   s.choices[choiceId] = value;
   s.updatedUtc = new Date().toISOString();
   return save(id, s);
