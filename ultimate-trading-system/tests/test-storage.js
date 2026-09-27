@@ -99,7 +99,12 @@ function fixture() {
     fs.utimesSync(dir, n / 1000, n / 1000);
     return n;
   };
+  // a record store of a set not written yet, still being filled: its folder is
+  // old, the file in it was written a minute ago -- a folder is as new as the
+  // newest thing in it, so this is never left behind
+  const filling = w('batches/s2-new-9.rows/records.jsonl.gz', 50);
   settle(D);
+  fs.utimesSync(filling, (NOW - 0.02 * HOUR) / 1000, (NOW - 0.02 * HOUR) / 1000);
   return D;
 }
 const kind = (s, key) => s.reclaim.find((k) => k.key === key);
@@ -152,7 +157,7 @@ module.exports = {
       for (const keep of ['stagesets/s1-live-1.json', 'stagesets/s1-live-1-tally.json.gz', 'batches/s1-live-1.rows', 'batches/s1-live-1__keptfill.rows', 'stagesets/s4-live-10-halflife-x.json.gz',
         'stagesets/s2-broken-4.json', 'stagesets/s2-broken-4-agreed.json.gz', 'batches/s2-broken-4.rows', 'stagesets/s3-new-8-tally.json.gz', 'manifests/s1-live-1.json',
         `hours/AAAUSDT-${'a'.repeat(32)}.json.gz`, `hours/CCCUSDT-${'c'.repeat(32)}.json.gz`, 'cache/AAAUSDT-1h-2026-09-26.json.tmp999-2', 'cache/AAAUSDT-1h-2026-08.json',
-        'stagesets/s4-live-10.json.before-3.251.4', 'backups/price-records-20260926T221139Z', 'walks/w1.json', 'live/setups/x.json']) {
+        'stagesets/s4-live-10.json.before-3.251.4', 'backups/price-records-20260926T221139Z', 'walks/w1.json', 'live/setups/x.json', 'batches/s2-new-9.rows']) {
         assert.ok(fs.existsSync(path.join(D, keep)), `${keep} was removed and was not asked for, or is not left behind`);
       }
       // and the two kept on purpose go only when they are ticked
