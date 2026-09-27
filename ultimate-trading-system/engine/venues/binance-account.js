@@ -112,14 +112,15 @@ class BinanceAccount {
 // not kept. TIED TO ONE ADDRESS IS THE OWNER'S CHOICE (owner, 2026-09-25: "the
 // api key ... may be NOT IP ADDRESS TIED at the user's discretion ... provided
 // the exchange platform allows"): a key open to any address is kept only when
-// "these keys may trade from any address" is ticked, and what such a key may do
-// is still the exchange's answer, read here like every other permission.
+// the account's "Where it may trade from" says "open to any address" (3.280.0: chosen
+// in that one place, and carried with every send and every check), and what such a
+// key may do is still the exchange's answer, read here like every other permission.
 function keyVerdict(r, { anyAddress = false } = {}) {
   const refusals = [];
   if (r.enableWithdrawals) refusals.push('it allows withdrawals');
   if (r.enableInternalTransfer) refusals.push('it allows transfers between accounts');
   if (r.permitsUniversalTransfer) refusals.push('it allows universal transfers');
-  if (!r.ipRestrict && anyAddress !== true) refusals.push('it is open to any address, and "these keys may trade from any address" was not ticked');
+  if (!r.ipRestrict && anyAddress !== true) refusals.push('it is open to any address, and "Where it may trade from" in the account\'s checklist is not "open to any address"');
   if (!r.enableSpotAndMarginTrading) refusals.push('it cannot trade');
   if (!r.enableMargin) refusals.push('it cannot borrow on margin, so it cannot open a short');
   return { ok: refusals.length === 0, refusals, tied: r.ipRestrict === true };

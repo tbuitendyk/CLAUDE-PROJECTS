@@ -89,7 +89,7 @@ const TEMPLATE = {
         ] },
         { when: { address: 'any' }, ifUnset: true, heading: 'Open to any address', paras: [
           'The key then works from anywhere, so both halves are all anyone would need to trade in this account, though never to take money out of it, because the key cannot.',
-          'Tick "these keys may trade from any address" when the keys are sent at step 3, or the platform will not keep them. Some exchanges switch trading off on a key open to any address after a while; Binance, for example, has announced that it does.',
+          'This choice goes to the trading platforms with every send and every Check the keys again, and a platform keeps a key open to any address only while this says open to any address. Some exchanges switch trading off on a key open to any address after a while; Binance, for example, has announced that it does.',
         ] },
       ],
       choices: [
@@ -115,12 +115,7 @@ const TEMPLATE = {
           'The keys are entered on this account\'s own record in this section, below the checklist: press Enter the keys there (Change the keys once a platform holds them), tick each trading platform that should hold them, and send them. They are locked in this browser with each platform\'s own lock before they leave it, so this system passes them on without being able to read them, and each platform keeps them encrypted on its machine.',
           'Before sending, check the fingerprint of the platform\'s lock. Below, each platform\'s is shown as this browser works it out, with the command that prints the machine\'s own copy on that machine. They must be the same: a different one means the keys would be locked for another machine.',
           'Paste the API key and the secret key exactly as the exchange showed them, and press Send the keys to the ticked platforms. The boxes are emptied the moment the keys are read, whether they were kept or not. A platform does not keep keys the exchange refuses when they arrive; Remove the keys takes kept keys off the platforms you tick.',
-        ] },
-        { when: { address: 'tied' }, heading: 'Tied to one or more addresses', paras: [
-          'Leave "these keys may trade from any address" unticked: the exchange already ties the key to the addresses you gave it.',
-        ] },
-        { when: { address: 'any' }, heading: 'Open to any address', paras: [
-          'Tick "these keys may trade from any address" before sending, as step 2 chose, or the platform will not keep them.',
+          'Whether the keys may trade from any address goes with them as step 2 chose it: there is nothing to tick when sending. Change it at step 2 and press Check the keys again, and each platform takes the new choice without the keys being sent again.',
         ] },
       ],
       needs: ['keys'],

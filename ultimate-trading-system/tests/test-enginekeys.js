@@ -122,7 +122,7 @@ module.exports = {
   aKeyThatCanMoveMoneyOrIsNotLockedIsRefusedInWords() {
     const good = { ipRestrict: true, enableWithdrawals: false, enableInternalTransfer: false, permitsUniversalTransfer: false, enableMargin: true, enableSpotAndMarginTrading: true };
     assert.deepStrictEqual(keyVerdict(good), { ok: true, refusals: [], tied: true });
-    assert.deepStrictEqual(keyVerdict({ ...good, enableWithdrawals: true, ipRestrict: false }).refusals, ['it allows withdrawals', 'it is open to any address, and "these keys may trade from any address" was not ticked']);
+    assert.deepStrictEqual(keyVerdict({ ...good, enableWithdrawals: true, ipRestrict: false }).refusals, ['it allows withdrawals', 'it is open to any address, and "Where it may trade from" in the account\'s checklist is not "open to any address"']);
     // TIED TO ONE ADDRESS IS THE OWNER'S CHOICE (owner, 2026-09-25): ticked, a key open to any address is kept
     assert.deepStrictEqual(keyVerdict({ ...good, ipRestrict: false }, { anyAddress: true }), { ok: true, refusals: [], tied: false });
     // and the tick never excuses a key that can move money

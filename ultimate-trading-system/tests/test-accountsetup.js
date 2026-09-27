@@ -165,7 +165,7 @@ module.exports = {
     const asked = { enableWithdrawals: false, enableInternalTransfer: false, permitsUniversalTransfer: false, enableSpotAndMarginTrading: true, enableMargin: true };
     assert.strictEqual(keyVerdict({ ...asked, ipRestrict: true }).ok, true, 'a key tied to one or more addresses, as step 2 describes it, is kept');
     assert.strictEqual(keyVerdict({ ...asked, ipRestrict: false }, { anyAddress: true }).ok, true, 'and so is one open to any address, with the tick');
-    assert.strictEqual(keyVerdict({ ...asked, ipRestrict: false }).ok, false, 'but not without the tick, which is why step 2 says to tick it');
+    assert.strictEqual(keyVerdict({ ...asked, ipRestrict: false }).ok, false, 'but not unless step 2 says open to any address');
     // every refusal of the check has its words in the step
     const cover = [['enableWithdrawals', true, 'withdrawals'], ['enableInternalTransfer', true, 'transfers to other accounts'], ['permitsUniversalTransfer', true, 'transfers to other accounts'],
       ['enableSpotAndMarginTrading', false, 'Allow the key to trade'], ['enableMargin', false, 'to borrow on margin']];
@@ -173,10 +173,19 @@ module.exports = {
       assert.strictEqual(keyVerdict({ ...asked, ipRestrict: true, [k]: bad }).ok, false, `the platform refuses a key with ${k} ${bad}`);
       assert.ok(words.includes(w), `and step 2 says ${w}`);
     }
-    // the tick it quotes is the key form's own, word for word
+    // WHERE IT MAY TRADE FROM IS CHOSEN IN ONE PLACE (3.280.0, owner 2026-09-27: "setting those options on
+    // step 2 doesn't fix the key check"): step 2 says its choice travels; the key form has no tick of its
+    // own and shows step 2's; the service reads step 2 for every send and every check
     const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
-    const quoted = /Tick "([^"]+)" when the keys are sent/.exec(step.guidance.flatMap((b) => b.paras).join(' '));
-    assert.ok(quoted && src.includes('<input type="checkbox" id="takAny"> ' + quoted[1] + '</label>'), `step 2 quotes a tick the key form does not have: ${quoted && quoted[1]}`);
+    const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+    assert.ok(/This choice goes to the trading platforms with every send and every Check the keys again/.test(words), 'step 2 says its choice goes with every send and every check');
+    assert.ok(!/id="takAny"/.test(src) && !/these keys may trade from any address/.test(src + words), 'no tick of its own anywhere, and no words that name one');
+    assert.ok(/<span class="k">Where it may trade from<\/span> <span>' \+ esc\(keyAddressWords\(a\)\) \+ '<\/span>'/.test(src), 'the key form shows step 2\'s choice');
+    assert.ok(/const anyAddress = \(\(\(acc\.tradingAccount\(id\) \|\| \{\}\)\.setup \|\| \{\}\)\.choices \|\| \{\}\)\.address === 'any';/.test(server), 'the service reads step 2 for the account');
+    assert.ok(/\/check`, \{ anyAddress \}, 15000\)/.test(server) && /anyAddress \}, 15000\);\n    if \(!r\.ok\)/.test(server), 'and sends it with every check and every send');
+    const kaw = new Function(`${src.slice(src.indexOf('function keyAddressWords(a) {'), src.indexOf('function tradingKeysLine('))}; return keyAddressWords;`)();
+    assert.deepStrictEqual([kaw({ setup: { choices: { address: 'any' } } }), kaw({ setup: { choices: { address: 'tied' } } }), kaw({ setup: { choices: {} } }), kaw({})],
+      ['open to any address', 'tied to one or more addresses', 'tied to one or more addresses, until step 2 says otherwise', 'tied to one or more addresses, until step 2 says otherwise'], 'in step 2\'s own words, and tied until it says otherwise');
     // and the kind of key is the one the key store signs with: a secret key, HMAC
     assert.ok(/createHmac\('sha256', secret\)/.test(fs.readFileSync(path.join(__dirname, '..', 'engine', 'keystore.js'), 'utf8')), 'the key store no longer signs with a secret key, so step 2 asks for the wrong kind');
   },
@@ -322,7 +331,7 @@ module.exports = {
     const route = server.slice(server.indexOf("app.post('/api/account/trading/:id/keys'"), server.indexOf('\n});\n', server.indexOf("app.post('/api/account/trading/:id/keys'")));
     const branch = route.slice(route.indexOf('if (b.check === true) {'), route.indexOf('// ONLY LOCKED'));
     assert.ok(branch.length > 100 && route.indexOf('if (b.check === true) {') < route.indexOf('// ONLY LOCKED'), 'the question is answered before the locked-only rule');
-    assert.ok(/link\.call\(target, 'POST', `\/keys\/\$\{encodeURIComponent\(id\)\}\/check`, \{\}, 15000\)/.test(branch) && !/b\.(locked|apiKey|secret)/.test(branch), 'nothing travels but the question');
+    assert.ok(/link\.call\(target, 'POST', `\/keys\/\$\{encodeURIComponent\(id\)\}\/check`, \{ anyAddress \}, 15000\)/.test(branch) && !/b\.(locked|apiKey|secret|anyAddress)/.test(branch), 'nothing travels but the question and step 2\'s choice');
     assert.ok(/res\.status\(409\)\.json\(\{ error: 'this platform\\'s release cannot check kept keys: bring it up to date with a new install command \(Compute tab, Set up a trading platform, step 2\)' \}\)/.test(branch), 'a platform too old to know the question is said to need updating');
     assert.ok(/refused: typeof j\.refused === 'string' \? j\.refused : null, why: j\.why \|\| null/.test(branch), 'the answer carries the exchange\'s words and nothing else');
     // and the service tells the page what each platform last heard
@@ -363,7 +372,7 @@ module.exports = {
     assert.ok(/querySelectorAll\('\[data-as-fieldsave\]'\)/.test(src) && /'\/field', \{ step, field, value: box\.value \}/.test(src), 'the save sends the box to the service');
     assert.ok(/if \(req\.params\.what === 'field'\) return res\.json\(\{ ok: true, setup: as\.setField\(/.test(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8')), 'the service takes it');
     assert.ok(/'<span class="note">sub-account: ' \+ esc\(a\.setup\.fields\.subIds\) \+ '<\/span>'/.test(src), 'the account\'s card shows what the exchange calls the sub-account');
-    assert.ok(!/tied to one address/.test(src) && (src.match(/tied to one or more addresses/g) || []).length === 3, 'the key line, the kept message and the check\'s answer say one or more addresses');
+    assert.ok(!/tied to one address/.test(src) && (src.match(/tied to one or more addresses/g) || []).length === 5, 'the key line, the kept message, the check\'s answer and step 2\'s choice on the key form say one or more addresses');
     // WHAT THE SYSTEM SEES FOR ITSELF (3.275.0) is said on the step, met or not
     const seen = { choices: { kind: 'sub', address: 'tied' }, ticks: {}, fields: {}, steps: t.steps.map((st, i) => ({ open: i === 2, done: false, said: i === 2 ? [{ ok: true, text: 'the keys are on box-1' }] : i === 3 ? [{ ok: false, text: 'x' }] : [] })) };
     const seenHtml = draw('as', seen, t, null);

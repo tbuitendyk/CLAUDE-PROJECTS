@@ -255,7 +255,7 @@ function theKeysPassThroughThisMachineAndAreNeverKeptOrShown() {
   // LOCKED IN THE BROWSER (3.266.0): only the locked form leaves the page, and only the locked form passes this machine
   assert(/if \(b\.remove !== true && \(b\.apiKey !== undefined \|\| b\.secret !== undefined\)\) return res\.status\(400\)/.test(route), 'a pair that arrives readable is refused and goes nowhere');
   assert(/const locked = await kl\.lockKeys\(st\.k\.lock\.publicKey, acct, apiKey, secret\);/.test(page), 'the keys are locked on the page, with each platform\'s own lock');
-  assert(/postJson\('api\/account\/trading\/' \+ encodeURIComponent\(acct\) \+ '\/keys', \{ engine: g\.id, locked, anyAddress \}\)/.test(page), 'what is sent is the locked form and the tick, nothing else');
+  assert(/postJson\('api\/account\/trading\/' \+ encodeURIComponent\(acct\) \+ '\/keys', \{ engine: g\.id, locked \}\)/.test(page), 'what is sent is the locked form, nothing else: where it may trade from is the account\'s step 2, read by the service');
   assert(!/postJson\([^)]*\b(apiKey|secret)\b/.test(page), 'no request ever carries a readable half');
   assert(!/apiKey: key\.value|secret: sec\.value/.test(page), 'the page never sends a readable pair');
   // the fingerprint on screen is worked out in the browser from the public half the keys are locked with

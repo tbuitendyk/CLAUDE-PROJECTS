@@ -300,10 +300,22 @@ async function loadAccount() {
 // are there, and when they were entered (item 7 of the read-back).
 // ONE PLATFORM'S STANDING FOR ONE ACCOUNT: what it says of the account's keys, and whether keys
 // can be locked for it -- asked of every platform alike, however many there are
+// COPY A COMMAND (3.280.0, owner: "put the same button under the fingerprint code boxes"): one press
+// for every command box on this page -- the install command and each machine's fingerprint command
+async function copyCommand(button, box) {
+  if (!box) return;
+  try { await navigator.clipboard.writeText(box.value); } catch (_) { box.select(); try { document.execCommand('copy'); } catch (__) { /* selected for a manual copy */ } }
+  button.textContent = 'Copied';
+}
 function keyStanding(acctId, g) {
   const k = (aTr.keys || {})[g.id] || { answers: false, why: 'not asked' };
   const mine = k.answers ? (k.keys || []).find((x) => x.account === acctId && x.present) || null : null;
   return { k, mine, answers: !!k.answers, lockable: !!(k.answers && k.lock && k.lockHere) };
+}
+// step 2's choice of where the account's key may trade from, in the words step 2 offers it
+function keyAddressWords(a) {
+  const c = ((a && a.setup && a.setup.choices) || {}).address;
+  return c === 'any' ? 'open to any address' : c === 'tied' ? 'tied to one or more addresses' : 'tied to one or more addresses, until step 2 says otherwise';
 }
 const keyDate = (m) => esc(String((m && m.addedAt) || '').slice(0, 16).replace('T', ' ')) + ' UTC';
 const keyTicked = (id) => (id in aTrKeysTicks ? aTrKeysTicks[id] : true);
@@ -316,7 +328,7 @@ function tradingKeysLine(a) {
       ? '<span class="neg">cannot tell</span> <span class="muted">(' + esc(s.k.why) + ')</span>'
       : s.mine
         ? '<span class="pos">present</span> <span class="muted">entered ' + keyDate(s.mine)
-          + (s.mine.tied === true ? ' · tied to one or more addresses' : s.mine.tied === false ? ' · open to any address, as ticked when they were sent' : '') + '</span>'
+          + (s.mine.tied === true ? ' · tied to one or more addresses' : s.mine.tied === false ? ' · open to any address, as step 2 allows' : '') + '</span>'
           // WHAT THE EXCHANGE LAST SAID OF THEM (3.279.0): refused in its words, or not answered yet
           + (s.mine.refused ? ' <span class="neg">refused on the last check</span> <span class="muted">(' + esc(s.mine.refused) + ')</span>'
             : s.mine.tied === null ? ' <span class="warn">not checked with the exchange yet</span>' : '')
@@ -332,10 +344,13 @@ function keySendForm(a) {
   return '<div class="row" style="align-items:flex-end; margin-top:.5rem">'
     + '<label class="f" title="the public half of the key, as the exchange shows it when the key is made">API key<input id="takKey" type="password" autocomplete="off" spellcheck="false" style="width:24rem"></label>'
     + '<label class="f" title="the secret half, shown by the exchange once, when the key is made">secret key<input id="takSec" type="password" autocomplete="off" spellcheck="false" style="width:24rem"></label>'
-    + '<label class="c"><input type="checkbox" id="takAny"> these keys may trade from any address</label>'
     + '</div>'
+    // WHERE IT MAY TRADE FROM IS CHOSEN IN ONE PLACE (3.280.0): step 2 of the account's checklist,
+    // shown here and sent with the keys by the service -- the form has no tick of its own
+    + '<div class="row" style="align-items:baseline; margin-top:.4rem"><span class="k">Where it may trade from</span> <span>' + esc(keyAddressWords(a)) + '</span>'
+    + '<span class="note">as step 2 of this account&#39;s checklist says; it goes with the keys, and with every Check the keys again</span></div>'
     + '<p class="note" style="margin-top:.4rem">Make the key on the exchange trade-only, with withdrawals off. Tying it to the address of the platform&#39;s machine is safer; '
-    + 'if you leave it open to any address, tick the box, and what such a key may do is your exchange&#39;s rule. '
+    + 'what a key open to any address may do is your exchange&#39;s rule. '
     + 'The keys are locked in this browser with each platform&#39;s own lock before they leave it, so this system passes them on without being able to read them.</p>'
     + '<div class="k" style="margin-top:.45rem">send them to</div>'
     + engines.map((g) => {
@@ -445,7 +460,8 @@ function asLocksHtml() {
     return '<div class="row" style="align-items:baseline; margin-top:.5rem"><span class="k">' + esc(g.name) + '</span><span class="note">the fingerprint of its lock, worked out in this browser:</span> ' + fp + '</div>'
       + (cmd
         ? '<div class="row" style="margin-top:.2rem"><span class="note">on that machine, this prints its own copy' + (g.system === 'windows' ? ' — in PowerShell, as administrator' : '') + ':</span></div>'
-          + '<textarea readonly rows="1" spellcheck="false" style="' + box + '">' + esc(cmd(g.id)) + '</textarea>'
+          + '<textarea data-lockcmd="' + esc(g.id) + '" readonly rows="1" spellcheck="false" style="' + box + '">' + esc(cmd(g.id)) + '</textarea>'
+          + '<div class="row" style="margin-top:.3rem"><button data-lockcopy="' + esc(g.id) + '">Copy the command</button></div>'
         : '<div class="row" style="margin-top:.2rem"><span class="note">this system does not know that machine&#39;s operating system yet, so it cannot say how to print its copy there</span></div>');
   }).join('');
 }
@@ -473,6 +489,8 @@ function asHtml() {
     + (aAsOpen ? '<div class="tile" style="margin:.5rem 0 .8rem">' + body + '</div>' : '');
 }
 function wireAs(redraw) {
+  // step 3's fingerprint commands, each copied by its own press
+  document.querySelectorAll('[data-lockcopy]').forEach((b) => { b.onclick = () => copyCommand(b, [...document.querySelectorAll('[data-lockcmd]')].find((t) => t.dataset.lockcmd === b.dataset.lockcopy)); });
   const tg = $('#asToggle');
   if (tg) tg.onclick = () => { aAsOpen = !aAsOpen; try { localStorage.setItem('setup-as-open', aAsOpen ? '1' : '0'); } catch (_) { /* not remembered */ } drawAccount(); };
   const nm = $('#asId');
@@ -557,7 +575,7 @@ function wireTradingAccounts() {
           lines.push(esc(g.name) + ': ' + (!got.checked
             ? '<span class="warn">the exchange could not be asked — ' + esc(got.why || 'no reason given') + '</span>'
             : got.passed
-              ? '<span class="pos">checked — the exchange says the key can trade and borrow, cannot move money, and ' + (got.tied ? 'is tied to one or more addresses' : 'is open to any address, as ticked') + '</span>'
+              ? '<span class="pos">checked — the exchange says the key can trade and borrow, cannot move money, and ' + (got.tied ? 'is tied to one or more addresses' : 'is open to any address, as step 2 allows') + '</span>'
               : '<span class="neg">refused — ' + esc(got.why || got.refused || 'the exchange gave no words') + '</span>'));
         } catch (e) { lines.push(esc(g.name) + ': <span class="neg">not checked — ' + esc(e.message) + '</span>'); }
       }
@@ -587,7 +605,6 @@ function wireTradingAccounts() {
     // THE BOXES ARE EMPTIED THE MOMENT THE KEYS ARE READ, before anything is sent, taken or not
     key.value = ''; sec.value = '';
     if (!apiKey || !secret) { msg.innerHTML = '<span class="neg">not sent — both halves of the key are needed</span>'; return; }
-    const anyAddress = $('#takAny').checked;
     send.disabled = true; msg.innerHTML = 'locking and sending…';
     const lines = [];
     let kl = null;
@@ -597,9 +614,9 @@ function wireTradingAccounts() {
       try {
         // LOCKED HERE, SEPARATELY FOR EACH PLATFORM, WITH ITS OWN LOCK: only the locked form leaves this page
         const locked = await kl.lockKeys(st.k.lock.publicKey, acct, apiKey, secret);
-        const got = await postJson('api/account/trading/' + encodeURIComponent(acct) + '/keys', { engine: g.id, locked, anyAddress });
+        const got = await postJson('api/account/trading/' + encodeURIComponent(acct) + '/keys', { engine: g.id, locked });
         lines.push(esc(g.name) + ': ' + (got.checked
-          ? '<span class="pos">kept — the exchange says the key can trade and borrow, cannot move money, and ' + (got.tied ? 'is tied to one or more addresses' : 'is open to any address, as you ticked') + '</span>'
+          ? '<span class="pos">kept — the exchange says the key can trade and borrow, cannot move money, and ' + (got.tied ? 'is tied to one or more addresses' : 'is open to any address, as step 2 allows') + '</span>'
           : '<span class="warn">kept, but not checked — ' + esc(got.why || 'the platform could not ask the exchange') + '</span>'));
       } catch (e) { lines.push(esc(g.name) + ': <span class="neg">not stored — ' + esc(e.message) + '</span>'); }
     }
@@ -1114,11 +1131,7 @@ function wireEs() {
     await esReload();
   };
   const cc = $('#esCmdCopy');
-  if (cc) cc.onclick = async () => {
-    const t = $('#esCmd');
-    try { await navigator.clipboard.writeText(t.value); } catch (_) { t.select(); try { document.execCommand('copy'); } catch (__) { /* selected for a manual copy */ } }
-    cc.textContent = 'Copied';
-  };
+  if (cc) cc.onclick = () => copyCommand(cc, $('#esCmd'));
   const nt = $('#esNewToggle');
   if (nt) nt.onclick = () => { cEsNew = !cEsNew; drawCompute(); };
   const fs = $('#esShortSave');

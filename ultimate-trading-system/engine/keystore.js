@@ -104,12 +104,12 @@ class KeyStore {
 
   // THE EXCHANGE'S LATEST WORD ON KEPT KEYS (3.279.0): written beside them when they are asked again --
   // tied or open when it answered about what the key may do, refused (in its words) when it refused
-  // the key -- and nothing else about them changes
-  mark(account, { tied = null, refused = null } = {}) {
+  // the key -- with the owner's choice of address it was asked with (3.280.0); the keys never change
+  mark(account, { tied = null, refused = null, anyAddress = null } = {}) {
     const f = this.fileOf(account);
     const r = this.read(account);
     if (!r) { const e = new Error(`no keys are stored for the trading account ${account}`); e.code = 'NO_KEYS'; throw e; }
-    const rec = { ...r, tied: typeof tied === 'boolean' ? tied : null, refused: typeof refused === 'string' && refused ? refused.slice(0, 300) : null, checkedAt: new Date(this.now()).toISOString() };
+    const rec = { ...r, anyAddress: typeof anyAddress === 'boolean' ? anyAddress : r.anyAddress === true, tied: typeof tied === 'boolean' ? tied : null, refused: typeof refused === 'string' && refused ? refused.slice(0, 300) : null, checkedAt: new Date(this.now()).toISOString() };
     const tmp = `${f}.tmp${process.pid}`;
     fs.writeFileSync(tmp, JSON.stringify(rec), { mode: 0o600 });
     fs.renameSync(tmp, f);
