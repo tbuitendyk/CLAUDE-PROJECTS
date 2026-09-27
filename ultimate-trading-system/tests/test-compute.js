@@ -27,6 +27,38 @@ function withSettings(fn) {
 }
 
 module.exports = {
+  // THE THREE PARTS CAN BE TUCKED AWAY, AND THE DECISION ENGINE HAS A SECTION (3.278.0, owner
+  // 2026-09-27: "rename the item 'trade decision engine' to simply 'decision engine'. put Expand
+  // and Hide buttons to the left of the names ... so that those sections can be tucked-away. also
+  // put in the stub section for the decision engine")
+  theThreePartsCanBeTuckedAwayAndTheDecisionEngineHasASection() {
+    withSettings((load) => {
+      assert.deepStrictEqual(load().config().rolesOffered.map((r) => r.label), ['sweep processor', 'decision engine'], 'the row says decision engine');
+    });
+    const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
+    // the button, drawn from whether its part is tucked away
+    const btnSrc = page.slice(page.indexOf('const awayBtn = '), page.indexOf('\n', page.indexOf('const awayBtn = ')));
+    const btn = (away) => new Function('cAway', `${btnSrc}; return awayBtn;`)(away);
+    assert.ok(/<button data-away="sweep" [^>]*>Hide<\/button>/.test(btn({})('sweep')) && /<button data-away="sweep" [^>]*>Expand<\/button>/.test(btn({ sweep: true })('sweep')), 'Hide while its section shows, Expand once it is tucked away');
+    assert.ok(/min-width:5\.2rem/.test(btnSrc), 'Hide and Expand take the same room, so the three names stay in line');
+    // to the left of each of the three names in Where each part runs
+    const draw = page.slice(page.indexOf('function drawCompute() {'), page.indexOf('// wiring', page.indexOf('function drawCompute() {')));
+    assert.ok(/\+ awayBtn\(r\.key\)\n      \+ '<label class="c"><b style="min-width:11rem">' \+ esc\(r\.label\) \+ '<\/b>/.test(draw), 'each role row has the button before its name');
+    assert.ok(/min-height:1\.9rem">' \+ awayBtn\('platform'\)\n    \+ '<span style="display:flex; align-items:baseline; gap:\.35rem; flex:1; min-width:16rem; flex-wrap:wrap"><b style="min-width:11rem; font-size:\.8rem">trading platform<\/b>'/.test(draw), 'and so has the trading platform row, its name and note spaced as the others');
+    // each section tucked away by its own button, in the order of the rows
+    const at = (x) => draw.indexOf(x);
+    assert.ok(at("(cAway.sweep ? '' : sweepProcessorHtml())") > at('Where each part runs</h3>') && at("(cAway.decisions ? '' : decisionEngineHtml())") > at("(cAway.sweep ? '' : sweepProcessorHtml())")
+      && at("(cAway.platform ? '' : engineHtml())") > at("(cAway.decisions ? '' : decisionEngineHtml())"), 'The sweep processor, The decision engine and The trading platform, each tucked away by its own button, in the rows\' order');
+    assert.ok(/cAway\[b\.dataset\.away\] = !cAway\[b\.dataset\.away\]; try \{ localStorage\.setItem\('setup-compute-away', JSON\.stringify\(cAway\)\); \}/.test(page), 'the button turns its part over and this browser remembers it');
+    // THE DECISION ENGINE'S SECTION says what it does, and claims nothing it has not got
+    const de = page.slice(page.indexOf('function decisionEngineHtml() {'), page.indexOf('function wireSweepProcessor() {'));
+    for (const w of ['<h3 style="margin-top:0">The decision engine</h3>', 'makes each trading setup&#39;s call', 'Every minute, for every setup on Paper Books or Live Trading that trades through a trading platform',
+      'writes the call down before anything is sent', 'hands the trading platform any call that has a size, as a plan', 'which for now can only be this machine', 'It has no settings of its own yet']) assert.ok(de.includes(w), `The decision engine says ${w}`);
+    // the words held to what the decision engine does
+    const prod = fs.readFileSync(path.join(__dirname, '..', 'lib', 'live', 'engineproduce.js'), 'utf8');
+    assert.ok(/runs this as a child of the web service each minute/.test(prod) && /the decision is written down \(data\/live\/decisions\/<setup>\.jsonl\) BEFORE\n\/\/      anything is sent/.test(prod), 'the decision engine no longer works as its section says: write it again');
+  },
+
   // The page fills its dropdowns from this, and holds no list of its own
   // (RULE FIVE). Today that list is one entry long, and that is the truth.
   theRolesAndPlatformsComeFromTheServiceNotThePage() {

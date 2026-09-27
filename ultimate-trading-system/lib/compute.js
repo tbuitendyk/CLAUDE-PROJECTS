@@ -41,7 +41,7 @@ const LOCAL = 'this-machine';
 // per trading setup on the Trade page (executionTargetRef) — see the header.
 const ROLES = [
   { key: 'sweep', label: 'sweep processor' },
-  { key: 'decisions', label: 'trade decision engine' },
+  { key: 'decisions', label: 'decision engine' },   // "rename ... to simply 'decision engine'" (owner, 2026-09-27)
 ];
 
 function platforms() {

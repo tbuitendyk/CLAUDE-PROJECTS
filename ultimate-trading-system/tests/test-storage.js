@@ -207,9 +207,9 @@ module.exports = {
   theSweepProcessorStandsUnderWhereEachPartRunsAndKeepsItsTicks() {
     const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
     const draw = page.slice(page.indexOf('function drawCompute() {'), page.indexOf('// wiring', page.indexOf('function drawCompute() {')));
-    const at = draw.indexOf('+ sweepProcessorHtml()');
+    const at = draw.indexOf('sweepProcessorHtml()');
     const where = draw.indexOf('<h3 style="margin-top:0">Where each part runs</h3>');
-    const next = draw.indexOf('+ engineHtml()');
+    const next = draw.indexOf('engineHtml()', at);
     assert.ok(where > 0 && at > where, 'The sweep processor stands above Where each part runs');
     assert.ok(next > at && !/<div class="panel">/.test(draw.slice(draw.indexOf("+ '</div>'", draw.indexOf('trading platform</b>', where)), at)),
       'The sweep processor is not the section directly under Where each part runs');

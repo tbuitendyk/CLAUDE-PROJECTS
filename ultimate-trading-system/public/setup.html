@@ -208,6 +208,11 @@ let cEngEdit = null;         // the engine record being changed in the form, or 
 let cEngTyped = {};          // what is typed in the form, kept across the thirty-second redraw
 let cSvcMsg = {};            // what the last press of each button on this tab answered, beside it, kept across the redraw
 let cStore = null;           // what Construct keeps on this machine, from the trading service (3.272.0)
+// WHICH PARTS ARE TUCKED AWAY (3.278.0, owner 2026-09-27: "put Expand and Hide buttons to the left
+// of the names ... so that those sections can be tucked-away"): sweep, decisions, platform --
+// remembered in this browser only, like the other open-and-shut choices on this page
+let cAway = (() => { try { return JSON.parse(localStorage.getItem('setup-compute-away') || '{}') || {}; } catch (_) { return {}; } })();
+const awayBtn = (key) => '<button data-away="' + key + '" style="min-width:5.2rem" title="' + (cAway[key] ? 'brings its section back, below' : 'tucks its section away, below') + '">' + (cAway[key] ? 'Expand' : 'Hide') + '</button>';
 let cErrStore = null;
 let cReclaimTicks = {};      // the reclaim boxes as ticked, kept across the thirty-second redraw
 let cEs = null;              // the engine setups: the template and one checklist per engine (owner, 2026-09-25)
@@ -722,6 +727,17 @@ function sweepProcessorHtml() {
     + '<span class="note">' + (cSvcMsg.reclaim || (ticked.length ? space(ticked.reduce((n, k) => n + k.bytes, 0)) + ' ticked' : 'nothing ticked')) + '</span></div>'
     + '</div>';
 }
+// THE DECISION ENGINE (3.278.0, owner 2026-09-27: "put in the stub section for the decision
+// engine section with a message to effect of what it's about"): what it does, said plainly, as
+// lib/live/engineproduce.js does it; nothing of its own to set yet
+function decisionEngineHtml() {
+  return '<div class="panel"><h3 style="margin-top:0">The decision engine</h3>'
+    + '<p class="note" style="max-width:60rem; margin:.2rem 0">The decision engine makes each trading setup&#39;s call. Every minute, for every setup on Paper Books or Live Trading that trades through a trading platform, '
+    + 'it brings that coin&#39;s prices up to the last closed hour and works out the call for the newest period, as the setup&#39;s greenlit configuration says. '
+    + 'It writes the call down before anything is sent, then hands the trading platform any call that has a size, as a plan.</p>'
+    + '<p class="note" style="max-width:60rem; margin:.4rem 0 0">It runs on the machine chosen for it in Where each part runs, which for now can only be this machine. It has no settings of its own yet.</p>'
+    + '</div>';
+}
 function wireSweepProcessor() {
   document.querySelectorAll('[data-reclaim]').forEach((b) => {
     b.onchange = () => { cReclaimTicks[b.dataset.reclaim] = b.checked; cSvcMsg.reclaim = ''; drawCompute(); };
@@ -1151,6 +1167,7 @@ function drawCompute() {
     const cur = cCfg.roles[r.key] || {};
     const opts = cCfg.platforms.map((p) => '<option value="' + esc(p.id) + '"' + (cur.inForce === p.id ? ' selected' : '') + '>' + esc(p.label) + '</option>').join('');
     return '<div class="row" style="margin:.3rem 0; min-height:1.9rem">'
+      + awayBtn(r.key)
       + '<label class="c"><b style="min-width:11rem">' + esc(r.label) + '</b><span class="muted">runs on</span>'
       + '<select data-role="' + esc(r.key) + '">' + opts + '</select></label>'
       + (cCfg.platforms.length === 1 ? '<span class="note" style="flex:1; min-width:16rem">only this machine exists to point at yet — more appear here when they are registered</span>' : '')
@@ -1169,19 +1186,22 @@ function drawCompute() {
     // ONE ROW SHAPE FOR ALL THREE (owner, 2026-09-25): the same height, the
     // same letters and the note starting where "runs on" starts
     // (baseline, as every row of mixed-size text on this page; the line centred in the row's height)
-    + '<div class="row" style="align-items:baseline; align-content:center; margin:.3rem 0; min-height:1.9rem; gap:.35rem"><b style="min-width:11rem; font-size:.8rem">trading platform</b>'
+    + '<div class="row" style="align-items:baseline; align-content:center; margin:.3rem 0; min-height:1.9rem">' + awayBtn('platform')
+    + '<span style="display:flex; align-items:baseline; gap:.35rem; flex:1; min-width:16rem; flex-wrap:wrap"><b style="min-width:11rem; font-size:.8rem">trading platform</b>'
     // SAID AS IT IS (owner, 2026-09-26: "the text shouldn't say 'Nothing about it is set here.' when
     // below in The trading platform section that's exactly what we do")
     + '<span class="note" style="flex:1; min-width:16rem">set up in The trading platform section below. Each trading setup names the one it runs on '
-    + '(Execution target, on the Trade tab), so two setups can trade in two places; a new setup starts on the one ticked for new setups.</span></div>'
+    + '(Execution target, on the Trade tab), so two setups can trade in two places; a new setup starts on the one ticked for new setups.</span></span></div>'
     + '</div>'
 
     // DIRECTLY UNDER WHERE EACH PART RUNS, never above it (3.273.1, owner
     // 2026-09-27: "The sweep processor section does not go above the page
-    // header section that says Where each part runs")
-    + sweepProcessorHtml()
-
-    + engineHtml()
+    // header section that says Where each part runs"); then the decision
+    // engine and the trading platform, in the order of the rows above; each
+    // tucked away by the button beside its name there (3.278.0)
+    + (cAway.sweep ? '' : sweepProcessorHtml())
+    + (cAway.decisions ? '' : decisionEngineHtml())
+    + (cAway.platform ? '' : engineHtml())
 
     + '<div class="panel"><h3 style="margin-top:0">What it costs to trade</h3>'
     + (cCfg && cCfg.fee ? '<div class="row" style="align-items:baseline"><span class="k">in force</span>'
@@ -1223,6 +1243,9 @@ function drawCompute() {
     + '</div>';
 
   // wiring
+  document.querySelectorAll('[data-away]').forEach((b) => {
+    b.onclick = () => { cAway[b.dataset.away] = !cAway[b.dataset.away]; try { localStorage.setItem('setup-compute-away', JSON.stringify(cAway)); } catch (_) { /* not remembered */ } drawCompute(); };
+  });
   wireEngine();
   wireSweepProcessor();
   const now = $('#cNow');
