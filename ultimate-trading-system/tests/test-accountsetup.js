@@ -293,6 +293,42 @@ module.exports = {
     assert.ok(/system: \(\{ linux: 'linux', darwin: 'mac', win32: 'windows' \}\)\[\(t\.machine \|\| \{\}\)\.platform\] \|\| null/.test(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8')), 'the Account tab is told each platform\'s system');
   },
 
+  // CHECK THE KEYS AGAIN (3.279.0, owner 2026-09-27: "make a button to recheck the stored keys"):
+  // the account's record asks every platform that keeps its keys, one line of answer each; the
+  // service passes only the question; a platform too old to know it is said to need updating;
+  // each platform's keys line says what the exchange last said
+  checkTheKeysAgainAsksEveryPlatformThatKeepsThem() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
+    const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+    const esc = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    const cardSrc = src.slice(src.indexOf('function keyStanding(acctId, g) {'), src.indexOf('function tradingAccountsHtml() {'));
+    const card = (aTr) => new Function('esc', 'aTr', 'aTrKeys', 'aTrKeysMode', 'aTrKeysTicks', 'aTrKeysOut', `${cardSrc}; return tradingAccountCard;`)(esc, aTr, null, null, {}, {})({ id: 'sub-1', exchange: 'binance', note: '' });
+    const E = (id, name) => ({ id, name, system: 'linux' });
+    const kept = (extra) => ({ answers: true, keys: [{ account: 'sub-1', present: true, addedAt: '2026-09-27T01:00:00Z', tied: null, ...extra }], lock: { publicKey: 'p' }, lockHere: 'fp' });
+    const why = 'the exchange refused the key: Binance answered 400 (-2015): Invalid API-key, IP, or permissions for action.';
+    const html = card({ offered: [], engines: [E('box-1', 'Platform One'), E('box-2', 'Platform Two'), E('box-3', 'Platform Three')],
+      keys: { 'box-1': kept({ tied: true, checkedAt: '2026-09-27T02:00:00Z' }), 'box-2': kept({ refused: why }), 'box-3': kept({}) } });
+    assert.ok(/<span class="k">keys on Platform One<\/span> <span class="pos">present<\/span> <span class="muted">entered [^<]* · tied to one or more addresses<\/span><\/div>/.test(html), 'a key the exchange answered for says only what it said');
+    assert.ok(html.includes('<span class="k">keys on Platform Two</span> ') && html.includes(`<span class="neg">refused on the last check</span> <span class="muted">(${esc(why)})</span>`), 'a refused key says so, in the exchange\'s words');
+    assert.ok(/<span class="k">keys on Platform Three<\/span> <span class="pos">present<\/span> <span class="muted">entered [^<]*<\/span> <span class="warn">not checked with the exchange yet<\/span>/.test(html), 'one never answered for says so');
+    assert.strictEqual((html.match(/data-tacheck=/g) || []).length, 1, 'one button for the account, however many platforms keep its keys');
+    // the press asks every platform that keeps the keys, and says each answer on a line of its own
+    const wire = src.slice(src.indexOf("document.querySelectorAll('[data-tacheck]')"), src.indexOf("document.querySelectorAll('[data-tadel]')"));
+    assert.ok(/const holders = \(aTr\.engines \|\| \[\]\)\.filter\(\(g\) => keyStanding\(acct, g\)\.mine\);/.test(wire) && /for \(const g of holders\) \{/.test(wire), 'every platform that keeps them is asked');
+    assert.ok(/await postJson\('api\/account\/trading\/' \+ encodeURIComponent\(acct\) \+ '\/keys', \{ engine: g\.id, check: true \}\)/.test(wire), 'and only the question is sent');
+    assert.ok(/'<span class="warn">the exchange could not be asked — '/.test(wire) && /'<span class="pos">checked — the exchange says the key can trade and borrow, cannot move money, and '/.test(wire) && /'<span class="neg">refused — '/.test(wire) && /: <span class="neg">not checked — '/.test(wire), 'each of the four outcomes is said');
+    assert.ok(/aTrKeysOut\[acct\] = lines\.join\('<br>'\);\n      await redraw\(\);/.test(wire), 'the answers stay under the account, one line each, after the redraw');
+    // the service passes the question through before anything about locked keys, and names an old platform
+    const route = server.slice(server.indexOf("app.post('/api/account/trading/:id/keys'"), server.indexOf('\n});\n', server.indexOf("app.post('/api/account/trading/:id/keys'")));
+    const branch = route.slice(route.indexOf('if (b.check === true) {'), route.indexOf('// ONLY LOCKED'));
+    assert.ok(branch.length > 100 && route.indexOf('if (b.check === true) {') < route.indexOf('// ONLY LOCKED'), 'the question is answered before the locked-only rule');
+    assert.ok(/link\.call\(target, 'POST', `\/keys\/\$\{encodeURIComponent\(id\)\}\/check`, \{\}, 15000\)/.test(branch) && !/b\.(locked|apiKey|secret)/.test(branch), 'nothing travels but the question');
+    assert.ok(/res\.status\(409\)\.json\(\{ error: 'this platform\\'s release cannot check kept keys: bring it up to date with a new install command \(Compute tab, Set up a trading platform, step 2\)' \}\)/.test(branch), 'a platform too old to know the question is said to need updating');
+    assert.ok(/refused: typeof j\.refused === 'string' \? j\.refused : null, why: j\.why \|\| null/.test(branch), 'the answer carries the exchange\'s words and nothing else');
+    // and the service tells the page what each platform last heard
+    assert.ok(/checkedAt: k\.checkedAt \|\| null, refused: typeof k\.refused === 'string' \? k\.refused : null/.test(server) && /refusedOn: holding\(\(k\) => k\.present && !!k\.refused\)/.test(server), 'the keys list and the checklist hear of a refusal');
+  },
+
   // THE ACCOUNT TAB DRAWS IT: behind a button of its own at the top of Trading accounts,
   // with the same drawing as a platform's checklist, and nothing that asks for a key
   theAccountTabDrawsItWithThePlatformsChecklistCode() {
