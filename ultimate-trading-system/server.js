@@ -254,9 +254,24 @@ app.get('/api/account/trading', async (req, res) => {
         : { answers: false, why: r.why || (r.json && r.json.error) || `the platform answered ${r.status}` };
     }));
     const as = require('./lib/accountsetup');
+    // WHAT THE CHECKLIST CAN SEE FOR ITSELF (3.275.0): which platforms hold each
+    // account's keys and whether the exchange answered them, the setups that name
+    // it and the ones on real money, and the platforms with real orders switched on
+    const setupsNow = require('./lib/live/setups').listSetups();
+    const nameOf = (t) => t.name || t.id;
+    const realOn = engines.filter((t) => { const h = link.mirrorFor(t).lastHealth; return !!(h && Date.now() - Date.parse(h.at) < 60000 && h.health && h.health.realOrders === 'on'); }).map(nameOf);
+    const factsFor = (acctId) => {
+      const holding = (pred) => engines.filter((t) => keys[t.id].answers && keys[t.id].keys.some((k) => k.account === acctId && pred(k))).map(nameOf);
+      const mine = setupsNow.filter((x) => x.keyRef === acctId && x.state !== 'retired');
+      return {
+        platforms: engines.map(nameOf), unanswered: engines.filter((t) => !keys[t.id].answers).map(nameOf),
+        keysOn: holding((k) => k.present), checkedOn: holding((k) => k.present && typeof k.tied === 'boolean'),
+        named: mine.length, live: mine.filter((x) => x.state === 'live').length, realOn,
+      };
+    };
     res.json({
       // each account with its checklist and where every step stands (3.268.0)
-      accounts: acc.tradingAccounts().map(as.withSteps), offered: acc.EXCHANGES, setupTemplate: as.TEMPLATE,
+      accounts: acc.tradingAccounts().map((a) => as.withSteps(a, factsFor(a.id))), offered: acc.EXCHANGES, setupTemplate: as.TEMPLATE,
       engines: engines.map((t) => ({ id: t.id, name: t.name, isDefault: !!t.isDefault })), keys,
     });
   } catch (err) { res.status(500).json({ error: err.message }); }

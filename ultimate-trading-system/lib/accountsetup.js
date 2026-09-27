@@ -103,20 +103,116 @@ const TEMPLATE = {
         { id: 'where', label: 'Where it may trade from is set on the exchange as chosen above', about: 'address' },
       ],
     },
-    // the road ahead, written with the owner as the account is set up
-    { id: 'keys', title: 'The keys go to their platform', writing: true },
-    { id: 'reads', title: 'The platform reads the account', writing: true },
-    { id: 'setup', title: 'A setup trades from it', writing: true },
-    { id: 'money', title: 'Real money on', writing: true },
+    // STEPS 3 TO 6 (3.275.0, owner 2026-09-27: "just write the remaining steps").
+    // Each is done by what this system can see for itself wherever it can see
+    // it (`needs`, answered by NEEDS below from what the trading platforms and
+    // the setups say), and by a tick only for what the owner alone can check.
+    {
+      id: 'keys',
+      title: 'The keys go to their platform',
+      guidance: [
+        { paras: [
+          'The keys are entered once, on this account\'s own record in this section, below the checklist: press Enter the keys there. They are locked in this browser with the trading platform\'s lock before they leave it, so this system passes them on without being able to read them, and the platform keeps them encrypted on its machine.',
+          'Before sending, compare the fingerprint of the platform\'s lock, shown beside the boxes, with the one the platform\'s install printed on its machine. They must be the same: a different one means the keys would be locked for another machine.',
+          'Paste the API key and the secret key exactly as the exchange showed them, and press Send the keys to the trading platform. The boxes are emptied the moment the keys are sent, whether they were kept or not.',
+        ] },
+        { when: { address: 'tied' }, heading: 'Tied to one or more addresses', paras: [
+          'Leave "these keys may trade from any address" unticked: the exchange already ties the key to the addresses you gave it.',
+        ] },
+        { when: { address: 'any' }, heading: 'Open to any address', paras: [
+          'Tick "these keys may trade from any address" before sending, as step 2 chose, or the platform will not keep them.',
+        ] },
+      ],
+      needs: ['keys'],
+      ticks: [
+        { id: 'fingerprint', label: 'The fingerprint of the platform\'s lock matched the one its machine printed' },
+      ],
+    },
+    {
+      id: 'reads',
+      title: 'The platform reads the account',
+      guidance: [
+        { paras: [
+          'When the keys arrive, the platform uses them to ask the exchange what the key may do, before it keeps them: whether it can trade, borrow on margin or move money, and whether it is tied to addresses. The exchange answering is this step: it shows the platform can reach this account with its keys.',
+          'After that, the platform reads the account only while a setup that names it is trading: the fee the exchange charges this account on the pair, and the hourly rate it would charge to borrow, each read at most once an hour and used in place of the setup\'s own figures. In this release it does not read how much is in the pot.',
+        ] },
+        { when: { margin: 'cross' }, heading: 'Cross margin', paras: [
+          'The borrowing rate the platform reads is the isolated rate for the coin: this release has no reading of the cross rate.',
+        ] },
+      ],
+      needs: ['checked'],
+    },
+    {
+      id: 'setup',
+      title: 'A setup trades from it',
+      guidance: [
+        { paras: [
+          'A setup trades from this account when its Sub-account key holds this account\'s name, exactly as this record is named. It is typed on the Trade tab, in the setup\'s Setup detail, and kept with Save.',
+          'On Paper Books the setup trades on paper, at this account\'s own fee and borrowing rate. On Live Trading a setup cannot be switched to real money without it.',
+        ] },
+        { when: { margin: 'cross' }, heading: 'Cross margin', paras: [
+          'Every setup that names this account shares its one pot: keep it to one setup, or to setups on one platform.',
+        ] },
+        { when: { margin: 'isolated' }, heading: 'Isolated margin', paras: [
+          'Setups on different coin pairs can share this account; two setups on the same pair need an account each.',
+        ] },
+      ],
+      needs: ['named'],
+    },
+    {
+      id: 'money',
+      title: 'Real money on',
+      guidance: [
+        { paras: [
+          'Real money is switched on one setup at a time: on Live Trading, press Activate real for its config on Greenlights. It is refused unless the setup names this account in its Sub-account key, and unless real orders are switched on on its trading platform.',
+          'In this release the trading platform places no real orders: it has no part that places them, and it starts with real orders off even when told to start with them on. Until a release that places them, this step cannot be done.',
+        ] },
+      ],
+      needs: ['live'],
+      ticks: [
+        { id: 'pot', label: 'The pot holds only what the setups trading from it may lose' },
+      ],
+    },
   ],
 };
+
+// WHAT THIS SYSTEM CAN SEE FOR ITSELF, step by step (3.275.0). `f` is what the
+// Account tab's reading gathered (server.js /api/account/trading): the platforms
+// on record, the ones that did not answer, the ones holding this account's keys
+// and the ones whose exchange answered about them, the setups that name this
+// account and the ones on real money, and the platforms with real orders on.
+// Without it -- an answer to a press, redrawn from the full reading straight
+// after -- nothing here claims to know.
+const namesOf = (l) => (l.length > 2 ? `${l.slice(0, -1).join(', ')} and ${l[l.length - 1]}` : l.join(' and '));
+const NEEDS = {
+  keys(f) {
+    if (f.keysOn.length) return { ok: true, text: `the keys are on ${namesOf(f.keysOn)}` };
+    if (!f.platforms.length) return { ok: false, text: 'there is no trading platform yet: one is set up on the Compute tab' };
+    return { ok: false, text: `the keys are not on any trading platform${f.unanswered.length ? ` that answered (${namesOf(f.unanswered)} did not)` : ''}: press Enter the keys on this account's record below` };
+  },
+  checked(f) {
+    if (f.checkedOn.length) return { ok: true, text: `the exchange answered ${namesOf(f.checkedOn)} about this key: it can trade and borrow on margin, and cannot move money` };
+    if (f.keysOn.length) return { ok: false, text: `the keys on ${namesOf(f.keysOn)} were kept without the exchange being asked: press Replace the keys on this account's record below and send them again` };
+    return { ok: false, text: 'the keys go to a trading platform first, at step 3' };
+  },
+  named(f) {
+    if (f.named) return { ok: true, text: `${f.named} setup${f.named === 1 ? '' : 's'} name${f.named === 1 ? 's' : ''} this account in Sub-account key` };
+    return { ok: false, text: `no setup names this account yet: type ${f.account} into Sub-account key on a setup's Setup detail, on the Trade tab, and press Save` };
+  },
+  live(f) {
+    if (f.live) return { ok: true, text: `${f.live} setup${f.live === 1 ? '' : 's'} trading from this account ${f.live === 1 ? 'is' : 'are'} on real money` };
+    if (!f.realOn.length) return { ok: false, text: `real orders are switched off on ${f.platforms.length ? namesOf(f.platforms) : 'every trading platform'}: this release of the platform places no real orders` };
+    return { ok: false, text: 'no setup trading from this account is on real money: press Activate real for it on Live Trading' };
+  },
+};
+const UNSEEN = { ok: false, text: 'not known here: the trading platforms and the setups were not asked' };
 
 // ---- WHERE A CHECKLIST STANDS (the same reading as a platform's) ----------------
 const matches = (when, choices) => Object.entries(when || {}).every(([k, v]) => (choices || {})[k] === v);
 function choicesAsked(step, choices) { return (step.choices || []).filter((c) => !c.when || matches(c.when, choices)); }
 function fieldsAsked(step, choices) { return (step.fields || []).filter((f) => !f.when || matches(f.when, choices)); }
 
-function stepsOf(setup) {
+function stepsOf(setup, facts = null) {
   const out = [];
   let before = true;
   for (const step of TEMPLATE.steps) {
@@ -127,10 +223,13 @@ function stepsOf(setup) {
     if (step.writing) missing.push('this step is still being written');
     for (const c of choicesAsked(step, choices)) if (!choices[c.id]) missing.push(`choose ${c.label.toLowerCase()}`);
     for (const f of fieldsAsked(step, choices)) if (!String(fields[f.id] || '').trim()) missing.push(`fill in "${f.label}"`);
+    // what this system sees for itself, said on the step whether it is met or not
+    const said = (step.needs || []).map((n) => (facts ? NEEDS[n](facts) : UNSEEN));
+    for (const x of said) if (!x.ok) missing.push(x.text);
     for (const t of step.ticks || []) if (ticks[t.id] !== true) missing.push(`tick "${t.label}"`);
     const open = before;
     const done = open && missing.length === 0;
-    out.push({ id: step.id, open, done, missing });
+    out.push({ id: step.id, open, done, missing, said });
     before = done;
   }
   return out;
@@ -139,11 +238,12 @@ function stepsOf(setup) {
 const bad = (m, status = 400) => { const e = new Error(m); e.status = status; throw e; };
 
 // what the page reads: the account, and its checklist with where each step stands
-function withSteps(acct) {
+function withSteps(acct, facts = null) {
   const s = acct.setup || null;
+  const f = facts ? { ...facts, account: acct.id } : null;
   return {
     id: acct.id, exchange: acct.exchange, note: acct.note || '', createdAt: acct.createdAt || null,
-    setup: s ? { choices: s.choices || {}, ticks: s.ticks || {}, fields: s.fields || {}, createdUtc: s.createdUtc, updatedUtc: s.updatedUtc, templateVersion: s.templateVersion, steps: stepsOf(s) } : null,
+    setup: s ? { choices: s.choices || {}, ticks: s.ticks || {}, fields: s.fields || {}, createdUtc: s.createdUtc, updatedUtc: s.updatedUtc, templateVersion: s.templateVersion, steps: stepsOf(s, f) } : null,
   };
 }
 function mine(id) {
@@ -242,4 +342,4 @@ function remove(id) {
   return { removed: id };
 }
 
-module.exports = { TEMPLATE, stepsOf, withSteps, start, setChoice, setTick, setField, remove };
+module.exports = { TEMPLATE, NEEDS, stepsOf, withSteps, start, setChoice, setTick, setField, remove };

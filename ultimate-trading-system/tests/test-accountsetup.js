@@ -29,8 +29,8 @@ function onACleanFile(body) {
 }
 
 module.exports = {
-  // THE TEMPLATE: steps 1 and 2 in full; the road ahead named and still being written
-  theAccountTemplateHasStepsOneAndTwoInFullAndTheRestStillBeingWritten() {
+  // THE TEMPLATE: every step written (steps 3 to 6 in 3.275.0)
+  theAccountTemplateHasEveryStepWritten() {
     const as = require('../lib/accountsetup');
     const [first, ...rest] = as.TEMPLATE.steps;
     assert.strictEqual(first.title, 'The exchange account');
@@ -59,9 +59,22 @@ module.exports = {
       'never to take money out of it']) assert.ok(two.includes(w), `step 2 says ${w}`);
     // each block the address choice shows, and both while it is unmade, as step 1 does for margin
     assert.deepStrictEqual(second.guidance.filter((b) => b.when && b.when.address).map((b) => [b.heading, b.when.address, b.ifUnset]), [['Tied to one or more addresses', 'tied', true], ['Open to any address', 'any', true]]);
-    assert.deepStrictEqual(later.map((s) => [s.title, s.writing]), [['The keys go to their platform', true], ['The platform reads the account', true], ['A setup trades from it', true], ['Real money on', true]]);
+    // STEPS 3 TO 6: each done by what the system sees for itself, and a tick only where the owner alone can check
+    assert.deepStrictEqual(later.map((s) => [s.id, s.title, !!s.writing, s.needs, (s.ticks || []).map((t) => t.label)]), [
+      ['keys', 'The keys go to their platform', false, ['keys'], ['The fingerprint of the platform\'s lock matched the one its machine printed']],
+      ['reads', 'The platform reads the account', false, ['checked'], []],
+      ['setup', 'A setup trades from it', false, ['named'], []],
+      ['money', 'Real money on', false, ['live'], ['The pot holds only what the setups trading from it may lose']],
+    ]);
+    const rest4 = JSON.stringify(later);
+    for (const w of ['press Enter the keys there', 'compare the fingerprint of the platform\'s lock', 'press Send the keys to the trading platform',
+      'ask the exchange what the key may do, before it keeps them', 'In this release it does not read how much is in the pot', 'this release has no reading of the cross rate',
+      'its Sub-account key holds this account\'s name', 'in the setup\'s Setup detail, and kept with Save', 'press Activate real for its config on Greenlights',
+      'In this release the trading platform places no real orders', 'this step cannot be done']) assert.ok(rest4.includes(w), `steps 3 to 6 say ${w}`);
     // a checklist never takes a key: every choice is one of its options and every tick is on or off
-    for (const st of as.TEMPLATE.steps) assert.ok(Object.keys(st).every((k) => ['id', 'title', 'guidance', 'choices', 'fields', 'ticks', 'writing'].includes(k)), `step ${st.id} holds nothing unexpected`);
+    for (const st of as.TEMPLATE.steps) assert.ok(Object.keys(st).every((k) => ['id', 'title', 'guidance', 'choices', 'fields', 'ticks', 'needs', 'writing'].includes(k)), `step ${st.id} holds nothing unexpected`);
+    assert.ok(as.TEMPLATE.steps.every((st) => !st.writing), 'no step is still being written');
+    for (const st of as.TEMPLATE.steps) for (const n of st.needs || []) assert.strictEqual(typeof as.NEEDS[n], 'function', `step ${st.id} needs ${n}, which nothing answers`);
     // the one box of text there is asks for no key, and says so
     assert.ok(/never a key or a password/.test(first.fields[0].note) && !/api ?key|secret/i.test(first.fields[0].label), 'the identifiers box invites no key');
     // THE EXCHANGE IS THE OWNER'S CHOICE: Binance at most an example; and never a key asked for or kept
@@ -110,7 +123,8 @@ module.exports = {
       for (const t of ['made', 'can', 'cannot']) as.setTick('binance-sub-1', 'key', t, true);
       let two = as.setTick('binance-sub-1', 'key', 'where', true);
       assert.deepStrictEqual(two.setup.steps.map((s) => [s.open, s.done]).slice(0, 4), [[true, true], [true, true], [true, false], [false, false]], 'step 2 done opens step 3');
-      assert.deepStrictEqual(two.setup.steps[2].missing, ['this step is still being written'], 'step 3 is still being written and never done');
+      assert.deepStrictEqual(two.setup.steps[2].missing, ['not known here: the trading platforms and the setups were not asked', 'tick "The fingerprint of the platform\'s lock matched the one its machine printed"'],
+        'step 3 claims nothing without the platforms having been asked');
       // THE TICK ABOUT THE CHOICE GOES WHEN THE CHOICE CHANGES; the others stay
       two = as.setChoice('binance-sub-1', 'key', 'address', 'any');
       assert.deepStrictEqual(two.setup.ticks.key, { made: true, can: true, cannot: true }, 'only the tick about where it may trade from is cleared');
@@ -166,6 +180,45 @@ module.exports = {
     assert.ok(/createHmac\('sha256', secret\)/.test(fs.readFileSync(path.join(__dirname, '..', 'engine', 'keystore.js'), 'utf8')), 'the key store no longer signs with a secret key, so step 2 asks for the wrong kind');
   },
 
+  // STEPS 3 TO 6 ARE DONE BY WHAT THE SYSTEM SEES (3.275.0): the keys on a platform,
+  // the exchange's answer about them, a setup naming the account, a setup on real
+  // money -- and step 6 cannot be done while the platform places no real orders
+  stepsThreeToSixAreDoneByWhatTheSystemSees() {
+    const as = require('../lib/accountsetup');
+    const acct = { id: 'binance-sub-1', exchange: 'binance', setup: {
+      choices: { kind: 'sub', margin: 'cross', address: 'tied' }, fields: { subIds: '4417' },
+      ticks: { account: { exists: true, margin: true }, key: { made: true, can: true, cannot: true, where: true }, keys: { fingerprint: true }, money: { pot: true } } } };
+    const none = { platforms: ['box-1'], unanswered: [], keysOn: [], checkedOn: [], named: 0, live: 0, realOn: [] };
+    const at = (facts) => as.withSteps(acct, facts).setup.steps;
+    let st = at(none);
+    assert.deepStrictEqual(st.map((x) => [x.open, x.done]), [[true, true], [true, true], [true, false], [false, false], [false, false], [false, false]]);
+    assert.deepStrictEqual(st[2].said, [{ ok: false, text: 'the keys are not on any trading platform: press Enter the keys on this account\'s record below' }]);
+    assert.strictEqual(at({ ...none, platforms: [] })[2].said[0].text, 'there is no trading platform yet: one is set up on the Compute tab');
+    assert.strictEqual(at({ ...none, unanswered: ['box-1'] })[2].said[0].text, 'the keys are not on any trading platform that answered (box-1 did not): press Enter the keys on this account\'s record below');
+    // keys on the platform, kept without the exchange asked: step 3 done, step 4 not
+    st = at({ ...none, keysOn: ['box-1'] });
+    assert.deepStrictEqual([st[2].done, st[3].done, st[3].said[0].text], [true, false, 'the keys on box-1 were kept without the exchange being asked: press Replace the keys on this account\'s record below and send them again']);
+    // the exchange answered: step 4 done; no setup names the account yet
+    st = at({ ...none, keysOn: ['box-1'], checkedOn: ['box-1'] });
+    assert.deepStrictEqual([st[3].done, st[4].done, st[4].said[0].text], [true, false, 'no setup names this account yet: type binance-sub-1 into Sub-account key on a setup\'s Setup detail, on the Trade tab, and press Save']);
+    // a setup names it: step 5 done; step 6 cannot be done while real orders are off everywhere
+    st = at({ ...none, keysOn: ['box-1'], checkedOn: ['box-1'], named: 1 });
+    assert.deepStrictEqual([st[4].done, st[4].said[0].text, st[5].open, st[5].done], [true, '1 setup names this account in Sub-account key', true, false]);
+    assert.strictEqual(st[5].said[0].text, 'real orders are switched off on box-1: this release of the platform places no real orders');
+    assert.strictEqual(at({ ...none, keysOn: ['box-1'], checkedOn: ['box-1'], named: 2, realOn: ['box-1'] })[5].said[0].text, 'no setup trading from this account is on real money: press Activate real for it on Live Trading');
+    st = at({ ...none, keysOn: ['box-1'], checkedOn: ['box-1'], named: 2, live: 1, realOn: ['box-1'] });
+    assert.deepStrictEqual([st[5].done, st[5].said[0].text], [true, '1 setup trading from this account is on real money']);
+    // THE WORDS OF STEP 6 ARE HELD TO THE PLATFORM: the day it can place real orders, this fails and the step is written again
+    const main = fs.readFileSync(path.join(__dirname, '..', 'engine', 'main.js'), 'utf8');
+    assert.ok(/realOrders: 'off'/.test(main) && /this platform has no live exchange module yet/.test(main) && !/venues: \{[^}]*live/.test(main),
+      'the platform can now place real orders, so step 6 no longer tells the truth: write it again');
+    // and step 4's words about what the platform reads are held to what it reads
+    const acctSrc = fs.readFileSync(path.join(__dirname, '..', 'engine', 'venues', 'binance-account.js'), 'utf8');
+    const runner = fs.readFileSync(path.join(__dirname, '..', 'engine', 'runner.js'), 'utf8');
+    assert.ok(/isIsolated: 'TRUE'/.test(acctSrc.slice(acctSrc.indexOf('async hourlyRate('), acctSrc.indexOf('async isolatedWallet('))) && !/isolatedWallet\(/.test(runner),
+      'the platform now reads the cross rate or the pot, so step 4 no longer tells the truth: write it again');
+  },
+
   // THE ACCOUNT TAB DRAWS IT: behind a button of its own at the top of Trading accounts,
   // with the same drawing as a platform's checklist, and nothing that asks for a key
   theAccountTabDrawsItWithThePlatformsChecklistCode() {
@@ -201,5 +254,13 @@ module.exports = {
     assert.ok(/if \(req\.params\.what === 'field'\) return res\.json\(\{ ok: true, setup: as\.setField\(/.test(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8')), 'the service takes it');
     assert.ok(/'<span class="note">sub-account: ' \+ esc\(a\.setup\.fields\.subIds\) \+ '<\/span>'/.test(src), 'the account\'s card shows what the exchange calls the sub-account');
     assert.ok(!/tied to one address/.test(src) && (src.match(/tied to one or more addresses/g) || []).length === 2, 'the key line and the kept message say one or more addresses');
+    // WHAT THE SYSTEM SEES FOR ITSELF (3.275.0) is said on the step, met or not
+    const seen = { choices: { kind: 'sub', address: 'tied' }, ticks: {}, fields: {}, steps: t.steps.map((st, i) => ({ open: i === 2, done: false, said: i === 2 ? [{ ok: true, text: 'the keys are on box-1' }] : i === 3 ? [{ ok: false, text: 'x' }] : [] })) };
+    const seenHtml = draw('as', seen, t, null);
+    assert.ok(/<div class="row" style="margin-top:\.35rem"><span class="pos" style="font-size:\.82rem">✓ the keys are on box-1<\/span><\/div>/.test(seenHtml), 'a need that is met is said on its step');
+    assert.ok(/class="warn"[^>]*>x</.test(draw('as', { ...seen, steps: seen.steps.map((st, i) => ({ ...st, open: i <= 3 })) }, t, null)), 'and one that is not, in the warning colour');
+    // and the service gathers it for every account it lists
+    const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+    assert.ok(srv.includes('accounts: acc.tradingAccounts().map((a) => as.withSteps(a, factsFor(a.id)))') && /h\.health\.realOrders === 'on'/.test(srv) && /x\.keyRef === acctId && x\.state !== 'retired'/.test(srv), 'the Account tab\'s reading gathers what the checklist sees');
   },
 };

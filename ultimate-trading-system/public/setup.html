@@ -900,7 +900,10 @@ function checklistStepsHtml(kind, s, t, panel) {
       + fieldsAsked.filter((f) => !f.after || !(step.choices || []).some((c) => c.id === f.after && asked(c))).map(fieldHtml).join('');
     const tk = (s.ticks || {})[step.id] || {};
     const ticks = (step.ticks || []).map((x) => '<div class="row" style="margin-top:.3rem"><label class="c"><input type="checkbox" data-' + kind + '-tick="' + esc(step.id) + '|' + esc(x.id) + '"' + (tk[x.id] ? ' checked' : '') + '> ' + esc(x.label) + '</label></div>').join('');
-    return head + guide + choices + (panel ? panel(s, step) : '') + (ticks ? '<div style="margin-top:.45rem">' + ticks + '</div>' : '');
+    // WHAT THE SYSTEM SEES FOR ITSELF (3.275.0): said on the step, met or not, in
+    // place of a tick that would ask the owner to vouch for what is already known
+    const said = (st.said || []).map((x) => '<div class="row" style="margin-top:.35rem"><span class="' + (x.ok ? 'pos' : 'warn') + '" style="font-size:.82rem">' + (x.ok ? '✓ ' : '') + esc(x.text) + '</span></div>').join('');
+    return head + guide + choices + (panel ? panel(s, step) : '') + said + (ticks ? '<div style="margin-top:.45rem">' + ticks + '</div>' : '');
   }).join('');
   return '<div style="border-top:1px solid var(--line);margin-top:.7rem">' + blocks + '</div>';
 }
