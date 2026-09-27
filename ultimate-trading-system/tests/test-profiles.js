@@ -81,13 +81,15 @@ function goingLiveRequiresTheProfilesOwnSubAccount() {
 
 function theScreenGatesRealOnCredentialsNotOnBeingThePilot() {
   const html = fs.readFileSync(path.join(ROOT, 'public', 'trade.html'), 'utf8');
-  assert.ok(/keyRefSet/.test(html),
+  // 3.282.0: the real channel is activated from a form holding the trading accounts, and refuses without one
+  // picked; the channel it had is preselected from what the configs endpoint says it is linked to
+  assert.ok(/if\(afReal&&!keyRef\)\{/.test(html) && /accountOptions\(accts,afCh&&afCh\.keyRef,afReal\?null:'no trading account'\)/.test(html),
     'the screen cannot see whether a config has its own sub-account, so it cannot gate honestly');
   assert.ok(!/await per-setup sub-account key routing \(G8\)/.test(html),
     'the button still explains itself with a blocker the owner cannot act on');
   const routes = fs.readFileSync(path.join(ROOT, 'lib', 'live', 'routes.js'), 'utf8');
-  assert.ok(/keyRefSet: !!\(s\.keyRef/.test(routes),
-    'the configs endpoint does not report credential presence per channel');
+  assert.ok(/keyRefSet: !!\(s\.keyRef/.test(routes) && /keyRef: s\.keyRef \|\| null, executionTargetRef: s\.executionTargetRef \|\| null \};/.test(routes),
+    'the configs endpoint does not report the account each channel is linked to');
 }
 
 function theBoxPublishesEachProfilesKeyRef() {

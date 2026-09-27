@@ -20,16 +20,24 @@ const view = require('../lib/live/view');
 const { aStage4Source } = require('./fixtures-setup');
 
 // EVERY SETUP RUNS ON A TRADING PLATFORM (3.282.0, owner 2026-09-27: "simply show the list where execution
-// targets are all available and one must be picked"). This file keeps one on record, the default for new
-// setups, answering through its link; the two tests that need none, or several, keep their own record and
-// press Activate directly.
+// targets are all available and one must be picked"). The tests that press Activate run on this file's own
+// platform record -- the default for new setups, answering through its link -- set just for them and given
+// back after, so no other test file ever reads it; the two that need none, or several, keep their own.
 const targets = require('../lib/live/targets');
 const link = require('../lib/live/enginelink');
-process.env.GC_TARGETS_FILE = process.env.GC_TARGETS_FILE || path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gc-ch-targets-')), 'targets.json');
-process.env.GC_ENGINE_MIRROR = process.env.GC_ENGINE_MIRROR || fs.mkdtempSync(path.join(os.tmpdir(), 'gc-ch-mirror-'));
+const OWN = { t: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gc-ch-targets-')), 'targets.json'), m: fs.mkdtempSync(path.join(os.tmpdir(), 'gc-ch-mirror-')) };
 function onAPlatform() {
   if (!targets.getTarget('test-platform')) targets.saveCallingEngine({ id: 'test-platform', name: 'Test platform', tokenHash: 'c'.repeat(64) });
+  if (!targets.getTarget('test-platform').isDefault) targets.saveEngine({ id: 'test-platform', name: 'Test platform', isDefault: true });
   link.mirrorFor(targets.getTarget('test-platform')).lastHealth = { at: new Date(Date.now() + 3600e3).toISOString(), health: { realOrders: 'off' } };
+}
+function onOwnPlatform(fn) {
+  const saved = { t: process.env.GC_TARGETS_FILE, m: process.env.GC_ENGINE_MIRROR };
+  process.env.GC_TARGETS_FILE = OWN.t;
+  process.env.GC_ENGINE_MIRROR = OWN.m;
+  try { onAPlatform(); return fn(); } finally {
+    for (const [k, v] of [['GC_TARGETS_FILE', saved.t], ['GC_ENGINE_MIRROR', saved.m]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
 }
 const activate = (...a) => { onAPlatform(); return ch.activate(...a); };
 
@@ -57,7 +65,7 @@ module.exports.statusLineSpeaksTheOwnersVocabulary = function () {
   assert.strictEqual(ch.statusLine([{ channel: 'paper', state: 'stopped', open: 0 }]), 'idle');
 };
 
-module.exports.activateCreatesTheChannelAndBothRunSimultaneously = function () {
+module.exports.activateCreatesTheChannelAndBothRunSimultaneously = function () { return onOwnPlatform(() => {
   const g = mkGreenlight();
   const p = activate(g.id, 'paper');
   assert.strictEqual(p.state, 'paper');
@@ -77,9 +85,9 @@ module.exports.activateCreatesTheChannelAndBothRunSimultaneously = function () {
     'real activation without a sub-account keyRef is refused by the existing gate');
   // paper channel unaffected by the refused real attempt
   assert.strictEqual(reg.getSetup(p.id).state, 'paper');
-};
+}); };
 
-module.exports.deactivateStopsAndReactivationRestampsTheEpoch = function () {
+module.exports.deactivateStopsAndReactivationRestampsTheEpoch = function () { return onOwnPlatform(() => {
   const g = mkGreenlight();
   const first = activate(g.id, 'paper');
   const epoch1 = reg.getSetup(first.id).runEpochUtc;
@@ -90,9 +98,9 @@ module.exports.deactivateStopsAndReactivationRestampsTheEpoch = function () {
   assert.strictEqual(again.id, first.id, 're-activation reuses the channel setup');
   const epoch2 = reg.getSetup(first.id).runEpochUtc;
   assert.ok(epoch2 >= epoch1, 'fresh epoch on re-activation');
-};
+}); };
 
-module.exports.reactivationRefusedWhileOldPositionsStillWindDown = function () {
+module.exports.reactivationRefusedWhileOldPositionsStillWindDown = function () { return onOwnPlatform(() => {
   const g = mkGreenlight();
   const s = activate(g.id, 'paper');
   ch.deactivate(g.id, 'paper');
@@ -113,9 +121,9 @@ module.exports.reactivationRefusedWhileOldPositionsStillWindDown = function () {
   } finally {
     if (before == null) fs.rmSync(ef, { force: true }); else fs.writeFileSync(ef, before);
   }
-};
+}); };
 
-module.exports.runEpochScopesTheDisplayedRunNotTheJournal = function () {
+module.exports.runEpochScopesTheDisplayedRunNotTheJournal = function () { return onOwnPlatform(() => {
   const g = mkGreenlight();
   const s = activate(g.id, 'paper');
   const jf = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gc-ch-e-')), 'journal.jsonl');
@@ -134,9 +142,9 @@ module.exports.runEpochScopesTheDisplayedRunNotTheJournal = function () {
   // and WITHOUT an epoch the old run shows — the filter is the epoch, not the id
   const st2 = view.setupStatus({ ...rec, runEpochUtc: null }, jf);
   assert.ok((st2.paperRealizedPnl ?? 0) > 0, 'no epoch -> full journal history displays');
-};
+}); };
 
-module.exports.nukeRefusesWhileBusyThenRevokesAndBlocksReuse = function () {
+module.exports.nukeRefusesWhileBusyThenRevokesAndBlocksReuse = function () { return onOwnPlatform(() => {
   const g = mkGreenlight();
   activate(g.id, 'paper');
   let err = null;
@@ -152,7 +160,7 @@ module.exports.nukeRefusesWhileBusyThenRevokesAndBlocksReuse = function () {
   let err2 = null;
   try { activate(g.id, 'paper'); } catch (e) { err2 = e; }
   assert.strictEqual(err2 && err2.code, 'REVOKED');
-};
+}); };
 
 // A NEW SETUP RUNS ON THE DEFAULT TRADING PLATFORM, AND WITHOUT ONE NOTHING IS MADE (S12, and 3.282.0): the
 // first platform to call in is the default; with none on record Activate is refused, briefly, in the owner's
@@ -253,7 +261,7 @@ module.exports.everySetupRunsOnATradingPlatformAndOneMustBePicked = function () 
 // THE STOP PICKED ON TUNE (item 5, 3.259.0): a market-entry configuration's
 // book starts with it in Stop % at Activate, still editable after; a breakout
 // configuration's gets nothing, its stop being the level on the other side
-module.exports.activateBringsTheStopPickedOnTuneIntoStopPct = function () {
+module.exports.activateBringsTheStopPickedOnTuneIntoStopPct = function () { return onOwnPlatform(() => {
   const src = aStage4Source();
   src.stop = { stopPct: 0.11, why: 'the tightest that lost no winner', at: '2026-09-25T00:00:00.000Z', by: 'owner' };
   const g = gl.greenlightFromStage4(src, { name: 'stop config', why: 'the tuned stop rides along' });
@@ -270,4 +278,4 @@ module.exports.activateBringsTheStopPickedOnTuneIntoStopPct = function () {
   assert.strictEqual(ch.tunedStopOf({ ...g, configSnapshot: { ...g.configSnapshot, cell: { ...g.configSnapshot.cell, entry: 'breakout' } } }), null);
   assert.strictEqual(ch.tunedStopOf({ ...g, frozen: { stop: { stopPct: null } } }), null);
   assert.strictEqual(ch.tunedStopOf({ ...g, frozen: null }), null);
-};
+}); };

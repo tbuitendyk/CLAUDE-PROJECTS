@@ -71,12 +71,16 @@ module.exports.everyAddressAPlatformCallsFromIsKept = function () {
   for (let i = 0; i < 12; i++) a = addressesSeen(a, `10.0.0.${i}`, `2026-09-28T${String(i).padStart(2, '0')}:00:00.000Z`);
   assert.strictEqual(a.length, 10, 'ten kept');
   assert.strictEqual(a[0].ip, '10.0.0.11');
-  // kept on the record the screens read
-  fs.writeFileSync(process.env.GC_TARGETS_FILE, '{}');
-  targets.saveCallingEngine({ id: 'seen-1', name: 'Seen', tokenHash: 'd'.repeat(64) });
-  targets.noteEngine('seen-1', { seenFrom: '1.1.1.1', addresses: addressesSeen([], '1.1.1.1') });
-  const t = targets.getTarget('seen-1');
-  assert.deepStrictEqual([t.seenFrom, t.addresses.length, t.addresses[0].ip], ['1.1.1.1', 1, '1.1.1.1']);
+  // kept on the record the screens read -- and the record put back as it was found, since later test files
+  // read the same one and a platform left on it becomes their default
+  const before = fs.existsSync(process.env.GC_TARGETS_FILE) ? fs.readFileSync(process.env.GC_TARGETS_FILE, 'utf8') : null;
+  try {
+    fs.writeFileSync(process.env.GC_TARGETS_FILE, '{}');
+    targets.saveCallingEngine({ id: 'seen-1', name: 'Seen', tokenHash: 'd'.repeat(64) });
+    targets.noteEngine('seen-1', { seenFrom: '1.1.1.1', addresses: addressesSeen([], '1.1.1.1') });
+    const t = targets.getTarget('seen-1');
+    assert.deepStrictEqual([t.seenFrom, t.addresses.length, t.addresses[0].ip], ['1.1.1.1', 1, '1.1.1.1']);
+  } finally { if (before == null) fs.rmSync(process.env.GC_TARGETS_FILE, { force: true }); else fs.writeFileSync(process.env.GC_TARGETS_FILE, before); }
   // the link takes the address the web server in front says, or the connection's own
   const hub = fs.readFileSync(path.join(__dirname, '..', 'lib', 'live', 'enginehub.js'), 'utf8');
   assert.ok(/const from = String\(req\.headers\['x-real-ip'\] \|\| req\.socket\.remoteAddress \|\| ''\)\.replace\(\/\^::ffff:\/, ''\)\.slice\(0, 64\);/.test(hub)

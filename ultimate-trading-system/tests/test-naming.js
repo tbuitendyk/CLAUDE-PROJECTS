@@ -82,8 +82,9 @@ function theLiveScreenShowsTheNameNotOnlyTheGeneratedId() {
     'the LIVE banner renders the generated id by construction, so renaming can never change it');
   // the id stays visible under the name, in the line that says which config
   // this is (3.260.0): drawn in the banner, and carrying the id of a named config
-  const live = HTML.slice(HTML.indexOf('async function drawLive('), HTML.indexOf('async function drawLive(') + 6000);
-  assert.ok(/\$\{identSub\(g\)\}<\/div>/.test(live) && /g&&g\.name\?esc\(g\.id\):null/.test(HTML),
+  const live = HTML.slice(HTML.indexOf('async function drawLive('), HTML.indexOf('async function drawLive(') + 9000);
+  const banner = live.slice(live.indexOf('<div class="banner ${st.state'), live.indexOf('linked to the trading account'));
+  assert.ok(banner.length > 0 && /\$\{identSub\(g\)\}\n/.test(banner) && /g&&g\.name\?esc\(g\.id\):null/.test(HTML),
     'the id vanished entirely — it is still what the logs and the box use, so it must stay visible');
 }
 
