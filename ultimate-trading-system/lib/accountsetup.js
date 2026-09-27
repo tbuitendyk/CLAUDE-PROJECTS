@@ -49,6 +49,15 @@ const TEMPLATE = {
         { id: 'kind', label: 'Which account', options: [{ value: 'main', label: 'the main account' }, { value: 'sub', label: 'a sub-account' }] },
         { id: 'margin', label: 'Margin', options: [{ value: 'isolated', label: 'isolated — each coin pair its own pot' }, { value: 'cross', label: 'cross — one pot for the whole account' }] },
       ],
+      // WHAT THE EXCHANGE CALLS THE SUB-ACCOUNT (3.274.0, owner 2026-09-27: "a
+      // field for 'Exchange's sub-account identifier(s)' where the sub account
+      // number and associated email address etc. can be saved ... a field of 200
+      // characters for free from id text"). Asked only for a sub-account, drawn
+      // right after the choice that asks it, and step 1 is not done without it.
+      fields: [
+        { id: 'subIds', label: 'Exchange\'s sub-account identifier(s)', when: { kind: 'sub' }, after: 'kind', max: 200,
+          note: 'the sub-account\'s number, its email address, or whatever the exchange knows it by — never a key or a password' },
+      ],
       ticks: [
         { id: 'exists', label: 'The account exists on the exchange' },
         { id: 'margin', label: 'Margin trading is switched on for it' },
@@ -57,8 +66,8 @@ const TEMPLATE = {
     // STEP 2 (3.273.0, owner 2026-09-27: "code step 2"): the key made on the
     // exchange to the very rules the platform keeps a key by when it is sent
     // (engine/venues/binance-account.js keyVerdict) -- it can trade and borrow,
-    // it can move no money out, and it is tied to one address or, at the owner's
-    // choice, open to any. The kind is the one with a secret key, because that is
+    // it can move no money out, and it is tied to one or more addresses or, at
+    // the owner's choice, open to any. The kind is the one with a secret key, because that is
     // the only kind the platform's key store signs with (engine/keystore.js).
     {
       id: 'key',
@@ -74,9 +83,9 @@ const TEMPLATE = {
         { when: { kind: 'sub' }, heading: 'A sub-account', paras: [
           'Make the key for the sub-account itself, not for your main account: a key trades only in the account it was made for.',
         ] },
-        { when: { address: 'tied' }, ifUnset: true, heading: 'Tied to one address', paras: [
-          'Give the exchange the public address of the machine the trading platform runs on, and no other. The key then works from nowhere else, even for someone who has both halves.',
-          'For a rented server, that is the address its provider shows for it. If it ever changes, the key stops working until the exchange is given the new one.',
+        { when: { address: 'tied' }, ifUnset: true, heading: 'Tied to one or more addresses', paras: [
+          'Give the exchange the public address of each machine the trading platform runs on, and no others. The key then works from nowhere else, even for someone who has both halves.',
+          'For a rented server, that is the address its provider shows for it. If one ever changes, the key stops working from that machine until the exchange is given the new one.',
         ] },
         { when: { address: 'any' }, ifUnset: true, heading: 'Open to any address', paras: [
           'The key then works from anywhere, so both halves are all anyone would need to trade in this account, though never to take money out of it, because the key cannot.',
@@ -85,7 +94,7 @@ const TEMPLATE = {
       ],
       choices: [
         { id: 'address', label: 'Where it may trade from', clearsNote: 'changing this clears the last tick below: it was about the other choice',
-          options: [{ value: 'tied', label: 'tied to one address — the machine the trading platform runs on' }, { value: 'any', label: 'open to any address' }] },
+          options: [{ value: 'tied', label: 'tied to one or more addresses — the machine(s) the trading platform runs on' }, { value: 'any', label: 'open to any address' }] },
       ],
       ticks: [
         { id: 'made', label: 'The key is made for this account, as an API key and a secret key' },
@@ -105,6 +114,7 @@ const TEMPLATE = {
 // ---- WHERE A CHECKLIST STANDS (the same reading as a platform's) ----------------
 const matches = (when, choices) => Object.entries(when || {}).every(([k, v]) => (choices || {})[k] === v);
 function choicesAsked(step, choices) { return (step.choices || []).filter((c) => !c.when || matches(c.when, choices)); }
+function fieldsAsked(step, choices) { return (step.fields || []).filter((f) => !f.when || matches(f.when, choices)); }
 
 function stepsOf(setup) {
   const out = [];
@@ -112,9 +122,11 @@ function stepsOf(setup) {
   for (const step of TEMPLATE.steps) {
     const choices = setup.choices || {};
     const ticks = (setup.ticks || {})[step.id] || {};
+    const fields = setup.fields || {};
     const missing = [];
     if (step.writing) missing.push('this step is still being written');
     for (const c of choicesAsked(step, choices)) if (!choices[c.id]) missing.push(`choose ${c.label.toLowerCase()}`);
+    for (const f of fieldsAsked(step, choices)) if (!String(fields[f.id] || '').trim()) missing.push(`fill in "${f.label}"`);
     for (const t of step.ticks || []) if (ticks[t.id] !== true) missing.push(`tick "${t.label}"`);
     const open = before;
     const done = open && missing.length === 0;
@@ -131,7 +143,7 @@ function withSteps(acct) {
   const s = acct.setup || null;
   return {
     id: acct.id, exchange: acct.exchange, note: acct.note || '', createdAt: acct.createdAt || null,
-    setup: s ? { choices: s.choices || {}, ticks: s.ticks || {}, createdUtc: s.createdUtc, updatedUtc: s.updatedUtc, templateVersion: s.templateVersion, steps: stepsOf(s) } : null,
+    setup: s ? { choices: s.choices || {}, ticks: s.ticks || {}, fields: s.fields || {}, createdUtc: s.createdUtc, updatedUtc: s.updatedUtc, templateVersion: s.templateVersion, steps: stepsOf(s) } : null,
   };
 }
 function mine(id) {
@@ -201,6 +213,28 @@ function setTick(id, stepId, tickId, on) {
   return save(id, s);
 }
 
+// A BOX OF TEXT: one line, free text, as long as the template allows, saved on
+// the account's record. Asked only when its choice is made; what was saved stays
+// when the choice changes, and comes back if it changes back.
+function setField(id, stepId, fieldId, value) {
+  const a = mine(id);
+  const s = { ...a.setup, fields: { ...(a.setup.fields || {}) } };
+  const step = stepOf(stepId);
+  mustBeOpen(s, stepId);
+  const f = (step.fields || []).find((x) => x.id === fieldId);
+  if (!f) bad(`step "${step.title}" has no box ${fieldId}`);
+  if (f.when && !matches(f.when, s.choices)) {
+    // said in the screen's words: the choice's label and its option's label
+    const words = Object.entries(f.when).map(([k, v]) => { const c = (step.choices || []).find((x) => x.id === k); const o = c ? c.options.find((y) => y.value === v) : null; return `${c ? c.label.toLowerCase() : k} is ${o ? o.label : v}`; }).join(' and ');
+    bad(`${f.label} is asked only when ${words}`);
+  }
+  const text = String(value == null ? '' : value).replace(/[\u0000-\u001f\u007f]+/g, ' ').trim();
+  if (text.length > f.max) bad(`${f.label}: at most ${f.max} characters — this is ${text.length}`);
+  s.fields[fieldId] = text;
+  s.updatedUtc = new Date().toISOString();
+  return save(id, s);
+}
+
 // the checklist goes; the trading account record and its keys stay
 function remove(id) {
   mine(id);
@@ -208,4 +242,4 @@ function remove(id) {
   return { removed: id };
 }
 
-module.exports = { TEMPLATE, stepsOf, withSteps, start, setChoice, setTick, remove };
+module.exports = { TEMPLATE, stepsOf, withSteps, start, setChoice, setTick, setField, remove };

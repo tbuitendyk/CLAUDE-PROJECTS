@@ -239,7 +239,7 @@ app.post('/api/account/exchange', (req, res) => {
 // page locks them with the public half of the engine's lock and this machine
 // passes on only the locked form. It never holds a key, locked or not, after the
 // engine answers -- and the only thing it ever keeps of one is that answer:
-// present or missing, when entered, and whether it is tied to one address.
+// present or missing, when entered, and whether it is tied to one or more addresses.
 app.get('/api/account/trading', async (req, res) => {
   try {
     const acc = require('./lib/account');
@@ -279,6 +279,7 @@ app.post('/api/account/setups/:id/:what', csrfGuard, (req, res) => {
   try {
     if (req.params.what === 'choice') return res.json({ ok: true, setup: as.setChoice(id, String(b.step || ''), String(b.choice || ''), String(b.value || '')) });
     if (req.params.what === 'tick') return res.json({ ok: true, setup: as.setTick(id, String(b.step || ''), String(b.tick || ''), b.on === true) });
+    if (req.params.what === 'field') return res.json({ ok: true, setup: as.setField(id, String(b.step || ''), String(b.field || ''), b.value == null ? '' : String(b.value)) });
     if (req.params.what === 'delete') return res.json({ ok: true, ...as.remove(id) });
     return res.status(404).json({ error: 'no such address' });
   } catch (err) { return res.status(err.status || 500).json({ error: err.message }); }

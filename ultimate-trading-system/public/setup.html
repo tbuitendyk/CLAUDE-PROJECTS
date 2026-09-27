@@ -230,6 +230,10 @@ let aAsOpen = (() => { try { return localStorage.getItem('setup-as-open') === '1
 let aAsSel = (() => { try { return localStorage.getItem('setup-as-sel'); } catch (_) { return null; } })();
 let aAsNew = false;          // the boxes for another account's setup shown or not
 let aAsTyped = { id: '', exchange: '' };   // what is typed for another account, kept across the redraw
+// a checklist's text boxes (3.274.0): what is typed and not saved yet, and the answer
+// to the last save, kept across the redraw; one map per kind of checklist
+const ckFieldTyped = { as: {}, es: {} };
+const ckFieldMsg = { as: {}, es: {} };
 let vTimer = null;           // the five-second re-read, armed only while Version shows
 let vSg = null;              // last reading of the stage-engine check
 let vErr = null;             // why the check could not be read, when it could not
@@ -293,7 +297,7 @@ function tradingKeysLine(a) {
       ? '<span class="neg">cannot tell</span> <span class="muted">(' + esc(k.why) + ')</span>'
       : mine && mine.present
         ? '<span class="pos">present</span> <span class="muted">entered ' + esc(String(mine.addedAt || '').slice(0, 16).replace('T', ' ')) + ' UTC'
-          + (mine.tied === true ? ' · tied to one address' : mine.tied === false ? ' · open to any address, as ticked when they were sent' : '') + '</span>'
+          + (mine.tied === true ? ' · tied to one or more addresses' : mine.tied === false ? ' · open to any address, as ticked when they were sent' : '') + '</span>'
         : '<span class="neg">missing</span>';
     return '<div class="row" style="align-items:baseline; margin-top:.35rem"><span class="k">keys on ' + esc(g.name) + '</span> ' + said + '</div>';
   }).join('');
@@ -305,7 +309,10 @@ function tradingAccountCard(a) {
   const pick = engines.find((g) => g.isDefault) || engines[0] || null;
   const keysHere = pick && (aTr.keys || {})[pick.id] && (aTr.keys[pick.id].keys || []).find((x) => x.account === a.id && x.present);
   return '<div class="tile" style="margin-bottom:.55rem">'
-    + '<div class="row" style="align-items:baseline"><b>' + esc(a.id) + '</b><span class="note">' + esc(ex ? ex.label : a.exchange) + (a.note ? ' · ' + esc(a.note) : '') + '</span></div>'
+    + '<div class="row" style="align-items:baseline"><b>' + esc(a.id) + '</b><span class="note">' + esc(ex ? ex.label : a.exchange) + (a.note ? ' · ' + esc(a.note) : '') + '</span>'
+    // IF IT IS STORED, SHOW IT (RULE ELEVEN): what the exchange calls the sub-account, saved in step 1 of its checklist
+    + (a.setup && (a.setup.choices || {}).kind === 'sub' && (a.setup.fields || {}).subIds ? '<span class="note">sub-account: ' + esc(a.setup.fields.subIds) + '</span>' : '')
+    + '</div>'
     + tradingKeysLine(a)
     + (open
       ? '<div class="row" style="align-items:flex-end; margin-top:.5rem">'
@@ -391,7 +398,7 @@ function wireAs(redraw) {
   const nt = $('#asNewToggle');
   if (nt) nt.onclick = () => { aAsNew = !aAsNew; drawAccount(); };
   const sl = $('#asSel');
-  if (sl) sl.onchange = () => { aAsSel = sl.value; try { localStorage.setItem('setup-as-sel', aAsSel); } catch (_) { /* not remembered */ } drawAccount(); };
+  if (sl) sl.onchange = () => { aAsSel = sl.value; ckFieldTyped.as = {}; ckFieldMsg.as = {}; try { localStorage.setItem('setup-as-sel', aAsSel); } catch (_) { /* not remembered */ } drawAccount(); };
   const st = $('#asStart');
   if (st) st.onclick = async () => {
     const msg = $('#asMsg');
@@ -415,6 +422,23 @@ function wireAs(redraw) {
   };
   document.querySelectorAll('[data-as-choice]').forEach((r) => { r.onchange = () => { const [step, choice] = r.dataset.asChoice.split('|'); post('choice', { step, choice, value: r.value }); }; });
   document.querySelectorAll('[data-as-tick]').forEach((c) => { c.onchange = () => { const [step, tick] = c.dataset.asTick.split('|'); post('tick', { step, tick, on: c.checked }); }; });
+  document.querySelectorAll('[data-as-field]').forEach((i) => { i.oninput = () => { ckFieldTyped.as[i.dataset.asField] = i.value; ckFieldMsg.as[i.dataset.asField] = ''; }; });
+  document.querySelectorAll('[data-as-fieldsave]').forEach((b) => {
+    b.onclick = async () => {
+      const key = b.dataset.asFieldsave;
+      const [step, field] = key.split('|');
+      const box = document.querySelector('[data-as-field="' + key + '"]');
+      const sel = currentAs();
+      if (!sel || !box) return;
+      b.disabled = true;
+      try {
+        await postJson('api/account/setups/' + encodeURIComponent(sel.id) + '/field', { step, field, value: box.value });
+        delete ckFieldTyped.as[key];
+        ckFieldMsg.as[key] = '<span class="pos">saved</span>';
+      } catch (e) { ckFieldMsg.as[key] = '<span class="neg">not saved — ' + esc(e.message) + '</span>'; }
+      await redraw();
+    };
+  });
   const del = $('#asDelete');
   if (del) del.onclick = async () => {
     const sel = currentAs();
@@ -476,7 +500,7 @@ function wireTradingAccounts() {
       await redraw();
       const o = $('#taOut_' + acct);
       if (o) o.innerHTML = got.checked
-        ? '<span class="pos">kept — the exchange says the key can trade and borrow, cannot move money, and ' + (got.tied ? 'is tied to one address' : 'is open to any address, as you ticked') + '</span>'
+        ? '<span class="pos">kept — the exchange says the key can trade and borrow, cannot move money, and ' + (got.tied ? 'is tied to one or more addresses' : 'is open to any address, as you ticked') + '</span>'
         : '<span class="warn">kept, but not checked — ' + esc(got.why || 'the platform could not ask the exchange') + '</span>';
     } catch (e) {
       key.value = ''; sec.value = '';
@@ -853,11 +877,27 @@ function checklistStepsHtml(kind, s, t, panel) {
     if (step.writing) return head + '<p class="note" style="margin:.2rem 0 0">This step is still being written.</p>';
     const guide = (step.guidance || []).filter(shows).map((b) => (b.heading ? '<div class="k" style="margin-top:.55rem">' + esc(b.heading) + '</div>' : '')
       + b.paras.map((p) => '<p style="margin:.3rem 0;font-size:.82rem;line-height:1.45;max-width:60rem">' + esc(p) + '</p>').join('')).join('');
+    // A BOX OF TEXT (3.274.0): one line, as long as the template allows, drawn right
+    // after the choice that asks it; its save is a button in a row of its own with
+    // its answer beside it (RULE FOUR-A). What is typed survives the redraw.
+    const fieldHtml = (f) => {
+      const key = step.id + '|' + f.id;
+      const saved = ((s.fields || {})[f.id]) || '';
+      const typed = key in ckFieldTyped[kind] ? ckFieldTyped[kind][key] : saved;
+      return '<div class="row" style="margin-top:.45rem"><label class="c" style="flex-wrap:wrap; max-width:100%"><span class="muted" style="font-size:.8rem">' + esc(f.label) + '</span>'
+        + '<input data-' + kind + '-field="' + esc(key) + '" maxlength="' + f.max + '" value="' + esc(typed) + '" spellcheck="false" style="width:30rem; max-width:100%"></label>'
+        + (f.note ? '<span class="note">' + esc(f.note) + '</span>' : '') + '</div>'
+        + '<div class="row" style="margin-top:.3rem"><button data-' + kind + '-fieldsave="' + esc(key) + '">Save the ' + esc(f.label.replace(/^Exchange's /, '')) + '</button>'
+        + '<span class="note">' + (ckFieldMsg[kind][key] || (typed !== saved ? 'not saved yet' : '')) + '</span></div>';
+    };
+    const fieldsAsked = (step.fields || []).filter(asked);
     const choices = (step.choices || []).filter(asked).map((c) => '<div class="row" style="margin-top:.55rem">'
       + '<span class="muted" style="font-size:.8rem">' + esc(c.label) + '</span>'
       + c.options.map((o) => '<label class="c"><input type="radio" name="' + kind + '-' + esc(step.id) + '-' + esc(c.id) + '" data-' + kind + '-choice="' + esc(step.id) + '|' + esc(c.id) + '" value="' + esc(o.value) + '"' + (ch[c.id] === o.value ? ' checked' : '') + '> ' + esc(o.label) + '</label>').join('')
       + (c.clearsNote && ch[c.id] ? '<span class="note">' + esc(c.clearsNote) + '</span>' : '')
-      + '</div>').join('');
+      + '</div>'
+      + fieldsAsked.filter((f) => f.after === c.id).map(fieldHtml).join('')).join('')
+      + fieldsAsked.filter((f) => !f.after || !(step.choices || []).some((c) => c.id === f.after && asked(c))).map(fieldHtml).join('');
     const tk = (s.ticks || {})[step.id] || {};
     const ticks = (step.ticks || []).map((x) => '<div class="row" style="margin-top:.3rem"><label class="c"><input type="checkbox" data-' + kind + '-tick="' + esc(step.id) + '|' + esc(x.id) + '"' + (tk[x.id] ? ' checked' : '') + '> ' + esc(x.label) + '</label></div>').join('');
     return head + guide + choices + (panel ? panel(s, step) : '') + (ticks ? '<div style="margin-top:.45rem">' + ticks + '</div>' : '');

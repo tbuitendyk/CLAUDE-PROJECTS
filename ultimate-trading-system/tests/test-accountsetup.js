@@ -39,6 +39,8 @@ module.exports = {
       ['margin', 'Margin', ['isolated — each coin pair its own pot', 'cross — one pot for the whole account']],
     ]);
     assert.deepStrictEqual(first.ticks.map((t) => t.label), ['The account exists on the exchange', 'Margin trading is switched on for it']);
+    // WHAT THE EXCHANGE CALLS THE SUB-ACCOUNT (3.274.0): one line, 200 characters, asked for a sub-account only
+    assert.deepStrictEqual(first.fields.map((f) => [f.id, f.label, f.when, f.after, f.max]), [['subIds', 'Exchange\'s sub-account identifier(s)', { kind: 'sub' }, 'kind', 200]]);
     // THE POT (owner, 2026-09-26): one pair funded once in every account, each pot apart
     const words = JSON.stringify(first.guidance);
     for (const w of ['your main account, or one of its sub-accounts', 'its own money, its own borrowing and its own liquidation', 'The same pair can be funded once in every account you keep', 'two setups on the same pair need an account each', 'The whole account is one pot']) assert.ok(words.includes(w), `step 1 says ${w}`);
@@ -47,19 +49,21 @@ module.exports = {
     assert.strictEqual(second.title, 'The API key');
     assert.ok(!second.writing, 'step 2 is written');
     assert.deepStrictEqual(second.choices.map((c) => [c.id, c.label, c.options.map((o) => o.label)]), [
-      ['address', 'Where it may trade from', ['tied to one address — the machine the trading platform runs on', 'open to any address']],
+      ['address', 'Where it may trade from', ['tied to one or more addresses — the machine(s) the trading platform runs on', 'open to any address']],
     ]);
     assert.deepStrictEqual(second.ticks.map((t) => t.label), ['The key is made for this account, as an API key and a secret key', 'It can trade and borrow on margin',
       'It cannot withdraw money or transfer it to another account', 'Where it may trade from is set on the exchange as chosen above']);
     const two = JSON.stringify(second.guidance);
     for (const w of ['an API key and a secret key', 'it cannot sign with the other kind', 'shows the secret key only once', 'borrow on margin: without borrowing it cannot open a short',
-      'withdrawals, and transfers to other accounts', 'Make the key for the sub-account itself', 'the public address of the machine the trading platform runs on',
+      'withdrawals, and transfers to other accounts', 'Make the key for the sub-account itself', 'the public address of each machine the trading platform runs on',
       'never to take money out of it']) assert.ok(two.includes(w), `step 2 says ${w}`);
     // each block the address choice shows, and both while it is unmade, as step 1 does for margin
-    assert.deepStrictEqual(second.guidance.filter((b) => b.when && b.when.address).map((b) => [b.heading, b.when.address, b.ifUnset]), [['Tied to one address', 'tied', true], ['Open to any address', 'any', true]]);
+    assert.deepStrictEqual(second.guidance.filter((b) => b.when && b.when.address).map((b) => [b.heading, b.when.address, b.ifUnset]), [['Tied to one or more addresses', 'tied', true], ['Open to any address', 'any', true]]);
     assert.deepStrictEqual(later.map((s) => [s.title, s.writing]), [['The keys go to their platform', true], ['The platform reads the account', true], ['A setup trades from it', true], ['Real money on', true]]);
     // a checklist never takes a key: every choice is one of its options and every tick is on or off
-    for (const st of as.TEMPLATE.steps) assert.ok(Object.keys(st).every((k) => ['id', 'title', 'guidance', 'choices', 'ticks', 'writing'].includes(k)), `step ${st.id} holds nothing that could take a key`);
+    for (const st of as.TEMPLATE.steps) assert.ok(Object.keys(st).every((k) => ['id', 'title', 'guidance', 'choices', 'fields', 'ticks', 'writing'].includes(k)), `step ${st.id} holds nothing unexpected`);
+    // the one box of text there is asks for no key, and says so
+    assert.ok(/never a key or a password/.test(first.fields[0].note) && !/api ?key|secret/i.test(first.fields[0].label), 'the identifiers box invites no key');
     // THE EXCHANGE IS THE OWNER'S CHOICE: Binance at most an example; and never a key asked for or kept
     const all = JSON.stringify(as.TEMPLATE.steps);
     for (const m of all.match(/[^.]*Binance[^.]*/g) || []) assert.ok(/for example/.test(m), `Binance named only as an example: ${m}`);
@@ -86,13 +90,21 @@ module.exports = {
       as.setChoice('binance-sub-1', 'account', 'kind', 'sub');
       as.setChoice('binance-sub-1', 'account', 'margin', 'isolated');
       as.setTick('binance-sub-1', 'account', 'exists', true);
-      assert.deepStrictEqual(as.withSteps(acc.tradingAccount('binance-sub-1')).setup.steps[0].missing, ['tick "Margin trading is switched on for it"']);
-      const done = as.setTick('binance-sub-1', 'account', 'margin', true);
+      assert.deepStrictEqual(as.withSteps(acc.tradingAccount('binance-sub-1')).setup.steps[0].missing, ['fill in "Exchange\'s sub-account identifier(s)"', 'tick "Margin trading is switched on for it"']);
+      as.setTick('binance-sub-1', 'account', 'margin', true);
+      // A SUB-ACCOUNT IS NOT DONE UNTIL WHAT THE EXCHANGE CALLS IT IS SAVED (3.274.0)
+      assert.deepStrictEqual(as.withSteps(acc.tradingAccount('binance-sub-1')).setup.steps.map((s) => s.open).slice(0, 2), [true, false], 'step 2 stays shut while the box is empty');
+      refused(() => as.setField('binance-sub-1', 'account', 'subIds', 'x'.repeat(201)), /^Exchange's sub-account identifier\(s\): at most 200 characters — this is 201$/);
+      refused(() => as.setField('binance-sub-1', 'account', 'nope', 'x'), /has no box nope/);
+      refused(() => as.setField('binance-sub-1', 'key', 'subIds', 'x'), /^step 2 opens when step 1 is done$/);
+      assert.strictEqual(as.setField('binance-sub-1', 'account', 'subIds', '   ').setup.steps[0].done, false, 'blanks are not an identifier');
+      const done = as.setField('binance-sub-1', 'account', 'subIds', '  4417-2209 \n me+sub1@example.com  ');
+      assert.strictEqual(done.setup.fields.subIds, '4417-2209   me+sub1@example.com', 'one line: kept as typed, trimmed, a line break made a space');
       assert.deepStrictEqual(done.setup.steps.map((s) => [s.open, s.done]).slice(0, 3), [[true, true], [true, false], [false, false]], 'step 1 done opens step 2');
       assert.deepStrictEqual(done.setup.steps[1].missing, ['choose where it may trade from', 'tick "The key is made for this account, as an API key and a secret key"',
         'tick "It can trade and borrow on margin"', 'tick "It cannot withdraw money or transfer it to another account"', 'tick "Where it may trade from is set on the exchange as chosen above"']);
       // step 2
-      refused(() => as.setChoice('binance-sub-1', 'key', 'address', 'everywhere'), /^where it may trade from: one of tied to one address — the machine the trading platform runs on, open to any address$/);
+      refused(() => as.setChoice('binance-sub-1', 'key', 'address', 'everywhere'), /^where it may trade from: one of tied to one or more addresses — the machine\(s\) the trading platform runs on, open to any address$/);
       refused(() => as.setChoice('binance-sub-1', 'key', 'margin', 'cross'), /asks no choice margin/);
       as.setChoice('binance-sub-1', 'key', 'address', 'tied');
       for (const t of ['made', 'can', 'cannot']) as.setTick('binance-sub-1', 'key', t, true);
@@ -109,9 +121,18 @@ module.exports = {
       // a step 1 choice that changes clears nothing of step 2
       assert.deepStrictEqual(as.setChoice('binance-sub-1', 'account', 'margin', 'cross').setup.ticks.key, { made: true, can: true, cannot: true, where: true });
       as.setChoice('binance-sub-1', 'account', 'margin', 'isolated');
+      // the main account is never asked, and what a sub-account saved stays hidden, not lost
+      as.start('solo', 'binance');
+      as.setChoice('solo', 'account', 'kind', 'main');
+      refused(() => as.setField('solo', 'account', 'subIds', 'x'), /^Exchange's sub-account identifier\(s\) is asked only when which account is a sub-account$/);
+      assert.ok(!as.withSteps(acc.tradingAccount('solo')).setup.steps[0].missing.some((m) => /identifier/.test(m)), 'the main account is not asked for it');
+      as.setChoice('binance-sub-1', 'account', 'kind', 'main');
+      assert.strictEqual(as.withSteps(acc.tradingAccount('binance-sub-1')).setup.fields.subIds, '4417-2209   me+sub1@example.com', 'choosing the main account keeps what was saved');
+      as.setChoice('binance-sub-1', 'account', 'kind', 'sub');
       // the record saved again keeps its checklist; the checklist taken away leaves the record
       acc.saveTradingAccount({ id: 'binance-sub-1', exchange: 'binance', note: 'LTC and BTC pots' });
       assert.deepStrictEqual(acc.tradingAccount('binance-sub-1').setup.choices, { kind: 'sub', margin: 'isolated', address: 'any' });
+      assert.deepStrictEqual(acc.tradingAccount('binance-sub-1').setup.fields, { subIds: '4417-2209   me+sub1@example.com' });
       assert.deepStrictEqual(as.remove('binance-sub-1'), { removed: 'binance-sub-1' });
       assert.ok(acc.tradingAccount('binance-sub-1') && !acc.tradingAccount('binance-sub-1').setup, 'the record stays, without its checklist');
       refused(() => as.setTick('binance-sub-1', 'account', 'exists', true), /has no setup: start one/);
@@ -127,7 +148,7 @@ module.exports = {
     const step = require('../lib/accountsetup').TEMPLATE.steps.find((s) => s.id === 'key');
     const words = JSON.stringify(step);
     const asked = { enableWithdrawals: false, enableInternalTransfer: false, permitsUniversalTransfer: false, enableSpotAndMarginTrading: true, enableMargin: true };
-    assert.strictEqual(keyVerdict({ ...asked, ipRestrict: true }).ok, true, 'a key tied to one address, as step 2 describes it, is kept');
+    assert.strictEqual(keyVerdict({ ...asked, ipRestrict: true }).ok, true, 'a key tied to one or more addresses, as step 2 describes it, is kept');
     assert.strictEqual(keyVerdict({ ...asked, ipRestrict: false }, { anyAddress: true }).ok, true, 'and so is one open to any address, with the tick');
     assert.strictEqual(keyVerdict({ ...asked, ipRestrict: false }).ok, false, 'but not without the tick, which is why step 2 says to tick it');
     // every refusal of the check has its words in the step
@@ -159,5 +180,22 @@ module.exports = {
     assert.ok(tr.indexOf('+ asHtml()') > 0 && tr.indexOf('+ asHtml()') < tr.indexOf('tradingAccountCard'), 'at the top of Trading accounts, before the accounts');
     assert.ok(/data-' \+ kind \+ '-choice=/.test(src) && /querySelectorAll\('\[data-as-choice\]'\)/.test(src) && /querySelectorAll\('\[data-as-tick\]'\)/.test(src), 'its choices and ticks are wired to its own addresses');
     assert.ok(/postJson\('api\/account\/setups'/.test(src) && /'api\/account\/setups\/' \+ encodeURIComponent\(sel\.id\) \+ '\/' \+ what/.test(src), 'it asks the service');
+    // THE IDENTIFIERS BOX (3.274.0), drawn by the shared code: right after the choice that
+    // asks it, only while it is asked, its save a button in a row of its own
+    const a = src.indexOf('function checklistStepsHtml(');
+    const b = src.indexOf('\nfunction esSetupHtml(', a);
+    const draw = new Function('esc', 'ckFieldTyped', 'ckFieldMsg', `${src.slice(a, b)}; return checklistStepsHtml;`)((x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'), { as: {}, es: {} }, { as: {}, es: {} });
+    const t = require('../lib/accountsetup').TEMPLATE;
+    const setup = (kind, fields) => ({ choices: { kind }, ticks: {}, fields, steps: t.steps.map((_, i) => ({ open: i === 0, done: false })) });
+    const sub = draw('as', setup('sub', { subIds: '4417 · me@x' }), t, null);
+    const box = /<div class="row" style="margin-top:\.45rem"><label class="c" style="flex-wrap:wrap; max-width:100%"><span class="muted" style="font-size:\.8rem">Exchange's sub-account identifier\(s\)<\/span><input data-as-field="account\|subIds" maxlength="200" value="4417 · me@x"/;
+    assert.ok(box.test(sub), 'the box is drawn with what was saved in it, and takes 200 characters');
+    assert.ok(sub.indexOf('data-as-field=') > sub.indexOf('value="sub"') && sub.indexOf('data-as-field=') < sub.indexOf('Margin</span>'), 'right after Which account, before Margin');
+    assert.ok(/<div class="row" style="margin-top:\.3rem"><button data-as-fieldsave="account\|subIds">Save the sub-account identifier\(s\)<\/button><span class="note">/.test(sub), 'its save is a button in a row of its own, with its answer beside it');
+    assert.ok(!/data-as-field=/.test(draw('as', setup('main', { subIds: 'kept' }), t, null)), 'the main account is not asked for it');
+    assert.ok(/querySelectorAll\('\[data-as-fieldsave\]'\)/.test(src) && /'\/field', \{ step, field, value: box\.value \}/.test(src), 'the save sends the box to the service');
+    assert.ok(/if \(req\.params\.what === 'field'\) return res\.json\(\{ ok: true, setup: as\.setField\(/.test(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8')), 'the service takes it');
+    assert.ok(/'<span class="note">sub-account: ' \+ esc\(a\.setup\.fields\.subIds\) \+ '<\/span>'/.test(src), 'the account\'s card shows what the exchange calls the sub-account');
+    assert.ok(!/tied to one address/.test(src) && (src.match(/tied to one or more addresses/g) || []).length === 2, 'the key line and the kept message say one or more addresses');
   },
 };
