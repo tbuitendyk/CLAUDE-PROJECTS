@@ -1,8 +1,8 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html \u2014 so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "4bd81b388fca936c2d1ee021b3f300529cc3af71",
-  "subject": "3.282.0: platforms and accounts are picked from lists; what a book is linked to is shown; ask Binance where it sees each platform; each platform's address as this system sees it",
-  "capturedAt": "2026-09-27T05:14:28Z",
+  "commit": "8db117712c193fa1712af7e2f2fb1f578979fb33",
+  "subject": "3.282.1: the ask-Binance button goes; the web server's own front door is never shown as a platform's address",
+  "capturedAt": "2026-09-27T05:41:12Z",
   "files": {
     "public/construct.js": {
       "sha256": "fd5a135e41f7176901b934797edba733e501b632c5c7718b9b24696ebeb0a0c8",
