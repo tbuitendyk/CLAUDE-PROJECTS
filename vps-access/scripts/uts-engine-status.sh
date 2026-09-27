@@ -18,6 +18,7 @@ for e in d.get('engines', []):
     print(f"{e['id']} | {e['name']} | default {e['isDefault']} | answers {e['answers']} in {e.get('ms')} ms | release {h.get('release')} | real orders {h.get('realOrders')}")
     print(f"   following its record: {l.get('following')} since {l.get('since')} | why {l.get('why')} | lines kept {e.get('recordsKept')}")
     print(f"   plans {h.get('plans')} | feeds {h.get('feeds')} | keys {h.get('keys')}")
+    print(f"   its address, as this system sees it: {e.get('seenFrom') or 'not known yet'} | last seen {e.get('lastSeenUtc')}")
     print(f"   setups on it: {e.get('setups')}")
 print(f"default engine: {d.get('default')}")
 PY
