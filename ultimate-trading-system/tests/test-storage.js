@@ -9,8 +9,8 @@
 //   * the reclaim removes the kinds ticked and nothing else, takes a fresh look at
 //     the press, and refuses while anything heavy runs;
 //   * the stage-engine check's leftover sets go through the service's own delete;
-//   * the section stands at the top of Compute, keeps its ticks across the
-//     redraw, and puts its button in a row of its own.
+//   * the section stands directly under Where each part runs on Compute (3.273.1),
+//     keeps its ticks across the redraw, and puts its button in a row of its own.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -201,12 +201,18 @@ module.exports = {
     }
   },
 
-  // THE SECTION ON COMPUTE: at the top, its ticks kept across the redraw, its
-  // button in a row of its own, the two routes it reads and presses
-  theSweepProcessorStandsAtTheTopOfComputeAndKeepsItsTicks() {
+  // THE SECTION ON COMPUTE: directly under Where each part runs, never above it
+  // (3.273.1, owner 2026-09-27), its ticks kept across the redraw, its button in
+  // a row of its own, the two routes it reads and presses
+  theSweepProcessorStandsUnderWhereEachPartRunsAndKeepsItsTicks() {
     const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
     const draw = page.slice(page.indexOf('function drawCompute() {'), page.indexOf('// wiring', page.indexOf('function drawCompute() {')));
-    assert.ok(draw.indexOf('+ sweepProcessorHtml()') > 0 && draw.indexOf('+ sweepProcessorHtml()') < draw.indexOf('Where each part runs'), 'The sweep processor is not the first section on Compute');
+    const at = draw.indexOf('+ sweepProcessorHtml()');
+    const where = draw.indexOf('<h3 style="margin-top:0">Where each part runs</h3>');
+    const next = draw.indexOf('+ engineHtml()');
+    assert.ok(where > 0 && at > where, 'The sweep processor stands above Where each part runs');
+    assert.ok(next > at && !/<div class="panel">/.test(draw.slice(draw.indexOf("+ '</div>'", draw.indexOf('trading platform</b>', where)), at)),
+      'The sweep processor is not the section directly under Where each part runs');
     assert.ok(page.includes("const f = getJson('api/storage')"), 'the tab does not read the storage report with the rest of it');
     const a = page.indexOf('const space = (b) =>');
     const b = page.indexOf('\nfunction wireSweepProcessor() {', a);

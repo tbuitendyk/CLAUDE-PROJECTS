@@ -2895,11 +2895,11 @@ const GUARDS = [
   [path.join(ROOT, "lib", "storage.js"), "    if (!namedRecords.has(rel)) put('priceFileRecords', path.join(dataDir, rel));", "    put('priceFileRecords', path.join(dataDir, rel));",
     "theReportAccountsForEveryByteOnceAndNamesOnlyWhatBelongsToNothing", "a price-file record a set still names is reclaimed"],
   [path.join(ROOT, "public", "setup.html"), "const reclaimTicked = (k) => (k.key in cReclaimTicks ? cReclaimTicks[k.key] : !!k.ticked);", "const reclaimTicked = (k) => !!k.ticked;",
-    "theSweepProcessorStandsAtTheTopOfComputeAndKeepsItsTicks", "a tick the owner changed springs back every thirty seconds"],
+    "theSweepProcessorStandsUnderWhereEachPartRunsAndKeepsItsTicks", "a tick the owner changed springs back every thirty seconds"],
   [path.join(ROOT, "public", "setup.html"), "+ '<div class=\"row\"><button id=\"cReclaim\" class=\"danger\"' + (ticked.length ? '' : ' disabled') + '>Reclaim the ticked space</button>'", "+ '<div class=\"row\"><button id=\"cReclaim\" class=\"danger\">Reclaim the ticked space</button>'",
-    "theSweepProcessorStandsAtTheTopOfComputeAndKeepsItsTicks", "the button can be pressed with nothing ticked"],
+    "theSweepProcessorStandsUnderWhereEachPartRunsAndKeepsItsTicks", "the button can be pressed with nothing ticked"],
   [path.join(ROOT, "server.js"), "require('./lib/storage').reclaim((req.body || {}).keys)", "require('./lib/storage').reclaim(require('./lib/storage').KINDS.map((k) => k.key))",
-    "theSweepProcessorStandsAtTheTopOfComputeAndKeepsItsTicks", "the reclaim deletes every kind, ticked or not"],
+    "theSweepProcessorStandsUnderWhereEachPartRunsAndKeepsItsTicks", "the reclaim deletes every kind, ticked or not"],
   [path.join(ROOT, "lib", "accountsetup.js"), "    for (const t of step.ticks || []) if (t.about === choiceId) delete kept[t.id];\n", "",
     "aChecklistIsKeptOnItsAccountAndOpensStepByStep", "a tick saying the exchange is set as chosen survives the choice changing"],
   [path.join(ROOT, "lib", "accountsetup.js"), "  if (s.choices[choiceId] != null && s.choices[choiceId] !== value) {", "  if (s.choices[choiceId] != null) {",
@@ -2912,6 +2912,8 @@ const GUARDS = [
     "stepTwoAsksForTheKeyThePlatformWillKeep", "step 2 quotes a tick the key form does not have"],
   [path.join(ROOT, "public", "setup.html"), "<input type=\"checkbox\" id=\"takAny\"> these keys may trade from any address</label>", "<input type=\"checkbox\" id=\"takAny\"> trade from anywhere</label>",
     "stepTwoAsksForTheKeyThePlatformWillKeep", "the key form's tick is renamed and step 2 sends the owner looking for words that are gone"],
+  [path.join(ROOT, "public", "setup.html"), "    + '<div class=\"panel\"><h3 style=\"margin-top:0\">Where each part runs</h3>'", "    + sweepProcessorHtml()\n    + '<div class=\"panel\"><h3 style=\"margin-top:0\">Where each part runs</h3>'",
+    "theSweepProcessorStandsUnderWhereEachPartRunsAndKeepsItsTicks", "The sweep processor grows back above Where each part runs"],
 ];
 
 const only = process.argv[2] || '';

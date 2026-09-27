@@ -1041,8 +1041,6 @@ function drawCompute() {
     + '<button id="cNow" title="asks again right now instead of waiting for the thirty seconds">Read it again</button>'
     + '</div>'
 
-    + sweepProcessorHtml()
-
     + '<div class="panel"><h3 style="margin-top:0">Where each part runs</h3>'
     + roles
     // ONE ROW SHAPE FOR ALL THREE (owner, 2026-09-25): the same height, the
@@ -1054,6 +1052,11 @@ function drawCompute() {
     + '<span class="note" style="flex:1; min-width:16rem">set up in The trading platform section below. Each trading setup names the one it runs on '
     + '(Execution target, on the Trade tab), so two setups can trade in two places; a new setup starts on the one ticked for new setups.</span></div>'
     + '</div>'
+
+    // DIRECTLY UNDER WHERE EACH PART RUNS, never above it (3.273.1, owner
+    // 2026-09-27: "The sweep processor section does not go above the page
+    // header section that says Where each part runs")
+    + sweepProcessorHtml()
 
     + engineHtml()
 
