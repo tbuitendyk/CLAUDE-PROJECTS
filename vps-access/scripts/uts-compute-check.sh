@@ -56,5 +56,15 @@ else
   say "  FAIL: the served page has no Compute tab"; FAIL=1
 fi
 
+# 3.282.2: the owner's Setup comes through the always-up program (8095), which
+# hands on the trading service's stamped copy, so the page reloads itself after
+# a deploy. Both addresses should carry the release the trading service runs.
+say "== the release each address stamps into Setup =="
+for U in http://127.0.0.1:8094/setup.html http://127.0.0.1:8095/setup.html; do
+  R=$(curl -s --max-time 30 "$U" | grep -o '<meta name="uts-release" content="[^"]*"' | sed 's/.*content="//; s/"$//')
+  say "  $U  ${R:-NO STAMP}"
+  [ -n "$R" ] || FAIL=1
+done
+
 [ "$FAIL" = 0 ] && say "EVERYTHING CHECKED OUT" || say "SOMETHING FAILED — see above"
 exit "$FAIL"
