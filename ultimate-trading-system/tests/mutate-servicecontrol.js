@@ -3061,6 +3061,14 @@ const GUARDS = [
     "everyAddressAPlatformCallsFromIsKept", "where a platform calls from is never kept"],
   [path.join(ROOT, "public", "setup.html"), "    + '<span><span class=\"k\">its address, as this system sees it</span> ' + (e.seenFrom ? '<b>' + esc(e.seenFrom) + '</b>' : '<span class=\"muted\" title=\"filled in when the platform next calls in\">not known yet</span>') + '</span>'", "    + ''",
     "theComputeTabShowsEachPlatformsAddressAsThisSystemSeesIt", "the Compute tab stops showing the address a platform calls from"],
+  // 3.282.2: the sweeps' share of the machine first inside The sweep processor;
+  // Setup carries its release and the always-up program hands on the stamped copy
+  [path.join(ROOT, "public", "setup.html"), "  const head = '<div class=\"panel\"><h3 style=\"margin-top:0\">The sweep processor</h3>' + sweepShareHtml();", "  const head = '<div class=\"panel\"><h3 style=\"margin-top:0\">The sweep processor</h3>';",
+    "theSweepProcessorStandsUnderWhereEachPartRunsAndKeepsItsTicks", "the sweeps' share of the machine drops out of The sweep processor"],
+  [path.join(ROOT, "public", "setup.html"), "  const r = await fetch(at(p), { headers: releaseHeaders() });", "  const r = await fetch(at(p));",
+    "everyAskFromEveryPageCarriesTheStampAndThePageReloadsWhenRefused", "Setup reads without its release, so a page older than the box is never refused"],
+  [path.join(ROOT, "service-control", "server.js"), "  return fromService(rel).then((buf) => (buf ? page(buf) : fromDisk()));", "  return fromDisk();",
+    "thePagesComeFromTheTradingServiceWhileItAnswersAndFromTheDiskWhenItDoesNot", "the always-up program hands on the unstamped disk copy while the trading service answers"],
 ];
 
 const only = process.argv[2] || '';

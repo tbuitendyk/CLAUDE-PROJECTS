@@ -269,6 +269,54 @@ module.exports = {
     }
   },
 
+  // SETUP COMES STAMPED THROUGH THE ALWAYS-UP PROGRAM (3.282.2, owner
+  // 2026-09-27): the trading service's own copy while it answers, so the page
+  // carries the release and reloads itself after a deploy; the disk copy the
+  // moment it does not, because an outage is what this program is for
+  async thePagesComeFromTheTradingServiceWhileItAnswersAndFromTheDiskWhenItDoesNot() {
+    const http = require('http');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uts-svc-'));
+    fs.mkdirSync(path.join(dir, 'public'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'public', 'setup.html'), '<html>from the disk</html>');
+    const fake = http.createServer((req, res) => {
+      if (req.url === '/setup.html') { res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end('<html><meta name="uts-release" content="9.9.9">from the service</html>'); }
+      res.writeHead(404); return res.end();
+    });
+    await new Promise((r) => fake.listen(0, '127.0.0.1', r));
+    const cp = require('child_process');
+    const real = cp.execFile;
+    cp.execFile = (c, a, o, cb) => process.nextTick(() => (typeof o === 'function' ? o : cb)(null, '', ''));
+    process.env.UTS_PUBLIC = path.join(dir, 'public');
+    process.env.UTS_UNIT_PORT = String(fake.address().port);
+    delete require.cache[require.resolve(SVC)];
+    const srv = require(SVC).server;
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    const get = (p) => new Promise((resolve) => {
+      http.get({ host: '127.0.0.1', port: srv.address().port, path: p, agent: false }, (res) => {
+        let b = '';
+        res.on('data', (c) => { b += c; });
+        res.on('end', () => resolve({ body: b, cache: res.headers['cache-control'] }));
+      }).on('error', () => resolve({ body: '' }));
+    });
+    try {
+      const up = await get('/setup.html');
+      assert.ok(/content="9\.9\.9">from the service/.test(up.body) && up.cache === 'no-store', `the trading service's stamped copy is not what came back: ${up.body}`);
+      assert.ok(/from the service/.test((await get('/svc/setup.html')).body), 'the second address does not get the stamped copy');
+      if (fake.closeAllConnections) fake.closeAllConnections();
+      await new Promise((r) => fake.close(r));
+      const down = await get('/setup.html');
+      assert.ok(/from the disk/.test(down.body), `with the trading service gone the disk copy did not come back: ${down.body}`);
+    } finally {
+      await new Promise((r) => srv.close(r));
+      if (fake.listening) await new Promise((r) => fake.close(r));
+      cp.execFile = real;
+      delete process.env.UTS_PUBLIC;
+      delete process.env.UTS_UNIT_PORT;
+      delete require.cache[require.resolve(SVC)];
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+
   // Reachable at both addresses, one handler. The second address is the one
   // used when the trading service is down, which is when this matters.
   // The kernel enforces the ceiling on the very counter the meter reads, so
