@@ -112,9 +112,9 @@ const TEMPLATE = {
       title: 'The keys go to their platform',
       guidance: [
         { paras: [
-          'The keys are entered on this account\'s own record in this section, below the checklist: each trading platform has its own line there, and its Enter the keys sends them to that platform. They are locked in this browser with the platform\'s lock before they leave it, so this system passes them on without being able to read them, and the platform keeps them encrypted on its machine.',
+          'The keys are entered on this account\'s own record in this section, below the checklist: press Enter the keys there (Change the keys once a platform holds them), tick each trading platform that should hold them, and send them. They are locked in this browser with each platform\'s own lock before they leave it, so this system passes them on without being able to read them, and each platform keeps them encrypted on its machine.',
           'Before sending, check the fingerprint of the platform\'s lock. Below, each platform\'s is shown as this browser works it out, with the command that prints the machine\'s own copy on that machine. They must be the same: a different one means the keys would be locked for another machine.',
-          'Paste the API key and the secret key exactly as the exchange showed them, and press Send the keys to the trading platform. The boxes are emptied the moment the keys are sent, whether they were kept or not.',
+          'Paste the API key and the secret key exactly as the exchange showed them, and press Send the keys to the ticked platforms. The boxes are emptied the moment the keys are read, whether they were kept or not; Remove the keys takes them off the platforms you tick.',
         ] },
         { when: { address: 'tied' }, heading: 'Tied to one or more addresses', paras: [
           'Leave "these keys may trade from any address" unticked: the exchange already ties the key to the addresses you gave it.',
@@ -193,7 +193,7 @@ const NEEDS = {
   },
   checked(f) {
     if (f.checkedOn.length) return { ok: true, text: `the exchange answered ${namesOf(f.checkedOn)} about this key: it can trade and borrow on margin, and cannot move money` };
-    if (f.keysOn.length) return { ok: false, text: `the keys on ${namesOf(f.keysOn)} were kept without the exchange being asked: press Replace the keys on this account's record below and send them again` };
+    if (f.keysOn.length) return { ok: false, text: `the keys on ${namesOf(f.keysOn)} were kept without the exchange being asked: press Change the keys on this account's record below and send them again` };
     return { ok: false, text: 'the keys go to a trading platform first, at step 3' };
   },
   named(f) {

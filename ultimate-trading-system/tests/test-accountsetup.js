@@ -67,7 +67,7 @@ module.exports = {
       ['money', 'Real money on', false, ['live'], ['The pot holds only what the setups trading from it may lose']],
     ]);
     const rest4 = JSON.stringify(later);
-    for (const w of ['its Enter the keys sends them to that platform', 'the command that prints the machine\'s own copy on that machine', 'press Send the keys to the trading platform',
+    for (const w of ['tick each trading platform that should hold them', 'the command that prints the machine\'s own copy on that machine', 'press Send the keys to the ticked platforms',
       'ask the exchange what the key may do, before it keeps them', 'In this release it does not read how much is in the pot', 'this release has no reading of the cross rate',
       'its Sub-account key holds this account\'s name', 'in the setup\'s Setup detail, and kept with Save', 'press Activate real for its config on Greenlights',
       'In this release the trading platform places no real orders', 'this step cannot be done']) assert.ok(rest4.includes(w), `steps 3 to 6 say ${w}`);
@@ -198,7 +198,7 @@ module.exports = {
     assert.strictEqual(at({ ...none, unanswered: ['box-1'] })[2].said[0].text, 'the keys are not on any trading platform that answered (box-1 did not): press Enter the keys on this account\'s record below');
     // keys on the platform, kept without the exchange asked: step 3 done, step 4 not
     st = at({ ...none, keysOn: ['box-1'] });
-    assert.deepStrictEqual([st[2].done, st[3].done, st[3].said[0].text], [true, false, 'the keys on box-1 were kept without the exchange being asked: press Replace the keys on this account\'s record below and send them again']);
+    assert.deepStrictEqual([st[2].done, st[3].done, st[3].said[0].text], [true, false, 'the keys on box-1 were kept without the exchange being asked: press Change the keys on this account\'s record below and send them again']);
     // the exchange answered: step 4 done; no setup names the account yet
     st = at({ ...none, keysOn: ['box-1'], checkedOn: ['box-1'] });
     assert.deepStrictEqual([st[3].done, st[4].done, st[4].said[0].text], [true, false, 'no setup names this account yet: type binance-sub-1 into Sub-account key on a setup\'s Setup detail, on the Trade tab, and press Save']);
@@ -220,40 +220,64 @@ module.exports = {
       'the platform now reads the cross rate or the pot, so step 4 no longer tells the truth: write it again');
   },
 
-  // EACH PLATFORM'S LINE HAS ITS OWN KEY BUTTONS, AND STEP 3 SHOWS EVERY LOCK (3.276.0, owner
-  // 2026-09-27: the second platform's keys "had to be" put in with Replace the keys; and "how is
-  // the user supposed to know this seeing nothing was displayed about it")
-  eachPlatformsLineHasItsOwnKeyButtonsAndStepThreeShowsTheLocks() {
+  // KEYS TO AND FROM ANY NUMBER OF PLATFORMS, AND STEP 3 SHOWS EVERY LOCK (3.277.0, owner
+  // 2026-09-27: "this section must be coded to work properly with ONE or TWO or MORE trading
+  // platforms when adding/removing/changing keys"; and of step 3, "how is the user supposed to
+  // know this seeing nothing was displayed about it")
+  keysGoToAndComeOffAnyNumberOfPlatformsAndStepThreeShowsTheLocks() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
     const esc = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-    const cardSrc = src.slice(src.indexOf('function tradingKeysLine(a) {'), src.indexOf('function tradingAccountsHtml() {'));
-    const aTr = {
-      offered: [{ id: 'binance', label: 'Binance' }],
-      engines: [{ id: 'box-1', name: 'Platform One', isDefault: true, system: 'linux' }, { id: 'box-2', name: 'Platform Two', system: 'windows' }, { id: 'box-3', name: 'Platform Three', system: null }],
-      keys: {
-        'box-1': { answers: true, keys: [{ account: 'sub-1', present: true, addedAt: '2026-09-27T01:00:00Z', tied: true }], lockHere: '0a1b2c3d4e5f60718293' },
-        'box-2': { answers: true, keys: [], lockHere: 'ffeeddccbbaa99887766' },
-        'box-3': { answers: false, why: 'no word from it' },
-      },
-    };
-    const build = (open, eng) => new Function('esc', 'aTr', 'aTrKeys', 'aTrKeysEng', `${cardSrc}; return tradingAccountCard;`)(esc, aTr, open, eng);
-    const closed = build(null, null)({ id: 'sub-1', exchange: 'binance', note: '' });
-    const line = (name) => closed.slice(closed.indexOf(`keys on ${name}`), closed.indexOf('</div>', closed.indexOf(`keys on ${name}`)));
-    assert.ok(/data-takeys="sub-1" data-teng="box-1">Replace the keys<\/button><button data-tarm="sub-1" data-teng="box-1" class="danger"/.test(line('Platform One')), 'the platform holding the keys offers Replace the keys and Remove the keys, for itself');
-    assert.ok(/data-takeys="sub-1" data-teng="box-2">Enter the keys<\/button>/.test(line('Platform Two')) && !/data-tarm/.test(line('Platform Two')), 'a platform without them offers Enter the keys, whatever the default one holds');
-    assert.ok(!/data-takeys/.test(line('Platform Three')), 'a platform that did not answer offers nothing: no lock, no keys can go to it');
-    assert.strictEqual((closed.match(/data-takeys=/g) || []).length, 2, 'no key button outside the platforms\' own lines');
-    const form = build('sub-1', 'box-2')({ id: 'sub-1', exchange: 'binance', note: '' });
-    assert.ok(/<span class="k">the keys for<\/span> <b>Platform Two<\/b>/.test(form) && !/id="takEng"/.test(form), 'the form names the platform it sends to, and asks no other');
-    assert.ok(/const enginePick = \(\) => aTrKeysEng \|\| '';/.test(src) && /\{ engine: b\.dataset\.teng, remove: true \}/.test(src), 'the send goes to the form\'s platform and the remove to the button\'s');
+    const cardSrc = src.slice(src.indexOf('function keyStanding(acctId, g) {'), src.indexOf('function tradingAccountsHtml() {'));
+    const acct = { id: 'sub-1', exchange: 'binance', note: '' };
+    const E = (id, name, extra = {}) => ({ id, name, system: 'linux', ...extra });
+    const held = (at) => ({ answers: true, keys: [{ account: 'sub-1', present: true, addedAt: at, tied: true }], lock: { publicKey: 'p' }, lockHere: `fp-${at.slice(11, 13)}` });
+    const none = (fp) => ({ answers: true, keys: [], lock: { publicKey: 'p' }, lockHere: fp });
+    const card = (aTr, open = null, mode = null, ticks = {}, out = {}) => new Function('esc', 'aTr', 'aTrKeys', 'aTrKeysMode', 'aTrKeysTicks', 'aTrKeysOut', `${cardSrc}; return tradingAccountCard;`)(esc, aTr, open, mode, ticks, out)(acct);
+    const base = { offered: [{ id: 'binance', label: 'Binance' }] };
+    // ONE PLATFORM, NO KEYS: Enter the keys, nothing to remove
+    const one = { ...base, engines: [E('box-1', 'Platform One')], keys: { 'box-1': none('fp-a') } };
+    let html = card(one);
+    assert.ok(/<button data-takeys="sub-1">Enter the keys<\/button>/.test(html) && !/data-tarm=/.test(html), 'one platform without keys: Enter the keys, and nothing to remove');
+    // TWO PLATFORMS, KEYS ON ONE: Change the keys and Remove the keys; the send form ticks both,
+    // saying what sending does on each, each with its own lock
+    const two = { ...base, engines: [E('box-1', 'Platform One'), E('box-2', 'Platform Two', { system: 'windows' })], keys: { 'box-1': held('2026-09-27T01:00:00Z'), 'box-2': none('fp-b') } };
+    html = card(two);
+    assert.ok(/<button data-takeys="sub-1">Change the keys<\/button><button data-tarm="sub-1" class="danger"/.test(html), 'once a platform holds them: Change the keys and Remove the keys');
+    assert.strictEqual((html.match(/data-takeys=|data-tarm=/g) || []).length, 2, 'one pair of buttons for the account, however many platforms');
+    html = card(two, 'sub-1', 'send');
+    assert.ok(/data-tatick="box-1" checked> Platform One<\/label><span class="note">holds keys entered 2026-09-27 01:00 UTC — these replace them<\/span><span class="note">the fingerprint of its lock <b>fp-01<\/b><\/span>/.test(html), 'the platform holding keys is ticked, and says they are replaced, with its lock');
+    assert.ok(/data-tatick="box-2" checked> Platform Two<\/label><span class="note">holds none — these are added<\/span><span class="note">the fingerprint of its lock <b>fp-b<\/b><\/span>/.test(html), 'the one holding none is ticked too, and says they are added');
+    assert.ok(/<button id="takSend" class="pri">Send the keys to the ticked platforms<\/button><button id="takCancel">Do not send<\/button>/.test(html), 'one press sends to every ticked platform');
+    assert.ok(/data-tatick="box-2">/.test(card(two, 'sub-1', 'send', { 'box-2': false })), 'a tick taken off stays off across the redraw');
+    // THREE PLATFORMS: keys on two, the third silent -- the remove form ticks the two, says why not the third
+    const three = { ...base, engines: [E('box-1', 'Platform One'), E('box-2', 'Platform Two'), E('box-3', 'Platform Three'), E('box-4', 'Platform Four')],
+      keys: { 'box-1': held('2026-09-27T01:00:00Z'), 'box-2': held('2026-09-27T02:00:00Z'), 'box-3': { answers: false, why: 'no word from it' }, 'box-4': { answers: true, keys: [] } } };
+    html = card(three, 'sub-1', 'remove');
+    assert.ok(/data-tatick="box-1" checked> Platform One<\/label><span class="note">keys entered 2026-09-27 01:00 UTC<\/span>/.test(html) && /data-tatick="box-2" checked> Platform Two/.test(html), 'every platform holding the keys is offered, ticked');
+    assert.ok(!/data-tatick="box-3"/.test(html) && /Platform Three — did not answer, so whether it holds keys cannot be told, and nothing can be removed from it now/.test(html), 'a silent platform is named, not offered');
+    assert.ok(!/data-tatick="box-4"/.test(html), 'a platform holding none is not offered for removal');
+    assert.ok(/<button id="takRemove" class="danger">Remove the keys from the ticked platforms<\/button><button id="takCancel">Do not remove<\/button>/.test(html), 'one press removes from every ticked platform');
+    html = card(three, 'sub-1', 'send');
+    assert.ok(/Platform Three — did not answer, so nothing can be sent to it now \(no word from it\)/.test(html) && /Platform Four — has not said what its lock is, so no keys can be locked for it/.test(html) && !/data-tatick="box-(3|4)"/.test(html),
+      'a platform that cannot take keys is named with why, and cannot be ticked');
+    assert.ok(!/data-takeys=/.test(card({ ...base, engines: [E('box-3', 'Platform Three')], keys: { 'box-3': { answers: false, why: 'x' } } })), 'no platform can take keys: nothing offers to enter them');
+    assert.ok(/<div id="taOut_sub-1" class="note" style="margin-top:\.3rem">Platform One: removed<\/div>/.test(card(two, null, null, {}, { 'sub-1': 'Platform One: removed' })), 'the answer of the last send or remove stays under the account, one line per platform');
+    // THE PRESSES DO WHAT THE FORM SAYS: every ticked platform, each its own lock, each its own answer
+    assert.ok(/const targets = tickedOf\(acct, \(st\) => st\.lockable\);/.test(src) && /const targets = tickedOf\(acct, \(st\) => !!st\.mine\);/.test(src), 'the send and the remove go to every ticked platform the form could tick');
+    assert.ok(/for \(const g of targets\) \{\n      const st = keyStanding\(acct, g\);\n      try \{\n        \/\/ LOCKED HERE, SEPARATELY FOR EACH PLATFORM, WITH ITS OWN LOCK/.test(src), 'each platform\'s keys are locked with that platform\'s own lock');
+    assert.ok(/await postJson\('api\/account\/trading\/' \+ encodeURIComponent\(acct\) \+ '\/keys', \{ engine: g\.id, remove: true \}\)/.test(src), 'each ticked platform is asked to remove them');
     // STEP 3's LOCKS: each fingerprint as worked out here, and the command for that machine
+    const aTr = {
+      engines: [{ id: 'box-1', name: 'Platform One', isDefault: true, system: 'linux' }, { id: 'box-2', name: 'Platform Two', system: 'windows' }, { id: 'box-3', name: 'Platform Three', system: null }],
+      keys: { 'box-1': { answers: true, keys: [], lockHere: '0a1b2c3d4e5f60718293' }, 'box-2': { answers: true, keys: [], lockHere: 'ffeeddccbbaa99887766' }, 'box-3': { answers: false, why: 'no word from it' } },
+    };
     const lockSrc = src.slice(src.indexOf('const LOCK_CMD = {'), src.indexOf('function asHtml() {'));
     const locks = new Function('esc', 'aTr', `${lockSrc}; return { asLocksHtml, LOCK_CMD };`)(esc, aTr);
-    const html = locks.asLocksHtml();
-    assert.ok(/<span class="k">Platform One<\/span><span class="note">the fingerprint of its lock, worked out in this browser:<\/span> <b>0a1b2c3d4e5f60718293<\/b>/.test(html), 'each platform\'s fingerprint is on the step');
-    assert.ok(html.includes(esc("sudo sed -n 's/.*\"lock\":\"\\([^\"]*\\)\".*/\\1/p' /var/lib/uts-engine-box-1/link-status.json")), 'a Linux machine is given its command');
-    assert.ok(html.includes(esc('(Get-Content "$env:ProgramData\\uts-engine-box-2\\link-status.json" | ConvertFrom-Json).lock')) && /in PowerShell, as administrator/.test(html), 'a Windows machine its own');
-    assert.ok(/this system does not know that machine&#39;s operating system yet/.test(html) && /the platform did not answer/.test(html), 'and a machine whose system is not known says so, as does one that did not answer');
+    const lockHtml = locks.asLocksHtml();
+    assert.ok(/<span class="k">Platform One<\/span><span class="note">the fingerprint of its lock, worked out in this browser:<\/span> <b>0a1b2c3d4e5f60718293<\/b>/.test(lockHtml), 'each platform\'s fingerprint is on the step');
+    assert.ok(lockHtml.includes(esc("sudo sed -n 's/.*\"lock\":\"\\([^\"]*\\)\".*/\\1/p' /var/lib/uts-engine-box-1/link-status.json")), 'a Linux machine is given its command');
+    assert.ok(lockHtml.includes(esc('(Get-Content "$env:ProgramData\\uts-engine-box-2\\link-status.json" | ConvertFrom-Json).lock')) && /in PowerShell, as administrator/.test(lockHtml), 'a Windows machine its own');
+    assert.ok(/this system does not know that machine&#39;s operating system yet/.test(lockHtml) && /the platform did not answer/.test(lockHtml), 'and a machine whose system is not known says so, as does one that did not answer');
     // THE COMMANDS ARE HELD TO THE INSTALL SCRIPTS: where each keeps the file, and how Linux reads it
     const inst = (f) => fs.readFileSync(path.join(__dirname, '..', 'engine', 'install', f), 'utf8');
     const lin = inst('linux.sh');
