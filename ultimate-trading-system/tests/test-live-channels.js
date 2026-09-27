@@ -18,6 +18,21 @@ const reg = require('../lib/live/setups');
 const view = require('../lib/live/view');
 
 const { aStage4Source } = require('./fixtures-setup');
+
+// EVERY SETUP RUNS ON A TRADING PLATFORM (3.282.0, owner 2026-09-27: "simply show the list where execution
+// targets are all available and one must be picked"). This file keeps one on record, the default for new
+// setups, answering through its link; the two tests that need none, or several, keep their own record and
+// press Activate directly.
+const targets = require('../lib/live/targets');
+const link = require('../lib/live/enginelink');
+process.env.GC_TARGETS_FILE = process.env.GC_TARGETS_FILE || path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gc-ch-targets-')), 'targets.json');
+process.env.GC_ENGINE_MIRROR = process.env.GC_ENGINE_MIRROR || fs.mkdtempSync(path.join(os.tmpdir(), 'gc-ch-mirror-'));
+function onAPlatform() {
+  if (!targets.getTarget('test-platform')) targets.saveCallingEngine({ id: 'test-platform', name: 'Test platform', tokenHash: 'c'.repeat(64) });
+  link.mirrorFor(targets.getTarget('test-platform')).lastHealth = { at: new Date(Date.now() + 3600e3).toISOString(), health: { realOrders: 'off' } };
+}
+const activate = (...a) => { onAPlatform(); return ch.activate(...a); };
+
 let seq = 0;
 function mkGreenlight() {
   seq++;
@@ -44,7 +59,7 @@ module.exports.statusLineSpeaksTheOwnersVocabulary = function () {
 
 module.exports.activateCreatesTheChannelAndBothRunSimultaneously = function () {
   const g = mkGreenlight();
-  const p = ch.activate(g.id, 'paper');
+  const p = activate(g.id, 'paper');
   assert.strictEqual(p.state, 'paper');
   assert.strictEqual(p.channel, 'paper', 'channel stamped on the setup record');
   assert.ok(p.runEpochUtc == null || typeof p.runEpochUtc === 'string'); // epoch stamped after transition
@@ -52,12 +67,12 @@ module.exports.activateCreatesTheChannelAndBothRunSimultaneously = function () {
   assert.ok(stamped.runEpochUtc, 'activation stamps the displayed-run epoch');
   // second activation of the same channel refuses
   let err = null;
-  try { ch.activate(g.id, 'paper'); } catch (e) { err = e; }
+  try { activate(g.id, 'paper'); } catch (e) { err = e; }
   assert.strictEqual(err && err.code, 'ALREADY_ACTIVE');
   // the real channel is independent — its OWN setup, its own gates. No keyRef
   // here, so the live door refuses exactly as the review-hardened gate demands.
   let realErr = null;
-  try { ch.activate(g.id, 'real'); } catch (e) { realErr = e; }
+  try { activate(g.id, 'real'); } catch (e) { realErr = e; }
   assert.strictEqual(realErr && realErr.code, 'NOT_LIVE_EXECUTABLE',
     'real activation without a sub-account keyRef is refused by the existing gate');
   // paper channel unaffected by the refused real attempt
@@ -66,12 +81,12 @@ module.exports.activateCreatesTheChannelAndBothRunSimultaneously = function () {
 
 module.exports.deactivateStopsAndReactivationRestampsTheEpoch = function () {
   const g = mkGreenlight();
-  const first = ch.activate(g.id, 'paper');
+  const first = activate(g.id, 'paper');
   const epoch1 = reg.getSetup(first.id).runEpochUtc;
   const stopped = ch.deactivate(g.id, 'paper');
   assert.strictEqual(stopped.state, 'stopped');
   // journal empty -> flat -> re-activation allowed, epoch restamped
-  const again = ch.activate(g.id, 'paper');
+  const again = activate(g.id, 'paper');
   assert.strictEqual(again.id, first.id, 're-activation reuses the channel setup');
   const epoch2 = reg.getSetup(first.id).runEpochUtc;
   assert.ok(epoch2 >= epoch1, 'fresh epoch on re-activation');
@@ -79,29 +94,30 @@ module.exports.deactivateStopsAndReactivationRestampsTheEpoch = function () {
 
 module.exports.reactivationRefusedWhileOldPositionsStillWindDown = function () {
   const g = mkGreenlight();
-  const s = ch.activate(g.id, 'paper');
+  const s = activate(g.id, 'paper');
   ch.deactivate(g.id, 'paper');
-  // synthetic journal: one PAPER position opened for this setup, never exited
-  const jf = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gc-ch-j-')), 'journal.jsonl');
-  fs.writeFileSync(jf, JSON.stringify({
+  // the platform's own record (every setup runs on one since 3.282.0): one PAPER position opened for this
+  // setup, never exited
+  const ef = link.mirrorFor(targets.getTarget('test-platform')).eventsFile;
+  fs.mkdirSync(path.dirname(ef), { recursive: true });
+  const before = fs.existsSync(ef) ? fs.readFileSync(ef, 'utf8') : null;
+  fs.appendFileSync(ef, JSON.stringify({
     event: 'PAPER_ENTRY_FILL', setup_id: s.id, chunk_start: 'c1', side: 'LONG',
     qty: 0.1, price: 100, utc: new Date().toISOString(), exit_due_ts: Date.now() / 1000 + 3600,
   }) + '\n');
-  const old = process.env.GC_LIVE_JOURNAL;
-  process.env.GC_LIVE_JOURNAL = jf;
   try {
     let err = null;
-    try { ch.activate(g.id, 'paper'); } catch (e) { err = e; }
+    try { activate(g.id, 'paper'); } catch (e) { err = e; }
     assert.strictEqual(err && err.code, 'DEACTIVATING',
       'an epoch reset must never hide live exposure — refuse until close-out');
   } finally {
-    if (old == null) delete process.env.GC_LIVE_JOURNAL; else process.env.GC_LIVE_JOURNAL = old;
+    if (before == null) fs.rmSync(ef, { force: true }); else fs.writeFileSync(ef, before);
   }
 };
 
 module.exports.runEpochScopesTheDisplayedRunNotTheJournal = function () {
   const g = mkGreenlight();
-  const s = ch.activate(g.id, 'paper');
+  const s = activate(g.id, 'paper');
   const jf = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gc-ch-e-')), 'journal.jsonl');
   const oldRun = { event: 'PAPER_ENTRY_FILL', setup_id: s.id, chunk_start: 'old', side: 'LONG',
     qty: 0.1, price: 100, utc: '2026-08-01T00:00:00Z', exit_due_ts: 1754000000 };
@@ -122,7 +138,7 @@ module.exports.runEpochScopesTheDisplayedRunNotTheJournal = function () {
 
 module.exports.nukeRefusesWhileBusyThenRevokesAndBlocksReuse = function () {
   const g = mkGreenlight();
-  ch.activate(g.id, 'paper');
+  activate(g.id, 'paper');
   let err = null;
   try { gl.revoke(g.id); } catch (e) { err = e; }
   assert.strictEqual(err && err.code, 'CHANNEL_ACTIVE', 'nuke refused while a channel is active');
@@ -134,34 +150,33 @@ module.exports.nukeRefusesWhileBusyThenRevokesAndBlocksReuse = function () {
   assert.ok(setups.every((s) => s.state === 'retired'), 'channels retire with the nuke');
   // re-activation and re-shuttle refuse on a revoked config
   let err2 = null;
-  try { ch.activate(g.id, 'paper'); } catch (e) { err2 = e; }
+  try { activate(g.id, 'paper'); } catch (e) { err2 = e; }
   assert.strictEqual(err2 && err2.code, 'REVOKED');
 };
 
-// S12 AND THE TICK ON SETUP > COMPUTE: with no engine on record a new setup
-// runs where it always did; with an engine ticked "new setups run on this
-// engine", a new setup names that engine -- and only a setup that names it is
-// ever sent to it
-module.exports.aNewSetupRunsOnTheEngineTickedForNewSetupsAndOtherwiseWhereItAlwaysDid = function () {
-  const targets = require('../lib/live/targets');
-  const link = require('../lib/live/enginelink');
+// A NEW SETUP RUNS ON THE DEFAULT TRADING PLATFORM, AND WITHOUT ONE NOTHING IS MADE (S12, and 3.282.0): the
+// first platform to call in is the default; with none on record Activate is refused, briefly, in the owner's
+// words, and leaves nothing behind; a platform that does not answer through its link is said
+module.exports.aNewSetupRunsOnTheDefaultPlatformAndIsRefusedWithoutOne = function () {
   const saved = { t: process.env.GC_TARGETS_FILE, m: process.env.GC_ENGINE_MIRROR };
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-ch-engine-'));
   process.env.GC_TARGETS_FILE = path.join(dir, 'targets.json');
   process.env.GC_ENGINE_MIRROR = path.join(dir, 'mirror');
   try {
-    const plain = ch.activate(mkGreenlight().id, 'paper');
-    assert.ok(!reg.getSetup(plain.id).executionTargetRef, 'no engine on record: the setup runs where it always did');
-    // an engine is made the way every new one is now: when it first calls in (3.266.0); the first is the one new setups run on
+    const g0 = mkGreenlight();
+    let err = null;
+    try { ch.activate(g0.id, 'paper'); } catch (e) { err = e; }
+    assert.ok(err && err.code === 'NO_PLATFORM' && err.message === 'No default trading platform target set -- set a default trading platform on Setup | Compute.', err && err.message);
+    assert.strictEqual(ch.channelSetup(g0.id, 'paper'), null, 'a refused press leaves nothing behind');
+    // an engine is made the way every new one is now: when it first calls in (3.266.0); the first is the default
     targets.saveCallingEngine({ id: 'ch-engine', name: 'Channel engine', tokenHash: 'a'.repeat(64) });
     const g = mkGreenlight();
-    let err = null;
+    err = null;
     try { ch.activate(g.id, 'paper'); } catch (e) { err = e; }
     assert.ok(err && /the trading platform Channel engine does not answer through its link yet/.test(err.message), err && err.message);
     link.mirrorFor(targets.getTarget('ch-engine')).lastHealth = { at: new Date().toISOString(), health: { realOrders: 'off' } };
     const onEngine = ch.activate(mkGreenlight().id, 'paper');
-    assert.strictEqual(reg.getSetup(onEngine.id).executionTargetRef, 'ch-engine', 'the new setup names the engine ticked for new setups');
-    assert.ok(!reg.getSetup(plain.id).executionTargetRef, 'a setup already running stays where it is');
+    assert.strictEqual(reg.getSetup(onEngine.id).executionTargetRef, 'ch-engine', 'the new setup names the default trading platform');
   } finally {
     link.followAll([]);
     for (const [k, v] of [['GC_TARGETS_FILE', saved.t], ['GC_ENGINE_MIRROR', saved.m]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
@@ -169,19 +184,20 @@ module.exports.aNewSetupRunsOnTheEngineTickedForNewSetupsAndOtherwiseWhereItAlwa
   }
 };
 
-// A SETUP MX-1 CANNOT TRADE TAKES THE PLATFORM TICKED FOR NEW SETUPS, AND THE REFUSAL SAYS HOW (3.281.0,
-// owner 2026-09-27: "cannot go paper: cell.entry 'breakout' ..." and "the user needs to be able to fix this
-// without bring the claude tool into the loop"): two platforms and neither ticked is no default; the refusal
-// names the way out first; once one is ticked the same press goes there; one mx-1 can trade keeps its fallback
-module.exports.aSetupTheOldOrderProgramCannotTradeGoesToTheTickedPlatformAndTheRefusalSaysHow = function () {
-  const targets = require('../lib/live/targets');
-  const link = require('../lib/live/enginelink');
+// EVERY SETUP RUNS ON A TRADING PLATFORM, AND ONE MUST BE PICKED (3.281.0, 3.282.0; owner 2026-09-27: "cannot
+// go paper: cell.entry 'breakout' ...", "the user needs to be able to fix this without bring the claude tool
+// into the loop", "one must be picked", "just make that say something brief"): two platforms and neither
+// ticked is no default, and nothing is made; once one is ticked the press goes there, whatever the shape; a
+// setup with no platform of its own takes it; one set to mx-1 is refused; the picks made at Activate are
+// written onto the setup; and the gate's own words are the brief ones
+module.exports.everySetupRunsOnATradingPlatformAndOneMustBePicked = function () {
   const saved = { t: process.env.GC_TARGETS_FILE, m: process.env.GC_ENGINE_MIRROR };
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-ch-breakout-'));
   process.env.GC_TARGETS_FILE = path.join(dir, 'targets.json');
   process.env.GC_ENGINE_MIRROR = path.join(dir, 'mirror');
   const base = aStage4Source();
-  const breakout = () => gl.greenlightFromStage4(aStage4Source({ survivor: { ...base.survivor, entry: 'breakout', dMult: 0.5 } }), { name: 'breakout config', why: 'no platform ticked' });
+  const breakout = () => gl.greenlightFromStage4(aStage4Source({ survivor: { ...base.survivor, entry: 'breakout', dMult: 0.5 } }), { name: 'breakout config', why: 'one must be picked' });
+  const fresh = (id) => { link.mirrorFor(targets.getTarget(id)).lastHealth = { at: new Date().toISOString(), health: { realOrders: 'off' } }; };
   try {
     targets.saveCallingEngine({ id: 'eng-a', name: 'Platform A', tokenHash: 'a'.repeat(64) });
     targets.saveCallingEngine({ id: 'eng-b', name: 'Platform B', tokenHash: 'b'.repeat(64) });
@@ -190,27 +206,40 @@ module.exports.aSetupTheOldOrderProgramCannotTradeGoesToTheTickedPlatformAndTheR
     const g = breakout();
     let err = null;
     try { ch.activate(g.id, 'paper'); } catch (e) { err = e; }
-    assert.ok(err && err.message.includes('no trading platform is ticked "new setups run on this platform", so this setup would run on mx-1, the old order program, which trades only a market entry, with no gate, trailing stop or arm: on the Compute tab of Setup, press Change this record on the platform it should run on, tick "new setups run on this platform" and press Save the platform record, then activate it again'), err && err.message);
-    assert.ok(err.message.indexOf('no trading platform is ticked') < err.message.indexOf("cell.entry 'breakout'"), 'the way out comes before the details');
-    const left = ch.channelSetup(g.id, 'paper');
-    assert.ok(left && !left.executionTargetRef && left.state !== 'paper', 'the refused press leaves a setup with no platform of its own, not trading');
-    // ticked on the Compute tab: the same press now goes there, with the setup the refused press left
+    assert.deepStrictEqual([err && err.code, err && err.message], ['NO_PLATFORM', 'No default trading platform target set -- set a default trading platform on Setup | Compute.']);
+    assert.strictEqual(ch.channelSetup(g.id, 'paper'), null, 'nothing is made by a refused press');
+    // ticked on the Compute tab: the same press goes there
     targets.saveEngine({ id: 'eng-b', name: 'Platform B', isDefault: true });
-    link.mirrorFor(targets.getTarget('eng-b')).lastHealth = { at: new Date().toISOString(), health: { realOrders: 'off' } };
+    fresh('eng-a'); fresh('eng-b');
     const on = ch.activate(g.id, 'paper');
-    assert.deepStrictEqual([on.id, on.state, reg.getSetup(on.id).executionTargetRef], [left.id, 'paper', 'eng-b'], 'the setup the refused press left trades on the ticked platform');
-    // set to mx-1 by choice: refused, and told to choose a platform in Execution target
-    const g2 = breakout();
-    const made = gl.shuttle(g2.id, { name: 'on mx-1 by choice', clipUsd: 10, channel: 'paper', executionTargetRef: 'mx-1' }).setup;
-    err = null;
-    try { ch.activate(g2.id, 'paper'); } catch (e) { err = e; }
-    assert.ok(err && err.message.includes('this setup is set to run on mx-1, the old order program, which trades only a market entry, with no gate, trailing stop or arm: choose a trading platform in Execution target on its Setup detail, press Save routing, then activate it again'), err && err.message);
-    assert.strictEqual(reg.getSetup(made.id).executionTargetRef, 'mx-1', 'a choice the owner made is never overridden');
-    // a setup mx-1 can trade, with no platform of its own, keeps the fallback it has always had
+    assert.deepStrictEqual([on.state, reg.getSetup(on.id).executionTargetRef], ['paper', 'eng-b']);
+    // a market entry with no platform of its own takes the default too: mx-1 is no fallback any more
     const g3 = mkGreenlight();
     const plain = gl.shuttle(g3.id, { name: 'market, no platform', clipUsd: 10, channel: 'paper' }).setup;
     const act = ch.activate(g3.id, 'paper');
-    assert.deepStrictEqual([act.id, reg.getSetup(plain.id).executionTargetRef], [plain.id, null], 'a market entry with no platform of its own still runs on mx-1');
+    assert.deepStrictEqual([act.id, reg.getSetup(plain.id).executionTargetRef], [plain.id, 'eng-b'], 'a setup with no platform of its own takes the default');
+    // one set to mx-1 is refused, a market entry included, and never moved by itself
+    const g2 = mkGreenlight();
+    const onMx = gl.shuttle(g2.id, { name: 'on mx-1', clipUsd: 10, channel: 'paper', executionTargetRef: 'mx-1' }).setup;
+    err = null;
+    try { ch.activate(g2.id, 'paper'); } catch (e) { err = e; }
+    assert.deepStrictEqual([err && err.code, err && err.message], ['NO_PLATFORM', 'This setup\'s execution target is not a trading platform -- pick one in Execution target on its Setup detail.']);
+    assert.strictEqual(reg.getSetup(onMx.id).executionTargetRef, 'mx-1', 'never moved by itself');
+    // the picks made at Activate are written onto the setup, and nothing that was not picked
+    const g4 = breakout();
+    const picked = ch.activate(g4.id, 'paper', { executionTargetRef: 'eng-a', keyRef: 'acct-1' });
+    assert.deepStrictEqual([reg.getSetup(picked.id).executionTargetRef, reg.getSetup(picked.id).keyRef], ['eng-a', 'acct-1']);
+    ch.deactivate(g4.id, 'paper');
+    const again = ch.activate(g4.id, 'paper');
+    assert.deepStrictEqual([reg.getSetup(again.id).executionTargetRef, reg.getSetup(again.id).keyRef], ['eng-a', 'acct-1'], 'a press with no picks changes nothing');
+    err = null;
+    try { ch.activate(breakout().id, 'paper', { executionTargetRef: 'mx-1' }); } catch (e) { err = e; }
+    assert.strictEqual(err && err.code, 'NO_PLATFORM', 'mx-1 cannot be picked');
+    // the gate's own words, for a way in that is not Activate
+    const lone = reg.createSetup({ name: 'no platform', ownerId: 'owner', configSnapshot: breakout().configSnapshot, clipUsd: 10 });
+    err = null;
+    try { reg.transition(lone.id, 'paper', 'owner'); } catch (e) { err = e; }
+    assert.ok(err && err.message.includes('No default trading platform target set -- set a default trading platform on Setup | Compute.'), err && err.message);
   } finally {
     link.followAll([]);
     for (const [k, v] of [['GC_TARGETS_FILE', saved.t], ['GC_ENGINE_MIRROR', saved.m]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
@@ -227,12 +256,12 @@ module.exports.activateBringsTheStopPickedOnTuneIntoStopPct = function () {
   const g = gl.greenlightFromStage4(src, { name: 'stop config', why: 'the tuned stop rides along' });
   assert.strictEqual(g.configSnapshot.cell.entry, 'market');
   assert.strictEqual(ch.tunedStopOf(g), 0.11);
-  const p = ch.activate(g.id, 'paper');
+  const p = activate(g.id, 'paper');
   assert.strictEqual(reg.getSetup(p.id).stopPct, 0.11, 'the paper book starts with the stop picked on Tune');
   // still editable, and a re-activation keeps what the owner set
   reg.updateSetup(p.id, { stopPct: 0.08 }, 'owner');
   ch.deactivate(g.id, 'paper');
-  ch.activate(g.id, 'paper');
+  activate(g.id, 'paper');
   assert.strictEqual(reg.getSetup(p.id).stopPct, 0.08, 'the owner\'s edit stands');
   // a breakout configuration, or one with no stop, gets none
   assert.strictEqual(ch.tunedStopOf({ ...g, configSnapshot: { ...g.configSnapshot, cell: { ...g.configSnapshot.cell, entry: 'breakout' } } }), null);

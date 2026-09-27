@@ -19,7 +19,6 @@
 // epoch; the underlying journal is append-only and never destroyed.
 const reg = require('./setups');
 const gl = require('./greenlight');
-const { liveExecutable } = require('./configschema');
 const { OWNER_ID } = require('../ownerid');
 
 const CHANNELS = ['paper', 'real'];
@@ -70,7 +69,7 @@ function tunedStopOf(g) {
   return cell.entry === 'market' && Number.isFinite(s) && s > 0 && s < 1 ? s : null;
 }
 
-function activate(greenlightId, channel, { by = OWNER_ID, clipUsd, name, trainPolicy } = {}) {
+function activate(greenlightId, channel, { by = OWNER_ID, clipUsd, name, trainPolicy, keyRef, executionTargetRef } = {}) {
   // A deployment must say when its members train. Legacy setups fall back to
   // the freeze inside their old configSnapshot, out loud — see trainpolicy.js.
   if (trainPolicy) {
@@ -83,6 +82,22 @@ function activate(greenlightId, channel, { by = OWNER_ID, clipUsd, name, trainPo
   if (g.revoked) { const e = new Error('this config was nuked back to not-greenlighted; re-greenlight it first'); e.code = 'REVOKED'; throw e; }
   let s = channelSetup(greenlightId, channel);
   const target = ACTIVE_STATE[channel];
+  // EVERY SETUP RUNS ON A TRADING PLATFORM, AND ONE MUST BE PICKED (3.282.0, owner 2026-09-27: "simply show
+  // the list where execution targets are all available and one must be picked"). Settled before anything is
+  // made, so a refused press leaves nothing behind; said briefly, in the owner's words: "No default trading
+  // platform target set -- set a default trading platform on Setup | Compute."
+  // THE PICKS MADE AT ACTIVATE (3.282.0): the trading platform and the trading account, from the lists
+  const targets = require('./targets');
+  const picked = executionTargetRef ? targets.listEngines().find((t) => t.id === executionTargetRef) || null : null;
+  if (executionTargetRef && !picked) {
+    const e = new Error('This setup\'s execution target is not a trading platform -- pick one in Execution target on its Setup detail.');
+    e.code = 'NO_PLATFORM'; throw e;
+  }
+  const eng = picked || targets.defaultEngine();
+  if (!eng && !(s && s.executionTargetRef)) {
+    const e = new Error('No default trading platform target set -- set a default trading platform on Setup | Compute.');
+    e.code = 'NO_PLATFORM'; throw e;
+  }
   if (s && (s.state === 'paper' || s.state === 'live')) {
     const e = new Error(`${channel} channel is already active`); e.code = 'ALREADY_ACTIVE'; throw e;
   }
@@ -116,11 +131,10 @@ function activate(greenlightId, channel, { by = OWNER_ID, clipUsd, name, trainPo
     }
   }
   if (!s) {
-    // A NEW SETUP RUNS ON THE TRADING ENGINE ticked default on Setup > Compute
-    // (loop of 2026-09-25); with no engine on record it runs where it always did
-    const eng = require('./targets').defaultEngine();
+    // A NEW SETUP RUNS ON THE DEFAULT TRADING PLATFORM, ticked on Setup | Compute
     const made = gl.shuttle(greenlightId, {
-      executionTargetRef: eng ? eng.id : null,
+      executionTargetRef: eng.id,
+      keyRef: keyRef || null,
       name: name || `${g.configSnapshot.combo.trade} ${g.target} ${channel}`,
       // clip is operational (point 20), not part of the frozen snapshot; the
       // $10 default matches the pilot's clip and is editable on Setup detail.
@@ -130,14 +144,17 @@ function activate(greenlightId, channel, { by = OWNER_ID, clipUsd, name, trainPo
     });
     s = made.setup;
   }
-  // A SETUP MX-1 CANNOT TRADE TAKES THE PLATFORM TICKED FOR NEW SETUPS (3.281.0, owner 2026-09-27: "cannot
-  // go paper: cell.entry 'breakout' ..."). One made while no platform was ticked has no platform of its own
-  // and falls back to mx-1, the old order program, which trades only a market entry -- so a breakout, a gate,
-  // a trailing stop or an arm can never have traded there. Once a platform is ticked, activating it again
-  // puts it where a setup made now would go. One that mx-1 can trade keeps the fallback it has always had.
-  if (!s.executionTargetRef && !liveExecutable(s.configSnapshot).ok) {
-    const eng = require('./targets').defaultEngine();
-    if (eng) s = reg.updateSetup(s.id, { executionTargetRef: eng.id }, by);
+  // A SETUP WITH NO PLATFORM OF ITS OWN takes the default trading platform, as a setup made now does
+  // (3.281.0 did this for the shapes mx-1 cannot trade; 3.282.0 for every setup); what was picked at
+  // Activate is written onto the setup, and nothing is written that was not picked
+  const patch = {};
+  if (picked && s.executionTargetRef !== picked.id) patch.executionTargetRef = picked.id;
+  else if (!s.executionTargetRef) patch.executionTargetRef = eng.id;
+  if (keyRef !== undefined && (keyRef || null) !== (s.keyRef || null)) patch.keyRef = keyRef || null;
+  if (Object.keys(patch).length) s = reg.updateSetup(s.id, patch, by);
+  if (!targets.listEngines().some((t) => t.id === s.executionTargetRef)) {
+    const e = new Error('This setup\'s execution target is not a trading platform -- pick one in Execution target on its Setup detail.');
+    e.code = 'NO_PLATFORM'; throw e;
   }
   const out = reg.transition(s.id, target, by, `activate ${channel}`);
   reg.setRunEpoch(s.id); // displayed run history restarts here; journal untouched

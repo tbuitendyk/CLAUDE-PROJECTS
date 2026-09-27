@@ -73,6 +73,14 @@ function status(engineId) {
   return { linked: true, since: c.since, lastAt: new Date(c.lastAt).toISOString(), release: c.hello ? c.hello.release : null, why: null };
 }
 
+// every address a platform has called from, newest first, ten kept, each with when it was first and last seen
+function addressesSeen(was, ip, now = new Date().toISOString()) {
+  const list = (Array.isArray(was) ? was : []).filter((x) => x && typeof x.ip === 'string').map((x) => ({ ...x }));
+  const hit = list.find((x) => x.ip === ip);
+  if (hit) { hit.lastUtc = now; hit.n = (hit.n || 0) + 1; } else list.push({ ip, firstUtc: now, lastUtc: now, n: 1 });
+  return list.sort((a, b) => String(b.lastUtc).localeCompare(String(a.lastUtc))).slice(0, 10);
+}
+
 function onUpgrade(req, socket, head) {
   const u = new URL(req.url, 'http://x');
   if (u.pathname !== '/engine-link/ws') { ws.refuse(socket, 404, 'no such address'); return; }
@@ -82,6 +90,9 @@ function onUpgrade(req, socket, head) {
   const conn = ws.accept(req, socket, head);
   if (!conn) return;
   const id = eng.id;
+  // WHERE IT CALLS FROM, AS THIS SYSTEM SEES IT (3.282.0, owner 2026-09-27: "thorough detection of the ipv4
+  // address source"): the web server in front says who connected; a direct connection says it itself
+  const from = String(req.headers['x-real-ip'] || req.socket.remoteAddress || '').replace(/^::ffff:/, '').slice(0, 64);
   const was = conns.get(id);
   if (was) was.conn.close(4000);   // the newest link wins; an old one left open is closed
   const me = { conn, since: new Date().toISOString(), hello: null, lastAt: Date.now(), pending: new Map() };
@@ -104,7 +115,8 @@ function onUpgrade(req, socket, head) {
       clearTimeout(helloWait);
       const es = require('./enginesetup');
       const lock = es.lockOf(msg.lock);
-      require('./targets').noteEngine(id, { release: me.hello.release, code: typeof msg.code === 'string' && /^[0-9a-f]{16}$/.test(msg.code) ? msg.code : null, lastSeenUtc: new Date().toISOString(), ...(lock ? { lock } : {}), ...(msg.machine ? { machine: { platform: String(msg.machine.platform || '').slice(0, 20), arch: String(msg.machine.arch || '').slice(0, 20), hostname: String(msg.machine.hostname || '').slice(0, 80), node: String(msg.machine.node || '').slice(0, 20) } } : {}) });
+      const t0 = require('./targets').getTarget(id) || {};
+      require('./targets').noteEngine(id, { ...(from ? { seenFrom: from, addresses: addressesSeen(t0.addresses, from) } : {}), release: me.hello.release, code: typeof msg.code === 'string' && /^[0-9a-f]{16}$/.test(msg.code) ? msg.code : null, lastSeenUtc: new Date().toISOString(), ...(lock ? { lock } : {}), ...(msg.machine ? { machine: { platform: String(msg.machine.platform || '').slice(0, 20), arch: String(msg.machine.arch || '').slice(0, 20), hostname: String(msg.machine.hostname || '').slice(0, 80), node: String(msg.machine.node || '').slice(0, 20) } } : {}) });
       if (w && typeof w.hello === 'function') w.hello(msg);
       conn.send(JSON.stringify({ t: 'welcome', since: w ? w.n : 0, release: RELEASE() }));
       return;
@@ -231,4 +243,4 @@ function attach(server, port) {
   process.env.GC_ENGINE_RELAY = JSON.stringify({ port, secret: RELAY_SECRET });
 }
 
-module.exports = { attach, installRoutes, call, status, watch, unwatch, packageNow, engineByToken, _conns: conns };
+module.exports = { attach, installRoutes, call, status, watch, unwatch, packageNow, engineByToken, addressesSeen, _conns: conns };

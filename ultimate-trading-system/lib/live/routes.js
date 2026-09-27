@@ -14,7 +14,7 @@ function errStatus(e) {
   switch (e.code) {
     case 'NOT_FOUND': return 404;
     case 'BAD_TRANSITION': case 'IMMUTABLE': case 'BAD_SETUP': case 'BAD_CONFIG': case 'NOT_DRAFT':
-    case 'NOT_LIVE_EXECUTABLE': case 'BAD_CHANNEL': case 'NOT_ACTIVE': return 400;
+    case 'NOT_LIVE_EXECUTABLE': case 'BAD_CHANNEL': case 'NOT_ACTIVE': case 'NO_PLATFORM': case 'BAD_ROUTING': return 400;
     case 'EXISTS': case 'ALREADY_ACTIVE': case 'CHANNEL_ACTIVE': case 'DEACTIVATING': case 'REVOKED': return 409;
     default: return 500;
   }
@@ -42,6 +42,11 @@ function summarize(s) {
     //
     // A boolean under a different name cannot be mistaken for the value.
     hasKeyRef: Boolean(s.keyRef),
+    // THE TRADING ACCOUNT IT NAMES, SHOWN (3.282.0, owner 2026-09-27: "After setting a Sub-account key THAT
+    // ACCOUNT SELECTION MUST BE SHOWN ON THE SETUP"): the reference is the name of a trading account on the
+    // Account tab, not a secret, and it is chosen from a list now -- never typed into a box an edit could
+    // fill with a marker, which is what the hiding above once guarded against
+    keyRef: s.keyRef || null,
     executionTargetRef: s.executionTargetRef,
     createdUtc: s.createdUtc,
   };
@@ -108,6 +113,7 @@ function installLiveRoutes(app, { csrfGuard }) {
           releaseHere: require('../../package.json').version,
           answers: h.answers, why: h.why || null, ms: h.ms, health: h.health || null,
           link: m.linkStatus(), recordsKept: m.n,
+          seenFrom: t.seenFrom || null, addresses: Array.isArray(t.addresses) ? t.addresses : [],
           setups: setups.filter((s) => s.executionTargetRef === t.id && s.state !== 'retired').map((s) => ({ id: s.id, name: s.name, state: s.state })),
         };
       }));
@@ -182,14 +188,8 @@ function installLiveRoutes(app, { csrfGuard }) {
   app.get('/api/live/setups/:id', (req, res) => {
     const s = reg.getSetup(req.params.id);
     if (!s) return res.status(404).json({ error: `no such setup ${req.params.id}` });
-    // full record, but keyRef reduced to presence — the value is a reference
-    // name, still not for casual display (key hygiene habit).
-    // The reference itself NEVER leaves the server, deliberately. So it is not
-    // sent under its own name either: a field called keyRef holding the word
-    // 'set' is what let an edit box be filled with the marker and then saved
-    // over the real reference (found 2026-08-21). Presence, under a name that
-    // says presence.
-    res.json({ ...s, keyRef: undefined, hasKeyRef: Boolean(s.keyRef) });
+    // the full record: the trading account it names (3.282.0), and presence under a name that says presence
+    res.json({ ...s, keyRef: s.keyRef || null, hasKeyRef: Boolean(s.keyRef) });
   });
 
   // Per-setup live book + execution fidelity, derived from the synced box
@@ -236,8 +236,11 @@ function installLiveRoutes(app, { csrfGuard }) {
         mirror = (agg.results || []).find((r) => r.setup_id === s.id) || null;
       } catch (_) { /* never run, or unreadable — the screen says "not run yet" */ }
 
+      // WHAT IT IS LINKED TO, FOR THE TITLE ON LIVE (3.282.0, owner 2026-09-27: "there should be a clear
+      // indication if a paper trade is linked to a trading account"): the account and the platform, by name
+      const eng = require('./targets').listEngines().find((t) => t.id === s.executionTargetRef) || null;
       res.json({ ...require('./view').setupStatus(s), marginFloorRequested: requested,
-        unhaltPending, unhaltRefused, mirror });
+        unhaltPending, unhaltRefused, mirror, keyRef: s.keyRef || null, platform: eng ? { id: eng.id, name: eng.name || eng.id } : null });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -282,7 +285,25 @@ function installLiveRoutes(app, { csrfGuard }) {
 
   app.post('/api/live/setups/:id/config', csrfGuard, (req, res) => {
     try {
-      const s = reg.updateSetup(req.params.id, req.body || {}, 'owner');
+      // PICKED FROM THE LISTS, OR NOT AT ALL (3.282.0, owner 2026-09-27: "simply show the list where execution
+      // targets are all available and one must be picked"; the sub-account key "must be a drop down list box
+      // also"): a trading platform on record, and a trading account on the Account tab or none
+      const b = req.body || {};
+      if ('executionTargetRef' in b) {
+        const engines = require('./targets').listEngines();
+        if (!engines.some((t) => t.id === b.executionTargetRef)) {
+          const e = new Error(engines.length ? `pick a trading platform in Execution target: ${engines.map((t) => t.name || t.id).join(', ')}` : 'there is no trading platform yet: one is set up on Setup | Compute');
+          e.code = 'BAD_ROUTING'; throw e;
+        }
+      }
+      if (b.keyRef != null) {
+        const accounts = require('../account').tradingAccounts().map((a) => a.id);
+        if (!accounts.includes(b.keyRef)) {
+          const e = new Error(accounts.length ? `pick one of the trading accounts in Sub-account key: ${accounts.join(', ')}` : 'there is no trading account yet: one is set up on Setup | Account');
+          e.code = 'BAD_ROUTING'; throw e;
+        }
+      }
+      const s = reg.updateSetup(req.params.id, b, 'owner');
       res.json({ ok: true, setup: summarize(s) });
     } catch (e) { res.status(errStatus(e)).json({ error: e.message }); }
   });
@@ -307,6 +328,12 @@ function installLiveRoutes(app, { csrfGuard }) {
         })),
       });
     } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // THE TRADING ACCOUNTS, for the Sub-account key list on Setup detail (3.282.0): what the Account tab holds
+  app.get('/api/live/accounts', (req, res) => {
+    try { res.json({ accounts: require('../account').tradingAccounts().map((a) => ({ id: a.id, exchange: a.exchange, note: a.note || '' })) }); }
+    catch (e) { res.status(500).json({ error: e.message }); }
   });
 
   app.get('/api/live/catalog', (req, res) => {
@@ -426,7 +453,9 @@ function installLiveRoutes(app, { csrfGuard }) {
             // the built-in one, which told the owner nothing about what to DO. It
             // now reflects the gate the registry actually enforces — a real
             // channel needs the profile's own sub-account.
-            keyRefSet: !!(s.keyRef && String(s.keyRef).trim()) };
+            keyRefSet: !!(s.keyRef && String(s.keyRef).trim()),
+            // what it is linked to, so the lists can preselect it and say it (3.282.0)
+            keyRef: s.keyRef || null, executionTargetRef: s.executionTargetRef || null };
         }
         return {
           id: g.id, name: g.name || null, createdUtc: g.createdUtc, campaign: g.campaign || null,
@@ -443,8 +472,18 @@ function installLiveRoutes(app, { csrfGuard }) {
   app.post('/api/live/configs/:id/activate', csrfGuard, (req, res) => {
     try {
       const b = req.body || {};
+      // PICKED AT ACTIVATE, FROM THE LISTS (3.282.0): a trading platform on record, and a trading account on
+      // the Account tab or none; nothing sent means nothing changed
+      if (b.executionTargetRef != null && !require('./targets').listEngines().some((t) => t.id === b.executionTargetRef)) {
+        const e = new Error('pick a trading platform from the list'); e.code = 'BAD_ROUTING'; throw e;
+      }
+      if (b.keyRef != null && !require('../account').tradingAccounts().some((a) => a.id === b.keyRef)) {
+        const e = new Error('pick a trading account from the list'); e.code = 'BAD_ROUTING'; throw e;
+      }
       const s = ch.activate(String(req.params.id), String(b.channel || ''), {
         clipUsd: b.clipUsd != null ? Number(b.clipUsd) : undefined, name: b.name,
+        ...('keyRef' in b ? { keyRef: b.keyRef || null } : {}),
+        ...(b.executionTargetRef != null ? { executionTargetRef: b.executionTargetRef } : {}),
       });
       res.json({ ok: true, setup: summarize(s) });
     } catch (e) { res.status(errStatus(e)).json({ error: e.message }); }

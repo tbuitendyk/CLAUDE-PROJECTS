@@ -280,7 +280,7 @@ module.exports.thePendingDecisionIsDrawnFirstOnLiveByTheOnePath = function () {
   assert.deepStrictEqual(keys, ['pendCall', 'pendMembers', 'pendField', 'pendRung', 'pendSize', 'pendOpens']);
   const tileBlock = src.slice(src.indexOf('const TILE={'), src.indexOf('const tile=('));
   for (const k of keys) assert.ok(new RegExp(`\\n  ${k}:'`).test(tileBlock), `tile ${k} carries a description`);
-  const live = src.slice(src.indexOf('async function drawLive('), src.indexOf('async function drawLive(') + 6000);
+  const live = src.slice(src.indexOf('async function drawLive('), src.indexOf('async function drawLive(') + 9000);
   const at = live.indexOf('${pendingHtml(st.pending');
   assert.ok(at > 0 && at < live.indexOf('Reproduce-check') && at < live.indexOf('<div class="grid"'), 'drawn above the check line and the money tiles');
 };

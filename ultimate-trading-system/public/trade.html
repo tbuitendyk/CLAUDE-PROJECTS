@@ -592,6 +592,24 @@ let branch=localStorage.getItem('lt-branch')||'paper';
 let sub=localStorage.getItem('lt-sub')||'configs';
 let selectedConfig=null;   // config id ('F1' for the pilot pseudo-config)
 let selectedSetupId=null;  // the branch channel's setup id (or 'f1-pilot')
+let actFor=null;           // the config whose activation form is open on Greenlights (3.282.0)
+// THE PICK LISTS (3.282.0, owner 2026-09-27: "simply show the list where execution targets are all available
+// and one must be picked"; the sub-account key "must be a drop down list box also"): the trading platforms by
+// name, and the trading accounts on the Account tab -- chosen, never typed, and nothing offered that is not on record
+const platformsOf=(tg)=>((tg&&tg.targets)||[]).filter(t=>t.kind==='engine');
+const defaultPlatform=(tg)=>{ const p=platformsOf(tg); return p.find(t=>t.isDefault)||(p.length===1?p[0]:null); };
+const platformName=(tg,id)=>{ const t=platformsOf(tg).find(x=>x.id===id); return t?(t.name||t.id):null; };
+function platformOptions(tg,cur){
+  const p=platformsOf(tg);
+  return (p.some(t=>t.id===cur)?'':'<option value="" selected disabled hidden>pick a trading platform</option>')
+    +p.map(t=>`<option value="${esc(t.id)}" ${t.id===cur?'selected':''}>${esc(t.name||t.id)}</option>`).join('');
+}
+function accountOptions(accts,cur,noneWords){
+  const list=(accts&&accts.accounts)||[];
+  return (cur&&!list.some(a=>a.id===cur)?`<option value="${esc(cur)}" selected>${esc(cur)} (not an account on the Account tab)</option>`:'')
+    +(noneWords!=null?`<option value="" ${cur?'':'selected'}>${esc(noneWords)}</option>`:(cur?'':'<option value="" selected disabled hidden>pick a trading account</option>'))
+    +list.map(a=>`<option value="${esc(a.id)}" ${a.id===cur?'selected':''}>${esc(a.id)}</option>`).join('');
+}
 
 // WHERE YOU WERE ON EACH TAB (owner, 2026-08-21).
 //
@@ -664,22 +682,30 @@ const chanOf=(cfg)=>cfg&&cfg.channels?cfg.channels[branch==='paper'?'paper':'rea
 
 // ---- Greenlights (the config list — the entity) ------------------------------
 async function drawConfigs(){
-  const { configs }=await fetchConfigs();
+  const [{ configs }, tg, accts]=await Promise.all([fetchConfigs(), apiOr('api/live/targets', ({targets:[]})), apiOr('api/live/accounts', ({accounts:[]}))]);
   if(!configs.length){ $('#view').innerHTML=`<div class="panel empty">No greenlighted configs yet. Configs are minted on the
     Construct tab, on <b>Greenlight</b>, from a Stage 4 record set. They then appear here on both sides.</div>`; return; }
-  $('#view').innerHTML=`<div class="panel"><table><thead><tr>
+  const af=actFor&&configs.find(x=>x.id===actFor);
+  const afCh=af?chanOf(af):null;
+  const afReal=branch==='real';
+  const afHtml=af?`<div class="panel"><div class="k">${afReal?'Activate real':'Activate paper'} — ${esc(af.name||af.id)}</div>
+      <div class="row" style="margin-top:.4rem">
+        <label class="muted" title="the trading platform this book runs on">Execution target
+          <select id="afTarget" style="min-width:14rem">${platformOptions(tg,(afCh&&afCh.executionTargetRef)||((defaultPlatform(tg)||{}).id))}</select></label>
+        <label class="muted" title="the trading account on the Account tab this book is linked to${afReal?' — real orders are placed only from it':''}">Sub-account key
+          <select id="afKey" style="min-width:14rem">${accountOptions(accts,afCh&&afCh.keyRef,afReal?null:'no trading account')}</select></label>
+      </div>
+      <div class="row" style="margin-top:.5rem"><button id="afGo" class="pri">${afReal?'Activate real':'Activate paper'}</button><button id="afNo">Do not activate</button><span id="afMsg" class="note"></span></div>
+      ${afReal?'<p class="muted" style="font-size:.74rem;margin:.4rem 0 0"><b class="warn">Real channel — real money when armed.</b></p>':''}</div>`:'';
+  $('#view').innerHTML=`${afHtml}<div class="panel"><table><thead><tr>
     ${th('config','config')}${th('pair','pair')}${th('campaign','campaign')}${th('why','why','text-align:left')}${th('status','status')}<th></th><th></th></tr></thead><tbody>
     ${configs.map(g=>{
       const ch=chanOf(g);
       const active=ch&&(ch.state==='paper'||ch.state==='live');
       const actLabel=branch==='paper'?'Activate paper':'Activate real';
-      // REAL ACTIVATION is gated on what the registry actually requires — the
-      // profile's OWN sub-account — not on which config it is. Every row but the
-      // built-in one used to be greyed out unconditionally, which stated a
-      // requirement and offered no way to meet it.
-      const ch2=(g.channels&&g.channels[branch==='paper'?'paper':'real'])||null;
-      const needsKey=branch==='real'&&!(ch2&&ch2.keyRefSet);
-      const realBlocked=needsKey;
+      // NO DEAD GREY BUTTON (3.282.0, owner 2026-09-27: "the 'Activate real' button can't be selected"): it
+      // was greyed out until the real channel had a sub-account key, and the key could only be set on a setup
+      // the press itself makes. The press now opens the activation form, where the account is picked.
       return `<tr class="clickable" data-id="${g.id}">
       <td style="text-align:left"><b>${esc(g.name||g.id)}</b>
         <button data-ren="${g.id}" class="themebtn" title="rename this config and restate its reasoning. Labels only — nothing here changes what it trades.">Rename</button>${identSub(g)}</td>
@@ -688,7 +714,7 @@ async function drawConfigs(){
       <td style="white-space:nowrap" class="${/active/.test(g.status)?'pos':'muted'}">${esc(g.status)}</td>
       <td>${(active
         ? `<button data-deact="${g.id}">Deactivate</button>`
-        : `<button data-act="${g.id}" class="pri" ${realBlocked?'disabled title="this config has no sub-account of its own yet. Real orders are placed only from a config\'s OWN sub-account, never a shared one — set its sub-account key on Setup detail first."':''}>${actLabel}</button>`)}</td>
+        : `<button data-act="${g.id}" class="pri">${actLabel}</button>`)}</td>
       <td>${`<button data-nuke="${g.id}" class="danger" title="back to not-greenlighted: removed from these lists; the record sets it came from are untouched. Refused while any channel is active or winding down.">Nuke</button>`}</td>
       </tr>`;}).join('')}
   </tbody></table>
@@ -696,8 +722,15 @@ async function drawConfigs(){
   $('#view').querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=(ev)=>{
     if(ev.target.tagName==='BUTTON')return;
     selectedConfig=tr.dataset.id; sub='detail'; localStorage.setItem('lt-sub',sub); draw(); });
-  $('#view').querySelectorAll('button[data-act]').forEach(b=>b.onclick=async(ev)=>{ ev.stopPropagation();
-    const ch=await confirmActivate(b.dataset.act); if(ch) draw(); });
+  $('#view').querySelectorAll('button[data-act]').forEach(b=>b.onclick=(ev)=>{ ev.stopPropagation(); actFor=b.dataset.act; drawConfigs(); });
+  const afNo=$('#afNo'); if(afNo) afNo.onclick=()=>{ actFor=null; drawConfigs(); };
+  const afGo=$('#afGo'); if(afGo) afGo.onclick=async()=>{
+    const executionTargetRef=$('#afTarget').value, keyRef=$('#afKey').value;
+    if(!executionTargetRef){ $('#afMsg').innerHTML='<span class="neg">pick a trading platform first</span>'; return; }
+    if(afReal&&!keyRef){ $('#afMsg').innerHTML='<span class="neg">pick the trading account the real channel trades from</span>'; return; }
+    if(afReal&&!confirm(`Activate the real channel of ${af.name||af.id}?\n\nREAL MONEY when armed.\n\nIf this channel ran before, the displayed run history restarts (journals are kept).`)) return;
+    const out=await post(`api/live/configs/${af.id}/activate`,{channel:afReal?'real':'paper',executionTargetRef,keyRef:keyRef||null});
+    if(out){ actFor=null; draw(); } };
   $('#view').querySelectorAll('button[data-deact]').forEach(b=>b.onclick=async(ev)=>{ ev.stopPropagation();
     if(!confirm(`Deactivate the ${branch} channel of ${b.dataset.deact}?\n\nEntries stop now; open positions keep exiting on schedule, then the record freezes.`))return;
     const out=await post(`api/live/configs/${b.dataset.deact}/deactivate`,{channel:branch}); if(out) draw(); });
@@ -830,17 +863,13 @@ async function drawDetail(){
   const {configs}=await fetchConfigs();
   // The boxes this service knows about, so the execution target is PICKED rather
   // than typed — same rule as every other identifier the service can enumerate.
-  const tg=await apiOr('api/live/targets', ({targets:[]}));
-  const g=configs.find(x=>x.id===selectedConfig)||configs.find(x=>chanOf(x));
-  if(!g){ $('#view').innerHTML=`<div class="panel empty">Select a config from the Greenlights page.</div>`; return; }
+  const [tg, accts]=await Promise.all([apiOr('api/live/targets', ({targets:[]})), apiOr('api/live/accounts', ({accounts:[]}))]);
+  // ONLY THIS SIDE'S SETUPS (3.282.0, owner 2026-09-27: "one of them is displayed for some reason under set-up
+  // detail that's wrong"): a config picked on the other side, or never run on this one, is not drawn here
+  const g=configs.find(x=>x.id===selectedConfig&&chanOf(x))||configs.find(x=>chanOf(x));
+  if(!g){ $('#view').innerHTML=`<div class="panel empty">Nothing has a setup on the ${branch==='paper'?'Paper Books':'Live Trading'} side yet. Activate a config from Greenlights to see its setup here.</div>`; return; }
   selectedConfig=g.id;
   const ch=chanOf(g);
-  if(!ch){ $('#view').innerHTML=`<div class="panel"><div class="row"><div style="font-size:1rem">${identHtml(g)}</div>
-      <span class="badge b-idle">idle</span><div class="spacer"></div>
-      <button id="actBtn" class="pri">Activate ${branch}</button></div>
-      <div class="muted" style="margin-top:.4rem">This config has never run on the ${branch} side. Activate to start it.</div></div>`;
-    const b=$('#actBtn'); if(b&&!b.disabled)b.onclick=async()=>{ if(await confirmActivate(g.id)) draw(); };
-    return; }
   // channel exists: registry record + frozen config
   const [s, an]=await Promise.all([
     api('api/live/setups/'+ch.setupId),
@@ -864,8 +893,8 @@ async function drawDetail(){
       ${tile('Clip','clip','$'+Number(s.clipUsd).toFixed(0))}
       ${tile('Stop','stop',s.stopPct==null?'none':(s.stopPct*100).toFixed(2)+'%')}
       ${tile('Fee','feeModel',(s.feePerLeg*100).toFixed(3)+'%',s.feeInherited?'muted':'')}
-      ${tile('Key','key',s.hasKeyRef?'set':'none',s.hasKeyRef?'pos':'muted')}
-      ${tile('Exec target','target',esc(s.executionTargetRef||'default'),'muted')}
+      ${tile('Sub-account key','key',s.keyRef?esc(s.keyRef):'none',s.keyRef?'pos':'muted')}
+      ${tile('Execution target','target',platformName(tg,s.executionTargetRef)?esc(platformName(tg,s.executionTargetRef)):'none picked',platformName(tg,s.executionTargetRef)?'':'warn')}
     </div>
     <div class="panel"><div class="k">Frozen configuration (immutable — from greenlight ${esc(s.provenanceRef||'—')})</div>
       <div style="margin-top:.5rem">
@@ -927,29 +956,22 @@ async function drawDetail(){
            nothing: a blanked key or a box that does not serve the pair is still
            refused on a trading setup (found 2026-08-18). -->
       <div class="row" style="margin-top:.5rem">
-        <label class="muted" title="this setup's OWN sub-account credentials, by reference — never a secret typed here. Real money requires it so that no two books share a balance and borrow pool. Blank it and a live setup is refused.">Sub-account key
-          <!-- THIS BOX STARTS EMPTY AND EMPTY MEANS "LEAVE IT ALONE".
-               The reference never leaves the server, by design, so this box
-               cannot be pre-filled with it. It used to be filled with the
-               presence marker instead — the word "set" — and pressing Save
-               wrote that word over the setup's real sub-account reference,
-               which then pointed at a sub-account that does not exist while
-               every screen still read "Key: set" (found 2026-08-21).
-               Silence is not an instruction here, exactly as it is not on the
-               protective stop. Clearing the key is its own deliberate act. -->
-          <input id="keyIn" value="" placeholder="${s.hasKeyRef?'a key is set — type to replace it':'none set'}" style="width:14rem"></label>
+        <label class="muted" title="the trading account on the Account tab this setup is linked to. Real money requires one, so that no two books share a balance and borrow pool.">Sub-account key
+          <!-- PICKED FROM THE ACCOUNT TAB'S LIST (3.282.0). The list holds only real
+               account names, so nothing can be saved over the reference that is
+               not an account -- the fault a typed box once allowed (2026-08-21).
+               What is already set stays set unless another is picked; clearing it
+               is its own deliberate act. -->
+          <select id="keyIn" style="min-width:14rem">${accountOptions(accts,s.keyRef,null)}</select></label>
         <label class="muted"><input type="checkbox" id="keyClear"> clear the key</label>
-        <label class="muted" title="which execution box serves this setup. A box only serves the symbols it declares, and a setup on a pair its box does not serve is refused before it can trade.">Execution target
-          <select id="targetIn" style="min-width:12rem">
-            <option value="">— default (mx-1) —</option>
-            ${(tg.targets||[]).map(t=>`<option value="${esc(t.id)}" ${s.executionTargetRef===t.id?'selected':''}>${esc(t.id)}${t.symbols?` — ${esc(t.symbols.join(', '))}`:''}</option>`).join('')}
-          </select></label>
+        <label class="muted" title="the trading platform this setup runs on">Execution target
+          <select id="targetIn" style="min-width:14rem">${platformOptions(tg,s.executionTargetRef)}</select></label>
       </div>
       <!-- A BUTTON GETS A ROW OF ITS OWN (RULE FOUR-A, owner 2026-09-25): it sat
            at the end of the key and target row, against the fields. -->
       <div class="row" style="margin-top:.5rem"><button id="saveRouting">Save routing</button></div>
       <p class="muted" style="font-size:.74rem;margin:.4rem 0 0">A change here is re-checked against the same gate that
-        guards going live: the box must serve <b>${esc(s.tradedPair)}</b>, and a live setup must keep its own key.</p></div>
+        guards going live, and a live setup must keep its own key.</p><span id="routeMsg" class="note"></span></div>
     ${(an&&an.anatomy)?`
     <div class="panel"><div class="k">Tested configuration — how these trades are set up</div>
       <div style="margin-top:.5rem">${Object.entries(an.config||{}).map(([k,v])=>cfgRow(esc(k),
@@ -993,11 +1015,12 @@ async function drawDetail(){
   };
   $('#trainIn').onchange=()=>{ $('#trainAt').disabled=$('#trainIn').value!=='frozen'; };
   $('#saveRouting').onclick=async()=>{
-    // Empty means UNCHANGED. Only the explicit tick clears it.
-    const typedKey=$('#keyIn').value.trim();
+    // A platform must be picked; the key changes only when another account is picked, or the tick clears it
+    const executionTargetRef=$('#targetIn').value;
+    if(!executionTargetRef){ $('#routeMsg').innerHTML='<span class="neg">pick a trading platform in Execution target first</span>'; return; }
+    const pickedKey=$('#keyIn').value;
     const clearKey=$('#keyClear') && $('#keyClear').checked;
-    const keyRef=clearKey?null:(typedKey||undefined);
-    const executionTargetRef=$('#targetIn').value||null;
+    const keyRef=clearKey?null:(pickedKey&&pickedKey!==s.keyRef?pickedKey:undefined);
     const body={executionTargetRef};
     if(keyRef!==undefined) body.keyRef=keyRef;   // say nothing, change nothing
     const out=await post(`api/live/setups/${s.id}/config`,body); if(out) draw();
@@ -1122,7 +1145,11 @@ async function drawLive(){
   $('#view').innerHTML=`
     ${picker}
     <div class="banner ${st.state==='stopped'?'stopped':'running'}">
-      <b>${esc(g.name||g.id)}</b> ${isP?paperBadge:''} — ${esc(g.status)}${st.runEpochUtc?` <span class="muted">· displayed run since ${st.runEpochUtc.slice(0,16)} UTC</span>`:''}${identSub(g)}</div>
+      <b>${esc(g.name||g.id)}</b> ${isP?paperBadge:''} — ${esc(g.status)}${st.runEpochUtc?` <span class="muted">· displayed run since ${st.runEpochUtc.slice(0,16)} UTC</span>`:''}${identSub(g)}
+      <!-- WHAT THIS BOOK IS LINKED TO (3.282.0, owner 2026-09-27: "there should be a clear indication if a paper
+           trade is linked to a trading account"): the account and the platform, on both books -->
+      <div style="margin-top:.3rem;font-size:.85rem">${st.keyRef?`linked to the trading account <b>${esc(st.keyRef)}</b>`:'<span class="warn">not linked to a trading account</span>'}
+        <span class="muted">·</span> ${st.platform?`runs on <b>${esc(st.platform.name)}</b>`:'<span class="warn">no trading platform picked</span>'}</div></div>
     ${isP?'':boxControls(box)}
     ${st.journalDropped?`<div class="banner stale">⚠ ${st.journalDropped} line${st.journalDropped===1?'':'s'} of the trading record could not be read.
       Every figure on this page is worked out from the lines that could. Treat the money, the trade count and the

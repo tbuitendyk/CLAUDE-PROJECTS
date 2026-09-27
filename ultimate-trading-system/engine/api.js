@@ -21,11 +21,14 @@
 //                           (3.279.0), with the owner's choice of address as it stands now
 //                           (3.280.0): the answer and the choice written beside them, and
 //                           said -- never the keys
+//   POST /keys/:account/where   where Binance sees this platform from, asked with the kept keys
+//                           (3.282.0): Binance's answer word for word, and the address only
+//                           when Binance names it -- never the keys, never the account's figures
 //   POST /keys/:account/delete  the keys taken away
 //   POST /setups/:id/verbose  { on } -- every hourly trail check of this setup's
 //                           plans written down, or not (Verbose on Setup detail)
 //   GET  /journal?since=N   the record, numbered lines from N
-function makeHandler({ runner, journal, health, keystore = null, checkKey = null, lock = null }) {
+function makeHandler({ runner, journal, health, keystore = null, checkKey = null, whereFrom = null, lock = null }) {
   // one question in, { status, json } out -- never throws
   return async function handle(method, target, body = {}) {
     const u = new URL(target, 'http://engine');
@@ -59,6 +62,21 @@ function makeHandler({ runner, journal, health, keystore = null, checkKey = null
         // keys were kept with only when none is sent. An answer is written beside the keys -- tied or
         // open, or refused in the exchange's words, with the choice it was asked with -- and no answer
         // changes them; an exchange that could not be asked changes nothing.
+        // WHERE BINANCE SEES THIS PLATFORM FROM (3.282.0): one signed read with the kept keys; changes nothing
+        const kw = /^\/keys\/([^/]+)\/where$/.exec(u.pathname);
+        if (method === 'POST' && kw) {
+          const account = decodeURIComponent(kw[1]);
+          try {
+            keystore.fileOf(account);   // the account's name, checked before anything else
+            if (!keystore.read(account)) return { status: 404, json: { error: `no keys are kept for ${account} on this platform` } };
+            if (!whereFrom) return { status: 503, json: { error: 'this platform cannot ask the exchange' } };
+            const w = await whereFrom(account, keystore.pairOf(account));
+            return { status: 200, json: { account, status: w.status, code: w.code, words: w.words, requestIp: w.requestIp } };
+          } catch (e) {
+            const mine = e.code === 'BAD_ACCOUNT' || e.code === 'NO_KEYS';
+            return { status: mine ? 400 : 500, json: { error: mine ? e.message : 'Binance could not be asked' } };
+          }
+        }
         const kc = /^\/keys\/([^/]+)\/check$/.exec(u.pathname);
         if (method === 'POST' && kc) {
           const account = decodeURIComponent(kc[1]);

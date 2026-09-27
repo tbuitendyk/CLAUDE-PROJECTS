@@ -206,8 +206,8 @@ module.exports = {
   theComputeTabSaysWhichPlatformNewSetupsGoToAndWhenNoneIsTicked() {
     const page = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'setup.html'), 'utf8');
     assert.ok(page.includes("+ (e.isDefault || (cEng && cEng.default === e.id) ? '<span class=\"note pos\">new setups run on this platform</span>' : '')"), 'the platform new setups go to is marked, ticked or the only one');
-    assert.ok(page.includes("+ ((cEng.engines || []).length > 1 && !cEng.default ? '<p class=\"note warn\">No platform is ticked \"new setups run on this platform\", so a new setup would run on mx-1, the old order program, which trades only a market entry, with no gate, trailing stop or arm. Press Change this record on the platform new setups should run on, tick it, and press Save the platform record.</p>' : '')"), 'none ticked is said, with how to tick one');
-    assert.ok(/<button data-engedit="' \+ esc\(e\.id\) \+ '">Change this record<\/button>/.test(page) && /> new setups run on this platform<\/label>/.test(page) && />Save the platform record<\/button>/.test(page), 'the three names the warning uses are the screen\'s own');
+    assert.ok(page.includes("+ ((cEng.engines || []).length > 1 && !cEng.default ? '<p class=\"note warn\">No default trading platform set — press Change this record on one below and tick \"new setups run on this platform\".</p>' : '')"), 'none ticked is said, with how to tick one');
+    assert.ok(/<button data-engedit="' \+ esc\(e\.id\) \+ '">Change this record<\/button>/.test(page) && /> new setups run on this platform<\/label>/.test(page) && />Save the platform record<\/button>/.test(page), 'the names the warning uses are the screen\'s own');
     // and the service says which platform that is: the one ticked, or the only one there is
     const routes = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'live', 'routes.js'), 'utf8');
     const targets = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'live', 'targets.js'), 'utf8');

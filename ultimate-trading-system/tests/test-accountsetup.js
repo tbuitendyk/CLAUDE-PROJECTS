@@ -256,8 +256,8 @@ module.exports = {
     // saying what sending does on each, each with its own lock
     const two = { ...base, engines: [E('box-1', 'Platform One'), E('box-2', 'Platform Two', { system: 'windows' })], keys: { 'box-1': held('2026-09-27T01:00:00Z'), 'box-2': none('fp-b') } };
     html = card(two);
-    assert.ok(/<button data-takeys="sub-1">Change the keys<\/button><button data-tacheck="sub-1" title="[^"]*">Check the keys again<\/button><button data-tarm="sub-1" class="danger"/.test(html), 'once a platform holds them: Change the keys, Check the keys again and Remove the keys');
-    assert.strictEqual((html.match(/data-takeys=|data-tacheck=|data-tarm=/g) || []).length, 3, 'one set of buttons for the account, however many platforms');
+    assert.ok(/<button data-takeys="sub-1">Change the keys<\/button><button data-tacheck="sub-1" title="[^"]*">Check the keys again<\/button><button data-tawhere="sub-1" title="[^"]*">Ask Binance where it sees each platform from<\/button><button data-tarm="sub-1" class="danger"/.test(html), 'once a platform holds them: Change the keys, Check the keys again, Ask Binance where it sees each platform from and Remove the keys');
+    assert.strictEqual((html.match(/data-takeys=|data-tacheck=|data-tawhere=|data-tarm=/g) || []).length, 4, 'one set of buttons for the account, however many platforms');
     html = card(two, 'sub-1', 'send');
     assert.ok(/data-tatick="box-1" checked> Platform One<\/label><span class="note">holds keys entered 2026-09-27 01:00 UTC — these replace them<\/span><span class="note">the fingerprint of its lock <b>fp-01<\/b><\/span>/.test(html), 'the platform holding keys is ticked, and says they are replaced, with its lock');
     assert.ok(/data-tatick="box-2" checked> Platform Two<\/label><span class="note">holds none — these are added<\/span><span class="note">the fingerprint of its lock <b>fp-b<\/b><\/span>/.test(html), 'the one holding none is ticked too, and says they are added');

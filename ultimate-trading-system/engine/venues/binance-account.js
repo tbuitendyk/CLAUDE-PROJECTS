@@ -12,6 +12,8 @@
 const net = require('../net');
 
 const REST = 'https://api.binance.com';
+// futures: the one part of Binance known to have named the caller's address when it refuses a real key
+const FAPI = 'https://fapi.binance.com';
 
 // Binance's own words for a refusal, or the transport's
 function binanceWords(r) {
@@ -21,11 +23,12 @@ function binanceWords(r) {
 }
 
 class BinanceAccount {
-  constructor({ signer, rest = REST, request = net.request, now = () => Date.now(), recvWindow = 5000 } = {}) {
+  constructor({ signer, rest = REST, fapi = FAPI, request = net.request, now = () => Date.now(), recvWindow = 5000 } = {}) {
     if (!signer || typeof signer.sign !== 'function' || typeof signer.header !== 'function') throw new Error('a signer from the key store is needed');
     this.venue = 'Binance';
     this.signer = signer;
     this.rest = rest;
+    this.fapi = fapi;
     this.request = request;
     this.now = now;
     this.recvWindow = recvWindow;
@@ -43,6 +46,24 @@ class BinanceAccount {
     const q = new URLSearchParams({ ...params, timestamp: String(this.now() + this.offset), recvWindow: String(this.recvWindow) }).toString();
     const sig = this.signer.sign(q, purpose);
     return this.request('GET', `${this.rest}${path}?${q}&signature=${sig}`, { headers: { 'X-MBX-APIKEY': this.signer.header() } });
+  }
+
+  // WHERE BINANCE SEES THIS PLATFORM FROM (3.282.0, owner 2026-09-27: "figuring out what that source ip
+  // address is on the api traffic is not optional"): one signed read of the futures balance with the kept
+  // key. Binance's futures service has named the caller's address -- "request ip: ..." -- when it refused a
+  // real key; whether it still does is what this finds out. Its answer is given word for word, and the
+  // address only when Binance names it; nothing the read returns about the account is kept or passed on.
+  async whereFrom() {
+    const q = new URLSearchParams({ timestamp: String(this.now() + this.offset), recvWindow: String(this.recvWindow) }).toString();
+    const sig = this.signer.sign(q, 'asking Binance where it sees this platform from');
+    const r = await this.request('GET', `${this.fapi}/fapi/v2/balance?${q}&signature=${sig}`, { headers: { 'X-MBX-APIKEY': this.signer.header() } });
+    const said = String((r.json && r.json.msg) || r.text || '');
+    const m = /request ip:\s*([0-9A-Fa-f.:]{3,45})/.exec(said);
+    return {
+      status: r.status, code: r.json && Number.isFinite(r.json.code) ? r.json.code : null,
+      words: r.status === 200 ? 'Binance answered 200: the key reads the futures balance, and Binance names no address when it answers' : binanceWords(r),
+      requestIp: m ? m[1] : null,
+    };
   }
 
   static answer(r, pick) {
@@ -139,4 +160,4 @@ function keyCheck(r, { anyAddress = false } = {}) {
   return { checked: false, why: (r && r.why) || 'the exchange could not be asked' };
 }
 
-module.exports = { BinanceAccount, binanceWords, keyVerdict, keyCheck, KEY_REFUSED, REST };
+module.exports = { BinanceAccount, binanceWords, keyVerdict, keyCheck, KEY_REFUSED, REST, FAPI };

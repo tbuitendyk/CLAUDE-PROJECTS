@@ -174,21 +174,17 @@ module.exports.catalogAndStatusEndpointsOverTheWire = async function () {
   });
 };
 
-module.exports.keyRefNeverLeavesTheServerAsAValue = async function () {
+module.exports.theSubAccountKeyIsShownAsTheAccountItNames = async function () {
+  // 3.282.0 (owner 2026-09-27: "After setting a Sub-account key THAT ACCOUNT SELECTION MUST BE SHOWN ON THE
+  // SETUP"): the reference is the name of a trading account, shown under its own name beside presence
   reg.createSetup({ id: 'wire-c', name: 'key test', ownerId: 'owner',
     configSnapshot: f1Config(), clipUsd: 10, keyRef: 'sub-acct-key-1' });
   await withServer(async () => {
-    // Presence is now reported under a name that SAYS presence. A field called
-    // keyRef holding the word 'set' is what let an edit box be filled with the
-    // marker and saved over the real reference (2026-08-21).
     const det = (await req('GET', '/api/live/setups/wire-c')).json();
-    assert.strictEqual(det.hasKeyRef, true, 'detail shows presence only');
-    assert.strictEqual(det.keyRef, undefined, 'the detail must not carry a field named keyRef at all');
+    assert.deepStrictEqual([det.keyRef, det.hasKeyRef], ['sub-acct-key-1', true], 'the detail names the account');
     const list = (await req('GET', '/api/live/setups')).json();
     const row = list.setups.find((x) => x.id === 'wire-c');
-    assert.strictEqual(row.hasKeyRef, true, 'list shows presence only');
-    assert.strictEqual(row.keyRef, undefined, 'the list must not carry a field named keyRef at all');
-    assert.ok(!JSON.stringify(det).includes('sub-acct-key-1'), 'ref value never serialized');
-    assert.ok(!JSON.stringify(list).includes('sub-acct-key-1'), 'ref value never serialized in the list either');
+    assert.deepStrictEqual([row.keyRef, row.hasKeyRef], ['sub-acct-key-1', true], 'and so does the list');
+    assert.ok(!/"keyRef":"set"/.test(JSON.stringify(det) + JSON.stringify(list)), 'never the word set in the field that names the account');
   });
 };

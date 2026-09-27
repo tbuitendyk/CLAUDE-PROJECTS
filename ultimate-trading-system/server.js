@@ -330,6 +330,15 @@ app.post('/api/account/trading/:id/keys', csrfGuard, async (req, res) => {
       const j = r.json || {};
       return res.json({ ok: true, account: id, engine: target.id, present: !!j.present, anyAddress, tied: typeof j.tied === 'boolean' ? j.tied : null, checked: !!j.checked, passed: j.ok === true, refused: typeof j.refused === 'string' ? j.refused : null, why: j.why || null });
     }
+    // WHERE BINANCE SEES THE PLATFORM FROM (3.282.0): nothing travels but the question; the platform asks with
+    // the keys it keeps and says what Binance answered, and the address when Binance names it
+    if (b.where === true) {
+      const r = await link.call(target, 'POST', `/keys/${encodeURIComponent(id)}/where`, {}, 15000);
+      if (r.status === 404 && r.json && /no such address on the platform/.test(String(r.json.error || ''))) return res.status(409).json({ error: 'this platform\'s release cannot ask Binance where it sees it from: bring it up to date with a new install command (Compute tab, Set up a trading platform, step 2)' });
+      if (!r.ok) return res.status(r.status >= 400 && r.status < 500 ? r.status : 502).json({ error: (r.json && r.json.error) || r.why || `the platform answered ${r.status}` });
+      const j = r.json || {};
+      return res.json({ ok: true, account: id, engine: target.id, status: j.status, code: j.code ?? null, words: j.words || null, requestIp: typeof j.requestIp === 'string' ? j.requestIp : null });
+    }
     // ONLY LOCKED: a pair that reaches this machine readable is refused and goes nowhere
     if (b.remove !== true && (b.apiKey !== undefined || b.secret !== undefined)) return res.status(400).json({ error: 'the keys must be locked in the browser with the platform\'s lock before they are sent: reload the page and send them again' });
     const locked = b.locked;
