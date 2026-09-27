@@ -19,6 +19,7 @@
 // epoch; the underlying journal is append-only and never destroyed.
 const reg = require('./setups');
 const gl = require('./greenlight');
+const { liveExecutable } = require('./configschema');
 const { OWNER_ID } = require('../ownerid');
 
 const CHANNELS = ['paper', 'real'];
@@ -128,6 +129,15 @@ function activate(greenlightId, channel, { by = OWNER_ID, clipUsd, name, trainPo
       by, channel, trainPolicy,
     });
     s = made.setup;
+  }
+  // A SETUP MX-1 CANNOT TRADE TAKES THE PLATFORM TICKED FOR NEW SETUPS (3.281.0, owner 2026-09-27: "cannot
+  // go paper: cell.entry 'breakout' ..."). One made while no platform was ticked has no platform of its own
+  // and falls back to mx-1, the old order program, which trades only a market entry -- so a breakout, a gate,
+  // a trailing stop or an arm can never have traded there. Once a platform is ticked, activating it again
+  // puts it where a setup made now would go. One that mx-1 can trade keeps the fallback it has always had.
+  if (!s.executionTargetRef && !liveExecutable(s.configSnapshot).ok) {
+    const eng = require('./targets').defaultEngine();
+    if (eng) s = reg.updateSetup(s.id, { executionTargetRef: eng.id }, by);
   }
   const out = reg.transition(s.id, target, by, `activate ${channel}`);
   reg.setRunEpoch(s.id); // displayed run history restarts here; journal untouched

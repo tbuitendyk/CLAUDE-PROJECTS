@@ -897,7 +897,8 @@ function engineCard(e) {
     + '<span><span class="k">the fingerprint of its lock</span> <b>' + esc(e.lock ? e.lock.fingerprint : '—') + '</b></span>';
   return '<div class="tile" style="margin-bottom:.55rem">'
     + '<div class="row" style="align-items:baseline"><b>' + esc(e.name) + '</b><span class="note">' + esc(e.id) + '</span>'
-    + (e.isDefault ? '<span class="note pos">new setups run on this platform</span>' : '') + '<span class="spacer"></span>' + said + '</div>'
+    // THE PLATFORM NEW SETUPS ACTUALLY GO TO (3.281.0): the one ticked, or the only one there is
+    + (e.isDefault || (cEng && cEng.default === e.id) ? '<span class="note pos">new setups run on this platform</span>' : '') + '<span class="spacer"></span>' + said + '</div>'
     + '<div class="row" style="align-items:baseline; margin-top:.35rem; gap:1.2rem">' + reach + '</div>'
     + (behind ? '<div class="row" style="align-items:baseline; margin-top:.25rem"><span class="note warn">this system runs ' + esc(e.releaseHere) + ' — make a new install command in its checklist and run it on the machine to bring the platform up to it</span></div>' : '')
     + '<div class="row" style="align-items:baseline; margin-top:.35rem; gap:1.2rem">'
@@ -924,6 +925,9 @@ function engineHtml() {
     + 'nothing here can sign in to that machine. A new platform is added with Set up a trading platform. '
     + 'A new setup runs on the platform ticked for new setups; a setup already running stays where it is.</p>'
     + esHtml()
+    // NONE TICKED IS SAID (3.281.0, owner 2026-09-27: "the user needs to be able to fix this without bring the
+    // claude tool into the loop"): with two or more platforms and none ticked, a new setup falls back to mx-1
+    + ((cEng.engines || []).length > 1 && !cEng.default ? '<p class="note warn">No platform is ticked "new setups run on this platform", so a new setup would run on mx-1, the old order program, which trades only a market entry, with no gate, trailing stop or arm. Press Change this record on the platform new setups should run on, tick it, and press Save the platform record.</p>' : '')
     + ((cEng.engines || []).length ? (cEng.engines || []).map(engineCard).join('') : '<p class="note">no platform yet</p>')
     + (ed ? '<div class="tile">'
       + '<div class="k" style="margin-bottom:.35rem">Changing ' + esc(ed.name) + ' <span class="muted">(' + esc(ed.id) + ')</span></div>'

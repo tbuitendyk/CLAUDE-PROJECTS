@@ -354,7 +354,15 @@ function liveGateErrors(s, to) {
     return errs;
   }
   const le = liveExecutable(s.configSnapshot);
-  if (!le.ok) errs.push(...le.errors);
+  if (!le.ok) {
+    // THE WAY OUT, SAID WHERE THE REFUSAL IS (3.281.0, owner 2026-09-27: "the user needs to be able to fix
+    // this without bring the claude tool into the loop"): mx-1, the old order program, trades only a market
+    // entry; a trading platform carries out every shape the lab prices, and which one is the owner's pick
+    errs.push(s.executionTargetRef
+      ? `this setup is set to run on ${s.executionTargetRef}, the old order program, which trades only a market entry, with no gate, trailing stop or arm: choose a trading platform in Execution target on its Setup detail, press Save routing, then activate it again`
+      : 'no trading platform is ticked "new setups run on this platform", so this setup would run on mx-1, the old order program, which trades only a market entry, with no gate, trailing stop or arm: on the Compute tab of Setup, press Change this record on the platform it should run on, tick "new setups run on this platform" and press Save the platform record, then activate it again');
+    errs.push(...le.errors);
+  }
   if (target && !targetServes(target, s.tradedPair)) {
     errs.push(`symbol ${s.tradedPair}: target '${target.id}' serves ${JSON.stringify(target.symbols)} — not this pair`);
   }
