@@ -225,6 +225,7 @@ let aErr = null;             // why they could not be read, when they could not
 let aTr = null;              // the trading accounts, the engines, and what each engine says of their keys (loop of 2026-09-25)
 let aTrErr = null;
 let aTrKeys = null;          // the trading account whose key form is open, or null
+let aTrKeysEng = null;       // and the trading platform it sends to (3.276.0): each platform's line has its own buttons
 // SETTING UP A TRADING ACCOUNT, STEP BY STEP (3.268.0): the checklist area, shaped as a platform's
 let aAsOpen = (() => { try { return localStorage.getItem('setup-as-open') === '1'; } catch (_) { return false; } })();
 let aAsSel = (() => { try { return localStorage.getItem('setup-as-sel'); } catch (_) { return null; } })();
@@ -299,15 +300,20 @@ function tradingKeysLine(a) {
         ? '<span class="pos">present</span> <span class="muted">entered ' + esc(String(mine.addedAt || '').slice(0, 16).replace('T', ' ')) + ' UTC'
           + (mine.tied === true ? ' · tied to one or more addresses' : mine.tied === false ? ' · open to any address, as ticked when they were sent' : '') + '</span>'
         : '<span class="neg">missing</span>';
-    return '<div class="row" style="align-items:baseline; margin-top:.35rem"><span class="k">keys on ' + esc(g.name) + '</span> ' + said + '</div>';
+    // ITS OWN BUTTONS, FOR THIS PLATFORM ALONE (3.276.0, owner 2026-09-27: the second platform's
+    // keys "had to be" put in with Replace the keys "which doesn't make sense"): the words and the
+    // action follow whether THIS platform holds the keys, never whether the default one does
+    const btns = !k.answers ? ''
+      : '<button data-takeys="' + esc(a.id) + '" data-teng="' + esc(g.id) + '">' + (mine && mine.present ? 'Replace the keys' : 'Enter the keys') + '</button>'
+        + (mine && mine.present ? '<button data-tarm="' + esc(a.id) + '" data-teng="' + esc(g.id) + '" class="danger" title="takes the keys off this trading platform; the account record stays">Remove the keys</button>' : '');
+    return '<div class="row" style="align-items:baseline; margin-top:.35rem"><span class="k">keys on ' + esc(g.name) + '</span> ' + said + btns + '</div>';
   }).join('');
 }
 function tradingAccountCard(a) {
   const ex = (aTr.offered || []).find((x) => x.id === a.exchange);
   const engines = aTr.engines || [];
   const open = aTrKeys === a.id;
-  const pick = engines.find((g) => g.isDefault) || engines[0] || null;
-  const keysHere = pick && (aTr.keys || {})[pick.id] && (aTr.keys[pick.id].keys || []).find((x) => x.account === a.id && x.present);
+  const to = engines.find((g) => g.id === aTrKeysEng) || null;
   return '<div class="tile" style="margin-bottom:.55rem">'
     + '<div class="row" style="align-items:baseline"><b>' + esc(a.id) + '</b><span class="note">' + esc(ex ? ex.label : a.exchange) + (a.note ? ' · ' + esc(a.note) : '') + '</span>'
     // IF IT IS STORED, SHOW IT (RULE ELEVEN): what the exchange calls the sub-account, saved in step 1 of its checklist
@@ -315,11 +321,10 @@ function tradingAccountCard(a) {
     + '</div>'
     + tradingKeysLine(a)
     + (open
-      ? '<div class="row" style="align-items:flex-end; margin-top:.5rem">'
+      ? '<div class="row" style="align-items:baseline; margin-top:.5rem"><span class="k">the keys for</span> <b>' + esc(to ? to.name : '—') + '</b></div>'
+        + '<div class="row" style="align-items:flex-end; margin-top:.3rem">'
         + '<label class="f" title="the public half of the key, as the exchange shows it when the key is made">API key<input id="takKey" type="password" autocomplete="off" spellcheck="false" style="width:24rem"></label>'
         + '<label class="f" title="the secret half, shown by the exchange once, when the key is made">secret key<input id="takSec" type="password" autocomplete="off" spellcheck="false" style="width:24rem"></label>'
-        + (engines.length > 1 ? '<label class="f" title="the trading platform that keeps these keys">trading platform<select id="takEng">'
-          + engines.map((g) => '<option value="' + esc(g.id) + '"' + (pick && g.id === pick.id ? ' selected' : '') + '>' + esc(g.name) + '</option>').join('') + '</select></label>' : '')
         + '<label class="c"><input type="checkbox" id="takAny"> these keys may trade from any address</label>'
         + '</div>'
         + '<p class="note" style="margin-top:.4rem">Make the key on the exchange trade-only, with withdrawals off. Tying it to the address of the platform&#39;s machine is safer; '
@@ -328,8 +333,6 @@ function tradingAccountCard(a) {
         + '<div class="row" style="align-items:baseline; margin-top:.2rem"><span class="k">the fingerprint of the platform&#39;s lock</span> <span id="takLockFp" class="note"></span></div>'
         + '<div class="row" style="margin-top:.4rem"><button id="takSend" class="pri">Send the keys to the trading platform</button><button id="takCancel">Do not send</button><span id="takMsg" class="note"></span></div>'
       : '<div class="row" style="margin-top:.5rem">'
-        + (engines.length ? '<button data-takeys="' + esc(a.id) + '">' + (keysHere ? 'Replace the keys' : 'Enter the keys') + '</button>' : '')
-        + (keysHere ? '<button data-tarm="' + esc(a.id) + '" class="danger" title="takes the keys off the trading platform; the account record stays">Remove the keys</button>' : '')
         + '<button data-tadel="' + esc(a.id) + '" class="danger" title="takes the record away; refused while any setup names it as its account">Delete the trading account</button>'
         + '<span id="taOut_' + esc(a.id) + '" class="note"></span></div>')
     + '</div>';
@@ -365,6 +368,32 @@ function asNewHtml() {
     + '<label class="c"><span class="muted">exchange</span><select id="asEx">' + (aTr.offered || []).map((x) => '<option value="' + esc(x.id) + '"' + (aAsTyped.exchange === x.id ? ' selected' : '') + '>' + esc(x.label) + '</option>').join('') + '</select></label></div>'
     + '<div class="row" style="margin-top:.5rem"><button id="asStart">Start its setup</button><span id="asMsg" class="note"></span></div>';
 }
+// STEP 3's FINGERPRINTS (3.276.0, owner 2026-09-27: "how is the user supposed to know
+// this seeing nothing was displayed about it"). Each platform's lock as worked out in this
+// browser from the very key the keys are locked with, and the one line that prints the
+// machine's own copy on that machine -- from the file the platform keeps it in, where each
+// install command puts it (engine/install/*): a copy printed once at install is not a check.
+const LOCK_CMD = {
+  linux: (id) => "sudo sed -n 's/.*\"lock\":\"\\([^\"]*\\)\".*/\\1/p' /var/lib/uts-engine-" + id + '/link-status.json',
+  mac: (id) => "sudo sed -n 's/.*\"lock\":\"\\([^\"]*\\)\".*/\\1/p' /usr/local/var/uts-engine-" + id + '/link-status.json',
+  windows: (id) => '(Get-Content "$env:ProgramData\\uts-engine-' + id + '\\link-status.json" | ConvertFrom-Json).lock',
+};
+function asLocksHtml() {
+  const engines = (aTr && aTr.engines) || [];
+  if (!engines.length) return '<p class="note warn" style="margin:.35rem 0 0">there is no trading platform yet: one is set up on the Compute tab</p>';
+  const box = 'width:100%;max-width:60rem;font-family:monospace;font-size:.74rem';
+  return engines.map((g) => {
+    const k = (aTr.keys || {})[g.id] || {};
+    const fp = k.lockHere ? '<b>' + esc(k.lockHere) + '</b>'
+      : '<span class="neg">' + (k.answers ? 'this platform has not said what its lock is' : 'the platform did not answer') + '</span>';
+    const cmd = LOCK_CMD[g.system];
+    return '<div class="row" style="align-items:baseline; margin-top:.5rem"><span class="k">' + esc(g.name) + '</span><span class="note">the fingerprint of its lock, worked out in this browser:</span> ' + fp + '</div>'
+      + (cmd
+        ? '<div class="row" style="margin-top:.2rem"><span class="note">on that machine, this prints its own copy' + (g.system === 'windows' ? ' — in PowerShell, as administrator' : '') + ':</span></div>'
+          + '<textarea readonly rows="1" spellcheck="false" style="' + box + '">' + esc(cmd(g.id)) + '</textarea>'
+        : '<div class="row" style="margin-top:.2rem"><span class="note">this system does not know that machine&#39;s operating system yet, so it cannot say how to print its copy there</span></div>');
+  }).join('');
+}
 function asHtml() {
   let body = '';
   if (aAsOpen) {
@@ -379,7 +408,7 @@ function asHtml() {
           + l.map((x) => '<option value="' + esc(x.id) + '"' + (x.id === sel.id ? ' selected' : '') + '>' + esc(x.id) + ' — ' + asProgress(x) + '</option>').join('') + '</select></label></div>'
         : '')
         + '<div class="row" style="align-items:baseline"><b style="font-size:.95rem">' + esc(sel.id) + '</b><span class="note">' + esc(ex) + '</span><span class="note">' + asProgress(sel) + '</span></div>'
-        + checklistStepsHtml('as', sel.setup, aTr.setupTemplate, null)
+        + checklistStepsHtml('as', sel.setup, aTr.setupTemplate, (x, step) => (step.panel === 'locks' ? asLocksHtml() : ''))
         + '<div class="row" style="margin-top:.9rem"><button id="asDelete" class="danger" title="takes this checklist away; the trading account record and its keys stay">Delete this setup</button></div>'
         + '<div class="row" style="margin-top:1rem;border-top:1px solid var(--line);padding-top:.7rem"><button id="asNewToggle" aria-expanded="' + aAsNew + '">' + (aAsNew ? '▾' : '▸') + ' Set up another account</button></div>'
         + (aAsNew ? asNewHtml() : '');
@@ -452,7 +481,7 @@ function wireTradingAccounts() {
   if (!aTr) return;
   const redraw = async () => { await loadAccount(); drawAccount(); };
   wireAs(redraw);
-  document.querySelectorAll('[data-takeys]').forEach((b) => { b.onclick = () => { aTrKeys = b.dataset.takeys; drawAccount(); const k = $('#takKey'); if (k) k.focus(); }; });
+  document.querySelectorAll('[data-takeys]').forEach((b) => { b.onclick = () => { aTrKeys = b.dataset.takeys; aTrKeysEng = b.dataset.teng; drawAccount(); const k = $('#takKey'); if (k) k.focus(); }; });
   document.querySelectorAll('[data-tadel]').forEach((b) => {
     b.onclick = async () => {
       if (!confirm('Delete the trading account "' + b.dataset.tadel + '"?\n\nRefused while any setup names it as its account. Its keys on the trading platform are not touched — remove them first if they should go too.')) return;
@@ -460,28 +489,26 @@ function wireTradingAccounts() {
       catch (e) { const o = $('#taOut_' + b.dataset.tadel); if (o) o.innerHTML = '<span class="neg">not deleted — ' + esc(e.message) + '</span>'; }
     };
   });
-  const enginePick = () => { const sel = $('#takEng'); if (sel) return sel.value; const g = (aTr.engines || []).find((x) => x.isDefault) || (aTr.engines || [])[0]; return g ? g.id : ''; };
+  const enginePick = () => aTrKeysEng || '';
   document.querySelectorAll('[data-tarm]').forEach((b) => {
     b.onclick = async () => {
       if (!confirm('Take the keys of "' + b.dataset.tarm + '" off the trading platform?\n\nA setup that trades through this account cannot place a real order until keys are entered again.')) return;
-      try { await postJson('api/account/trading/' + encodeURIComponent(b.dataset.tarm) + '/keys', { engine: enginePick(), remove: true }); await redraw(); }
+      try { await postJson('api/account/trading/' + encodeURIComponent(b.dataset.tarm) + '/keys', { engine: b.dataset.teng, remove: true }); await redraw(); }
       catch (e) { const o = $('#taOut_' + b.dataset.tarm); if (o) o.innerHTML = '<span class="neg">not removed — ' + esc(e.message) + '</span>'; }
     };
   });
   const cancel = $('#takCancel');
-  if (cancel) cancel.onclick = () => { aTrKeys = null; drawAccount(); };
+  if (cancel) cancel.onclick = () => { aTrKeys = null; aTrKeysEng = null; drawAccount(); };
   // the lock of the engine picked, and its fingerprint as worked out in this browser
   const lockOf = () => { const k = (aTr.keys || {})[enginePick()]; return k && k.lock && k.lockHere ? k : null; };
   const showLock = () => {
     const fp = $('#takLockFp');
     if (!fp) return;
     const k = lockOf();
-    fp.innerHTML = k ? '<b>' + esc(k.lockHere) + '</b> — the install command printed the same on the platform&#39;s machine'
+    fp.innerHTML = k ? '<b>' + esc(k.lockHere) + '</b> — step 3 of the checklist shows how to print the same on the platform&#39;s machine'
       : '<span class="neg">this platform has not said what its lock is, so no keys can be locked for it — it needs this system&#39;s release, installed with a new install command</span>';
   };
   showLock();
-  const pickEl = $('#takEng');
-  if (pickEl) pickEl.onchange = showLock;
   const send = $('#takSend');
   if (send) send.onclick = async () => {
     const msg = $('#takMsg');
@@ -497,6 +524,7 @@ function wireTradingAccounts() {
       // THE BOXES ARE EMPTIED THE MOMENT THE KEYS ARE SENT, taken or not
       key.value = ''; sec.value = '';
       aTrKeys = null;
+      aTrKeysEng = null;
       await redraw();
       const o = $('#taOut_' + acct);
       if (o) o.innerHTML = got.checked

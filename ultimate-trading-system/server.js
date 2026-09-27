@@ -272,7 +272,9 @@ app.get('/api/account/trading', async (req, res) => {
     res.json({
       // each account with its checklist and where every step stands (3.268.0)
       accounts: acc.tradingAccounts().map((a) => as.withSteps(a, factsFor(a.id))), offered: acc.EXCHANGES, setupTemplate: as.TEMPLATE,
-      engines: engines.map((t) => ({ id: t.id, name: t.name, isDefault: !!t.isDefault })), keys,
+      // each platform's operating system, as it said when it called in (3.276.0): step 3 shows the
+      // command that prints its lock's fingerprint on that machine
+      engines: engines.map((t) => ({ id: t.id, name: t.name, isDefault: !!t.isDefault, system: ({ linux: 'linux', darwin: 'mac', win32: 'windows' })[(t.machine || {}).platform] || null })), keys,
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

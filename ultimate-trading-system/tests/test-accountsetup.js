@@ -67,12 +67,13 @@ module.exports = {
       ['money', 'Real money on', false, ['live'], ['The pot holds only what the setups trading from it may lose']],
     ]);
     const rest4 = JSON.stringify(later);
-    for (const w of ['press Enter the keys there', 'compare the fingerprint of the platform\'s lock', 'press Send the keys to the trading platform',
+    for (const w of ['its Enter the keys sends them to that platform', 'the command that prints the machine\'s own copy on that machine', 'press Send the keys to the trading platform',
       'ask the exchange what the key may do, before it keeps them', 'In this release it does not read how much is in the pot', 'this release has no reading of the cross rate',
       'its Sub-account key holds this account\'s name', 'in the setup\'s Setup detail, and kept with Save', 'press Activate real for its config on Greenlights',
       'In this release the trading platform places no real orders', 'this step cannot be done']) assert.ok(rest4.includes(w), `steps 3 to 6 say ${w}`);
     // a checklist never takes a key: every choice is one of its options and every tick is on or off
-    for (const st of as.TEMPLATE.steps) assert.ok(Object.keys(st).every((k) => ['id', 'title', 'guidance', 'choices', 'fields', 'ticks', 'needs', 'writing'].includes(k)), `step ${st.id} holds nothing unexpected`);
+    for (const st of as.TEMPLATE.steps) assert.ok(Object.keys(st).every((k) => ['id', 'title', 'guidance', 'choices', 'fields', 'ticks', 'needs', 'panel', 'writing'].includes(k)), `step ${st.id} holds nothing unexpected`);
+    assert.strictEqual(later[0].panel, 'locks', 'step 3 draws each platform\'s lock');
     assert.ok(as.TEMPLATE.steps.every((st) => !st.writing), 'no step is still being written');
     for (const st of as.TEMPLATE.steps) for (const n of st.needs || []) assert.strictEqual(typeof as.NEEDS[n], 'function', `step ${st.id} needs ${n}, which nothing answers`);
     // the one box of text there is asks for no key, and says so
@@ -219,13 +220,57 @@ module.exports = {
       'the platform now reads the cross rate or the pot, so step 4 no longer tells the truth: write it again');
   },
 
+  // EACH PLATFORM'S LINE HAS ITS OWN KEY BUTTONS, AND STEP 3 SHOWS EVERY LOCK (3.276.0, owner
+  // 2026-09-27: the second platform's keys "had to be" put in with Replace the keys; and "how is
+  // the user supposed to know this seeing nothing was displayed about it")
+  eachPlatformsLineHasItsOwnKeyButtonsAndStepThreeShowsTheLocks() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
+    const esc = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    const cardSrc = src.slice(src.indexOf('function tradingKeysLine(a) {'), src.indexOf('function tradingAccountsHtml() {'));
+    const aTr = {
+      offered: [{ id: 'binance', label: 'Binance' }],
+      engines: [{ id: 'box-1', name: 'Platform One', isDefault: true, system: 'linux' }, { id: 'box-2', name: 'Platform Two', system: 'windows' }, { id: 'box-3', name: 'Platform Three', system: null }],
+      keys: {
+        'box-1': { answers: true, keys: [{ account: 'sub-1', present: true, addedAt: '2026-09-27T01:00:00Z', tied: true }], lockHere: '0a1b2c3d4e5f60718293' },
+        'box-2': { answers: true, keys: [], lockHere: 'ffeeddccbbaa99887766' },
+        'box-3': { answers: false, why: 'no word from it' },
+      },
+    };
+    const build = (open, eng) => new Function('esc', 'aTr', 'aTrKeys', 'aTrKeysEng', `${cardSrc}; return tradingAccountCard;`)(esc, aTr, open, eng);
+    const closed = build(null, null)({ id: 'sub-1', exchange: 'binance', note: '' });
+    const line = (name) => closed.slice(closed.indexOf(`keys on ${name}`), closed.indexOf('</div>', closed.indexOf(`keys on ${name}`)));
+    assert.ok(/data-takeys="sub-1" data-teng="box-1">Replace the keys<\/button><button data-tarm="sub-1" data-teng="box-1" class="danger"/.test(line('Platform One')), 'the platform holding the keys offers Replace the keys and Remove the keys, for itself');
+    assert.ok(/data-takeys="sub-1" data-teng="box-2">Enter the keys<\/button>/.test(line('Platform Two')) && !/data-tarm/.test(line('Platform Two')), 'a platform without them offers Enter the keys, whatever the default one holds');
+    assert.ok(!/data-takeys/.test(line('Platform Three')), 'a platform that did not answer offers nothing: no lock, no keys can go to it');
+    assert.strictEqual((closed.match(/data-takeys=/g) || []).length, 2, 'no key button outside the platforms\' own lines');
+    const form = build('sub-1', 'box-2')({ id: 'sub-1', exchange: 'binance', note: '' });
+    assert.ok(/<span class="k">the keys for<\/span> <b>Platform Two<\/b>/.test(form) && !/id="takEng"/.test(form), 'the form names the platform it sends to, and asks no other');
+    assert.ok(/const enginePick = \(\) => aTrKeysEng \|\| '';/.test(src) && /\{ engine: b\.dataset\.teng, remove: true \}/.test(src), 'the send goes to the form\'s platform and the remove to the button\'s');
+    // STEP 3's LOCKS: each fingerprint as worked out here, and the command for that machine
+    const lockSrc = src.slice(src.indexOf('const LOCK_CMD = {'), src.indexOf('function asHtml() {'));
+    const locks = new Function('esc', 'aTr', `${lockSrc}; return { asLocksHtml, LOCK_CMD };`)(esc, aTr);
+    const html = locks.asLocksHtml();
+    assert.ok(/<span class="k">Platform One<\/span><span class="note">the fingerprint of its lock, worked out in this browser:<\/span> <b>0a1b2c3d4e5f60718293<\/b>/.test(html), 'each platform\'s fingerprint is on the step');
+    assert.ok(html.includes(esc("sudo sed -n 's/.*\"lock\":\"\\([^\"]*\\)\".*/\\1/p' /var/lib/uts-engine-box-1/link-status.json")), 'a Linux machine is given its command');
+    assert.ok(html.includes(esc('(Get-Content "$env:ProgramData\\uts-engine-box-2\\link-status.json" | ConvertFrom-Json).lock')) && /in PowerShell, as administrator/.test(html), 'a Windows machine its own');
+    assert.ok(/this system does not know that machine&#39;s operating system yet/.test(html) && /the platform did not answer/.test(html), 'and a machine whose system is not known says so, as does one that did not answer');
+    // THE COMMANDS ARE HELD TO THE INSTALL SCRIPTS: where each keeps the file, and how Linux reads it
+    const inst = (f) => fs.readFileSync(path.join(__dirname, '..', 'engine', 'install', f), 'utf8');
+    const lin = inst('linux.sh');
+    assert.ok(lin.includes('NAME="uts-engine-$SHORT"') && lin.includes('DATA="/var/lib/$NAME"') && lin.includes(`sed -n 's/.*"lock":"\\([^"]*\\)".*/\\1/p' "$DATA/link-status.json"`), 'the Linux install keeps its lock somewhere else now: step 3\'s command must follow');
+    assert.ok(inst('mac.sh').includes('DATA="/usr/local/var/$NAME"') && locks.LOCK_CMD.mac('x').endsWith('/usr/local/var/uts-engine-x/link-status.json'), 'the Mac install moved its record');
+    assert.ok(inst('windows.ps1').includes('$name = "uts-engine-$Short"') && inst('windows.ps1').includes('$data = Join-Path $env:ProgramData $name'), 'the Windows install moved its record');
+    assert.ok(/fs\.writeFileSync\(t, JSON\.stringify\(\{ \.\.\.this\.state, lock: this\.lock \? this\.lock\.info\(\)\.fingerprint : null \}\)/.test(fs.readFileSync(path.join(__dirname, '..', 'engine', 'link.js'), 'utf8')), 'the platform no longer writes its lock\'s fingerprint where the command reads it');
+    assert.ok(/system: \(\{ linux: 'linux', darwin: 'mac', win32: 'windows' \}\)\[\(t\.machine \|\| \{\}\)\.platform\] \|\| null/.test(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8')), 'the Account tab is told each platform\'s system');
+  },
+
   // THE ACCOUNT TAB DRAWS IT: behind a button of its own at the top of Trading accounts,
   // with the same drawing as a platform's checklist, and nothing that asks for a key
   theAccountTabDrawsItWithThePlatformsChecklistCode() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
     const area = src.slice(src.indexOf('function asHtml('), src.indexOf('function wireAs('));
     assert.ok(/<button id="asToggle"[^>]*>' \+ \(aAsOpen \? '▾' : '▸'\) \+ ' Set up a trading account<\/button>/.test(area), 'one button opens and closes it');
-    assert.ok(/checklistStepsHtml\('as', sel\.setup, aTr\.setupTemplate, null\)/.test(area), 'drawn by the same code as a platform\'s checklist');
+    assert.ok(/checklistStepsHtml\('as', sel\.setup, aTr\.setupTemplate, \(x, step\) => \(step\.panel === 'locks' \? asLocksHtml\(\) : ''\)\)/.test(area), 'drawn by the same code as a platform\'s checklist, with step 3\'s locks in its panel');
     assert.ok(/checklistStepsHtml\('es', s, t,/.test(src), 'and the platform\'s checklist is drawn by it too');
     assert.ok(/<div class="row" style="margin-top:\.9rem"><button id="asDelete" class="danger"/.test(area) && /Set up another account<\/button>/.test(area), 'its own delete and another account, each in a row of its own');
     assert.ok(/'<div class="row" style="margin-top:\.5rem"><button id="asStart">Start its setup<\/button>/.test(src), 'Start its setup has a row of its own');

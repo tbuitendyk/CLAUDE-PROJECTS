@@ -112,8 +112,8 @@ const TEMPLATE = {
       title: 'The keys go to their platform',
       guidance: [
         { paras: [
-          'The keys are entered once, on this account\'s own record in this section, below the checklist: press Enter the keys there. They are locked in this browser with the trading platform\'s lock before they leave it, so this system passes them on without being able to read them, and the platform keeps them encrypted on its machine.',
-          'Before sending, compare the fingerprint of the platform\'s lock, shown beside the boxes, with the one the platform\'s install printed on its machine. They must be the same: a different one means the keys would be locked for another machine.',
+          'The keys are entered on this account\'s own record in this section, below the checklist: each trading platform has its own line there, and its Enter the keys sends them to that platform. They are locked in this browser with the platform\'s lock before they leave it, so this system passes them on without being able to read them, and the platform keeps them encrypted on its machine.',
+          'Before sending, check the fingerprint of the platform\'s lock. Below, each platform\'s is shown as this browser works it out, with the command that prints the machine\'s own copy on that machine. They must be the same: a different one means the keys would be locked for another machine.',
           'Paste the API key and the secret key exactly as the exchange showed them, and press Send the keys to the trading platform. The boxes are emptied the moment the keys are sent, whether they were kept or not.',
         ] },
         { when: { address: 'tied' }, heading: 'Tied to one or more addresses', paras: [
@@ -124,6 +124,7 @@ const TEMPLATE = {
         ] },
       ],
       needs: ['keys'],
+      panel: 'locks',
       ticks: [
         { id: 'fingerprint', label: 'The fingerprint of the platform\'s lock matched the one its machine printed' },
       ],
