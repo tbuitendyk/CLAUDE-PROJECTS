@@ -193,6 +193,10 @@ module.exports = {
     assert.ok(sub.indexOf('data-as-field=') > sub.indexOf('value="sub"') && sub.indexOf('data-as-field=') < sub.indexOf('Margin</span>'), 'right after Which account, before Margin');
     assert.ok(/<div class="row" style="margin-top:\.3rem"><button data-as-fieldsave="account\|subIds">Save the sub-account identifier\(s\)<\/button><span class="note">/.test(sub), 'its save is a button in a row of its own, with its answer beside it');
     assert.ok(!/data-as-field=/.test(draw('as', setup('main', { subIds: 'kept' }), t, null)), 'the main account is not asked for it');
+    // what is typed and not saved yet survives the redraw, and says so
+    const typedDraw = new Function('esc', 'ckFieldTyped', 'ckFieldMsg', `${src.slice(a, b)}; return checklistStepsHtml;`)((x) => String(x), { as: { 'account|subIds': 'typed, not saved' }, es: {} }, { as: {}, es: {} });
+    const typedHtml = typedDraw('as', setup('sub', { subIds: '4417' }), t, null);
+    assert.ok(/value="typed, not saved"/.test(typedHtml) && /Save the sub-account identifier\(s\)<\/button><span class="note">not saved yet<\/span>/.test(typedHtml), 'what is typed is lost on the redraw, or not said to be unsaved');
     assert.ok(/querySelectorAll\('\[data-as-fieldsave\]'\)/.test(src) && /'\/field', \{ step, field, value: box\.value \}/.test(src), 'the save sends the box to the service');
     assert.ok(/if \(req\.params\.what === 'field'\) return res\.json\(\{ ok: true, setup: as\.setField\(/.test(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8')), 'the service takes it');
     assert.ok(/'<span class="note">sub-account: ' \+ esc\(a\.setup\.fields\.subIds\) \+ '<\/span>'/.test(src), 'the account\'s card shows what the exchange calls the sub-account');

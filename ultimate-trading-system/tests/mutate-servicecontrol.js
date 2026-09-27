@@ -2914,6 +2914,25 @@ const GUARDS = [
     "stepTwoAsksForTheKeyThePlatformWillKeep", "the key form's tick is renamed and step 2 sends the owner looking for words that are gone"],
   [path.join(ROOT, "public", "setup.html"), "    + '<div class=\"panel\"><h3 style=\"margin-top:0\">Where each part runs</h3>'", "    + sweepProcessorHtml()\n    + '<div class=\"panel\"><h3 style=\"margin-top:0\">Where each part runs</h3>'",
     "theSweepProcessorStandsUnderWhereEachPartRunsAndKeepsItsTicks", "The sweep processor grows back above Where each part runs"],
+  // 3.274.0 the sub-account's identifiers in step 1 of a trading account's checklist
+  [path.join(ROOT, "lib", "accountsetup.js"), "    for (const f of fieldsAsked(step, choices)) if (!String(fields[f.id] || '').trim()) missing.push(`fill in \"${f.label}\"`);\n", "",
+    "aChecklistIsKeptOnItsAccountAndOpensStepByStep", "step 1 of a sub-account is done with nothing saved to say which sub-account it is"],
+  [path.join(ROOT, "lib", "accountsetup.js"), "  if (text.length > f.max) bad(", "  if (false) bad(",
+    "aChecklistIsKeptOnItsAccountAndOpensStepByStep", "a box that says 200 characters keeps any length"],
+  [path.join(ROOT, "lib", "accountsetup.js"), "  if (f.when && !matches(f.when, s.choices)) {", "  if (false) {",
+    "aChecklistIsKeptOnItsAccountAndOpensStepByStep", "the main account can be given sub-account identifiers it is never asked for"],
+  [path.join(ROOT, "lib", "accountsetup.js"), "function fieldsAsked(step, choices) { return (step.fields || []).filter((f) => !f.when || matches(f.when, choices)); }", "function fieldsAsked(step) { return step.fields || []; }",
+    "aChecklistIsKeptOnItsAccountAndOpensStepByStep", "the main account's step 1 waits for sub-account identifiers forever"],
+  [path.join(ROOT, "lib", "accountsetup.js"), ".replace(/[\\u0000-\\u001f\\u007f]+/g, ' ')", "",
+    "aChecklistIsKeptOnItsAccountAndOpensStepByStep", "a line break or a control character is kept in a one-line box"],
+  [path.join(ROOT, "public", "setup.html"), "      const typed = key in ckFieldTyped[kind] ? ckFieldTyped[kind][key] : saved;", "      const typed = saved;",
+    "theAccountTabDrawsItWithThePlatformsChecklistCode", "what is typed in the identifiers box is wiped by the next redraw"],
+  [path.join(ROOT, "public", "setup.html"), "      + fieldsAsked.filter((f) => f.after === c.id).map(fieldHtml).join('')).join('')", "      ).join('')",
+    "theAccountTabDrawsItWithThePlatformsChecklistCode", "the identifiers box is never drawn after Which account"],
+  [path.join(ROOT, "public", "setup.html"), "'<span class=\"note\">sub-account: ' + esc(a.setup.fields.subIds) + '</span>'", "''",
+    "theAccountTabDrawsItWithThePlatformsChecklistCode", "what the exchange calls the sub-account is saved and never shown on the account's card"],
+  [path.join(ROOT, "server.js"), "    if (req.params.what === 'field') return res.json(", "    if (false) return res.json(",
+    "theAccountTabDrawsItWithThePlatformsChecklistCode", "the save button's request has nowhere to go"],
 ];
 
 const only = process.argv[2] || '';
