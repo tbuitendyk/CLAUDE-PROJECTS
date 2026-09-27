@@ -309,6 +309,56 @@ module.exports = {
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   },
 
+  // WHERE BINANCE SEES THIS PLATFORM FROM (3.282.0, owner 2026-09-27: "figuring out what that source ip
+  // address is on the api traffic is not optional"): one signed read of the futures balance with the kept
+  // key; Binance's answer word for word, the address only when Binance names it, and nothing the read
+  // returns about the account passed on; the platform's request asks with the kept pair and changes nothing
+  async binanceIsAskedWhereItSeesThePlatformFromAndItsAnswerIsGivenWordForWord() {
+    const { makeHandler } = require('../engine/api');
+    const { Journal } = require('../engine/journal');
+    const { FAPI } = require('../engine/venues/binance-account');
+    const dir = tmp();
+    try {
+      const ks = store(dir);
+      ks.put('ltc-1', { apiKey: API_KEY, secret: SECRET });
+      const seen = [];
+      const answering = (reply) => async (method, url, opts = {}) => { seen.push({ url, header: (opts.headers || {})['X-MBX-APIKEY'] }); return reply; };
+      const ask = async (reply) => new BinanceAccount({ signer: ks.signer('ltc-1', 'where'), request: answering(reply), now: () => 0 }).whereFrom();
+      // refused, with the address named
+      let w = await ask({ status: 401, json: { code: -2015, msg: 'Invalid API-key, IP, or permissions for action, request ip: 201.141.7.19' }, ms: 5 });
+      assert.deepStrictEqual(w, { status: 401, code: -2015, words: 'Binance answered 401 (-2015): Invalid API-key, IP, or permissions for action, request ip: 201.141.7.19', requestIp: '201.141.7.19' });
+      assert.ok(seen[0].url.startsWith(`${FAPI}/fapi/v2/balance?`) && /&signature=[0-9a-f]{64}$/.test(seen[0].url) && seen[0].header === API_KEY, 'one signed read of the futures balance, with the kept key');
+      // refused, with no address named
+      w = await ask({ status: 401, json: { code: -2015, msg: 'Invalid API-key, IP, or permissions for action' }, ms: 5 });
+      assert.deepStrictEqual([w.requestIp, w.words], [null, 'Binance answered 401 (-2015): Invalid API-key, IP, or permissions for action']);
+      // answered: none of the account's figures travel on
+      w = await ask({ status: 200, json: [{ asset: 'USDT', balance: '123.45', availableBalance: '100' }], ms: 5 });
+      assert.deepStrictEqual(w, { status: 200, code: null, words: 'Binance answered 200: the key reads the futures balance, and Binance names no address when it answers', requestIp: null });
+      assert.ok(!JSON.stringify(w).includes('123.45'), 'the account\'s figures are not passed on');
+      // not reached
+      w = await ask({ status: 0, json: null, text: 'getaddrinfo ENOTFOUND fapi.binance.com', ms: 1 });
+      assert.deepStrictEqual([w.status, w.requestIp, w.words], [0, null, 'Binance did not answer: getaddrinfo ENOTFOUND fapi.binance.com']);
+      // the platform's request: asked with the kept pair; nothing kept, a bad name, no way to ask
+      const journal = new Journal(path.join(dir, 'journal.jsonl'));
+      const asked = [];
+      const handle = makeHandler({ runner: { view: () => [] }, journal, health: () => ({ ok: true }), keystore: ks, whereFrom: async (account, pair) => { asked.push([account, pair.apiKey === API_KEY && pair.secret === SECRET]); return { status: 401, code: -2015, words: 'refused, request ip: 1.2.3.4', requestIp: '1.2.3.4' }; } });
+      const r = JSON.parse(JSON.stringify(await handle('POST', '/keys/ltc-1/where', {})));
+      assert.deepStrictEqual([r.status, r.json], [200, { account: 'ltc-1', status: 401, code: -2015, words: 'refused, request ip: 1.2.3.4', requestIp: '1.2.3.4' }]);
+      assert.deepStrictEqual(asked, [['ltc-1', true]], 'asked with the kept pair');
+      assert.ok(!JSON.stringify(r).includes(API_KEY) && !JSON.stringify(r).includes(SECRET), 'no answer carries the key');
+      assert.strictEqual((await handle('POST', '/keys/ltc-9/where', {})).status, 404);
+      assert.strictEqual((await handle('POST', '/keys/..%2Fx/where', {})).status, 400);
+      const blind = makeHandler({ runner: { view: () => [] }, journal, health: () => ({ ok: true }), keystore: ks });
+      assert.strictEqual((await blind('POST', '/keys/ltc-1/where', {})).status, 503);
+      assert.strictEqual(ks.signer('ltc-1', 'x').header(), API_KEY, 'and the keys do not change');
+      // the service passes only the question, and the account's record asks every platform holding the keys
+      const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+      assert.ok(/if \(b\.where === true\) \{\n      const r = await link\.call\(target, 'POST', `\/keys\/\$\{encodeURIComponent\(id\)\}\/where`, \{\}, 15000\);/.test(server), 'the service passes the question on, and nothing else');
+      const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
+      assert.ok(page.includes("await postJson('api/account/trading/' + encodeURIComponent(acct) + '/keys', { engine: g.id, where: true });") && page.includes("'<span class=\"pos\">Binance sees this platform from <b>' + esc(got.requestIp) + '</b></span>"), 'the page asks each platform and says the address when Binance names it');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  },
+
   // THE LOCK IS THE ENGINE'S ALONE (3.266.0): made once, readable by the engine's
   // user only, refused when others can read it; its private half is never in
   // anything it hands out

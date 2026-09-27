@@ -57,3 +57,28 @@ module.exports.unknownAdapterIsRefused = function () {
   try { getExchange('kraken'); } catch (e) { err = e; }
   assert.ok(err && err.code === 'NO_ADAPTER');
 };
+
+// WHERE A PLATFORM CALLS FROM, AS THIS SYSTEM SEES IT (3.282.0, owner 2026-09-27: "thorough detection of the
+// ipv4 address source"): the link's own connection, kept on the platform's record with every address it has
+// called from, newest first, ten at most, each with when it was first and last seen and how often
+module.exports.everyAddressAPlatformCallsFromIsKept = function () {
+  const { addressesSeen } = require('../lib/live/enginehub');
+  let a = addressesSeen([], '1.1.1.1', '2026-09-27T01:00:00.000Z');
+  assert.deepStrictEqual(a, [{ ip: '1.1.1.1', firstUtc: '2026-09-27T01:00:00.000Z', lastUtc: '2026-09-27T01:00:00.000Z', n: 1 }]);
+  a = addressesSeen(a, '2.2.2.2', '2026-09-27T02:00:00.000Z');
+  a = addressesSeen(a, '1.1.1.1', '2026-09-27T03:00:00.000Z');
+  assert.deepStrictEqual(a.map((x) => [x.ip, x.n, x.firstUtc.slice(11, 13), x.lastUtc.slice(11, 13)]), [['1.1.1.1', 2, '01', '03'], ['2.2.2.2', 1, '02', '02']], 'newest first, counted, first seen kept');
+  for (let i = 0; i < 12; i++) a = addressesSeen(a, `10.0.0.${i}`, `2026-09-28T${String(i).padStart(2, '0')}:00:00.000Z`);
+  assert.strictEqual(a.length, 10, 'ten kept');
+  assert.strictEqual(a[0].ip, '10.0.0.11');
+  // kept on the record the screens read
+  fs.writeFileSync(process.env.GC_TARGETS_FILE, '{}');
+  targets.saveCallingEngine({ id: 'seen-1', name: 'Seen', tokenHash: 'd'.repeat(64) });
+  targets.noteEngine('seen-1', { seenFrom: '1.1.1.1', addresses: addressesSeen([], '1.1.1.1') });
+  const t = targets.getTarget('seen-1');
+  assert.deepStrictEqual([t.seenFrom, t.addresses.length, t.addresses[0].ip], ['1.1.1.1', 1, '1.1.1.1']);
+  // the link takes the address the web server in front says, or the connection's own
+  const hub = fs.readFileSync(path.join(__dirname, '..', 'lib', 'live', 'enginehub.js'), 'utf8');
+  assert.ok(/const from = String\(req\.headers\['x-real-ip'\] \|\| req\.socket\.remoteAddress \|\| ''\)\.replace\(\/\^::ffff:\/, ''\)\.slice\(0, 64\);/.test(hub)
+    && /noteEngine\(id, \{ \.\.\.\(from \? \{ seenFrom: from, addresses: addressesSeen\(t0\.addresses, from\) \} : \{\}\)/.test(hub), 'the link notes where each platform calls from');
+};

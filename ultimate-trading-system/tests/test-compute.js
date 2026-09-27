@@ -213,4 +213,14 @@ module.exports = {
     const targets = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'live', 'targets.js'), 'utf8');
     assert.ok(/res\.json\(\{ engines, default: \(targets\.defaultEngine\(\) \|\| \{\}\)\.id \|\| null \}\)/.test(routes) && /return all\.find\(\(t\) => t\.isDefault\) \|\| \(all\.length === 1 \? all\[0\] : null\);/.test(targets), 'the page is told the platform new setups actually go to');
   },
+
+  // EACH PLATFORM'S ADDRESS, AS THIS SYSTEM SEES IT (3.282.0): drawn on its record with every address seen
+  theComputeTabShowsEachPlatformsAddressAsThisSystemSeesIt() {
+    const page = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'setup.html'), 'utf8');
+    const routes = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'live', 'routes.js'), 'utf8');
+    assert.ok(page.includes("+ '<span><span class=\"k\">its address, as this system sees it</span> <b>' + esc(e.seenFrom || '—') + '</b></span>'"), 'the address it calls from is on its record');
+    assert.ok(page.includes("<span class=\"k\">addresses it has called from</span> <span class=\"note\">' + seen + '</span>"), 'and every address it has called from');
+    assert.ok(routes.includes("seenFrom: t.seenFrom || null, addresses: Array.isArray(t.addresses) ? t.addresses : [],"), 'the service hands both to the page');
+  },
+
 };

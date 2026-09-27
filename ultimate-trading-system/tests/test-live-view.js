@@ -383,3 +383,32 @@ module.exports.theTradeScreenAsksTheLinkWhetherThePlatformIsFollowed = function 
   const link = fs.readFileSync(path.join(__dirname, '..', 'lib', 'live', 'enginelink.js'), 'utf8');
   assert.ok(/linkStatus\(\) \{\n    const h = require\('\.\/enginehub'\)\.status\(this\.target\.id\);\n    return \{ following: h\.linked,/.test(link), 'the link\'s answer is not whether the platform is linked now');
 };
+
+// THE TRADE PAGE PICKS AND SHOWS (3.282.0, owner 2026-09-27): Activate opens a form with the two lists and no
+// grey dead button; the lists offer only trading platforms and trading accounts; LIVE's title says what a book
+// is linked to, on both books; Setup detail draws only a setup on the side being viewed; its tiles name both
+module.exports.theTradePagePicksThePlatformAndAccountAndSaysWhatABookIsLinkedTo = function () {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'trade.html'), 'utf8');
+  const routes = fs.readFileSync(path.join(__dirname, '..', 'lib', 'live', 'routes.js'), 'utf8');
+  const esc = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  assert.ok(!/realBlocked|needsKey/.test(src), 'the grey dead Activate real is back');
+  assert.ok(/button\[data-act\]'\)\.forEach\(b=>b\.onclick=\(ev\)=>\{ ev\.stopPropagation\(\); actFor=b\.dataset\.act; drawConfigs\(\); \}\);/.test(src), 'Activate opens the form');
+  assert.ok(/<select id="afTarget" style="min-width:14rem">\$\{platformOptions\(tg,\(afCh&&afCh\.executionTargetRef\)\|\|\(\(defaultPlatform\(tg\)\|\|\{\}\)\.id\)\)\}<\/select>/.test(src)
+    && /<select id="afKey" style="min-width:14rem">\$\{accountOptions\(accts,afCh&&afCh\.keyRef,afReal\?null:'no trading account'\)\}<\/select>/.test(src), 'the form holds the two lists, the default platform and the channel\'s account preselected');
+  assert.ok(/if\(afReal&&!keyRef\)\{ \$\('#afMsg'\)\.innerHTML='<span class="neg">pick the trading account the real channel trades from<\/span>'; return; \}/.test(src)
+    && /post\(`api\/live\/configs\/\$\{af\.id\}\/activate`,\{channel:afReal\?'real':'paper',executionTargetRef,keyRef:keyRef\|\|null\}\)/.test(src), 'real needs an account, and the picks go with the press');
+  const lists = new Function('esc', `${src.slice(src.indexOf('const platformsOf='), src.indexOf('function accountOptions('))}; return { platformOptions, defaultPlatform, platformName };`)(esc);
+  const tg = { targets: [{ id: 'mx-1', kind: 'ssh-box', symbols: ['LTCUSDT'] }, { id: 'eng-a', kind: 'engine', name: 'Platform A' }, { id: 'eng-b', kind: 'engine', name: 'Platform B', isDefault: true }] };
+  assert.strictEqual(lists.platformOptions(tg, null), '<option value="" selected disabled hidden>pick a trading platform</option><option value="eng-a" >Platform A</option><option value="eng-b" >Platform B</option>', 'only the trading platforms, by name, and a prompt when none is picked');
+  assert.strictEqual(lists.platformOptions(tg, 'mx-1'), lists.platformOptions(tg, null), 'mx-1 is never offered, nor shown as picked');
+  assert.deepStrictEqual([lists.defaultPlatform(tg).id, lists.platformName(tg, 'eng-a'), lists.platformName(tg, 'mx-1')], ['eng-b', 'Platform A', null]);
+  // LIVE's title, both books
+  assert.ok(/\$\{st\.keyRef\?`linked to the trading account <b>\$\{esc\(st\.keyRef\)\}<\/b>`:'<span class="warn">not linked to a trading account<\/span>'\}/.test(src)
+    && /\$\{st\.platform\?`runs on <b>\$\{esc\(st\.platform\.name\)\}<\/b>`:'<span class="warn">no trading platform picked<\/span>'\}/.test(src), 'LIVE\'s title says what the book is linked to');
+  assert.ok(/unhaltPending, unhaltRefused, mirror, keyRef: s\.keyRef \|\| null, platform: eng \? \{ id: eng\.id, name: eng\.name \|\| eng\.id \} : null \}\);/.test(routes), 'the service tells LIVE the account and the platform');
+  // Setup detail: only this side, and its tiles name both
+  assert.ok(src.includes("const g=configs.find(x=>x.id===selectedConfig&&chanOf(x))||configs.find(x=>chanOf(x));")
+    && src.includes("Nothing has a setup on the ${branch==='paper'?'Paper Books':'Live Trading'} side yet. Activate a config from Greenlights to see its setup here."), 'a setup from the other side is drawn on this one');
+  assert.ok(/tile\('Sub-account key','key',s\.keyRef\?esc\(s\.keyRef\):'none'/.test(src) && /tile\('Execution target','target',platformName\(tg,s\.executionTargetRef\)/.test(src), 'the tiles name the account and the platform');
+  assert.ok(!/default \(mx-1\)/.test(src), 'the default (mx-1) choice is back');
+};

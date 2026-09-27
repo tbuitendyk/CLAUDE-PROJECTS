@@ -188,3 +188,21 @@ module.exports.theSubAccountKeyIsShownAsTheAccountItNames = async function () {
     assert.ok(!/"keyRef":"set"/.test(JSON.stringify(det) + JSON.stringify(list)), 'never the word set in the field that names the account');
   });
 };
+
+// PICKED FROM THE LISTS, OR NOT AT ALL (3.282.0, owner 2026-09-27: "one must be picked"; the sub-account key
+// "must be a drop down list box also"): the service refuses an execution target that is no trading platform
+// and a key that names no trading account, on Save routing and at Activate alike
+module.exports.theRoutingIsPickedFromTheLists = async function () {
+  reg.createSetup({ id: 'wire-r', name: 'routing test', ownerId: 'owner', configSnapshot: f1Config(), clipUsd: 10 });
+  await withServer(async () => {
+    const t = await req('POST', '/api/live/setups/wire-r/config', { executionTargetRef: 'mx-1' }, ORIGIN);
+    assert.strictEqual(t.status, 400, t.body);
+    assert.ok(/pick a trading platform in Execution target|there is no trading platform yet: one is set up on Setup \| Compute/.test(t.json().error), t.body);
+    const k = await req('POST', '/api/live/setups/wire-r/config', { keyRef: 'no-such-account' }, ORIGIN);
+    assert.strictEqual(k.status, 400, k.body);
+    assert.ok(/pick one of the trading accounts in Sub-account key|there is no trading account yet: one is set up on Setup \| Account/.test(k.json().error), k.body);
+    assert.strictEqual(reg.getSetup('wire-r').executionTargetRef, null, 'nothing was written');
+    const a = await req('POST', '/api/live/configs/gl-none/activate', { channel: 'paper', executionTargetRef: 'mx-1' }, ORIGIN);
+    assert.deepStrictEqual([a.status, a.json().error], [400, 'pick a trading platform from the list']);
+  });
+};

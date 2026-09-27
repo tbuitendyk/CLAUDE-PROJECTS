@@ -232,6 +232,9 @@ module.exports.everySetupRunsOnATradingPlatformAndOneMustBePicked = function () 
     ch.deactivate(g4.id, 'paper');
     const again = ch.activate(g4.id, 'paper');
     assert.deepStrictEqual([reg.getSetup(again.id).executionTargetRef, reg.getSetup(again.id).keyRef], ['eng-a', 'acct-1'], 'a press with no picks changes nothing');
+    ch.deactivate(g4.id, 'paper');
+    const repicked = ch.activate(g4.id, 'paper', { executionTargetRef: 'eng-b', keyRef: 'acct-2' });
+    assert.deepStrictEqual([reg.getSetup(repicked.id).executionTargetRef, reg.getSetup(repicked.id).keyRef], ['eng-b', 'acct-2'], 'new picks at Activate are written onto a setup that exists');
     err = null;
     try { ch.activate(breakout().id, 'paper', { executionTargetRef: 'mx-1' }); } catch (e) { err = e; }
     assert.strictEqual(err && err.code, 'NO_PLATFORM', 'mx-1 cannot be picked');
