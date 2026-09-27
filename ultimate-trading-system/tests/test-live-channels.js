@@ -169,6 +169,55 @@ module.exports.aNewSetupRunsOnTheEngineTickedForNewSetupsAndOtherwiseWhereItAlwa
   }
 };
 
+// A SETUP MX-1 CANNOT TRADE TAKES THE PLATFORM TICKED FOR NEW SETUPS, AND THE REFUSAL SAYS HOW (3.281.0,
+// owner 2026-09-27: "cannot go paper: cell.entry 'breakout' ..." and "the user needs to be able to fix this
+// without bring the claude tool into the loop"): two platforms and neither ticked is no default; the refusal
+// names the way out first; once one is ticked the same press goes there; one mx-1 can trade keeps its fallback
+module.exports.aSetupTheOldOrderProgramCannotTradeGoesToTheTickedPlatformAndTheRefusalSaysHow = function () {
+  const targets = require('../lib/live/targets');
+  const link = require('../lib/live/enginelink');
+  const saved = { t: process.env.GC_TARGETS_FILE, m: process.env.GC_ENGINE_MIRROR };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-ch-breakout-'));
+  process.env.GC_TARGETS_FILE = path.join(dir, 'targets.json');
+  process.env.GC_ENGINE_MIRROR = path.join(dir, 'mirror');
+  const base = aStage4Source();
+  const breakout = () => gl.greenlightFromStage4(aStage4Source({ survivor: { ...base.survivor, entry: 'breakout', dMult: 0.5 } }), { name: 'breakout config', why: 'no platform ticked' });
+  try {
+    targets.saveCallingEngine({ id: 'eng-a', name: 'Platform A', tokenHash: 'a'.repeat(64) });
+    targets.saveCallingEngine({ id: 'eng-b', name: 'Platform B', tokenHash: 'b'.repeat(64) });
+    targets.saveEngine({ id: 'eng-a', name: 'Platform A', isDefault: false });
+    assert.strictEqual(targets.defaultEngine(), null, 'two platforms and neither ticked: no default');
+    const g = breakout();
+    let err = null;
+    try { ch.activate(g.id, 'paper'); } catch (e) { err = e; }
+    assert.ok(err && err.message.includes('no trading platform is ticked "new setups run on this platform", so this setup would run on mx-1, the old order program, which trades only a market entry, with no gate, trailing stop or arm: on the Compute tab of Setup, press Change this record on the platform it should run on, tick "new setups run on this platform" and press Save the platform record, then activate it again'), err && err.message);
+    assert.ok(err.message.indexOf('no trading platform is ticked') < err.message.indexOf("cell.entry 'breakout'"), 'the way out comes before the details');
+    const left = ch.channelSetup(g.id, 'paper');
+    assert.ok(left && !left.executionTargetRef && left.state !== 'paper', 'the refused press leaves a setup with no platform of its own, not trading');
+    // ticked on the Compute tab: the same press now goes there, with the setup the refused press left
+    targets.saveEngine({ id: 'eng-b', name: 'Platform B', isDefault: true });
+    link.mirrorFor(targets.getTarget('eng-b')).lastHealth = { at: new Date().toISOString(), health: { realOrders: 'off' } };
+    const on = ch.activate(g.id, 'paper');
+    assert.deepStrictEqual([on.id, on.state, reg.getSetup(on.id).executionTargetRef], [left.id, 'paper', 'eng-b'], 'the setup the refused press left trades on the ticked platform');
+    // set to mx-1 by choice: refused, and told to choose a platform in Execution target
+    const g2 = breakout();
+    const made = gl.shuttle(g2.id, { name: 'on mx-1 by choice', clipUsd: 10, channel: 'paper', executionTargetRef: 'mx-1' }).setup;
+    err = null;
+    try { ch.activate(g2.id, 'paper'); } catch (e) { err = e; }
+    assert.ok(err && err.message.includes('this setup is set to run on mx-1, the old order program, which trades only a market entry, with no gate, trailing stop or arm: choose a trading platform in Execution target on its Setup detail, press Save routing, then activate it again'), err && err.message);
+    assert.strictEqual(reg.getSetup(made.id).executionTargetRef, 'mx-1', 'a choice the owner made is never overridden');
+    // a setup mx-1 can trade, with no platform of its own, keeps the fallback it has always had
+    const g3 = mkGreenlight();
+    const plain = gl.shuttle(g3.id, { name: 'market, no platform', clipUsd: 10, channel: 'paper' }).setup;
+    const act = ch.activate(g3.id, 'paper');
+    assert.deepStrictEqual([act.id, reg.getSetup(plain.id).executionTargetRef], [plain.id, null], 'a market entry with no platform of its own still runs on mx-1');
+  } finally {
+    link.followAll([]);
+    for (const [k, v] of [['GC_TARGETS_FILE', saved.t], ['GC_ENGINE_MIRROR', saved.m]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+};
+
 // THE STOP PICKED ON TUNE (item 5, 3.259.0): a market-entry configuration's
 // book starts with it in Stop % at Activate, still editable after; a breakout
 // configuration's gets nothing, its stop being the level on the other side

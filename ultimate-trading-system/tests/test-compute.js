@@ -199,4 +199,18 @@ module.exports = {
     assert.ok(blind.includes('This service cannot read its own <b>allowed</b> ceiling, so nothing holds the workers under it.'), blind);
     assert.ok(page.includes("+ '<span class=\"note\">' + knobsLine(cCfg) + '</span>'"), 'the Compute tab no longer draws the line');
   },
+
+  // WHERE NEW SETUPS GO IS SAID, AND SO IS NOWHERE (3.281.0, owner 2026-09-27: "the user needs to be able to
+  // fix this without bring the claude tool into the loop"): the platform new setups actually go to is marked,
+  // the only one there is included; two or more with none ticked is said, with how to tick one
+  theComputeTabSaysWhichPlatformNewSetupsGoToAndWhenNoneIsTicked() {
+    const page = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'setup.html'), 'utf8');
+    assert.ok(page.includes("+ (e.isDefault || (cEng && cEng.default === e.id) ? '<span class=\"note pos\">new setups run on this platform</span>' : '')"), 'the platform new setups go to is marked, ticked or the only one');
+    assert.ok(page.includes("+ ((cEng.engines || []).length > 1 && !cEng.default ? '<p class=\"note warn\">No platform is ticked \"new setups run on this platform\", so a new setup would run on mx-1, the old order program, which trades only a market entry, with no gate, trailing stop or arm. Press Change this record on the platform new setups should run on, tick it, and press Save the platform record.</p>' : '')"), 'none ticked is said, with how to tick one');
+    assert.ok(/<button data-engedit="' \+ esc\(e\.id\) \+ '">Change this record<\/button>/.test(page) && /> new setups run on this platform<\/label>/.test(page) && />Save the platform record<\/button>/.test(page), 'the three names the warning uses are the screen\'s own');
+    // and the service says which platform that is: the one ticked, or the only one there is
+    const routes = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'live', 'routes.js'), 'utf8');
+    const targets = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'live', 'targets.js'), 'utf8');
+    assert.ok(/res\.json\(\{ engines, default: \(targets\.defaultEngine\(\) \|\| \{\}\)\.id \|\| null \}\)/.test(routes) && /return all\.find\(\(t\) => t\.isDefault\) \|\| \(all\.length === 1 \? all\[0\] : null\);/.test(targets), 'the page is told the platform new setups actually go to');
+  },
 };
