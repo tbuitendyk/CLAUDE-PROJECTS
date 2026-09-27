@@ -94,13 +94,7 @@ const checkKey = keystore ? async (account, pair, { anyAddress = false } = {}) =
   const r = await acc.restrictions();
   return keyCheck(r, { anyAddress });
 } : null;
-// where Binance sees this platform from, asked with an account's kept key (3.282.0)
-const whereFrom = keystore ? async (account, pair) => {
-  const acc = new BinanceAccount({ signer: keystore.signerOf(account, pair, 'asking Binance where it sees this platform from') });
-  await acc.syncClock();
-  return acc.whereFrom();
-} : null;
-const deps = { runner, journal, health, keystore, checkKey, whereFrom, lock };
+const deps = { runner, journal, health, keystore, checkKey, lock };
 // THE ENGINE CALLS OUT (engine/link.js): nothing listens on this machine at all
 const { Link } = require('./link');
 link = new Link({ url: cfg.link.url, code: cfg.link.code || null, dataDir: DATA, handle: makeHandler(deps), journal, health, lock, version: VERSION });

@@ -84,5 +84,9 @@ module.exports.everyAddressAPlatformCallsFromIsKept = function () {
   // the link takes the address the web server in front says, or the connection's own
   const hub = fs.readFileSync(path.join(__dirname, '..', 'lib', 'live', 'enginehub.js'), 'utf8');
   assert.ok(/const from = String\(req\.headers\['x-real-ip'\] \|\| req\.socket\.remoteAddress \|\| ''\)\.replace\(\/\^::ffff:\/, ''\)\.slice\(0, 64\);/.test(hub)
-    && /noteEngine\(id, \{ \.\.\.\(from \? \{ seenFrom: from, addresses: addressesSeen\(t0\.addresses, from\) \} : \{\}\)/.test(hub), 'the link notes where each platform calls from');
+    && /noteEngine\(id, \{ seenFrom: real, addresses: real \? addressesSeen\(kept, real\) : kept,/.test(hub), 'the link notes where each platform calls from');
+  // 3.282.1 (owner: "just shows the loopback"): this server's own front door is never a platform's address
+  const { isLoopback } = require('../lib/live/enginehub');
+  assert.deepStrictEqual(['127.0.0.1', '127.8.0.1', '::1', 'localhost', '201.141.7.19', '10.0.0.5'].map(isLoopback), [true, true, true, true, false, false]);
+  assert.ok(/const real = from && !isLoopback\(from\) \? from : null;/.test(hub) && /const kept = \(Array\.isArray\(t0\.addresses\) \? t0\.addresses : \[\]\)\.filter\(\(x\) => x && !isLoopback\(x\.ip\)\);/.test(hub), 'loopback is neither recorded nor kept');
 };

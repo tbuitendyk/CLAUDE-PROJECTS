@@ -73,6 +73,7 @@ function status(engineId) {
   return { linked: true, since: c.since, lastAt: new Date(c.lastAt).toISOString(), release: c.hello ? c.hello.release : null, why: null };
 }
 
+const isLoopback = (ip) => /^127\.|^::1$|^localhost$/i.test(String(ip || ''));
 // every address a platform has called from, newest first, ten kept, each with when it was first and last seen
 function addressesSeen(was, ip, now = new Date().toISOString()) {
   const list = (Array.isArray(was) ? was : []).filter((x) => x && typeof x.ip === 'string').map((x) => ({ ...x }));
@@ -115,8 +116,12 @@ function onUpgrade(req, socket, head) {
       clearTimeout(helloWait);
       const es = require('./enginesetup');
       const lock = es.lockOf(msg.lock);
+      // 127.0.0.1 is this server's own front door handing the connection on, never a platform's address: it is
+      // not recorded, and any recorded before is taken off the record (3.282.1, owner: "just shows the loopback")
       const t0 = require('./targets').getTarget(id) || {};
-      require('./targets').noteEngine(id, { ...(from ? { seenFrom: from, addresses: addressesSeen(t0.addresses, from) } : {}), release: me.hello.release, code: typeof msg.code === 'string' && /^[0-9a-f]{16}$/.test(msg.code) ? msg.code : null, lastSeenUtc: new Date().toISOString(), ...(lock ? { lock } : {}), ...(msg.machine ? { machine: { platform: String(msg.machine.platform || '').slice(0, 20), arch: String(msg.machine.arch || '').slice(0, 20), hostname: String(msg.machine.hostname || '').slice(0, 80), node: String(msg.machine.node || '').slice(0, 20) } } : {}) });
+      const kept = (Array.isArray(t0.addresses) ? t0.addresses : []).filter((x) => x && !isLoopback(x.ip));
+      const real = from && !isLoopback(from) ? from : null;
+      require('./targets').noteEngine(id, { seenFrom: real, addresses: real ? addressesSeen(kept, real) : kept, release: me.hello.release, code: typeof msg.code === 'string' && /^[0-9a-f]{16}$/.test(msg.code) ? msg.code : null, lastSeenUtc: new Date().toISOString(), ...(lock ? { lock } : {}), ...(msg.machine ? { machine: { platform: String(msg.machine.platform || '').slice(0, 20), arch: String(msg.machine.arch || '').slice(0, 20), hostname: String(msg.machine.hostname || '').slice(0, 80), node: String(msg.machine.node || '').slice(0, 20) } } : {}) });
       if (w && typeof w.hello === 'function') w.hello(msg);
       conn.send(JSON.stringify({ t: 'welcome', since: w ? w.n : 0, release: RELEASE() }));
       return;
@@ -243,4 +248,4 @@ function attach(server, port) {
   process.env.GC_ENGINE_RELAY = JSON.stringify({ port, secret: RELAY_SECRET });
 }
 
-module.exports = { attach, installRoutes, call, status, watch, unwatch, packageNow, engineByToken, addressesSeen, _conns: conns };
+module.exports = { attach, installRoutes, call, status, watch, unwatch, packageNow, engineByToken, addressesSeen, isLoopback, _conns: conns };

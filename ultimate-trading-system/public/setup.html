@@ -398,7 +398,6 @@ function tradingAccountCard(a) {
         : '<div class="row" style="margin-top:.5rem">'
           + (reachable.length ? '<button data-takeys="' + esc(a.id) + '">' + (holders.length ? 'Change the keys' : 'Enter the keys') + '</button>' : '')
           + (holders.length ? '<button data-tacheck="' + esc(a.id) + '" title="asks the exchange again, from every platform that keeps these keys, with the keys already kept: nothing is typed and nothing about the keys changes but what the exchange says of them">Check the keys again</button>' : '')
-          + (holders.length ? '<button data-tawhere="' + esc(a.id) + '" title="each platform that keeps these keys makes one signed read of Binance\'s futures balance with them and says what Binance answered, word for word, with the address Binance sees it from when Binance names it. Binance has named it when the key\'s trusted-IP list refuses the call, so switch that list on first">Ask Binance where it sees each platform from</button>' : '')
           + (holders.length ? '<button data-tarm="' + esc(a.id) + '" class="danger" title="takes the keys off the trading platforms you tick; the account record stays">Remove the keys</button>' : '')
           + '<button data-tadel="' + esc(a.id) + '" class="danger" title="takes the record away; refused while any setup names it as its account">Delete the trading account</button>'
           + '</div>'
@@ -579,27 +578,6 @@ function wireTradingAccounts() {
               ? '<span class="pos">checked — the exchange says the key can trade and borrow, cannot move money, and ' + (got.tied ? 'is tied to one or more addresses' : 'is open to any address, as step 2 allows') + '</span>'
               : '<span class="neg">refused — ' + esc(got.why || got.refused || 'the exchange gave no words') + '</span>'));
         } catch (e) { lines.push(esc(g.name) + ': <span class="neg">not checked — ' + esc(e.message) + '</span>'); }
-      }
-      aTrKeysOut[acct] = lines.join('<br>');
-      await redraw();
-    };
-  });
-  // WHERE BINANCE SEES EACH PLATFORM FROM (3.282.0): one question per platform that keeps the keys, one line each
-  document.querySelectorAll('[data-tawhere]').forEach((b) => {
-    b.onclick = async () => {
-      const acct = b.dataset.tawhere;
-      const holders = (aTr.engines || []).filter((g) => keyStanding(acct, g).mine);
-      b.disabled = true;
-      const o = $('#taOut_' + acct);
-      if (o) o.innerHTML = 'asking Binance…';
-      const lines = [];
-      for (const g of holders) {
-        try {
-          const got = await postJson('api/account/trading/' + encodeURIComponent(acct) + '/keys', { engine: g.id, where: true });
-          lines.push(esc(g.name) + ': ' + (got.requestIp
-            ? '<span class="pos">Binance sees this platform from <b>' + esc(got.requestIp) + '</b></span> <span class="muted">(' + esc(got.words || '') + ')</span>'
-            : '<span class="warn">Binance did not name the address</span> <span class="muted">(' + esc(got.words || 'no words') + ')</span>'));
-        } catch (e) { lines.push(esc(g.name) + ': <span class="neg">not asked — ' + esc(e.message) + '</span>'); }
       }
       aTrKeysOut[acct] = lines.join('<br>');
       await redraw();
@@ -918,7 +896,7 @@ function engineCard(e) {
   // source"): the address the platform's own link arrives from, and every address it has called from
   const seen = (e.addresses || []).map((a) => esc(a.ip) + ' <span class="muted">(last ' + esc(String(a.lastUtc || '').slice(5, 16).replace('T', ' ')) + ' UTC, ' + (a.n || 1) + '×)</span>').join(' · ');
   const reach = '<span><span class="k">calls this system from</span> <b>' + esc(mc.hostname || 'a machine it has not named') + '</b> <span class="muted">' + esc([mc.platform, mc.arch].filter(Boolean).join(' ')) + '</span></span>'
-    + '<span><span class="k">its address, as this system sees it</span> <b>' + esc(e.seenFrom || '—') + '</b></span>'
+    + '<span><span class="k">its address, as this system sees it</span> ' + (e.seenFrom ? '<b>' + esc(e.seenFrom) + '</b>' : '<span class="muted" title="the web server in front of this system does not pass the caller\'s address on yet">not known yet</span>') + '</span>'
     + '<span><span class="k">release</span> <b>' + esc(e.release || '?') + '</b></span>'
     + '<span><span class="k">the fingerprint of its lock</span> <b>' + esc(e.lock ? e.lock.fingerprint : '—') + '</b></span>';
   return '<div class="tile" style="margin-bottom:.55rem">'
