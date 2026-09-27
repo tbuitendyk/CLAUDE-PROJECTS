@@ -338,6 +338,54 @@ module.exports = {
     assert.ok(/checkedAt: k\.checkedAt \|\| null, refused: typeof k\.refused === 'string' \? k\.refused : null/.test(server) && /refusedOn: holding\(\(k\) => k\.present && !!k\.refused\)/.test(server), 'the keys list and the checklist hear of a refusal');
   },
 
+  // EVERY COMMAND BOX HAS THE SAME COPY PRESS (3.280.0, owner 2026-09-27: "put the same button under
+  // the fingerprint code boxes"): each fingerprint command in a row of its own under its box, the
+  // install command's the same function, and the press copies the box it belongs to and says Copied
+  async everyCommandBoxHasTheSameCopyPress() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
+    const esc = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    const aTr = {
+      engines: [{ id: 'box-1', name: 'Platform One', system: 'linux' }, { id: 'box-2', name: 'Platform Two', system: 'windows' }, { id: 'box-3', name: 'Platform Three', system: null }],
+      keys: { 'box-1': { answers: true, keys: [], lockHere: 'aa' }, 'box-2': { answers: true, keys: [], lockHere: 'bb' }, 'box-3': { answers: true, keys: [], lockHere: 'cc' } },
+    };
+    const lockSrc = src.slice(src.indexOf('const LOCK_CMD = {'), src.indexOf('function asHtml() {'));
+    const html = new Function('esc', 'aTr', `${lockSrc}; return asLocksHtml;`)(esc, aTr)();
+    for (const id of ['box-1', 'box-2']) {
+      assert.ok(new RegExp(`<textarea data-lockcmd="${id}" readonly rows="1" spellcheck="false" style="[^"]*">[^<]*</textarea><div class="row" style="margin-top:\\.3rem"><button data-lockcopy="${id}">Copy the command</button></div>`).test(html), `${id}: its command box, and right under it its own copy press in a row of its own`);
+    }
+    assert.ok(!/data-lockcopy="box-3"/.test(html) && !/data-lockcmd="box-3"/.test(html), 'a machine with no command has nothing to copy');
+    // one function copies every command box on the page
+    assert.ok(/document\.querySelectorAll\('\[data-lockcopy\]'\)\.forEach\(\(b\) => \{ b\.onclick = \(\) => copyCommand\(b, \[\.\.\.document\.querySelectorAll\('\[data-lockcmd\]'\)\]\.find\(\(t\) => t\.dataset\.lockcmd === b\.dataset\.lockcopy\)\); \}\);/.test(src), 'each fingerprint press copies its own box');
+    assert.ok(/if \(cc\) cc\.onclick = \(\) => copyCommand\(cc, \$\('#esCmd'\)\);/.test(src) && (src.match(/navigator\.clipboard\.writeText/g) || []).length === 1, 'the install command uses the same press, and there is only one');
+    const cp = src.slice(src.indexOf('async function copyCommand('), src.indexOf('function keyStanding('));
+    let copied = null;
+    const copyOk = new Function('navigator', 'document', `${cp}; return copyCommand;`)({ clipboard: { writeText: async (t) => { copied = t; } } }, {});
+    const b1 = { textContent: 'Copy the command' };
+    await copyOk(b1, { value: 'sudo sed -n x' });
+    assert.deepStrictEqual([copied, b1.textContent], ['sudo sed -n x', 'Copied'], 'the box it belongs to is copied, and it says so');
+    // where the clipboard refuses, the command is selected and copied the old way, and still said
+    let selected = false; let execd = null;
+    const copyOld = new Function('navigator', 'document', `${cp}; return copyCommand;`)({ clipboard: { writeText: async () => { throw new Error('not allowed'); } } }, { execCommand: (c) => { execd = c; return true; } });
+    const b2 = { textContent: 'Copy the command' };
+    await copyOld(b2, { value: 'x', select: () => { selected = true; } });
+    assert.deepStrictEqual([selected, execd, b2.textContent], [true, 'copy', 'Copied']);
+  },
+
+  // THE KEY FORM SHOWS STEP 2'S CHOICE AND HAS NO TICK OF ITS OWN (3.280.0): what goes with the keys
+  // is said where they are sent, in step 2's words
+  theKeyFormShowsStepTwosChoiceAndHasNoTickOfItsOwn() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
+    const esc = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    const cardSrc = src.slice(src.indexOf('function keyStanding(acctId, g) {'), src.indexOf('function tradingAccountsHtml() {'));
+    const aTr = { offered: [], engines: [{ id: 'box-1', name: 'Platform One', system: 'linux' }], keys: { 'box-1': { answers: true, keys: [], lock: { publicKey: 'p' }, lockHere: 'fp' } } };
+    const form = (acct) => new Function('esc', 'aTr', 'aTrKeys', 'aTrKeysMode', 'aTrKeysTicks', 'aTrKeysOut', `${cardSrc}; return tradingAccountCard;`)(esc, aTr, acct.id, 'send', {}, {})(acct);
+    const line = (words) => `<div class="row" style="align-items:baseline; margin-top:.4rem"><span class="k">Where it may trade from</span> <span>${words}</span><span class="note">as step 2 of this account&#39;s checklist says; it goes with the keys, and with every Check the keys again</span></div>`;
+    assert.ok(form({ id: 'a', exchange: 'binance', note: '', setup: { choices: { address: 'any' } } }).includes(line('open to any address')), 'open to any address, as step 2 says');
+    assert.ok(form({ id: 'a', exchange: 'binance', note: '', setup: { choices: { address: 'tied' } } }).includes(line('tied to one or more addresses')), 'tied, as step 2 says');
+    assert.ok(form({ id: 'a', exchange: 'binance', note: '' }).includes(line('tied to one or more addresses, until step 2 says otherwise')), 'and tied until step 2 says otherwise');
+    assert.ok(!/type="checkbox" id="takAny"/.test(form({ id: 'a', exchange: 'binance', note: '' })), 'no tick of its own');
+  },
+
   // THE ACCOUNT TAB DRAWS IT: behind a button of its own at the top of Trading accounts,
   // with the same drawing as a platform's checklist, and nothing that asks for a key
   theAccountTabDrawsItWithThePlatformsChecklistCode() {

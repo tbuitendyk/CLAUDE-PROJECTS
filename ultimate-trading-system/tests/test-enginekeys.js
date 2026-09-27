@@ -278,6 +278,19 @@ module.exports = {
       r = await call('POST', '/keys/ltc-1/check');
       assert.deepStrictEqual([r.json.checked, r.json.ok, r.json.why, r.json.tied, r.json.refused, r.json.checkedAt, r.json.addedAt], [true, true, null, true, null, '2026-09-27T04:03:00.000Z', '2026-09-27T04:00:00.000Z']);
       assert.deepStrictEqual((await call('GET', '/keys')).json.keys.map((k) => [k.account, k.tied, k.refused, k.checkedAt]), [['ltc-1', true, null, '2026-09-27T04:03:00.000Z']], 'the list says what the exchange last said');
+      // STEP 2'S CHOICE TRAVELS WITH THE QUESTION (3.280.0): asked with the choice sent, and the choice
+      // kept beside the keys with the answer; with none sent, the choice the keys were kept with
+      verdict = { checked: true, ok: true, refusals: [], tied: true };
+      r = await call('POST', '/keys/ltc-1/check', { anyAddress: false });
+      assert.deepStrictEqual([asked[asked.length - 1][2], r.json.anyAddress, ks.describe('ltc-1').anyAddress], [false, false, false], 'asked with the choice sent, and it is kept');
+      r = await call('POST', '/keys/ltc-1/check', { anyAddress: true });
+      assert.deepStrictEqual([asked[asked.length - 1][2], r.json.anyAddress], [true, true]);
+      await call('POST', '/keys/ltc-1/check');
+      assert.strictEqual(asked[asked.length - 1][2], true, 'none sent: the choice the keys were kept with');
+      verdict = refusal;
+      r = await call('POST', '/keys/ltc-1/check', { anyAddress: false });
+      assert.deepStrictEqual([r.json.ok, r.json.anyAddress, ks.describe('ltc-1').anyAddress], [false, false, false], 'a refusal keeps the choice it was asked with too');
+      assert.strictEqual(ks.signer('ltc-1', 'x').header(), API_KEY, 'and the keys never change');
       // nothing kept, a bad name, no way to ask
       assert.strictEqual((await call('POST', '/keys/ltc-9/check')).status, 404);
       assert.strictEqual((await call('POST', '/keys/..%2Fescape/check')).status, 400);
@@ -291,7 +304,7 @@ module.exports = {
       assert.deepStrictEqual(ks.describe('ltc-2'), { account: 'ltc-2', present: false });
       // every check written down; no answer and no record carries the key
       const rec = fs.readFileSync(path.join(dir, 'journal.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
-      assert.deepStrictEqual(rec.filter((l) => l.type === 'keys' && /check/.test(l.what)).map((l) => [l.what, l.account]), [['refused on a check', 'ltc-1'], ['checked', 'ltc-1']]);
+      assert.deepStrictEqual(rec.filter((l) => l.type === 'keys' && /check/.test(l.what)).map((l) => [l.what, l.account]), [['refused on a check', 'ltc-1'], ['checked', 'ltc-1'], ['checked', 'ltc-1'], ['checked', 'ltc-1'], ['checked', 'ltc-1'], ['refused on a check', 'ltc-1']]);
       assert.ok(!JSON.stringify(rec).includes(API_KEY) && !JSON.stringify(rec).includes(SECRET), 'the record never holds the key');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   },
