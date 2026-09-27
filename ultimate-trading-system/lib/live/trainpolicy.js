@@ -49,30 +49,22 @@ function validatePolicy(p) {
   return errors;
 }
 
-// Resolve the instant to train through, for one deployment.
-//
-// LEGACY IS HANDLED OUT LOUD, NOT SILENTLY. Setups minted before this split
-// carry the freeze inside their configSnapshot, where it no longer belongs.
-// They keep working — nothing paper-trading is disturbed — but the result is
-// flagged `legacy` so the screens can say so and the old shape cannot quietly
-// become permanent. A silent fallback is how a field you removed lives forever.
+// Resolve the instant to train through, for one deployment. A deployment with
+// no Members train choice decides nothing until one is picked (3.284.0, RULE
+// NINE): the old training date some early setups carried inside their frozen
+// configuration is not read, and no setup on the box carried one.
 function resolveFreeze(setup, now = Date.now()) {
   const p = setup && setup.trainPolicy;
-  if (p && p.mode === 'rolling') return { mode: 'rolling', throughMs: now, legacy: false };
+  if (p && p.mode === 'rolling') return { mode: 'rolling', throughMs: now };
   // the instant is Construct's own, known only once its history is read (lib/live/signal.js prepare)
-  if (p && p.mode === 'construct') return { mode: 'construct', throughMs: null, legacy: false };
+  if (p && p.mode === 'construct') return { mode: 'construct', throughMs: null };
   if (p && p.mode === 'frozen') {
     if (!Number.isInteger(p.throughMs) || p.throughMs <= 0) {
       throw new Error(`setup ${setup.id}: frozen trainPolicy carries no valid throughMs`);
     }
-    return { mode: 'frozen', throughMs: p.throughMs, legacy: false };
+    return { mode: 'frozen', throughMs: p.throughMs };
   }
-  const inherited = setup && setup.configSnapshot && setup.configSnapshot.trainThrough;
-  if (Number.isInteger(inherited) && inherited > 0) {
-    return { mode: 'frozen', throughMs: inherited, legacy: true };
-  }
-  throw new Error(`setup ${(setup && setup.id) || '?'}: no training policy, and no legacy freeze to fall back on `
-    + '— activate it with a trainPolicy saying construct, frozen (at a named instant) or rolling');
+  throw new Error(`setup ${(setup && setup.id) || '?'}: no training policy — pick Members train: as trained by Construct, frozen at or rolling`);
 }
 
 // WHY "as trained by Construct" CANNOT BE USED, in words, or null when it can

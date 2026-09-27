@@ -177,7 +177,16 @@ function installLiveRoutes(app, { csrfGuard }) {
       const a = require('./anatomy');
       let freezeMs = null;
       try { freezeMs = require('./trainpolicy').resolveFreeze(s).throughMs; } catch (_) { freezeMs = null; }
-      const opts = { clipUsd: s.clipUsd, stopPct: s.stopPct, freezeMs };
+      // the band the members learned with, as the latest decision recorded it (3.284.0)
+      let membersBand = null;
+      try {
+        const logged = require('./mirror').loadDecisions(s.id);
+        for (let i = logged.length - 1; i >= 0 && !membersBand; i--) {
+          const t = logged[i] && logged[i].trained_on;
+          if (t && Number.isFinite(t.bandPct)) membersBand = { pct: t.bandPct, at: logged[i].chunk_start };
+        }
+      } catch (_) { membersBand = null; }
+      const opts = { clipUsd: s.clipUsd, stopPct: s.stopPct, freezeMs, membersBand, trainMode: (s.trainPolicy || {}).mode || null };
       res.json({
         config: a.describeConfig(s.configSnapshot, opts),
         anatomy: a.describeAnatomy(s.configSnapshot, opts),

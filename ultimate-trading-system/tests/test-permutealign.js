@@ -18,11 +18,19 @@ const { assert } = require('./helpers');
 
 const PAGE = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
 
-// The group element that encloses a given control id.
+// The group element that encloses a given control id: the innermost <div
+// still open where the control is, not merely the nearest one before it
+// (3.284.0: a closed group between a box and its row's opening -- share's,
+// before hold -- was taken for the row, and hold's own tick seemed lost).
 function groupAround(id) {
   const at = PAGE.indexOf(`id="${id}"`);
   assert.ok(at > 0, `${id} is gone from the page`);
-  const open = PAGE.lastIndexOf('<div', at);
+  let open = -1;
+  for (let i = at, closed = 0; i >= 0; i--) {
+    if (PAGE.startsWith('</div>', i)) closed++;
+    else if (PAGE.startsWith('<div', i)) { if (closed === 0) { open = i; break; } closed--; }
+  }
+  assert.ok(open >= 0, `${id} sits in no group at all`);
   let depth = 0;
   for (let i = open; i < PAGE.length; i++) {
     if (PAGE.startsWith('<div', i)) depth++;
@@ -39,7 +47,7 @@ const PAIRS = [
   ['swGeom', 'swPermGeom'], ['swDec', 'swPermDec'], ['swBand', 'swPermBand'],
   ['swEntry', 'swPermEntry'], ['swGate', 'swPermGate'], ['swD', 'swPermD'],
   ['swT', 'swPermT'], ['swTrail', 'swPermTrail'], ['swArm', 'swPermArm'],
-  ['swAgreeRule', 'swPermAgreeRule'], ['swAgreeShare', 'swPermAgreeShare'],
+  ['swAgreeRule', 'swPermAgreeRule'], ['swAgreeBar', 'swPermAgreeBar'], ['swAgreeShare', 'swPermAgreeShare'],
   ['swAgreeHold', 'swPermAgreeHold'], ['swAgreeCopy', 'swPermAgreeCopy'],
 ];
 

@@ -455,3 +455,30 @@ module.exports.setupDetailOffersTheThreeAndLiveShowsTheMembersTrained = function
   const vw = fs.readFileSync(path.join(__dirname, '..', 'lib', 'live', 'view.js'), 'utf8');
   assert.ok(vw.includes("why: 'waiting for Members train: choose as trained by Construct, frozen at or rolling in the Config editor on Setup detail and press Save."), 'the waiting line names the three');
 };
+
+// TWO BANDS ON TESTED CONFIGURATION, EACH NAMED FOR WHAT IT DOES (3.284.0,
+// owner 2026-09-27): the configuration's band places the trades; the band the
+// members learned with is worked out on train, read off the latest decision,
+// and says whether it can move. The row that called the first by the second's
+// name is gone.
+module.exports.testedConfigurationNamesBothBandsForWhatTheyDo = function () {
+  const an = require('../lib/live/anatomy');
+  const { aSetupConfig } = require('./fixtures-setup');
+  const cfg = aSetupConfig();
+  const band = Math.abs(cfg.branch.band);
+  const none = an.describeConfig(cfg);
+  assert.ok(!('dormantBandPct' in none), 'the row that named the trade band for the members\' band is back');
+  assert.strictEqual(none['band that places the trades'], `${band}%`);
+  assert.strictEqual(none['band the members learned with'], 'not worked out yet: shown after this book\'s first decision');
+  const at = '2026-09-28T00:00:00.000Z';
+  const say = (trainMode) => an.describeConfig(cfg, { membersBand: { pct: 4.87321, at }, trainMode })['band the members learned with'];
+  assert.strictEqual(say('construct'), '4.87%, worked out on train for the decision of 2026-09-28; fixed: Construct\'s own');
+  assert.strictEqual(say('frozen'), '4.87%, worked out on train for the decision of 2026-09-28; fixed until the frozen at date changes');
+  assert.strictEqual(say('rolling'), '4.87%, worked out on train for the decision of 2026-09-28; moves a little at each decision');
+  assert.strictEqual(an.describeConfig(cfg, { trainMode: 'rolling' })['band the members learned with'], 'not worked out yet: shown after this book\'s first decision; moves a little at each decision');
+  assert.ok(!('dormantBandPct' in an.describeAnatomy(cfg).voting), 'the voting block still names the trade band as the dormant band');
+  const routes = fs.readFileSync(path.join(__dirname, '..', 'lib', 'live', 'routes.js'), 'utf8');
+  assert.ok(routes.includes('if (t && Number.isFinite(t.bandPct)) membersBand = { pct: t.bandPct, at: logged[i].chunk_start };')
+    && routes.includes("const opts = { clipUsd: s.clipUsd, stopPct: s.stopPct, freezeMs, membersBand, trainMode: (s.trainPolicy || {}).mode || null };"),
+    'Setup detail is not handed the band the latest decision recorded');
+};

@@ -674,8 +674,23 @@ module.exports = {
     const warn = at('<p class="note warn" id="swTestWarn"');
     assert.ok(warn > at('id="swPermAgreeBar"') && warn > at('id="swPermAgreeCopy"') && warn < at('<select id="swAgreeShare">'), 'the warning is not under quorum by and quorum bar');
     assert.ok(SWEEP.includes('keeps the newest 15% of its history as test for them: its members train on the rest, and the newest 15% only measures.'), 'it does not say what it costs');
-    assert.ok(SWEEP.includes("const readsTest = !notVoices || (ownBar && (permRule || !['trained', 'field'].includes(ruleNow)));")
+    assert.ok(SWEEP.includes("const readsTest = !notVoices || (ownBar && !noBar);")
       && SWEEP.includes("const ownBar = ($('#swAgreeBar') && $('#swAgreeBar').value === 'own') || !!($('#swPermAgreeBar') && $('#swPermAgreeBar').checked);")
       && SWEEP.includes("if ($('#swTestWarn')) $('#swTestWarn').style.display = readsTest ? '' : 'none';"), 'it is not shown on exactly the settings that read test');
+  },
+  // QUORUM BAR AND SHARE ARE GHOSTED WHERE NOTHING READS THEM (3.284.0, owner
+  // 2026-09-27): trained and field read no bar, so with quorum by on either and
+  // its permute unticked both boxes and their permute ticks are greyed -- held,
+  // never hidden, the way one voice at is greyed off voices
+  quorumBarAndShareAreGhostedUnderTrainedAndField() {
+    const at = (x) => SWEEP.indexOf(x);
+    const bar = at('<div id="swGrpBar" style="display:flex;align-items:flex-end;gap:.45rem">');
+    const share = at('<div id="swGrpShare" style="display:flex;align-items:flex-end;gap:.45rem">');
+    assert.ok(bar > 0 && bar < at('<select id="swAgreeBar">') && at('id="swPermAgreeBar"') < SWEEP.indexOf('</div>', bar), 'quorum bar and its permute are not one group');
+    assert.ok(share > 0 && share < at('<select id="swAgreeShare">') && at('id="swPermAgreeShare"') < SWEEP.indexOf('</div>', share), 'share and its permute are not one group');
+    assert.ok(SWEEP.includes("const noBar = !permRule && ['trained', 'field'].includes(ruleNow);")
+      && SWEEP.includes("swGhostGroup('#swGrpBar', noBar);") && SWEEP.includes("swGhostGroup('#swGrpShare', noBar);"), 'they are not ghosted on exactly the choices that read no bar');
+    const agreement = require('../lib/agreement');
+    assert.deepStrictEqual([...agreement.READS_NO_BAR].sort(), ['field', 'trained'], 'the choices that read no bar changed, and the screen still greys the old two');
   },
 };

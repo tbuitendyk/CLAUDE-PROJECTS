@@ -924,13 +924,12 @@ async function drawDetail(){
         ${cfgRow('Agreement / entry / gate', `${agreeWords(c.agreement)} · ${esc(cell.entry)} · ${esc(cell.gate)}`)}
         ${cfgRow('Hold', `${cell.tHours}h`)}
         ${(() => {
-          // The freeze belongs to the DEPLOYMENT now, not the rule. A setup
-          // still carrying it inside its old configSnapshot is LEGACY and says
-          // so, rather than presenting an inherited field as a current choice.
+          // The freeze belongs to the DEPLOYMENT, not the rule, and a book with
+          // no Members train choice decides nothing (3.284.0).
           // s, NOT c. trainPolicy is stored at the top level of the setup record,
           // not inside the frozen config snapshot, so reading it from c was always
-          // undefined and this panel could only ever fall through to the legacy
-          // line or to "not set" (found by audit, 2026-08-21).
+          // undefined and this panel could only ever fall through to "not set"
+          // (found by audit, 2026-08-21).
           const p = s.trainPolicy;
           if (p && p.mode === 'construct') return cfgRow('Members train', `as trained by Construct — ${trainWords('construct')}`);
           if (p && p.mode === 'rolling') return cfgRow('Members train', `rolling — retrained through the latest closed outcome; ${trainWords('rolling')}`);

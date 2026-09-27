@@ -48,6 +48,17 @@ function fieldWords(f) {
   };
 }
 
+// THE BAND THE MEMBERS LEARNED WITH (3.284.0, owner 2026-09-27): one number,
+// worked out on the whole training stretch -- the size of move a third of its
+// windows stay under -- read off the latest decision, which records it; and
+// whether it can move, which is the Members train choice's business.
+function membersBandWords(opts) {
+  const b = opts.membersBand || null;
+  const how = { construct: "fixed: Construct's own", frozen: 'fixed until the frozen at date changes', rolling: 'moves a little at each decision' }[opts.trainMode] || null;
+  if (!b) return `not worked out yet: shown after this book's first decision${how ? `; ${how}` : ''}`;
+  return `${Number(b.pct).toFixed(2)}%, worked out on train for the decision of ${String(b.at || '').slice(0, 10)}${how ? `; ${how}` : ''}`;
+}
+
 // The tested configuration, in the owner's terms.
 function describeConfig(cfg, opts = {}) {
   const geo = GEOMETRIES[cfg.branch.geometry] || {};
@@ -60,7 +71,11 @@ function describeConfig(cfg, opts = {}) {
     entryOffsetH: geo.entryOffsetH,
     holdHours: cfg.cell.tHours,
     decision: cfg.branch.decision,
-    dormantBandPct: Math.abs(cfg.branch.band),
+    // TWO BANDS, EACH NAMED FOR WHAT IT DOES (3.284.0, owner 2026-09-27): the
+    // configuration's places the trades -- the levels, the trail, the arm --
+    // and marks nothing the members learn; theirs is worked out on train
+    'band that places the trades': `${Math.abs(cfg.branch.band)}%`,
+    'band the members learned with': membersBandWords(opts),
     committeeSize: (cfg.members || []).length,
     // WHAT THIS UNIT TOOK FROM A WALK SET (3.188.0): each is one more member,
     // reading its own look-back and marked at its own band. The band is a
@@ -194,7 +209,6 @@ function describeAnatomy(cfg, opts = {}) {
       engine: cfg.engine,
       agreement: cfg.agreement || null,
       rule: agreeWords(),
-      dormantBandPct: bandPct,
       extras: extras.map((e) => ({ lookbackHours: e.lookbackHours, bandTimesUsualMove: e.bandPct / 100 })),
       // MARKED AS CONSTRUCT MARKS IT (3.283.0): the band is worked out on the
       // training stretch (lib/bracketwork.js labelledSplit, band 'auto'); the

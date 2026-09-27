@@ -65,21 +65,21 @@ function theGreenlightInventsNoTrainingFreeze() {
 function frozenAndRollingResolveAsDeclared() {
   const frozen = tp.resolveFreeze({ id: 's1', trainPolicy: { mode: 'frozen', throughMs: A_CUTOFF_MS } });
   assert.strictEqual(frozen.throughMs, A_CUTOFF_MS);
-  assert.strictEqual(frozen.legacy, false);
 
   const now = 1_800_000_000_000;
   const rolling = tp.resolveFreeze({ id: 's2', trainPolicy: { mode: 'rolling' } }, now);
   assert.strictEqual(rolling.throughMs, now, 'rolling must train through everything closed by now');
-  assert.strictEqual(rolling.legacy, false);
 }
 
-// LEGACY IS HONOURED, AND FLAGGED. Setups minted before the split keep working
-// — nothing paper-trading is disturbed — but the result says `legacy` so the
-// screens can label it and the old shape cannot quietly become permanent.
-function aLegacySetupKeepsWorkingAndIsFlaggedAsLegacy() {
-  const out = tp.resolveFreeze({ id: 'old', configSnapshot: { trainThrough: A_CUTOFF_MS } });
-  assert.strictEqual(out.throughMs, A_CUTOFF_MS, 'a legacy setup lost its freeze — that would retrain it');
-  assert.strictEqual(out.legacy, true, 'a legacy freeze was not flagged, so the old shape becomes invisible');
+// THE OLD TRAINING DATE IS NOT READ (3.284.0, RULE NINE). Early setups carried
+// it inside their frozen configuration; no setup on the box did when the
+// fallback that read it was removed. A setup with only that date has no
+// Members train choice, and decides nothing until one is picked.
+function theOldTrainingDateIsNotRead() {
+  assert.throws(() => tp.resolveFreeze({ id: 'old', configSnapshot: { trainThrough: A_CUTOFF_MS } }), /no training policy — pick Members train: as trained by Construct, frozen at or rolling/,
+    'the old training date inside a frozen configuration was read as a Members train choice');
+  const src = fs.readFileSync(path.join(ROOT, 'lib', 'live', 'trainpolicy.js'), 'utf8');
+  assert.ok(!/configSnapshot\.trainThrough|legacy:/.test(src), 'the fallback to the old training date is back');
 }
 
 // A deployment with neither must fail LOUDLY. Defaulting would silently pick a
@@ -117,7 +117,7 @@ function asTrainedByConstructIsTheThirdChoiceAndNeedsItsGreenlightsHistory() {
   assert.deepStrictEqual(tp.validatePolicy({ mode: 'construct' }), []);
   assert.ok(tp.validatePolicy({ mode: 'construct', throughMs: 123 }).some((e) => /history Construct kept/.test(e)),
     'an instant on "as trained by Construct" was accepted -- Construct\'s history says where it ends');
-  assert.deepStrictEqual(tp.resolveFreeze({ id: 's', trainPolicy: { mode: 'construct' } }), { mode: 'construct', throughMs: null, legacy: false });
+  assert.deepStrictEqual(tp.resolveFreeze({ id: 's', trainPolicy: { mode: 'construct' } }), { mode: 'construct', throughMs: null });
   assert.strictEqual(tp.constructRefusal(null), 'the greenlight this setup came from is not on the box');
   assert.strictEqual(tp.constructRefusal({ id: 'gl' }), 'its greenlight carries no record of the history Construct trained on');
   assert.strictEqual(tp.constructRefusal({ construct: { lost: 'the stage 2 set its members were trained in is no longer on the box' } }), 'the stage 2 set its members were trained in is no longer on the box');
@@ -169,7 +169,7 @@ module.exports = {
   theRuleShapeDoesNotRequireATrainingWindow,
   theGreenlightInventsNoTrainingFreeze,
   frozenAndRollingResolveAsDeclared,
-  aLegacySetupKeepsWorkingAndIsFlaggedAsLegacy,
+  theOldTrainingDateIsNotRead,
   aDeploymentWithNoPolicyAndNoLegacyIsRefused,
   anIncoherentPolicyIsRefused,
   theLiveSignalReadsTheFreezeFromTheDeployment,
