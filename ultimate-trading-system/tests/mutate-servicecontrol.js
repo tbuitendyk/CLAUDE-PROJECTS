@@ -2950,6 +2950,23 @@ const GUARDS = [
     "theAccountTabDrawsItWithThePlatformsChecklistCode", "a platform saying real orders are off is counted as having them on"],
   [path.join(ROOT, "public", "setup.html"), "    return head + guide + choices + (panel ? panel(s, step) : '') + said + (ticks ?", "    return head + guide + choices + (panel ? panel(s, step) : '') + (ticks ?",
     "theAccountTabDrawsItWithThePlatformsChecklistCode", "what the system sees is worked out and never shown on the step"],
+  // 3.276.0 each platform's own key buttons, and step 3's locks
+  [path.join(ROOT, "public", "setup.html"), "(mine && mine.present ? 'Replace the keys' : 'Enter the keys')", "('Replace the keys')",
+    "eachPlatformsLineHasItsOwnKeyButtonsAndStepThreeShowsTheLocks", "a platform holding no keys offers Replace the keys, as the second platform did"],
+  [path.join(ROOT, "public", "setup.html"), "    const btns = !k.answers ? ''", "    const btns = false ? ''",
+    "eachPlatformsLineHasItsOwnKeyButtonsAndStepThreeShowsTheLocks", "a platform that did not answer offers a key form that can lock nothing for it"],
+  [path.join(ROOT, "public", "setup.html"), "  const enginePick = () => aTrKeysEng || '';", "  const enginePick = () => ((aTr.engines || []).find((x) => x.isDefault) || {}).id || '';",
+    "eachPlatformsLineHasItsOwnKeyButtonsAndStepThreeShowsTheLocks", "keys meant for the second platform are sent to the default one"],
+  [path.join(ROOT, "public", "setup.html"), "{ engine: b.dataset.teng, remove: true }", "{ engine: enginePick(), remove: true }",
+    "eachPlatformsLineHasItsOwnKeyButtonsAndStepThreeShowsTheLocks", "Remove the keys on one platform's line takes them off another"],
+  [path.join(ROOT, "public", "setup.html"), "' /var/lib/uts-engine-\" + id", "' /var/lib/uts-\" + id",
+    "eachPlatformsLineHasItsOwnKeyButtonsAndStepThreeShowsTheLocks", "the Linux command reads a file the install never wrote"],
+  [path.join(ROOT, "public", "setup.html"), "    const fp = k.lockHere ? '<b>' + esc(k.lockHere) + '</b>'", "    const fp = k.lockHere ? '<b>' + '</b>'",
+    "eachPlatformsLineHasItsOwnKeyButtonsAndStepThreeShowsTheLocks", "step 3 shows the command and not the fingerprint to compare it with"],
+  [path.join(ROOT, "server.js"), "darwin: 'mac', win32: 'windows' })[(t.machine || {}).platform]", "darwin: 'darwin', win32: 'windows' })[(t.machine || {}).platform]",
+    "eachPlatformsLineHasItsOwnKeyButtonsAndStepThreeShowsTheLocks", "a Mac platform is given no command at all"],
+  [path.join(ROOT, "lib", "accountsetup.js"), "      panel: 'locks',\n", "",
+    "theAccountTemplateHasEveryStepWritten", "step 3 asks for the fingerprints to match and shows neither"],
 ];
 
 const only = process.argv[2] || '';
