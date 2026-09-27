@@ -556,7 +556,11 @@ function theLivePathBuildsMarksAndTrainsTheExtraMember() {
     'the live slices are worked out without the extras, so a member added from a walk set has nothing to read');
   // the answers, and each member on the question it was asked
   const st = read('stagesignal.js');
-  assert.ok(/splitAndLabel\(closed, \{ \.\.\.cfg\.branch, band: cfg\.branch\.band \}, true, extras\.map\(\(e\) => e\.bandPct\)\)/.test(st),
+  // RE-AIMED 3.283.0: the unit's own answers are marked with the band worked
+  // out on train, and the cut is the Members train choice's -- the extras'
+  // bands go to whichever splitter that choice picks
+  assert.ok(st.includes('const bands = extras.map((e) => e.bandPct);')
+    && st.includes('? splitAndLabel(closed, branch, true, bands)') && st.includes(': splitAndLabelBook(closed, branch, readsTestStretch(cfg), bands);'),
     'the live splitter is not given the extras\' bands, so no member has its own answers to learn');
   // THE GATE IS APPLIED LIVE TOO, AND THE SAME WAY (3.201.0). The walk's finding
   // is no longer a different set of answers to learn -- it is a gate on WHEN the
