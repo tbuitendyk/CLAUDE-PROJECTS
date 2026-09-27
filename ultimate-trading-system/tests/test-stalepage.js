@@ -59,7 +59,7 @@ module.exports = {
   // (RULE TWO: Trade is one file above both branches) -- and reload on the one
   // answer that says they are older than the box. No ask goes out without it.
   everyAskFromEveryPageCarriesTheStampAndThePageReloadsWhenRefused() {
-    for (const f of ['public/construct.js', 'public/trade.html']) {
+    for (const f of ['public/construct.js', 'public/trade.html', 'public/setup.html']) {
       const page = src(f);
       assert.ok(page.includes(`const PAGE_RELEASE = (document.querySelector('meta[name="uts-release"]') || {}).content || '';`), `${f}: the page does not read its own release`);
       assert.ok(page.includes(`const releaseHeaders = () => (PAGE_RELEASE ? { 'X-UTS-Release': PAGE_RELEASE } : {});`), `${f}: the release is not put on the ask`);
@@ -71,8 +71,12 @@ module.exports = {
       assert.strictEqual(stamped, 2, `${f}: an ask goes out without the stamp`);
       assert.strictEqual(page.split('await stalePage(r)').length - 1, 2, `${f}: an answer is read without asking whether it is the refusal`);
     }
-    // the Setup page is served by the always-up program, unstamped, and asks
-    // without a stamp: it must not carry one it cannot have
-    assert.ok(!src('public/setup.html').includes('X-UTS-Release'), 'the Setup page sends a stamp it is never given');
+    // SETUP TOO (3.282.2, owner 2026-09-27: a button a deploy had removed stayed
+    // on Setup until it was refreshed by hand). It reaches the owner through the
+    // always-up program, which hands on the trading service's own stamped copy
+    // when that service answers, and the unstamped disk copy only when it does not
+    const svc = src('service-control/server.js');
+    assert.ok(svc.includes("const STAMPED = new Set(['/setup.html', '/construct.html', '/trade.html']);")
+      && svc.includes('return fromService(rel).then((buf) => (buf ? page(buf) : fromDisk()));'), 'the always-up program hands on an unstamped page while the trading service answers');
   },
 };

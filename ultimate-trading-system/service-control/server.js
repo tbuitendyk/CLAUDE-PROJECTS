@@ -287,6 +287,33 @@ function send(res, code, obj) {
   res.end(body);
 }
 
+// THE TRADING SERVICE'S OWN COPY OF A PAGE, WHEN IT ANSWERS (3.282.2, owner
+// 2026-09-27: a button a deploy had removed stayed on Setup until the page was
+// refreshed by hand). The owner reaches Setup through this program, and a page
+// taken off the disk carries no release, so it never learned that a deploy had
+// happened. The trading service stamps each page with the release it runs
+// (lib/stalepage.js); handed on from here, the page's asks carry that release,
+// the first ask after a deploy is refused, and the page reloads itself. Two
+// seconds without an answer and the disk copy is served, as before: an outage
+// is what this program is for.
+const STAMPED = new Set(['/setup.html', '/construct.html', '/trade.html']);
+function fromService(rel, timeoutMs = 2000) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+    const req = http.request({ host: '127.0.0.1', port: UNIT_PORT, method: 'GET', path: rel, timeout: timeoutMs }, (r) => {
+      if (r.statusCode !== 200) { r.resume(); return done(null); }
+      const parts = [];
+      r.on('data', (c) => parts.push(c));
+      r.on('end', () => done(Buffer.concat(parts)));
+      r.on('error', () => done(null));
+    });
+    req.on('timeout', () => { req.destroy(); done(null); });
+    req.on('error', () => done(null));
+    req.end();
+  });
+}
+
 // The trading system's own pages, read-only, so the Compute tab still loads
 // when that service is not answering. No second copy of any screen.
 function servePublic(res, rel) {
@@ -295,11 +322,13 @@ function servePublic(res, rel) {
   if (want !== PUBLIC_DIR && !want.startsWith(PUBLIC_DIR + path.sep)) return send(res, 403, { error: 'that is outside the pages folder' });
   const type = TYPES[path.extname(want).toLowerCase()];
   if (!type) return send(res, 404, { error: 'that is not a page' });
-  return fs.readFile(want, (err, buf) => {
-    if (err) return send(res, 404, { error: 'there is no such page' });
+  const page = (buf) => {
     res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
     return res.end(buf);
-  });
+  };
+  const fromDisk = () => fs.readFile(want, (err, buf) => (err ? send(res, 404, { error: 'there is no such page' }) : page(buf)));
+  if (!STAMPED.has(rel)) return fromDisk();
+  return fromService(rel).then((buf) => (buf ? page(buf) : fromDisk()));
 }
 
 function withBody(req, res, handler) {

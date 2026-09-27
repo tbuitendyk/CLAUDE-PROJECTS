@@ -218,7 +218,7 @@ module.exports = {
   theComputeTabShowsEachPlatformsAddressAsThisSystemSeesIt() {
     const page = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'setup.html'), 'utf8');
     const routes = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'live', 'routes.js'), 'utf8');
-    assert.ok(page.includes("+ '<span><span class=\"k\">its address, as this system sees it</span> ' + (e.seenFrom ? '<b>' + esc(e.seenFrom) + '</b>' : '<span class=\"muted\" title=\"the web server in front of this system does not pass the caller\\'s address on yet\">not known yet</span>') + '</span>'"), 'the address it calls from is on its record, and never a made-up one');
+    assert.ok(page.includes("+ '<span><span class=\"k\">its address, as this system sees it</span> ' + (e.seenFrom ? '<b>' + esc(e.seenFrom) + '</b>' : '<span class=\"muted\" title=\"filled in when the platform next calls in\">not known yet</span>') + '</span>'"), 'the address it calls from is on its record, and never a made-up one');
     assert.ok(page.includes("<span class=\"k\">addresses it has called from</span> <span class=\"note\">' + seen + '</span>"), 'and every address it has called from');
     assert.ok(routes.includes("seenFrom: t.seenFrom || null, addresses: Array.isArray(t.addresses) ? t.addresses : [],"), 'the service hands both to the page');
   },

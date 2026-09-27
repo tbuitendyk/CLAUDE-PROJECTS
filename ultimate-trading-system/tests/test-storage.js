@@ -224,9 +224,21 @@ module.exports = {
         { key: 'backups', label: 'backups', ticked: false, count: 2, bytes: 447 * 1048576 }, { key: 'halfWritten', label: 'files half-written when the service stopped', ticked: true, count: 0, bytes: 0 }],
     };
     const esc = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;');
-    const run = (ticks) => new Function('esc', 'cStore', 'cErrStore', 'cReclaimTicks', 'cSvcMsg', `${page.slice(a, b)}; return sweepProcessorHtml();`)(esc, cStore, null, ticks, {});
+    const run = (ticks, cfg = null, store = cStore) => new Function('esc', 'cStore', 'cErrStore', 'cReclaimTicks', 'cSvcMsg', 'cCfg', 'cErrCfg', 'knobsLine', `${page.slice(a, b)}; return sweepProcessorHtml();`)(esc, store, null, ticks, {}, cfg, null, () => 'THE LINE');
     const html = run({});
     assert.ok(html.includes('<h3 style="margin-top:0">The sweep processor</h3>'), 'the section is not called The sweep processor');
+    // HOW MUCH OF THE MACHINE THE SWEEPS MAY TAKE: first in the section, in a box
+    // of its own right under the title, before the storage report (3.282.2, owner
+    // 2026-09-27), and standing whether or not the storage report came back
+    const cfg = { workers: { max: 8, setting: 3, inForce: 3 }, pct: 40 };
+    const title = '<h3 style="margin-top:0">The sweep processor</h3>';
+    const box = '<div class="tile" style="margin-bottom:.8rem"><b>How much of the machine the sweeps may take</b>';
+    const full = run({}, cfg);
+    assert.ok(full.startsWith('<div class="panel">' + title + box), 'the box is not the first thing under The sweep processor\'s title');
+    assert.ok(full.indexOf('id="cSaveKnobs"') < full.indexOf('Construct storage') && full.includes('<span class="note">THE LINE</span>'), 'the settings do not come before the storage report, with their line beside them');
+    assert.ok(run({}, cfg, null).includes(box) && run({}, cfg, null).includes('id="cWorkers"'), 'the settings vanish when the storage report does not come back');
+    assert.ok(html.includes(box + '<p class="note neg">the trading service did not answer, so these cannot be shown'), 'without the settings the box does not say why');
+    assert.ok(!draw.includes('How much of the machine the sweeps may take') && page.split('How much of the machine the sweeps may take').length === 2, 'the settings are drawn anywhere but inside The sweep processor');
     assert.ok(html.includes('<th style="text-align:left">Construct storage</th>') && html.includes('<th style="text-align:left">Space that can be reclaimed</th>'));
     assert.ok(/data-reclaim="priceFileRecords" checked/.test(html), 'what the software can prove is left behind starts ticked');
     assert.ok(/data-reclaim="backups">/.test(html), 'backups start unticked');

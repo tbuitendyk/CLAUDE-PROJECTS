@@ -3059,7 +3059,7 @@ const GUARDS = [
     "everyAddressAPlatformCallsFromIsKept", "the same address is listed again every time the platform calls"],
   [path.join(ROOT, "lib", "live", "targets.js"), "'lastSeenUtc', 'seenFrom', 'addresses']", "'lastSeenUtc']",
     "everyAddressAPlatformCallsFromIsKept", "where a platform calls from is never kept"],
-  [path.join(ROOT, "public", "setup.html"), "    + '<span><span class=\"k\">its address, as this system sees it</span> ' + (e.seenFrom ? '<b>' + esc(e.seenFrom) + '</b>' : '<span class=\"muted\" title=\"the web server in front of this system does not pass the caller\\'s address on yet\">not known yet</span>') + '</span>'", "    + ''",
+  [path.join(ROOT, "public", "setup.html"), "    + '<span><span class=\"k\">its address, as this system sees it</span> ' + (e.seenFrom ? '<b>' + esc(e.seenFrom) + '</b>' : '<span class=\"muted\" title=\"filled in when the platform next calls in\">not known yet</span>') + '</span>'", "    + ''",
     "theComputeTabShowsEachPlatformsAddressAsThisSystemSeesIt", "the Compute tab stops showing the address a platform calls from"],
 ];
 

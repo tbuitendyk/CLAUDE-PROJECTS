@@ -181,16 +181,34 @@ const clock = $('#utcClock');
 const tick = () => { clock.textContent = new Date().toISOString().slice(0, 19).replace('T', ' ') + ' UTC'; };
 tick(); setInterval(tick, 1000);
 
+// THE RELEASE THIS PAGE WAS SERVED UNDER (3.282.2, owner 2026-09-27: a button
+// removed by a deploy stayed on this page until it was refreshed by hand), sent
+// back with every ask, so a page older than the box is refused and reloads
+// itself, as Construct and Trade do -- see lib/stalepage.js. The always-up
+// program hands this page on stamped when the trading service answers; a copy
+// it had to take off the disk carries no release and is never refused.
+const PAGE_RELEASE = (document.querySelector('meta[name="uts-release"]') || {}).content || '';
+const releaseHeaders = () => (PAGE_RELEASE ? { 'X-UTS-Release': PAGE_RELEASE } : {});
+const stalePage = async (r) => {
+  if (r.status !== 409) return false;
+  const j = await r.clone().json().catch(() => null);
+  if (!j || !j.stalePage) return false;
+  window.location.reload();
+  return true;
+};
+
 // A failed ask and an empty answer are different answers, and every panel
 // below says which it got. Nothing on this page pretends.
 const getJson = async (p) => {
-  const r = await fetch(at(p));
+  const r = await fetch(at(p), { headers: releaseHeaders() });
+  if (await stalePage(r)) throw new Error('this page is older than the box and is reloading');
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
   return j;
 };
 const postJson = async (p, body) => {
-  const r = await fetch(at(p), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  const r = await fetch(at(p), { method: 'POST', headers: { 'Content-Type': 'application/json', ...releaseHeaders() }, body: JSON.stringify(body || {}) });
+  if (await stalePage(r)) throw new Error('this page is older than the box and is reloading');
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
   return j;
@@ -745,8 +763,24 @@ const space = (b) => b == null ? '—' : b >= 1073741824 ? (b / 1073741824).toFi
   : b >= 10485760 ? Math.round(b / 1048576) + ' MB' : b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB'
     : b >= 1024 ? Math.round(b / 1024) + ' KB' : b + ' bytes';
 const reclaimTicked = (k) => (k.key in cReclaimTicks ? cReclaimTicks[k.key] : !!k.ticked);
+// HOW MUCH OF THE MACHINE THE SWEEPS MAY TAKE, first inside The sweep processor,
+// in a box of its own right under the title (3.282.2, owner 2026-09-27: "put it
+// at the top of that hidable section before the construct storage details").
+// Drawn from the trading service's settings, not the storage report, so it
+// stands whether or not that report came back; tucked away with the section.
+function sweepShareHtml() {
+  return '<div class="tile" style="margin-bottom:.8rem"><b>How much of the machine the sweeps may take</b>'
+    + (cCfg ? '<div class="row">'
+      + '<label class="c"><span class="muted">workers</span><input id="cWorkers" type="number" min="1" max="' + (cCfg.workers.max || 8) + '" step="1" value="' + (cCfg.workers.setting == null ? cCfg.workers.inForce : cCfg.workers.setting) + '" style="width:5.5rem"></label>'
+      + '<label class="c"><span class="muted">each worker&#39;s share, %</span><input id="cPct" type="number" min="0" max="100" step="5" value="' + (cCfg.pct == null ? '' : cCfg.pct) + '" style="width:5.5rem"></label>'
+      + '<span class="note">' + knobsLine(cCfg) + '</span>'
+      + '</div>'
+      + '<div class="row" style="margin-top:.5rem"><button id="cSaveKnobs">Set these</button><span class="note">' + (cSvcMsg.knobs || '') + '</span></div>'
+      : '<p class="note neg">the trading service did not answer, so these cannot be shown' + (cErrCfg ? ' — ' + esc(cErrCfg) : '') + '</p>')
+    + '</div>';
+}
 function sweepProcessorHtml() {
-  const head = '<div class="panel"><h3 style="margin-top:0">The sweep processor</h3>';
+  const head = '<div class="panel"><h3 style="margin-top:0">The sweep processor</h3>' + sweepShareHtml();
   if (!cStore) {
     return head + '<p class="note neg">the trading service did not answer, so what Construct keeps on this machine cannot be shown'
       + (cErrStore ? ' — ' + esc(cErrStore) : '') + '</p></div>';
@@ -896,7 +930,7 @@ function engineCard(e) {
   // source"): the address the platform's own link arrives from, and every address it has called from
   const seen = (e.addresses || []).map((a) => esc(a.ip) + ' <span class="muted">(last ' + esc(String(a.lastUtc || '').slice(5, 16).replace('T', ' ')) + ' UTC, ' + (a.n || 1) + '×)</span>').join(' · ');
   const reach = '<span><span class="k">calls this system from</span> <b>' + esc(mc.hostname || 'a machine it has not named') + '</b> <span class="muted">' + esc([mc.platform, mc.arch].filter(Boolean).join(' ')) + '</span></span>'
-    + '<span><span class="k">its address, as this system sees it</span> ' + (e.seenFrom ? '<b>' + esc(e.seenFrom) + '</b>' : '<span class="muted" title="the web server in front of this system does not pass the caller\'s address on yet">not known yet</span>') + '</span>'
+    + '<span><span class="k">its address, as this system sees it</span> ' + (e.seenFrom ? '<b>' + esc(e.seenFrom) + '</b>' : '<span class="muted" title="filled in when the platform next calls in">not known yet</span>') + '</span>'
     + '<span><span class="k">release</span> <b>' + esc(e.release || '?') + '</b></span>'
     + '<span><span class="k">the fingerprint of its lock</span> <b>' + esc(e.lock ? e.lock.fingerprint : '—') + '</b></span>';
   return '<div class="tile" style="margin-bottom:.55rem">'
@@ -1281,16 +1315,6 @@ function drawCompute() {
     + '<b>running</b> is the machine&#39;s word for alive; <b>answered</b> is measured by asking. '
     + 'A service can be running and not answering, and that is the state a Restart is for.</p>'
     + (cLoads ? cLoads.units.map(svcCard).join('') : '<p class="note neg">no reading yet</p>')
-    + '</div>'
-
-    + '<div class="panel"><h3 style="margin-top:0">How much of the machine the sweeps may take</h3>'
-    + (cCfg ? '<div class="row">'
-      + '<label class="c"><span class="muted">workers</span><input id="cWorkers" type="number" min="1" max="' + (cCfg.workers.max || 8) + '" step="1" value="' + (cCfg.workers.setting == null ? cCfg.workers.inForce : cCfg.workers.setting) + '" style="width:5.5rem"></label>'
-      + '<label class="c"><span class="muted">each worker&#39;s share, %</span><input id="cPct" type="number" min="0" max="100" step="5" value="' + (cCfg.pct == null ? '' : cCfg.pct) + '" style="width:5.5rem"></label>'
-      + '<span class="note">' + knobsLine(cCfg) + '</span>'
-      + '</div>'
-      + '<div class="row" style="margin-top:.5rem"><button id="cSaveKnobs">Set these</button><span class="note">' + (cSvcMsg.knobs || '') + '</span></div>'
-      : '<p class="note neg">the trading service did not answer, so these cannot be shown' + (cErrCfg ? ' — ' + esc(cErrCfg) : '') + '</p>')
     + '</div>'
     + '<div id="cOut"></div>'
     + '</div>';

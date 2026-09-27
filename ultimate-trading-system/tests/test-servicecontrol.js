@@ -355,7 +355,8 @@ module.exports = {
   // Counted, not looked at: every row of the tab's source, every branch of it.
   theComputeTabGivesEveryButtonARowOfItsOwn() {
     const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
-    const src = page.slice(page.indexOf('function svcCard'), page.indexOf('async function refreshCompute'));
+    // from The sweep processor, which holds "Set these" since 3.282.2, to the end of the tab
+    const src = page.slice(page.indexOf('// ---- THE SWEEP PROCESSOR'), page.indexOf('async function refreshCompute'));
     const rows = src.split('<div class="row"').slice(1).map((r) => r.slice(0, r.indexOf('</div>')));
     const field = /<input(?![^>]*type="(?:checkbox|radio)")|<select|<textarea/;
     const squeezed = rows.filter((r) => /<button/.test(r) && field.test(r));
