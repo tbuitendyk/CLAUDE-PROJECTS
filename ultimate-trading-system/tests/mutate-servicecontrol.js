@@ -3103,6 +3103,19 @@ const GUARDS = [
     "aSettingThatReadsTestIsWarnedWhereItIsChosen", "the Sweep never says what voices or its own history costs a book"],
   [path.join(ROOT, "public", "trade.html"), "    if(train==='construct') body.trainPolicy={mode:'construct'};\n", "",
     "setupDetailOffersTheThreeAndLiveShowsTheMembersTrained", "picking \"as trained by Construct\" and pressing Save saves nothing"],
+  // 3.284.0: quorum bar and share ghosted under trained and field; both bands named; the old training date not read
+  [path.join(ROOT, "public", "construct.js"), "    swGhostGroup('#swGrpBar', noBar);\n", "",
+    "quorumBarAndShareAreGhostedUnderTrainedAndField", "quorum bar looks live under trained and field, where nothing reads it"],
+  [path.join(ROOT, "public", "construct.js"), "    const noBar = !permRule && ['trained', 'field'].includes(ruleNow);", "    const noBar = false;",
+    "quorumBarAndShareAreGhostedUnderTrainedAndField", "quorum bar and share are never greyed, whatever quorum by says"],
+  [path.join(ROOT, "lib", "live", "anatomy.js"), "    'band that places the trades': `${Math.abs(cfg.branch.band)}%`,", "    dormantBandPct: Math.abs(cfg.branch.band),",
+    "testedConfigurationNamesBothBandsForWhatTheyDo", "Tested configuration names the trade band as the members' band again"],
+  [path.join(ROOT, "lib", "live", "anatomy.js"), "  const how = { construct: \"fixed: Construct's own\", frozen: 'fixed until the frozen at date changes', rolling: 'moves a little at each decision' }[opts.trainMode] || null;", "  const how = null;",
+    "testedConfigurationNamesBothBandsForWhatTheyDo", "the members' band no longer says whether it can move"],
+  [path.join(ROOT, "lib", "live", "routes.js"), "          if (t && Number.isFinite(t.bandPct)) membersBand = { pct: t.bandPct, at: logged[i].chunk_start };\n", "",
+    "testedConfigurationNamesBothBandsForWhatTheyDo", "Setup detail never shows the band the latest decision recorded"],
+  [path.join(ROOT, "lib", "live", "trainpolicy.js"), "  throw new Error(`setup ${(setup && setup.id) || '?'}: no training policy \u2014 pick Members train: as trained by Construct, frozen at or rolling`);", "  if (setup && setup.configSnapshot && setup.configSnapshot.trainThrough) return { mode: 'frozen', throughMs: setup.configSnapshot.trainThrough };\n  throw new Error(`setup ${(setup && setup.id) || '?'}: no training policy \u2014 pick Members train: as trained by Construct, frozen at or rolling`);",
+    "theOldTrainingDateIsNotRead", "a book with no Members train choice is quietly trained frozen at an old date again, while Setup detail says not set"],
 ];
 
 const only = process.argv[2] || '';

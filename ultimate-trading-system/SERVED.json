@@ -1,12 +1,12 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html \u2014 so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "9f0902f1f7ae6011868cffd7cfb6d3d49c597c60",
-  "subject": "3.283.0: Members train \u2014 as trained by Construct; frozen at and rolling keep no held stretch; the members' fingerprint on every decision; the Sweep says what reading test costs",
-  "capturedAt": "2026-09-27T09:21:32Z",
+  "commit": "09163879f73fe127655d139f63cc19914229e740",
+  "subject": "3.284.0: quorum bar and share ghosted under trained and field; Tested configuration names both bands; the old training-date fallback removed",
+  "capturedAt": "2026-09-27T23:26:34Z",
   "files": {
     "public/construct.js": {
-      "sha256": "a8ee2cf269c8956c98a6d6bf12d213dd93b7f5636860bf8e0106663170ce2a5b",
-      "bytes": 1057287
+      "sha256": "20d9c8e9c57b4d2597ace0d93ed9d5b36b576383c5e151629a7ace44d9486494",
+      "bytes": 1057926
     },
     "public/help-content.js": {
       "sha256": "87c0fd163649e8e52ec823341c88d411972775b120fca7110c8231e9c689b002",
