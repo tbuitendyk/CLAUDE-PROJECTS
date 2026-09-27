@@ -132,8 +132,10 @@ echo "== the portal tile =="
 grep -q 'href="/uts/"' /var/www/www.buitendyk.ca/index.html && ok "tile links to /uts/" || no "no tile on the portal"
 grep -q 'Ultimate Trading System' /var/www/www.buitendyk.ca/index.html && ok "tile is named Ultimate Trading System" || no "tile name missing"
 grep -q 'href="/classifier/"' /var/www/www.buitendyk.ca/index.html && ok "the classifier tile is still there" || no "the classifier tile vanished"
+# through the :443 front door, never the site's own port 4432: that port takes
+# only connections the front door has put the caller's address in front of
 for loc in uts classifier balancer semibalancer dubber; do
-  c="$(curl -s -o /dev/null -w '%{http_code}' -k "https://127.0.0.1:4432/${loc}/" -H 'Host: www.buitendyk.ca')"
+  c="$(curl -s -o /dev/null -w '%{http_code}' -k --resolve www.buitendyk.ca:443:127.0.0.1 "https://www.buitendyk.ca/${loc}/")"
   { [ "$c" = "401" ] || [ "$c" = "200" ]; } && ok "/${loc}/ through nginx -> ${c}" || no "/${loc}/ through nginx -> ${c}"
 done
 

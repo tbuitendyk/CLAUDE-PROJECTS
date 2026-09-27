@@ -64,7 +64,9 @@ sleep 1
 systemctl is-active --quiet nginx && echo "    nginx: active" || { echo "    nginx: NOT active" >&2; exit 1; }
 
 echo "==> Proxied sites still answering through nginx"
+# through the :443 front door, never the site's own port 4432: that port takes
+# only connections the front door has put the caller's address in front of
 for loc in classifier uts balancer semibalancer; do
-  code="$(curl -s -o /dev/null -w '%{http_code}' -k "https://127.0.0.1:4432/${loc}/" -H "Host: ${SITE}" || echo 000)"
+  code="$(curl -s -o /dev/null -w '%{http_code}' -k --resolve "${SITE}:443:127.0.0.1" "https://${SITE}/${loc}/" || echo 000)"
   echo "    /${loc}/ -> ${code}   (401 = up, behind site credentials)"
 done

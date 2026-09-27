@@ -14,5 +14,7 @@ echo "== what construct.html tells the browser to fetch =="
 curl -s http://127.0.0.1:8094/construct.html | grep -o '<script src="[^"]*"'
 echo
 echo "== and through nginx, the way the owner reaches it =="
-curl -s -o /dev/null -w '  /uts/construct.html -> %{http_code}\n' -k "https://127.0.0.1:4432/uts/construct.html" -H 'Host: www.buitendyk.ca'
-curl -s -k "https://127.0.0.1:4432/uts/construct.html" -H 'Host: www.buitendyk.ca' | grep -o '<script src="[^"]*"' | sed 's/^/  /'
+# through the :443 front door, never the site's own port 4432: that port takes
+# only connections the front door has put the caller's address in front of
+curl -s -o /dev/null -w '  /uts/construct.html -> %{http_code}\n' -k --resolve www.buitendyk.ca:443:127.0.0.1 "https://www.buitendyk.ca/uts/construct.html"
+curl -s -k --resolve www.buitendyk.ca:443:127.0.0.1 "https://www.buitendyk.ca/uts/construct.html" | grep -o '<script src="[^"]*"' | sed 's/^/  /'
