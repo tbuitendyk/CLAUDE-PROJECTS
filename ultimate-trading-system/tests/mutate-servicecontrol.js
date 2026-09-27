@@ -2933,6 +2933,23 @@ const GUARDS = [
     "theAccountTabDrawsItWithThePlatformsChecklistCode", "what the exchange calls the sub-account is saved and never shown on the account's card"],
   [path.join(ROOT, "server.js"), "    if (req.params.what === 'field') return res.json(", "    if (false) return res.json(",
     "theAccountTabDrawsItWithThePlatformsChecklistCode", "the save button's request has nowhere to go"],
+  // 3.275.0 the trading account checklist's steps 3 to 6, done by what the system sees
+  [path.join(ROOT, "lib", "accountsetup.js"), "    for (const x of said) if (!x.ok) missing.push(x.text);\n", "",
+    "stepsThreeToSixAreDoneByWhatTheSystemSees", "steps 3 to 6 read done while what they need is not there"],
+  [path.join(ROOT, "lib", "accountsetup.js"), "const said = (step.needs || []).map((n) => (facts ? NEEDS[n](facts) : UNSEEN));", "const said = (step.needs || []).map((n) => (facts ? NEEDS[n](facts) : { ok: true, text: '' }));",
+    "aChecklistIsKeptOnItsAccountAndOpensStepByStep", "a checklist answered without the platforms being asked claims steps 3 to 6 are met"],
+  [path.join(ROOT, "lib", "accountsetup.js"), "    if (f.keysOn.length) return { ok: true, text: `the keys are on ${namesOf(f.keysOn)}` };", "    if (true) return { ok: true, text: `the keys are on ${namesOf(f.keysOn)}` };",
+    "stepsThreeToSixAreDoneByWhatTheSystemSees", "step 3 reads done with the keys on no platform"],
+  [path.join(ROOT, "lib", "accountsetup.js"), "    if (f.checkedOn.length) return { ok: true, text:", "    if (f.keysOn.length) return { ok: true, text:",
+    "stepsThreeToSixAreDoneByWhatTheSystemSees", "keys kept without the exchange ever being asked count as the platform reaching the account"],
+  [path.join(ROOT, "lib", "accountsetup.js"), "    if (f.live) return { ok: true, text:", "    if (f.named) return { ok: true, text:",
+    "stepsThreeToSixAreDoneByWhatTheSystemSees", "step 6 reads real money on for an account whose setups are all on paper"],
+  [path.join(ROOT, "server.js"), "      const mine = setupsNow.filter((x) => x.keyRef === acctId && x.state !== 'retired');", "      const mine = setupsNow.filter((x) => x.keyRef === acctId);",
+    "theAccountTabDrawsItWithThePlatformsChecklistCode", "a retired setup counts as trading from the account"],
+  [path.join(ROOT, "server.js"), "h.health && h.health.realOrders === 'on'); }).map(nameOf);", "h.health && h.health.realOrders); }).map(nameOf);",
+    "theAccountTabDrawsItWithThePlatformsChecklistCode", "a platform saying real orders are off is counted as having them on"],
+  [path.join(ROOT, "public", "setup.html"), "    return head + guide + choices + (panel ? panel(s, step) : '') + said + (ticks ?", "    return head + guide + choices + (panel ? panel(s, step) : '') + (ticks ?",
+    "theAccountTabDrawsItWithThePlatformsChecklistCode", "what the system sees is worked out and never shown on the step"],
 ];
 
 const only = process.argv[2] || '';
