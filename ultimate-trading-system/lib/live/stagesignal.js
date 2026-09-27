@@ -7,12 +7,14 @@
 //
 //   * the members are trained the way stage 1 and stage 2 train them -- each
 //     model on its own view through the same fitting, with the same weighing
-//     of training days the set was trained under -- on the chunks whose
-//     outcome has closed by the deployment's training instant, laid out as
-//     stage 1 lays them out (the older share as training, a test slice after
-//     it, a held-back slice unused); the seal is not cut away, because the
-//     seal existed to leave data unread and a deployment reads everything
-//     closed
+//     of training days the set was trained under, on answers marked with the
+//     band worked out from the training stretch as stage 1 marks them -- on
+//     the chunks the deployment's training policy names (3.283.0): for "as
+//     trained by Construct" the prices Construct kept, cut as Construct cut
+//     them (train, test, a held-back stretch never read); for frozen at and
+//     rolling everything closed by the training instant, with no held-back
+//     stretch -- all of it trains, or the newest 15% is the test stretch when
+//     the rule reads one (voices, or a bar of its own history)
 //   * the committee's own shape and every member's tau are worked out on that
 //     test slice, exactly as stage 3 works them out, through the ONE
 //     definition both share (lib/committee.js)
@@ -25,7 +27,7 @@
 // NO AI anywhere in this path: deterministic arithmetic over candles, like
 // everything it sits beside.
 const crypto = require('crypto');
-const { splitAndLabel } = require('../bracketwork');
+const { splitAndLabel, splitAndLabelBook, buildCombo, splitBounds, reserveChunks } = require('../bracketwork');
 const sw = require('../stagework');
 const { tuneTau } = require('../pipeline');
 const committee = require('../committee');
@@ -58,7 +60,44 @@ function trainingWeightsFor(training, trainChunks, fee) {
   if (Number.isFinite(h) && h > 0) return require('../halflife').halfLifeWeights(training, trainChunks, fee, h).weights;
   return sw.weightsFor(training, trainChunks, fee);
 }
-async function trainStageCommittee(cfg, closed, moments, views, fee) {
+// THE HISTORY CONSTRUCT TRAINED ON, REBUILT (3.283.0): its chunks from the
+// prices it kept with the set -- read through the fingerprints it recorded,
+// never from the box -- exactly as stage 1 built them (lib/stagework.js
+// unitChunks: every day of the week, no chunk without an outcome), its sealed
+// reserve cut off when the layout sealed one. Before a member is trained the
+// cut is held to the stretches Construct wrote down: a history that does not
+// cut where Construct's did is refused, never trained on.
+async function constructHistoryChunks(cfg, construct) {
+  const coins = ((construct || {}).hours || {}).coins;
+  if (!coins || !Object.keys(coins).length) throw new Error('"as trained by Construct" has no kept prices to train on');
+  const extras = Array.isArray(cfg.extras) ? cfg.extras : [];
+  const branch = { geometry: cfg.branch.geometry, decision: 'argmax', band: 'auto', weekdaysOnly: false };
+  const { geo, maps, chunks } = await buildCombo(cfg.combo, branch, { hours: coins, extras });
+  const closed = ((cfg.training || {}).windowLayout === 'reserve61') ? chunks.slice(0, chunks.length - reserveChunks(chunks.length)) : chunks;
+  const { nTrain, nTest, nHold } = splitBounds(closed.length, true);
+  const reach = (c) => c.startTs + (geo.exitOffsetH || 0) * HOUR_MS;
+  const iso = (ts) => new Date(ts).toISOString().slice(0, 10);
+  const w = construct.windows;
+  if (w && w.train && w.test && w.hold) {
+    const got = { train: nTrain, test: nTest, held: nHold, from: closed[0].startTs, trainTo: reach(closed[nTrain - 1]) };
+    const want = { train: w.train.chunks, test: w.test.chunks, held: w.hold.chunks, from: w.train.fromTs, trainTo: w.train.toTs };
+    if (JSON.stringify(got) !== JSON.stringify(want)) {
+      throw new Error(`the history rebuilt from the prices Construct kept does not cut where Construct cut it (train ${got.train}, test ${got.test}, held ${got.held} periods from ${iso(got.from)}; Construct wrote down ${want.train}, ${want.test}, ${want.held} from ${iso(want.from)}) — refused rather than trained on another history`);
+    }
+  }
+  return { closed, maps, geo, trainEndTs: reach(closed[nTrain - 1]) };
+}
+
+// A RULE THAT READS A TEST STRETCH (3.283.0): voices measures there which
+// members vote as one, and a bar of its own history is set there; nothing else
+// the committee does reads it
+function readsTestStretch(cfg) {
+  const a = (cfg && cfg.agreement) || {};
+  return a.rule === 'voices' || a.bar === 'own';
+}
+// `mode` is the deployment's training policy; a caller that names none is cut
+// as Construct cut, which is what every caller did before 3.283.0
+async function trainStageCommittee(cfg, closed, moments, views, fee, mode = 'construct') {
   // EACH EXTRA'S OWN ANSWERS, BESIDE THE UNIT'S (3.188.0). The splitter works
   // the extras' bands out here from the training stretch, exactly as stage 1
   // does -- the walk's number is a MULTIPLE of what the coin usually moves, and
@@ -66,9 +105,19 @@ async function trainStageCommittee(cfg, closed, moments, views, fee) {
   // live the percent stage 1 arrived at instead and the two would be marking
   // against different thresholds the moment the training window differed.
   const extras = Array.isArray(cfg.extras) ? cfg.extras : [];
-  const split = splitAndLabel(closed, { ...cfg.branch, band: cfg.branch.band }, true, extras.map((e) => e.bandPct));
+  // AND THE UNIT'S OWN ANSWERS THE SAME WAY (3.283.0): every stage that trains a
+  // member marks what it learns with the band worked out from its training
+  // stretch (lib/stagework.js unitChunks, band 'auto'); the configuration's band
+  // only places the trades. Marked with the configuration's band, the book's
+  // members learned from other answers than Construct's did.
+  const branch = { ...cfg.branch, band: 'auto' };
+  const bands = extras.map((e) => e.bandPct);
+  const split = mode === 'construct'
+    ? splitAndLabel(closed, branch, true, bands)
+    : splitAndLabelBook(closed, branch, readsTestStretch(cfg), bands);
   const { trainChunks, testChunks, holdChunks } = split;
   const training = cfg.training || {};
+  const started = Date.now();
   const weights = trainingWeightsFor(training, trainChunks, fee);
   const predictChunks = [...testChunks, ...moments];
   // the plateaus the extras belong to (3.203.0): a plateau's centre that is too
@@ -103,24 +152,41 @@ async function trainStageCommittee(cfg, closed, moments, views, fee) {
     members.push({ spec, ...m });
   }
   const nTest = testChunks.length;
-  return { split, members, nTest, weightsSaid: sw.weightsSaid(training, weights, sw.weightReadingFor(training, trainChunks, fee)) };
+  const trainMs = Date.now() - started;
+  // WHAT WAS TRAINED, AS A FINGERPRINT (3.283.0, owner 2026-09-27): every
+  // member's fitted model exactly as it came out. A frozen book's members are
+  // rebuilt at every decision and must come out the same every time; this is
+  // what shows that they did.
+  const membersFp = crypto.createHash('sha256')
+    .update(JSON.stringify(members.map((m) => ({ model: m.spec.model, view: m.spec.view, at: m.spec.at ?? null, saved: m.saved ?? null }))))
+    .digest('hex').slice(0, 16);
+  return { split, members, nTest, trainMs, membersFp, weightsSaid: sw.weightsSaid(training, weights, sw.weightReadingFor(training, trainChunks, fee)) };
 }
 
 // The committee's call for `target` under the configuration's own agreement.
-async function stageCommitteeCallFor(cfg, target, closed, allChunks, maps, geo, views, freezeMs, fee) {
+//   opts.mode    the deployment's training policy (lib/live/trainpolicy.js);
+//                none named is cut as Construct cut, as before 3.283.0
+//   opts.tauFee  the fee each member's own bar is tuned at: stage 3's, for "as
+//                trained by Construct"; the book's own otherwise
+//   opts.tauMap  the prices that bar is tuned on: the ones Construct kept, for
+//                "as trained by Construct"
+async function stageCommitteeCallFor(cfg, target, closed, allChunks, maps, geo, views, freezeMs, fee, opts = {}) {
   const agr = agreementOf(cfg);
   const decision = cfg.branch.decision;
+  const mode = opts.mode || 'construct';
   // +hold reads the preceding moments: the chunks just before the target, in order
   const at = allChunks.findIndex((c) => c.startTs === target.startTs);
   if (at < 0) throw new Error('stage signal: the target chunk is not among the chunks built');
   const before = agr.persist ? allChunks.slice(Math.max(0, at - agr.persist), at) : [];
   const moments = [...before, target];
-  const { split, members, nTest } = await trainStageCommittee(cfg, closed, moments, views, fee);
+  const { split, members, nTest, trainMs, membersFp } = await trainStageCommittee(cfg, closed, moments, views, fee, mode);
   // tau per member, tuned from the probe votes on the member's validation slice, as stage 3 tunes it
+  const tauFee = opts.tauFee ?? fee;
+  const tauMap = opts.tauMap || maps.trade;
   const taus = members.map((m) => {
     const nSub = split.trainChunks.length - m.tauProbs.length;
     const valChunks = split.trainChunks.slice(nSub);
-    return decision === 'directional' ? tuneTau(valChunks, m.tauProbs.map(committee.probsObj), maps.trade, geo, fee).tau : null;
+    return decision === 'directional' ? tuneTau(valChunks, m.tauProbs.map(committee.probsObj), tauMap, geo, tauFee).tau : null;
   });
   const specs = members.map((m) => m.spec);
   // WITH ITS PLATEAUS FOLDED, exactly as stage 3 folded them (3.205.0): one
@@ -175,7 +241,19 @@ async function stageCommitteeCallFor(cfg, target, closed, allChunks, maps, geo, 
       ...(field ? { field: { sign: field.sign, agreement: field.agreement, certainty: field.certainty, size: field.size, why: field.why } } : {}),
     }))
     .digest('hex').slice(0, 16);
-  return { call: gatedCall, membersCall, perMember, side, priceAt, inputHash, entryTs, agreement: agr, level, members: members.length, testSlice: nTest, field };
+  // WHAT THE MEMBERS WERE TRAINED ON, AND HOW (3.283.0): the policy, the
+  // stretches it cut and the dates the training stretch ran, what came out as a
+  // fingerprint, and how long the training took -- written beside the decision
+  const { trainChunks: tr, holdChunks: held } = split;
+  const trainedOn = {
+    mode, periods: closed.length, train: tr.length, test: nTest, held: held.length,
+    fromUtc: new Date(tr[0].startTs).toISOString(), toUtc: new Date(tr[tr.length - 1].startTs).toISOString(),
+    // the dormant band worked out on that training stretch, the answers were marked with
+    bandPct: Number.isFinite(split.bandPct) ? split.bandPct : null,
+  };
+  // each member's own forecast at the moment decided, beside its vote
+  const memberProbs = momentProbs.map((p) => p[p.length - 1]);
+  return { call: gatedCall, membersCall, perMember, memberProbs, side, priceAt, inputHash, entryTs, agreement: agr, level, members: members.length, testSlice: nTest, field, membersFp, trainMs, trainedOn };
 }
 
-module.exports = { stageCommitteeCallFor, trainStageCommittee, agreementOf, trainingWeightsFor };
+module.exports = { stageCommitteeCallFor, trainStageCommittee, agreementOf, trainingWeightsFor, readsTestStretch, constructHistoryChunks };

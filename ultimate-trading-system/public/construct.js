@@ -1484,6 +1484,14 @@ async function swCounts() {
     const notVoices = $('#swAgreeRule') && $('#swAgreeRule').value !== 'voices'
       && !($('#swPermAgreeRule') && $('#swPermAgreeRule').checked);
     swGhostGroup('#swGrpCopy', notVoices);
+    // A SETTING THAT READS TEST (3.283.0, owner 2026-09-27): voices, or its own
+    // history under a quorum by that reads a bar, is worked out on test, so a
+    // book trading it on frozen at or rolling keeps the newest 15% as test
+    const permRule = !!($('#swPermAgreeRule') && $('#swPermAgreeRule').checked);
+    const ruleNow = $('#swAgreeRule') ? $('#swAgreeRule').value : '';
+    const ownBar = ($('#swAgreeBar') && $('#swAgreeBar').value === 'own') || !!($('#swPermAgreeBar') && $('#swPermAgreeBar').checked);
+    const readsTest = !notVoices || (ownBar && (permRule || !['trained', 'field'].includes(ruleNow)));
+    if ($('#swTestWarn')) $('#swTestWarn').style.display = readsTest ? '' : 'none';
     // NOTHING READS THE COMPARE COINS WHEN ONLY SINGLES IS TICKED (owner,
     // 2026-09-06: "what are you allowing that compare coins box for when only
     // singles is selected? ... that makes NO SENSE AT ALL"). A single is a
@@ -4781,6 +4789,9 @@ async function drawSweep() {
           <label class="c" title="price every one voice at choice as its own setting. It only multiplies the block where voices is being priced."><input type="checkbox" id="swPermAgreeCopy"> permute</label>
         </div>
       </div>
+      <!-- A SETTING THAT READS TEST, SAID WHERE IT IS CHOSEN (3.283.0, owner
+           2026-09-27): shown while voices or its own history is picked or permuted -->
+      <p class="note warn" id="swTestWarn" style="margin:.1rem 0 .4rem;display:none">voices and its own history are both worked out on test. On Paper Books and Live Trading, a book trading a setting that has either, with Members train on frozen at or rolling, keeps the newest 15% of its history as test for them: its members train on the rest, and the newest 15% only measures. as trained by Construct keeps Construct's own cut.</p>
       <div style="display:flex;align-items:flex-end;gap:.45rem">
         <label class="f" title="HOW MUCH IS ENOUGH. Higher is stricter whichever bar is picked, so the dial never changes direction under you. What it is a share OF is quorum bar's business: with all of them it is a share of the committee, and 75% of 8 members is 6; with its own history it is a share of this committee's own moments, and 75% admits the strongest quarter of them. The same number therefore means two different things under the two bars, which is why the bar is written into every setting's name.">share<select id="swAgreeShare">${vocabOptions('agreeShare', '50')}</select></label>
         <label class="c" title="price every share as its own setting. Shares landing on the same bar for every unit in the run are counted once."><input type="checkbox" id="swPermAgreeShare"> permute</label>

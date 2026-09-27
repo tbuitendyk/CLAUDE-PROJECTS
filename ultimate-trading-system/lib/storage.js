@@ -178,6 +178,10 @@ function survey({ dataDir = DATA, now = Date.now() } = {}) {
     if (dm && typeof dm.detailFile === 'string') namedRecords.add(dm.detailFile);
     for (const e of Object.values(((d.hours || {}).coins) || {})) if (e && typeof e.file === 'string') namedHours.add(e.file);
   }
+  // the prices a greenlight keeps for "as trained by Construct" are read too (3.283.0)
+  for (const g of require('./live/greenlight').listGreenlights()) {
+    for (const e of Object.values((((g.construct || {}).hours || {}).coins) || {})) if (e && typeof e.file === 'string') namedHours.add(e.file);
+  }
   for (const f of readdir(path.join(dataDir, 'manifests'))) {
     if (TMP_RE.test(f)) continue;   // counted with the half-written files below
     const rel = `manifests/${f}`;

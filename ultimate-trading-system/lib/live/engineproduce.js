@@ -49,15 +49,17 @@ function makeProducer(d) {
       // eslint-disable-next-line no-await-in-loop
       try { await d.refresh(sym, now); } catch (e) { d.warn(`engine-produce(${setup.id}): ${sym} not refreshed: ${e.message}`); }
     }
-    const prep = await d.signal.prepare(setup);
-    const period = periodToDecide(prep.chunks, prep.geo, cfg.cell.tHours, now);
+    // Construct's history is read only for a period about to be decided (3.283.0)
+    const base = await d.signal.prepare(setup, { history: false });
+    const period = periodToDecide(base.chunks, base.geo, cfg.cell.tHours, now);
     if (!period) return { setup: setup.id, skipped: 'no period whose features have closed and whose hold is still open' };
     const chunkStart = new Date(period.startTs).toISOString();
     if (sentAlready(setup.id, chunkStart)) return { setup: setup.id, chunkStart, skipped: 'already sent' };
-    const miss = d.signal.missingFeatureCandle(period, prep.geo, prep.maps);
+    const miss = d.signal.missingFeatureCandle(period, base.geo, base.maps);
     if (miss) return { setup: setup.id, chunkStart, waiting: `${miss.name} is missing its last feature candle (${new Date(miss.lastFeatureTs).toISOString()})` };
+    const prep = await d.signal.withHistory(setup, base);
     // 2. the decision, exactly as the live path makes it (lib/live/stagesignal.js)
-    const dec = await d.signal.decideFor(prep.cfg, period, prep.trainChunks, prep.chunks, prep.maps, prep.geo, prep.views, prep.bandPct, prep.freeze.throughMs, prep.fee);
+    const dec = await d.signal.decideFor(prep.cfg, period, prep.trainChunks, prep.chunks, prep.maps, prep.geo, prep.views, prep.bandPct, prep.freeze.throughMs, (prep.train || {}).fee ?? prep.fee, prep.train || null);
     const gl = setup.provenanceRef ? d.greenlight(setup.provenanceRef) : null;
     const plan = d.planFor({ setup, greenlight: gl, target: period, geo: prep.geo, decision: { ...dec, trainThrough: prep.freeze.throughMs }, feePerLeg: prep.fee, now });
     const traded = plan.call !== 0 && plan.size.quoteUsd > 0;
@@ -67,6 +69,9 @@ function makeProducer(d) {
       chunk_start: chunkStart, side: dec.side, per_member: dec.perMember, quorum: null, band_pct: prep.bandPct, decision_price: null,
       input_hash: dec.inputHash, config_version: cfg.configVersion, train_through: prep.freeze.throughMs, produced_utc: new Date(now).toISOString(),
       paper: setup.state === 'paper', field: dec.field || null, clip_usd: plan.size.quoteUsd, window_complete: true,
+      // what the members were trained on and what came out (3.283.0): a frozen
+      // book's fingerprint must not change from one decision to the next
+      members_fp: dec.membersFp || null, train_ms: dec.trainMs ?? null, trained_on: dec.trainedOn || null,
       engine: { target: target.id, planId: plan.planId, size: plan.size, traded, why, ok: false },
     };
     d.appendDecision(setup.id, rec);

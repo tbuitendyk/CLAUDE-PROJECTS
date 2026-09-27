@@ -229,3 +229,29 @@ module.exports.aConfigNameTakesAHundredCharactersEverywhereItIsCarried = functio
   assert.deepStrictEqual(renamed.renamedSetups, [setup.id], 'a rename reaches it');
   assert.strictEqual(reg.getSetup(setup.id).name, 'R'.repeat(100));
 };
+
+// THE REPAIR THAT GIVES A GREENLIGHT MADE BEFORE 3.283.0 THE HISTORY CONSTRUCT
+// TRAINED ITS RULE ON (RULE NINE; written to be deleted, RULE TEN): once, from
+// the set it names, through the same function a new greenlight is built with;
+// a set no longer on the box is recorded as lost, in words; a greenlight that
+// already carries the record, or names no Stage 4 set, is left alone.
+module.exports.aGreenlightMadeBeforeConstructsHistoryIsGivenItOnceOrToldItIsLost = async function () {
+  const dir = process.env.GC_GREENLIGHTS_DIR;
+  const base = { createdUtc: '2026-09-27T00:00:00.000Z', by: 'owner', why: 'repair test', target: 'stage4', configSnapshot: { training: { halfLifeMonths: 18 } } };
+  const put = (id, extra) => fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({ ...base, id, ...extra }));
+  put('gl-repair-gone', { name: 'gone', sourceSet: { id: 's4-no-such-set', name: 'no such set' } });
+  put('gl-repair-kept', { name: 'kept', sourceSet: { id: 's4-x' }, construct: { lost: 'already said' } });
+  put('gl-repair-other', { name: 'other', target: 'lab' });
+  try {
+    const done = await gl.fillConstructHistory();
+    assert.deepStrictEqual(done.map((d) => [d.id, d.construct]), [['gl-repair-gone', 'lost: the Stage 4 record set s4-no-such-set it came from is no longer on the box']]);
+    assert.deepStrictEqual(gl.getGreenlight('gl-repair-gone').construct, { lost: 'the Stage 4 record set s4-no-such-set it came from is no longer on the box' });
+    assert.strictEqual(gl.getGreenlight('gl-repair-gone').name, 'gone', 'and nothing else about it changed');
+    assert.deepStrictEqual(gl.getGreenlight('gl-repair-kept').construct, { lost: 'already said' }, 'one that carries the record is left alone');
+    assert.ok(!('construct' in gl.getGreenlight('gl-repair-other')), 'one that names no Stage 4 set is left alone');
+    assert.deepStrictEqual(await gl.fillConstructHistory(), [], 'once');
+    // a new greenlight carries it from the door, so the repair has nothing to do for it
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'live', 'greenlight.js'), 'utf8');
+    assert.ok(src.includes('    construct: src.construct || null,'), 'a new greenlight does not carry the history Construct trained on');
+  } finally { for (const f of ['gone', 'kept', 'other']) fs.rmSync(path.join(dir, `gl-repair-${f}.json`), { force: true }); }
+};

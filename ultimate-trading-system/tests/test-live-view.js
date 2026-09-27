@@ -412,3 +412,46 @@ module.exports.theTradePagePicksThePlatformAndAccountAndSaysWhatABookIsLinkedTo 
   assert.ok(/tile\('Sub-account key','key',s\.keyRef\?esc\(s\.keyRef\):'none'/.test(src) && /tile\('Execution target','target',platformName\(tg,s\.executionTargetRef\)/.test(src), 'the tiles name the account and the platform');
   assert.ok(!/default \(mx-1\)/.test(src), 'the default (mx-1) choice is back');
 };
+
+// WHAT THE MEMBERS WERE TRAINED ON, ON EVERY DECISION ROW (3.283.0), and a book
+// meant to keep its members says so when they came out different on the same
+// stretch: frozen at and as trained by Construct -- never rolling, and never
+// across a new stretch (a new frozen at date)
+module.exports.aDecisionRowSaysWhenAFrozenBooksMembersCameOutDifferent = function () {
+  const on = (mode, toUtc = '2025-01-01T00:00:00.000Z') => ({ mode, periods: 1000, train: 700, test: 150, held: 150, fromUtc: '2021-01-01T00:00:00.000Z', toUtc, bandPct: 3.2 });
+  const dec = (d, fp, t) => ({ chunk_start: `2026-09-${d}T00:00:00.000Z`, produced_utc: `2026-09-${d}T00:01:00.000Z`, side: 'LONG', per_member: [1, 1], members_fp: fp, train_ms: 1234, trained_on: t });
+  const b = view.deriveSetup([], 'x', [
+    dec('20', 'aaaa', on('frozen')), dec('21', 'aaaa', on('frozen')), dec('22', 'bbbb', on('frozen')),
+    dec('23', 'cccc', on('frozen', '2025-06-01T00:00:00.000Z')),
+    dec('24', 'dddd', on('rolling')), dec('25', 'eeee', on('rolling')),
+    dec('26', 'ffff', on('construct')), dec('27', 'gggg', on('construct')),
+  ]);
+  const row = (d) => b.decisions.find((x) => x.chunk_start.startsWith(`2026-09-${d}`));
+  assert.deepStrictEqual(['21', '22', '23', '25', '26', '27'].map((d) => row(d).membersChanged), [undefined, 'aaaa', undefined, undefined, undefined, 'ffff'],
+    'flagged: frozen at and as trained by Construct, changed on the same stretch; not flagged: the same members, a new stretch, rolling');
+  assert.deepStrictEqual([row('22').members_fp, row('22').train_ms, row('22').trained_on.mode], ['bbbb', 1234, 'frozen'], 'the fingerprint, the time and the stretch ride on the row');
+  // a decision written before this says none, never a guess
+  const old = view.deriveSetup([], 'x', [{ chunk_start: '2026-08-01T00:00:00.000Z', side: 'FLAT', per_member: [0] }]);
+  assert.deepStrictEqual([old.decisions[0].members_fp, old.decisions[0].train_ms, old.decisions[0].trained_on, old.decisions[0].membersChanged], [null, null, null, undefined]);
+};
+
+// SETUP DETAIL OFFERS THE THREE, AND THE LIVE TAB SHOWS WHAT CAME OUT (3.283.0):
+// as trained by Construct first, with Construct's own dates in place of the
+// date box; the decision table's members trained column and its flag. One path
+// draws both books: nothing here asks which one it is on.
+module.exports.setupDetailOffersTheThreeAndLiveShowsTheMembersTrained = function () {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'trade.html'), 'utf8');
+  const sel = src.slice(src.indexOf('<select id="trainIn">'), src.indexOf('</select>', src.indexOf('<select id="trainIn">')));
+  assert.deepStrictEqual([...sel.matchAll(/<option value="(\w+)"[^>]*>([^<]+)<\/option>/g)].map((m) => [m[1], m[2]]),
+    [['construct', 'as trained by Construct'], ['frozen', 'frozen at'], ['rolling', 'rolling']], 'the three, in that order');
+  assert.ok(src.includes("$('#trainAt').disabled=v!=='frozen'; $('#trainAtBox').style.display=v==='construct'?'none':'';"), 'Construct\'s dates in place of the date box');
+  assert.ok(src.includes("if(train==='construct') body.trainPolicy={mode:'construct'};"), 'the Save sends the choice');
+  assert.ok(src.includes("return `train ${d(k.train.fromUtc)} to ${d(k.train.toUtc)} · test to ${d(k.test&&k.test.toUtc)} · held to ${d(k.held&&k.held.toUtc)}, not read`;"), 'Construct\'s dates, in the owner\'s words');
+  assert.ok(src.includes("if(k.lost) return `<span class=\"warn\">cannot be used: ${esc(k.lost)}</span>`;"), 'and why when it cannot be used');
+  assert.ok(src.includes("if (p && p.mode === 'construct') return cfgRow('Members train', `as trained by Construct — ${trainWords('construct')}`);"), 'the frozen configuration says it');
+  const block = src.slice(src.indexOf('const trainWords=(v)=>{'), src.indexOf("$('#view').innerHTML=`", src.indexOf('const trainWords=(v)=>{')));
+  assert.ok(!/branch|isP\b|isPaper/.test(block), 'the words depend on which book is drawn');
+  assert.ok(src.includes('+(dec.membersChanged?` · <span class="warn">not the members of the decision before (${esc(dec.membersChanged.slice(0,8))}), on the same stretch</span>`:\'\');'), 'a changed fingerprint is said on the row');
+  const vw = fs.readFileSync(path.join(__dirname, '..', 'lib', 'live', 'view.js'), 'utf8');
+  assert.ok(vw.includes("why: 'waiting for Members train: choose as trained by Construct, frozen at or rolling in the Config editor on Setup detail and press Save."), 'the waiting line names the three');
+};

@@ -22,12 +22,19 @@
 // usually want from a trading rule). That is a property of the deployment, not
 // of the rule, and it is now named rather than inferred.
 //
+//   construct { mode: 'construct' }         train on exactly the prices Construct
+//                                           kept with the set, cut exactly as it
+//                                           cut them (3.283.0): the members held
+//                                           measured, and nothing newer.
 //   frozen   { mode: 'frozen', throughMs }  train once through a NAMED instant
 //                                           and never past it. For a rule whose
 //                                           live record doubles as its evidence.
 //   rolling  { mode: 'rolling' }            train through everything whose
 //                                           outcome has closed by now.
-const MODES = ['frozen', 'rolling'];
+// Frozen and rolling keep no held-back stretch (3.283.0): all of it trains,
+// or the newest 15% is the test stretch when the rule reads one
+// (lib/bracketwork.js splitAndLabelBook).
+const MODES = ['construct', 'frozen', 'rolling'];
 
 function validatePolicy(p) {
   const errors = [];
@@ -36,8 +43,8 @@ function validatePolicy(p) {
   if (p.mode === 'frozen' && (!Number.isInteger(p.throughMs) || p.throughMs <= 0)) {
     errors.push('trainPolicy.throughMs: a frozen deployment must name the instant it is frozen at (ms epoch)');
   }
-  if (p.mode === 'rolling' && p.throughMs != null) {
-    errors.push('trainPolicy.throughMs: meaningless for a rolling deployment — it trains through the latest closed outcome');
+  if ((p.mode === 'rolling' || p.mode === 'construct') && p.throughMs != null) {
+    errors.push(`trainPolicy.throughMs: meaningless for a ${p.mode} deployment — ${p.mode === 'rolling' ? 'it trains through the latest closed outcome' : 'it trains on the history Construct kept, to the hour it ended'}`);
   }
   return errors;
 }
@@ -52,6 +59,8 @@ function validatePolicy(p) {
 function resolveFreeze(setup, now = Date.now()) {
   const p = setup && setup.trainPolicy;
   if (p && p.mode === 'rolling') return { mode: 'rolling', throughMs: now, legacy: false };
+  // the instant is Construct's own, known only once its history is read (lib/live/signal.js prepare)
+  if (p && p.mode === 'construct') return { mode: 'construct', throughMs: null, legacy: false };
   if (p && p.mode === 'frozen') {
     if (!Number.isInteger(p.throughMs) || p.throughMs <= 0) {
       throw new Error(`setup ${setup.id}: frozen trainPolicy carries no valid throughMs`);
@@ -63,7 +72,18 @@ function resolveFreeze(setup, now = Date.now()) {
     return { mode: 'frozen', throughMs: inherited, legacy: true };
   }
   throw new Error(`setup ${(setup && setup.id) || '?'}: no training policy, and no legacy freeze to fall back on `
-    + '— activate it with a trainPolicy saying frozen (at a named instant) or rolling');
+    + '— activate it with a trainPolicy saying construct, frozen (at a named instant) or rolling');
 }
 
-module.exports = { MODES, validatePolicy, resolveFreeze };
+// WHY "as trained by Construct" CANNOT BE USED, in words, or null when it can
+// (3.283.0): it trains on the greenlight's record of the history Construct
+// trained on, so a setup whose greenlight is gone or carries none has nothing
+// to train on. One answer for the Save that picks it and the decision that
+// trains by it.
+function constructRefusal(greenlight) {
+  if (!greenlight) return 'the greenlight this setup came from is not on the box';
+  if (!greenlight.construct) return 'its greenlight carries no record of the history Construct trained on';
+  return greenlight.construct.lost || null;
+}
+
+module.exports = { MODES, validatePolicy, resolveFreeze, constructRefusal };

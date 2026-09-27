@@ -224,7 +224,7 @@ module.exports = {
       assert.ok(/before 01:00 UTC/.test(st.liveStatus.items[0].why) && /Draw engine/.test(st.liveStatus.items[0].why), st.liveStatus.items[0].why);
       // until Members train is chosen, the book says it is waiting for it, and why nothing is decided
       const unset = view.setupStatus({ ...setup, trainPolicy: undefined });
-      assert.ok(/^waiting for Members train: choose rolling or frozen at in the Config editor on Setup detail/.test(unset.liveStatus.items[0].why), unset.liveStatus.items[0].why);
+      assert.ok(/^waiting for Members train: choose as trained by Construct, frozen at or rolling in the Config editor on Setup detail/.test(unset.liveStatus.items[0].why), unset.liveStatus.items[0].why);
       const lv = st.liveStatus.items.find((it) => /^Set the levels for the LONG call of 2026-09-23/.test(it.what));
       assert.ok(lv && lv.whenUtc === new Date(t0 + 24 * 3600000).toISOString() && / 3\.75% either side of that hour's opening price/.test(lv.why), JSON.stringify(lv));
       const close = st.liveStatus.items.find((it) => /^Close the LONG position of 2026-09-26 01:00/.test(it.what));

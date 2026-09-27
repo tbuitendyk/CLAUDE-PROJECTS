@@ -108,7 +108,63 @@ function theLiveSignalReadsTheFreezeFromTheDeployment() {
     'the live signal no longer resolves the freeze from the deployment');
 }
 
+// THREE CHOICES (3.283.0, owner 2026-09-27): "as trained by Construct" beside
+// frozen at and rolling. It names no instant -- Construct's own is read from
+// its history -- and it can be used only while the greenlight carries that
+// history; one answer says why not, for the Save and for the decision alike.
+function asTrainedByConstructIsTheThirdChoiceAndNeedsItsGreenlightsHistory() {
+  assert.deepStrictEqual(tp.MODES, ['construct', 'frozen', 'rolling']);
+  assert.deepStrictEqual(tp.validatePolicy({ mode: 'construct' }), []);
+  assert.ok(tp.validatePolicy({ mode: 'construct', throughMs: 123 }).some((e) => /history Construct kept/.test(e)),
+    'an instant on "as trained by Construct" was accepted -- Construct\'s history says where it ends');
+  assert.deepStrictEqual(tp.resolveFreeze({ id: 's', trainPolicy: { mode: 'construct' } }), { mode: 'construct', throughMs: null, legacy: false });
+  assert.strictEqual(tp.constructRefusal(null), 'the greenlight this setup came from is not on the box');
+  assert.strictEqual(tp.constructRefusal({ id: 'gl' }), 'its greenlight carries no record of the history Construct trained on');
+  assert.strictEqual(tp.constructRefusal({ construct: { lost: 'the stage 2 set its members were trained in is no longer on the box' } }), 'the stage 2 set its members were trained in is no longer on the box');
+  assert.strictEqual(tp.constructRefusal({ construct: { hours: { coins: { LTCUSDT: {} } } } }), null);
+  // and the decision refuses in the same words the Save does
+  const sig = fs.readFileSync(path.join(ROOT, 'lib', 'live', 'signal.js'), 'utf8');
+  assert.ok(/require\('\.\/trainpolicy'\)\.constructRefusal\(gl\)/.test(sig), 'the decision has its own idea of when Construct\'s history is missing');
+  const routes = fs.readFileSync(path.join(ROOT, 'lib', 'live', 'routes.js'), 'utf8');
+  assert.ok(/tp\.constructRefusal\(/.test(routes) && /tp\.validatePolicy\(b\.trainPolicy\)/.test(routes), 'the Save takes any Members train, or one it cannot train by');
+}
+
+// A BOOK KEEPS NO HELD STRETCH (3.283.0, owner 2026-09-27: "Why would we be
+// wasting fifteen percent?"): frozen at and rolling train on all of it, or
+// keep the newest 15% as test when the rule reads test -- voices, or a bar of
+// its own history -- and nothing else does. Marked from the training stretch
+// with the band worked out there, exactly as Construct's cut is.
+function aBookKeepsNoHeldStretchAndTestOnlyWhenTheRuleReadsIt() {
+  const bw = require(path.join(ROOT, 'lib', 'bracketwork'));
+  const ss = require(path.join(ROOT, 'lib', 'live', 'stagesignal'));
+  const chunks = () => Array.from({ length: 200 }, (_, i) => ({ startTs: i * 864e5, diffPct: ((i * 37) % 23) - 11 }));
+  const all = bw.splitAndLabelBook(chunks(), { band: 'auto' }, false);
+  assert.deepStrictEqual([all.trainChunks.length, all.testChunks.length, all.holdChunks.length], [200, 0, 0], 'all of it trains');
+  const withTest = bw.splitAndLabelBook(chunks(), { band: 'auto' }, true);
+  assert.deepStrictEqual([withTest.trainChunks.length, withTest.testChunks.length, withTest.holdChunks.length], [170, 30, 0], 'the newest 15% is test, nothing is held');
+  assert.strictEqual(withTest.testChunks[0].startTs, 170 * 864e5, 'and it is the newest');
+  const cons = bw.splitAndLabel(chunks(), { band: 'auto' }, true);
+  assert.deepStrictEqual([cons.trainChunks.length, cons.testChunks.length, cons.holdChunks.length], [140, 30, 30], 'Construct\'s own cut is 70/15/15');
+  // the band is the one worked out on the training stretch, as Construct works it out
+  const { balancedBandPct } = require(path.join(ROOT, 'lib', 'dataset'));
+  assert.strictEqual(withTest.bandPct, balancedBandPct(chunks().slice(0, 170).map((c) => c.diffPct)));
+  assert.strictEqual(cons.bandPct, balancedBandPct(chunks().slice(0, 140).map((c) => c.diffPct)));
+  assert.strictEqual(bw.BOOK_TEST_SHARE, 0.15);
+  // what reads test: voices, and a bar of its own history -- nothing else
+  assert.strictEqual(ss.readsTestStretch({ agreement: { rule: 'voices', bar: 'all' } }), true);
+  assert.strictEqual(ss.readsTestStretch({ agreement: { rule: 'count', bar: 'own' } }), true);
+  assert.strictEqual(ss.readsTestStretch({ agreement: { rule: 'trained', bar: null } }), false);
+  assert.strictEqual(ss.readsTestStretch({ agreement: { rule: 'count', bar: 'all' } }), false);
+  // and the member training marks with the band worked out, never the configuration's
+  const live = fs.readFileSync(path.join(ROOT, 'lib', 'live', 'stagesignal.js'), 'utf8');
+  assert.ok(live.includes("const branch = { ...cfg.branch, band: 'auto' };"), 'the book marks its members\' answers with the configuration\'s band again');
+  assert.ok(live.includes('? splitAndLabel(closed, branch, true, bands)') && live.includes(': splitAndLabelBook(closed, branch, readsTestStretch(cfg), bands);'),
+    'the cut is no longer chosen by the Members train choice');
+}
+
 module.exports = {
+  asTrainedByConstructIsTheThirdChoiceAndNeedsItsGreenlightsHistory,
+  aBookKeepsNoHeldStretchAndTestOnlyWhenTheRuleReadsIt,
   aRuleValidatesWithNoTrainingWindowAtAll,
   theRuleShapeDoesNotRequireATrainingWindow,
   theGreenlightInventsNoTrainingFreeze,

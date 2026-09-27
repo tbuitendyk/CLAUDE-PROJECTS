@@ -206,3 +206,46 @@ module.exports.theRoutingIsPickedFromTheLists = async function () {
     assert.deepStrictEqual([a.status, a.json().error], [400, 'pick a trading platform from the list']);
   });
 };
+
+// MEMBERS TRAIN, ONE OF THE THREE, AND ONLY WHEN IT CAN TRAIN (3.283.0): the
+// Save refuses a choice that is none of them, frozen at with no date, and "as
+// trained by Construct" on a setup whose greenlight carries no record of
+// Construct's history -- in words -- and takes it where the record is there.
+// The greenlight list carries Construct's stretches by date for Setup detail.
+module.exports.membersTrainIsOneOfTheThreeAndConstructOnlyWithItsHistory = async function () {
+  const GL = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-liveroutes-train-'));
+  const day = (d) => Date.UTC(2024, 0, d);
+  const lostWords = 'the Stage 4 record set s4-y it came from is no longer on the box';
+  fs.writeFileSync(path.join(GL, 'gl-wire-kept.json'), JSON.stringify({ id: 'gl-wire-kept', createdUtc: '2026-09-27T00:00:00.000Z', target: 'stage4', configSnapshot: f1Config(),
+    construct: { setId: 's4-x', hoursFrom: 's2-x', hours: { at: '2026-09-01T00:00:00.000Z', digest: 'd', coins: { LTCUSDT: { file: `hours/LTCUSDT-${'a'.repeat(32)}.json.gz`, sha256: 'a'.repeat(64) } } },
+      windows: { layout: 'split70', train: { fromTs: day(1), toTs: day(200), chunks: 700 }, test: { fromTs: day(201), toTs: day(250), chunks: 150 }, hold: { fromTs: day(251), toTs: day(300), chunks: 150 } }, trainFee: 0.00125, tauFee: 0.00125 } }));
+  fs.writeFileSync(path.join(GL, 'gl-wire-lost.json'), JSON.stringify({ id: 'gl-wire-lost', createdUtc: '2026-09-27T00:00:00.000Z', target: 'stage4', configSnapshot: f1Config(), construct: { lost: lostWords } }));
+  reg.createSetup({ id: 'wire-t1', name: 'train test kept', ownerId: 'owner', configSnapshot: f1Config(), clipUsd: 10, provenanceRef: 'gl-wire-kept' });
+  reg.createSetup({ id: 'wire-t2', name: 'train test lost', ownerId: 'owner', configSnapshot: f1Config(), clipUsd: 10, provenanceRef: 'gl-wire-lost' });
+  reg.createSetup({ id: 'wire-t3', name: 'train test gone', ownerId: 'owner', configSnapshot: f1Config(), clipUsd: 10, provenanceRef: 'gl-wire-gone' });
+  const was = process.env.GC_GREENLIGHTS_DIR;
+  process.env.GC_GREENLIGHTS_DIR = GL;
+  try {
+    await withServer(async () => {
+      const save = (id, trainPolicy) => req('POST', `/api/live/setups/${id}/config`, { trainPolicy }, ORIGIN);
+      const bad = await save('wire-t1', { mode: 'whenever' });
+      assert.strictEqual(bad.status, 400, bad.body);
+      const undated = await save('wire-t1', { mode: 'frozen' });
+      assert.ok(undated.status === 400 && /a frozen deployment must name the instant/.test(undated.json().error), undated.body);
+      const lost = await save('wire-t2', { mode: 'construct' });
+      assert.deepStrictEqual([lost.status, lost.json().error], [400, `Members train: "as trained by Construct" cannot be picked — ${lostWords}`]);
+      const gone = await save('wire-t3', { mode: 'construct' });
+      assert.deepStrictEqual([gone.status, gone.json().error], [400, 'Members train: "as trained by Construct" cannot be picked — the greenlight this setup came from is not on the box']);
+      assert.strictEqual(reg.getSetup('wire-t1').trainPolicy, null, 'nothing was written');
+      const ok = await save('wire-t1', { mode: 'construct' });
+      assert.strictEqual(ok.status, 200, ok.body);
+      assert.deepStrictEqual(reg.getSetup('wire-t1').trainPolicy, { mode: 'construct' });
+      // the list Setup detail reads: Construct's stretches by date, or why there are none
+      const list = (await req('GET', '/api/live/configs')).json().configs;
+      const kept = list.find((g) => g.id === 'gl-wire-kept').construct;
+      assert.deepStrictEqual(kept.train, { fromUtc: new Date(day(1)).toISOString(), toUtc: new Date(day(200)).toISOString(), periods: 700 });
+      assert.deepStrictEqual([kept.test.toUtc, kept.held.toUtc, kept.held.periods], [new Date(day(250)).toISOString(), new Date(day(300)).toISOString(), 150]);
+      assert.deepStrictEqual(list.find((g) => g.id === 'gl-wire-lost').construct, { lost: lostWords });
+    });
+  } finally { if (was === undefined) delete process.env.GC_GREENLIGHTS_DIR; else process.env.GC_GREENLIGHTS_DIR = was; }
+};

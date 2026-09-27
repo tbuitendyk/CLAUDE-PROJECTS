@@ -244,19 +244,36 @@ function deriveSetup(events, setupId, extraDecisions = []) {
     // read as though nothing was decided in between.
     decisions: (() => {
       const merged = { ...decisions };
+      // what the members were trained on for this decision, as the decision log wrote it (3.283.0)
+      const trainingOf = (d) => ({ members_fp: d.members_fp || null, train_ms: d.train_ms ?? null, trained_on: d.trained_on || null });
       for (const d of (extraDecisions || [])) {
-        if (!d || !d.chunk_start || merged[d.chunk_start]) continue;
+        if (!d || !d.chunk_start) continue;
+        const had = merged[d.chunk_start];
+        if (had) { if (had.members_fp == null && d.members_fp) merged[d.chunk_start] = { ...had, ...trainingOf(d) }; continue; }
         merged[d.chunk_start] = {
           chunk_start: d.chunk_start, utc: d.produced_utc || null, side: d.side,
           votes: d.per_member || null, quorum: d.quorum ?? null,
           decision_price: d.decision_price ?? null, input_hash: d.input_hash || null,
           field: d.field || null,
+          ...trainingOf(d),
           fate: d.side === 'FLAT' ? 'stand down' : 'recorded',
         };
       }
-      return Object.values(merged)
-        .sort((a, b) => String(b.chunk_start).localeCompare(String(a.chunk_start)))
-        .slice(0, 30);
+      const list = Object.values(merged).sort((a, b) => String(b.chunk_start).localeCompare(String(a.chunk_start)));
+      // A BOOK WHOSE MEMBERS ARE MEANT TO STAY THE SAME SAYS SO WHEN THEY DID
+      // NOT (3.283.0): frozen at and as trained by Construct train the same
+      // members on the same stretch at every decision, so a fingerprint unlike
+      // the decision before's, on the very same stretch, is a change nobody
+      // asked for. A new frozen at date is a new stretch and is not flagged;
+      // rolling retrains on a longer history every day and never is.
+      for (let i = 0; i < list.length; i++) {
+        const d = list[i];
+        const mode = d.trained_on && d.trained_on.mode;
+        if (!d.members_fp || !mode || mode === 'rolling') continue;
+        const prev = list.slice(i + 1).find((x) => x.members_fp);
+        if (prev && prev.members_fp !== d.members_fp && JSON.stringify(prev.trained_on) === JSON.stringify(d.trained_on)) list[i] = { ...d, membersChanged: prev.members_fp };
+      }
+      return list.slice(0, 30);
     })(),
     // How many stored figures could not be read as numbers. Every money total
     // here was computed without them.
@@ -399,7 +416,7 @@ function engineNextActivity(st, setup, nowMs, eng) {
   try { require('./trainpolicy').resolveFreeze(setup, nowMs); } catch (_) { untrained = true; }
   if ((st.state === 'paper' || st.state === 'live') && untrained) {
     items.push({ what: 'Decide the next period (LONG / SHORT / no call)', whenUtc: null,
-      why: 'waiting for Members train: choose rolling or frozen at in the Config editor on Setup detail and press Save. Nothing is decided until it is set.' });
+      why: 'waiting for Members train: choose as trained by Construct, frozen at or rolling in the Config editor on Setup detail and press Save. Nothing is decided until it is set.' });
   } else if (st.state === 'paper' || st.state === 'live') {
     items.push({ what: 'Decide the next period (LONG / SHORT / no call)', whenUtc: iso(nextEval),
       why: `this machine decides as soon as the day closes at ${hh(closeHourUtc)} UTC, where the ${geo.featureHours || '?'}h feature window ends and its last hour's candle is in, `

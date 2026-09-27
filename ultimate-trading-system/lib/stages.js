@@ -5895,7 +5895,13 @@ function deleteSet(id, confirm) {
 }
 // every kept copy any set on the box still names (3.271.0)
 function keptFilesInUse() {
-  return listSets().flatMap((r) => filesOf((getSet(r.id) || {}).hours));
+  return [...listSets().flatMap((r) => filesOf((getSet(r.id) || {}).hours)), ...greenlightKeptFiles()];
+}
+// AND EVERY COPY A GREENLIGHT NAMES (3.283.0): a book trading "as trained by
+// Construct" reads the prices the set kept, so they stay while the greenlight
+// that names them does, whatever becomes of the set
+function greenlightKeptFiles() {
+  return require('./live/greenlight').listGreenlights().flatMap((g) => filesOf(((g.construct || {}).hours) || null));
 }
 // EVERYTHING ONE SET OWNS, off the disk and out of every cache
 function removeSetFiles(doc) {
@@ -10085,6 +10091,44 @@ function survivorFieldGate(row, params) {
     silent: fieldSilentOf(params),
   });
 }
+// THE HISTORY CONSTRUCT TRAINED THIS RULE ON (3.283.0, owner 2026-09-27): the
+// prices kept with the set for the traded coin and the two read beside it, the
+// stretches stage 2 cut them into, and the fees behind its members -- a
+// half-life rule's members retrained at the stage 3 set's fee (the History run),
+// every other rule's at the fee stage 1 was launched with, and each member's own
+// bar tuned at the stage 3 set's. A greenlight carries it, so a book can train
+// "as trained by Construct" on exactly these, whatever becomes of the set.
+// The prices are the stage 2 set's, the copies its members were trained on
+// (a Stage 4 set keeps none of its own; stage 2 carries stage 1's, entry for
+// entry -- childHoursFor).
+function constructHistoryOf(doc, rec, stage2, parent, halfLifeMonths) {
+  const h = stage2.hours || {};
+  const coins = h.coins || null;
+  const want = [rec.trade, rec.ctx1, rec.ctx2].filter(Boolean);
+  const missing = want.filter((s) => !coins || !coins[s]);
+  if (missing.length) return { lost: `${stage2.name} keeps no prices of ${missing.join(' and ')}${h.lost ? ` — ${h.lost}` : ''}` };
+  const kept = {};
+  for (const s of want) kept[s] = { ...coins[s] };
+  const feeOf = (d) => { const f = Number(((d || {}).params || {}).fee); return Number.isFinite(f) ? f : null; };
+  return {
+    setId: doc.id, hoursFrom: stage2.id, hours: recordOf(kept, h.at), windows: rec.windows || null,
+    trainFee: halfLifeMonths != null ? feeOf(parent) : feeOf(stage2), tauFee: feeOf(parent),
+  };
+}
+// the same, for a greenlight made before a greenlight carried it -- read off
+// the sets themselves, never through the Funnel's board, which can start a
+// totalling job of its own
+async function constructHistoryForSet(setId, halfLifeMonths) {
+  const doc = getSet(setId);
+  if (!doc || doc.stage !== 4) return { lost: `the Stage 4 record set ${setId} it came from is no longer on the box` };
+  const parent = getSet((doc.parent || {}).id);
+  if (!parent) return { lost: 'the stage 3 set it was cut from is no longer on the box' };
+  const stage2 = getSet((parent.parent || {}).id);
+  if (!stage2) return { lost: 'the stage 2 set its members were trained in is no longer on the box' };
+  const rec = rowstore.readAll(stage2.id, 'records').find((r) => unitKeyOf(r) === doc.unit);
+  if (!rec) return { lost: `the stage 2 set holds no unit called '${doc.unit}'` };
+  return constructHistoryOf(doc, rec, stage2, parent, halfLifeMonths);
+}
 async function stage4GreenlightSource(setId, asked = {}) {
   const S4 = require('./funnelset');
   const doc = getSet(setId);
@@ -10184,6 +10228,7 @@ async function stage4GreenlightSource(setId, asked = {}) {
       // a record no half-life improved (3.245.0) trains unweighted: no half-life, never 0 days
       halfLife: hl && hl.halfLife != null ? HL.daysOfMonths(hl.halfLife) : null, halfLifeMonths: hl && hl.halfLife != null ? hl.halfLife : null },
     fee: Number.isFinite(Number((parent.params || {}).fee)) ? Number((parent.params || {}).fee) : null,
+    construct: constructHistoryOf(doc, rec, stage2, parent, hl && hl.halfLife != null ? hl.halfLife : null),
     readings: {
       held: held ? { money: held.money, trades: held.trades, tuned: tunedOf(heldSet, survivor.label) } : null,
       reserve: un ? { money: un.money, trades: un.trades, look: (doc.block || {}).look ?? null, tuned: tunedOf(doc, survivor.label) } : null,
@@ -12841,7 +12886,7 @@ module.exports = {
   funnelDropped, funnelDroppedStart, droppedRefusalOf,
   stageGateStart, stageGateStatus, examBusy,
   funnelOthersStart, funnelOthersStatus, othersSummaryOf, funnelRideStart, funnelRideStatus, RICH_FIELDS,
-  stage4GreenlightSource, survivorFieldGate, stage4GreenlightDry, pictureOf, setSizingChoice, tunedOfRule, tunedOnStretch, TUNED_NONE, verifyLooksOf, partSlices, richSetOf, richMissingFor, mergeProofs, richAllIn, unitsDoneWithoutTables,
+  stage4GreenlightSource, constructHistoryForSet, survivorFieldGate, stage4GreenlightDry, pictureOf, setSizingChoice, tunedOfRule, tunedOnStretch, TUNED_NONE, verifyLooksOf, partSlices, richSetOf, richMissingFor, mergeProofs, richAllIn, unitsDoneWithoutTables,
   tuneCaptureDry, tuneCaptureStart, tuneCaptureStatus, tuneOnCapture, captureCandidates, captureTargetOf, readCapture, captureFile,
   tuneScanAimOf, saveTuneScan, readTuneScans, tuneScanFor, tuneScansFile,
   halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet, buildHalfLifeSet, gateOfSet,

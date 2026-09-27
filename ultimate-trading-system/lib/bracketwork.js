@@ -335,9 +335,27 @@ function reserveChunks(n) {
 function splitAndLabel(chunks, branch, holdout, extraBands = []) {
   const n = chunks.length;
   const { nHold, nTest } = splitBounds(n, holdout);
-  const trainChunks = chunks.slice(0, n - nTest - nHold);
-  const testChunks = chunks.slice(n - nTest - nHold, n - nHold);
-  const holdChunks = nHold ? chunks.slice(n - nHold) : [];
+  return labelledSplit(chunks, branch, n - nTest - nHold, n - nHold, extraBands);
+}
+
+// A BOOK'S OWN CUT (3.283.0, owner 2026-09-27: "Why would we be wasting
+// fifteen percent? That makes no sense at all."). A book trading a rule has
+// nothing to prove with a held-back stretch -- its own record is the proof --
+// so it keeps none. Everything closed trains the members, unless the rule reads
+// a test stretch (voices, or a bar of its own history): then the newest 15% is
+// that stretch and the rest trains. Labelled exactly as splitAndLabel labels.
+const BOOK_TEST_SHARE = 0.15;
+function splitAndLabelBook(chunks, branch, needsTest, extraBands = []) {
+  const n = chunks.length;
+  const nTest = needsTest ? Math.max(2, Math.round(n * BOOK_TEST_SHARE)) : 0;
+  return labelledSplit(chunks, branch, n - nTest, n, extraBands);
+}
+
+// the cut at two boundaries, and every chunk labelled from the training stretch
+function labelledSplit(chunks, branch, trainEnd, testEnd, extraBands) {
+  const trainChunks = chunks.slice(0, trainEnd);
+  const testChunks = chunks.slice(trainEnd, testEnd);
+  const holdChunks = chunks.slice(testEnd);
   if (trainChunks.length < MIN_CHUNKS) throw new Error(`only ${trainChunks.length} training chunks after the split`);
   const bandPct = branch.band === 'auto' ? balancedBandPct(trainChunks.map((c) => c.diffPct)) : Math.abs(branch.band);
   for (const c of chunks) c.label = scoreDiff(c.diffPct / 100, bandPct / 100);
@@ -405,4 +423,4 @@ function splitAndLabelPass(chunks, branch, nTrain, nJudge, extraBands = []) {
 // test. Nothing can run them; lib/rng.js keeps the one function that outlived
 // their module.)
 
-module.exports = { quorumCall, declaredQuorumFor, slimViewsFor, memberSpecs, altLabelsFor, extraBandsOrRefuse, markExtraGates, buildCombo, splitAndLabel, splitAndLabelPass, splitBounds, reserveChunks, RESERVE_SHARE };
+module.exports = { quorumCall, declaredQuorumFor, slimViewsFor, memberSpecs, altLabelsFor, extraBandsOrRefuse, markExtraGates, buildCombo, splitAndLabel, splitAndLabelBook, BOOK_TEST_SHARE, splitAndLabelPass, splitBounds, reserveChunks, RESERVE_SHARE };

@@ -111,6 +111,29 @@ const kind = (s, key) => s.reclaim.find((k) => k.key === key);
 const rels = (s, key) => s.found[key].map((x) => x.rel).sort();
 
 module.exports = {
+  // THE PRICES A GREENLIGHT KEEPS FOR "as trained by Construct" ARE READ
+  // (3.283.0): never offered as nobody's, and never deleted with a set, while
+  // the greenlight that names them is on the box
+  theKeptPricesAGreenlightNamesAreNeverLeftBehind() {
+    const D = fixture();
+    const GL = fs.mkdtempSync(path.join(os.tmpdir(), 'uts-storage-gl-'));
+    const was = process.env.GC_GREENLIGHTS_DIR;
+    process.env.GC_GREENLIGHTS_DIR = GL;
+    try {
+      fs.writeFileSync(path.join(GL, 'gl-kept-1.json'), JSON.stringify({ id: 'gl-kept-1', createdUtc: '2026-09-27T00:00:00.000Z',
+        construct: { hours: { coins: { BBBUSDT: { file: `hours/BBBUSDT-${'b'.repeat(32)}.json.gz` } } } } }));
+      const s = storage.survey({ dataDir: D, now: NOW });
+      assert.deepStrictEqual(rels(s, 'unreadHours'), [], 'the prices a greenlight trains on were offered as nobody\'s');
+      const st = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+      assert.ok(st.includes('return [...listSets().flatMap((r) => filesOf((getSet(r.id) || {}).hours)), ...greenlightKeptFiles()];')
+        && st.includes("return require('./live/greenlight').listGreenlights().flatMap((g) => filesOf(((g.construct || {}).hours) || null));"),
+        'deleting a set deletes the prices a greenlight still trains on');
+    } finally {
+      if (was === undefined) delete process.env.GC_GREENLIGHTS_DIR; else process.env.GC_GREENLIGHTS_DIR = was;
+      fs.rmSync(D, { recursive: true, force: true }); fs.rmSync(GL, { recursive: true, force: true });
+    }
+  },
+
   theReportAccountsForEveryByteOnceAndNamesOnlyWhatBelongsToNothing() {
     const D = fixture();
     try {

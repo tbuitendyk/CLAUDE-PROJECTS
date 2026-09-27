@@ -24,7 +24,8 @@ function fixture({ decide = { call: 1, side: 'LONG', perMember: [1, 1, 1, -1], m
     listSetups: () => [setup, { ...setup, id: 'setup-draft', state: 'draft' }],
     targets: { resolveForSetup: () => (engine ? { id: 'e1', kind: 'engine' } : { id: 'mx-1', kind: 'ssh-box' }), isEngine: (t) => !!t && t.kind === 'engine' },
     signal: {
-      prepare: async () => ({ chunks, geo: GEO, maps: {}, cfg: {}, trainChunks: [], views: [], bandPct: 5, freeze: { throughMs: day(1) }, fee: 0.00125 }),
+      prepare: async (s, o) => { log.push(`prepared${o && o.history === false ? ' without history' : ''}`); return { chunks, geo: GEO, maps: {}, cfg: {}, trainChunks: null, views: [], bandPct: 5, freeze: { throughMs: null }, fee: 0.00125 }; },
+      withHistory: async (s, p) => { log.push('history read'); return { ...p, trainChunks: [], freeze: { throughMs: day(1) } }; },
       missingFeatureCandle: () => miss,
       decideFor: async () => { log.push('decided'); return decide; },
     },
@@ -59,7 +60,8 @@ module.exports = {
     const now = day(26) + 30 * 60000;
     const out = await f.producer.decideOne(f.setup, now);
     assert.deepStrictEqual([out.chunkStart, out.side, out.sent], [new Date(day(22)).toISOString(), 'LONG', true]);
-    assert.deepStrictEqual(f.log.filter((l) => !/^refreshed/.test(l)), ['decided', 'written not yet', `sent setup-e|${new Date(day(22)).toISOString()}`, 'written ok']);
+    // Construct's history is read once the period is known to need a decision, not every minute (3.283.0)
+    assert.deepStrictEqual(f.log.filter((l) => !/^refreshed/.test(l)), ['prepared without history', 'history read', 'decided', 'written not yet', `sent setup-e|${new Date(day(22)).toISOString()}`, 'written ok']);
     assert.deepStrictEqual(f.log.filter((l) => /^refreshed/.test(l)), ['refreshed LTCUSDT', 'refreshed DOGEUSDT', 'refreshed LINKUSDT'], 'the candles of the coin and the two read alongside it');
     const [first, second] = f.decisions.get('setup-e');
     assert.strictEqual(first.engine.ok, false, 'written down before anything was sent');
@@ -70,6 +72,7 @@ module.exports = {
     assert.deepStrictEqual([t.id, plan.account, plan.mode, plan.symbol, plan.entryTs, plan.size.quoteUsd], ['e1', 'ltc-1', 'simulated', 'LTCUSDT', day(22) + 97 * H, 125]);
     const again = await f.producer.decideOne(f.setup, now + 60000);
     assert.deepStrictEqual([again.skipped, f.log.filter((l) => /^sent/.test(l)).length], ['already sent', 1], 'the same period is never sent twice');
+    assert.strictEqual(f.log.filter((l) => l === 'history read').length, 1, 'a period already sent reads no history');
   },
 
   // A DAY THE COMMITTEE STANDS ASIDE is a decision: written down, nothing sent
@@ -102,6 +105,21 @@ module.exports = {
     const all = await fixture().producer.run(now);
     assert.deepStrictEqual(all.results.map((r) => r.setup), ['setup-e']);
   },
+};
+
+// WHAT THE MEMBERS WERE TRAINED ON IS WRITTEN BESIDE THE DECISION (3.283.0):
+// the fingerprint of what came out, how long it took, and the policy and
+// stretches -- and a decision that says none writes none, never a guess
+module.exports.theDecisionRecordCarriesTheMembersFingerprintAndTraining = async function () {
+  const trainedOn = { mode: 'construct', periods: 1500, train: 1050, test: 225, held: 225, fromUtc: '2020-08-11T00:00:00.000Z', toUtc: '2024-10-02T00:00:00.000Z' };
+  const f = fixture({ decide: { call: 1, side: 'LONG', perMember: [1, 1, 1, -1], membersCall: 1, inputHash: 'h1', field: null, membersFp: 'abcd1234abcd1234', trainMs: 4200, trainedOn } });
+  await f.producer.decideOne(f.setup, day(26) + 30 * 60000);
+  for (const r of f.decisions.get('setup-e')) {
+    assert.deepStrictEqual([r.members_fp, r.train_ms, r.trained_on], ['abcd1234abcd1234', 4200, trainedOn]);
+  }
+  const g = fixture();
+  await g.producer.decideOne(g.setup, day(26) + 30 * 60000);
+  assert.deepStrictEqual([g.decisions.get('setup-e')[0].members_fp, g.decisions.get('setup-e')[0].train_ms, g.decisions.get('setup-e')[0].trained_on], [null, null, null]);
 };
 
 // A MARKET ENTRY'S PLAN CARRIES THE SETUP'S STOP % (item 5, 3.259.0); a

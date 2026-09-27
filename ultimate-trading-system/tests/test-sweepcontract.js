@@ -664,4 +664,18 @@ module.exports = {
     assert.ok(!/all \d+ default (coins|pairs)/.test(SWEEP),
       'a coin count is typed into a Sweep label — it must be read from the list the service serves');
   },
+  // A SETTING THAT READS TEST IS SAID WHERE IT IS CHOSEN (3.283.0, owner
+  // 2026-09-27): under quorum by and quorum bar, before share, a warning shown
+  // while voices is picked or permuted, or its own history under a quorum by
+  // that reads a bar -- a book on frozen at or rolling then keeps the newest 15%
+  // of its history as test
+  aSettingThatReadsTestIsWarnedWhereItIsChosen() {
+    const at = (x) => SWEEP.indexOf(x);
+    const warn = at('<p class="note warn" id="swTestWarn"');
+    assert.ok(warn > at('id="swPermAgreeBar"') && warn > at('id="swPermAgreeCopy"') && warn < at('<select id="swAgreeShare">'), 'the warning is not under quorum by and quorum bar');
+    assert.ok(SWEEP.includes('keeps the newest 15% of its history as test for them: its members train on the rest, and the newest 15% only measures.'), 'it does not say what it costs');
+    assert.ok(SWEEP.includes("const readsTest = !notVoices || (ownBar && (permRule || !['trained', 'field'].includes(ruleNow)));")
+      && SWEEP.includes("const ownBar = ($('#swAgreeBar') && $('#swAgreeBar').value === 'own') || !!($('#swPermAgreeBar') && $('#swPermAgreeBar').checked);")
+      && SWEEP.includes("if ($('#swTestWarn')) $('#swTestWarn').style.display = readsTest ? '' : 'none';"), 'it is not shown on exactly the settings that read test');
+  },
 };

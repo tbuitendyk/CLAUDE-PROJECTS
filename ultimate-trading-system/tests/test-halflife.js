@@ -130,6 +130,99 @@ async function ran(c, months) {
   return { result: r, block: set.halflife[0], set, file: stages.readHalfLifeRun(c.cut.id, set.halflife[0].id) };
 }
 
+// "AS TRAINED BY CONSTRUCT" IS CONSTRUCT'S OWN TRAINING, TO THE LAST DIGIT
+// (3.283.0, owner 2026-09-27: "ABSOLUTELY *EVERY* ASPECT OF THE ENTIRE
+// CONSTRUCT NEEDS TO BE *100%* DUPLICATED"). From the record a greenlight
+// carries -- the prices kept with the chain and the stretches stage 2 wrote
+// down -- the book's path rebuilds the history, cuts it, retrains every
+// member, and must give back exactly what Construct stored: every member's
+// forecast on test and on held, the probe votes each member's own bar is
+// tuned from, every saved model. With a half-life, exactly the History run's
+// retrained members. Run on both layouts: 61/13/13/13, so the sealed reserve
+// comes off first as it does in Construct, and 70/15/15. And the comparison
+// is shown able to fail: a book's own cut gives other members.
+async function constructProof(windowLayout) {
+  const c = await chain(`construct proof test ${windowLayout}`, windowLayout);
+  try {
+    const stagesignal = require('../lib/live/stagesignal');
+    const bracketLib = require('../lib/bracket');
+    const { splitBounds } = require('../lib/bracketwork');
+    const rec2 = rowstore.readAll(c.s2, 'records').find((r) => r.trade === G.PLANT);
+    const rows = (store) => rowstore.readBlocks(c.s2, store, Array.from({ length: rec2.blocks[store][1] - rec2.blocks[store][0] }, (_, i) => rec2.blocks[store][0] + i)).map((x) => x.row).filter((r) => r.u === rec2.u);
+    const votes = rows('votes');
+    const tauRows = rows('tau');
+    const models = rows('models');
+    const test = votes.filter((v) => v.w === 0);
+    const hold = votes.filter((v) => v.w === 1);
+    assert.ok(rec2.specs.length >= 2 && test.length > 10 && hold.length > 10 && tauRows.length === rec2.specs.length && models.length === rec2.specs.length,
+      `something to compare: ${rec2.specs.length} members, ${test.length} test and ${hold.length} held votes`);
+    assert.ok(rec2.specs.some((sp) => sp.model === 'logreg') && rec2.specs.some((sp) => sp.model === 'boost'), 'both kinds of member');
+    const s2doc = stages.getSet(c.s2);
+    const s3doc = stages.getSet(c.s3);
+    // the record a greenlight carries, as the Stage 4 door writes it
+    const construct = await stages.constructHistoryForSet(c.cut.id, null);
+    assert.ok(!construct.lost, `the chain's history could not be read: ${construct.lost}`);
+    assert.deepStrictEqual({ from: construct.hoursFrom, coins: Object.keys(construct.hours.coins), windows: construct.windows, trainFee: construct.trainFee, tauFee: construct.tauFee },
+      { from: c.s2, coins: [G.PLANT], windows: rec2.windows, trainFee: Number(s2doc.params.fee), tauFee: Number(s3doc.params.fee) },
+      'the stage 2 set\'s prices and stretches, the fee its members were trained at and the stage 3 set\'s for their bars');
+    const p2 = s2doc.params || {};
+    const cfg = {
+      combo: { trade: G.PLANT, ctx1: null, ctx2: null, size: 1 },
+      branch: { geometry: S1.geometry, decision: 'argmax', band: 5, weekdaysOnly: false },
+      members: rec2.specs.map((sp) => ({ model: sp.model, view: sp.view })),
+      agreement: { rule: 'trained', pct: null, bar: null },
+      training: { trainOn: p2.trainOn || null, weightCap: p2.weightCap ?? null, windowLayout: p2.windowLayout, halfLife: null },
+    };
+    assert.strictEqual(cfg.training.windowLayout, windowLayout);
+    const { closed, maps, geo, trainEndTs } = await stagesignal.constructHistoryChunks(cfg, construct);
+    const { nTrain, nTest } = splitBounds(closed.length, true);
+    const held = closed.slice(nTrain + nTest);
+    assert.deepStrictEqual([nTest, held.length, trainEndTs], [test.length, hold.length, rec2.windows.train.toTs], 'cut where Construct cut it');
+    const views = bracketLib.comboViews(1, geo.featureHours / 24).views;
+    const same = (t, want, label) => {
+      assert.strictEqual(t.members.length, rec2.specs.length, `${label}: every member`);
+      t.members.forEach((m, mi) => {
+        assert.deepStrictEqual(m.probs, want.probs(mi), `${label}: member ${mi + 1} (${m.spec.model} on ${m.spec.view}) forecast test and held exactly as Construct did`);
+        assert.deepStrictEqual(m.tauProbs, want.tau(mi), `${label}: member ${mi + 1}'s probe votes`);
+        assert.deepStrictEqual(m.saved, want.saved(mi), `${label}: member ${mi + 1}'s saved model`);
+      });
+    };
+    const t = await stagesignal.trainStageCommittee(cfg, closed, held, views, construct.trainFee, 'construct');
+    same(t, {
+      probs: (mi) => [...test.map((v) => v.m[mi]), ...hold.map((v) => v.m[mi])],
+      tau: (mi) => (tauRows.find((x) => x.mi === mi) || {}).probs,
+      saved: (mi) => (models.find((x) => x.mi === mi) || {}).saved,
+    }, 'as trained by Construct');
+    // the decision itself: Construct's held votes at the moment decided, what
+    // the members were trained on, and the same fingerprint every time
+    const call = () => stagesignal.stageCommitteeCallFor(cfg, held[0], closed, closed, maps, geo, views, null, construct.trainFee, { mode: 'construct', tauFee: construct.tauFee, tauMap: maps.trade });
+    const out = await call();
+    assert.deepStrictEqual(out.memberProbs, hold[0].m, 'the book\'s members at the moment decided are Construct\'s held votes');
+    assert.deepStrictEqual({ mode: out.trainedOn.mode, train: out.trainedOn.train, test: out.trainedOn.test, held: out.trainedOn.held, bandPct: out.trainedOn.bandPct },
+      { mode: 'construct', train: rec2.windows.train.chunks, test: rec2.windows.test.chunks, held: rec2.windows.hold.chunks, bandPct: rec2.bandPct }, 'the stretches and the band Construct trained with');
+    assert.ok(/^[0-9a-f]{16}$/.test(out.membersFp) && out.trainMs >= 0, 'a fingerprint and a training time');
+    assert.strictEqual((await call()).membersFp, out.membersFp, 'the same members, the same fingerprint');
+    // WITH THE HALF-LIFE: exactly the History run's retrained members
+    const { file } = await ran(c, [12]);
+    const h12 = file.halfLives[0];
+    const constructH = await stages.constructHistoryForSet(c.cut.id, 12);
+    assert.strictEqual(constructH.trainFee, Number(s3doc.params.fee), 'a half-life rule\'s members are retrained at the stage 3 set\'s fee, as History retrains them');
+    const cfgH = { ...cfg, training: { ...cfg.training, halfLife: HL.daysOfMonths(12), halfLifeMonths: 12 } };
+    const tH = await stagesignal.trainStageCommittee(cfgH, closed, held, views, constructH.trainFee, 'construct');
+    same(tH, { probs: (mi) => h12.members[mi].probs, tau: (mi) => h12.members[mi].tauProbs, saved: (mi) => h12.members[mi].saved }, 'as trained by Construct, half-life 12 months');
+    assert.notDeepStrictEqual(tH.members.map((m) => m.probs), t.members.map((m) => m.probs), 'the half-life changed nothing, so the match above proves nothing about it');
+    // AND THE COMPARISON CAN FAIL: a book's own cut trains on more and forecasts otherwise
+    const tR = await stagesignal.trainStageCommittee(cfg, closed, held, views, construct.trainFee, 'rolling');
+    assert.strictEqual(tR.split.trainChunks.length, closed.length, 'a book on rolling trains on all of it');
+    assert.notDeepStrictEqual(tR.members.map((m) => m.probs), t.members.map((m) => m.probs.slice(nTest)), 'other training, the same forecasts: the comparison proves nothing');
+    // AND A HISTORY THAT DOES NOT CUT WHERE CONSTRUCT'S DID IS REFUSED, never trained on
+    const moved = { ...construct, windows: { ...construct.windows, train: { ...construct.windows.train, chunks: construct.windows.train.chunks + 1 } } };
+    let threw = null;
+    try { await stagesignal.constructHistoryChunks(cfg, moved); } catch (e) { threw = e.message; }
+    assert.ok(/does not cut where Construct cut it/.test(threw || ''), threw);
+  } finally { c.cleanup(); }
+}
+
 module.exports = {
   // THE RETRAIN LAYOUT IS THE SET'S OWN, AND THE JUDGE IS THE TEST WINDOW ON
   // BOTH (3.144.0, owner order 2026-09-15: "not work with the held set"): a
@@ -299,6 +392,12 @@ module.exports = {
       assert.ok(file.halfLives[0].ts.hold.length > 0, 'the held-back votes are cast on the retrain for Tune\'s capture');
     } finally { c.cleanup(); }
   },
+
+  // "AS TRAINED BY CONSTRUCT" IS CONSTRUCT'S OWN TRAINING, TO THE LAST DIGIT
+  // (3.283.0): constructProof above, on a 61/13/13/13 chain
+  async asTrainedByConstructRetrainsConstructsOwnMembersToTheLastDigit() { await constructProof('reserve61'); },
+  // and on 70/15/15, the layout the owner's sets are built on
+  async asTrainedByConstructRetrainsConstructsOwnMembersOnSeventyFifteen() { await constructProof('split70'); },
 
   // THE 4.h SET FROM THE TABLE (3.95.0): only rows a half-life won, each with
   // its half-life; it stands on its source and is refused where its own numbers

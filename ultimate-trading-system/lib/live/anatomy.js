@@ -151,7 +151,7 @@ function describeAnatomy(cfg, opts = {}) {
     pipeline: [
       `1. INPUTS — each decision window opens with the last ${geo.featureHours}h of hourly candles for ${cfg.combo.trade} (the traded pair)${ctx.length ? ` and the comparison asset${ctx.length > 1 ? 's' : ''} ${ctx.join(' and ')}` : ''}.`,
       `2. FEATURES — each asset's ${geo.featureHours}h window is compressed to ${nDays + 12} numbers (daily returns, total return, hourly volatility, volume shift, trend slope/acceleration, max drawdown/run-up, range, last-24h and last-6h returns, day-volume dispersion).${ctx.length ? ` The comparison assets then enter a SECOND way: ${crossNames.length} cross features per pair — relative total return, relative last-24h return, relative volume (log ratio), and the hour-by-hour return correlation with ${cfg.combo.trade}.` : ''} Total vector: ${cv.featureCount} numbers. The comparison assets are never traded — they exist only inside this vector.`,
-      `3. MEMBERS VOTE — ${members.length} independent models (committee below), each seeing a different SLICE of those ${cv.featureCount} numbers, each trained through ${trained}${halfLifeWords} and frozen. Each classifies the window as UP / DOWN / ASIDE, where ASIDE means "the coming move looks smaller than the ${bandPct}% dormant band"${extras.length ? ` — except the ${extras.length} member${extras.length > 1 ? 's' : ''} added from a walk set, which read their own longer look-back and sit out below their own band instead (committee below)` : ''}. Decision rule '${cfg.branch.decision}': the member votes whichever class has the highest probability.`,
+      `3. MEMBERS VOTE — ${members.length} independent models (committee below), each seeing a different SLICE of those ${cv.featureCount} numbers, each trained through ${trained}${halfLifeWords} and frozen. Each classifies the window as UP / DOWN / ASIDE, where ASIDE means "the coming move looks smaller than the dormant band worked out on the members' training stretch", as Construct works it out${extras.length ? ` — except the ${extras.length} member${extras.length > 1 ? 's' : ''} added from a walk set, which read their own longer look-back and sit out below their own band instead (committee below)` : ''}. Decision rule '${cfg.branch.decision}': the member votes whichever class has the highest probability.`,
       `4. COMMITTEE — the votes are weighed the way the stage engine weighs them: ${agreeWords()}. The committee's own shape and each member's threshold are read from its test slice, never from a later window. Short of enough, stand aside.`,
       ...(cfg.field && cfg.field.gate ? [
         `4b. THE FIELD — the coin's own decision field, ${fieldWords(cfg.field).field}. T${fieldWords(cfg.field).gate.slice(1)}.`,
@@ -196,7 +196,10 @@ function describeAnatomy(cfg, opts = {}) {
       rule: agreeWords(),
       dormantBandPct: bandPct,
       extras: extras.map((e) => ({ lookbackHours: e.lookbackHours, bandTimesUsualMove: e.bandPct / 100 })),
-      labelRule: `a training window is labelled UP/DOWN only when the following move exceeds +/-${bandPct}%; smaller moves are ASIDE — that is what teaches members to sit out`
+      // MARKED AS CONSTRUCT MARKS IT (3.283.0): the band is worked out on the
+      // training stretch (lib/bracketwork.js labelledSplit, band 'auto'); the
+      // configuration's band places the trades and marks nothing
+      labelRule: `a training window is labelled UP/DOWN only when the following move exceeds the dormant band worked out on the training stretch — the size of move that a third of its windows stay under; smaller moves are ASIDE — that is what teaches members to sit out. The ${bandPct}% band of this configuration places the trades; it marks nothing the members learn`
         + (extras.length ? `. A member added from a walk set is marked on its own: UP/DOWN only when the following move exceeds its own band, which is ${extras.map((e) => (e.bandPct / 100).toFixed(2)).join(' and ')} times what this coin usually moves over that window, worked out on the training stretch alone` : ''),
     },
   };

@@ -296,7 +296,9 @@ module.exports.theDecisionRowCarriesWhatTheFieldSaidOnBothBooks = function () {
   assert.ok(page.includes("${th('outcome','outcome','text-align:left')}") && !page.includes("th('outcome','fate'"), 'the outcome heading, described: its hover is keyed to the column key');
   assert.ok(/^  field:'what the coin’s own decision field said on this decision and what its gate made of the call\./m.test(page), 'its description in the column key');
   assert.ok(page.includes('const f=dec.field;'), 'the cell reads the row\'s field');
-  assert.ok(page.includes('<td colspan="6" class="empty">no decisions recorded yet</td>'), 'the empty row spans the six columns');
+  // seven since 3.283.0: members trained sits between field and outcome
+  assert.ok(page.includes("${th('field','field','text-align:left')}${th('members trained','membersFp','text-align:left')}${th('outcome','outcome','text-align:left')}"), 'members trained, described, between field and outcome');
+  assert.ok(page.includes('<td colspan="7" class="empty">no decisions recorded yet</td>'), 'the empty row spans the seven columns');
   assert.ok(page.includes('<b>field</b> = what the coin’s decision field said and what its gate made of the call'), 'the legend names it');
   // and the anatomy says what the field does to the call
   const an = require('../lib/live/anatomy');

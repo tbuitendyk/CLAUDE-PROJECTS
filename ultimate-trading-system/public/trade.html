@@ -318,6 +318,7 @@ const TH={
   call:'what the quorum decided from those votes. STAND DOWN means the quorum was not reached, which is a decision, not a failure.',
   field:'what the coin’s own decision field said on this decision and what its gate made of the call. up / down / none is the field’s sign; agreement and certainty are its two reads, 0 to 100; then the gate’s verdict — blocked by sign, blocked by minimum, silent, or sized on a rung, which multiplies the clip. "—" means this configuration was not priced under a field.',
   outcome:'what the executor actually did with the call — filled, skipped, gave up, or killed on price drift.',
+  membersFp:'a fingerprint of every member exactly as it was trained for this decision, and how long the training took. A book on frozen at or as trained by Construct trains the same members on the same stretch every time, so its fingerprint stays the same; when it does not, the row says so. A rolling book trains on a longer history every day and its fingerprint changes. Hover a fingerprint for the stretches it was trained on. "—" means the decision was written before this was recorded.',
   // THE ENGINE'S PLANS (loop of 2026-09-25)
   engEntry:'the hour this plan acts in, UTC — the feature window closed, and the platform starts watching the price at this hour. The date to think in.',
   engCall:'what the committee called for this plan: LONG = buy the pair, SHORT = sell it borrowed, no call = it stood aside.',
@@ -879,6 +880,23 @@ async function drawDetail(){
   selectedSetupId=s.id;
   const c=s.configSnapshot||{}, cell=c.cell||{}, br=c.branch||{}, combo=c.combo||{};
   const active=s.state==='paper'||s.state==='live';
+  // WHAT EACH MEMBERS TRAIN CHOICE TRAINS ON, in words (3.283.0): Construct's
+  // own stretches by date, or why there are none; the cut a frozen at or a
+  // rolling book makes of its history. The one path draws it for both books.
+  const trainWords=(v)=>{
+    const k=g.construct, d=(x)=>x?esc(x.slice(0,10)):'?';
+    if(v==='construct'){
+      if(!k) return '<span class="warn">this greenlight carries no record of the history Construct trained on, so it cannot be used</span>';
+      if(k.lost) return `<span class="warn">cannot be used: ${esc(k.lost)}</span>`;
+      if(!k.train) return 'the prices Construct kept, cut as Construct cuts them; Construct wrote down no dates for this set';
+      return `train ${d(k.train.fromUtc)} to ${d(k.train.toUtc)} · test to ${d(k.test&&k.test.toUtc)} · held to ${d(k.held&&k.held.toUtc)}, not read`;
+    }
+    if(v==='frozen'||v==='rolling'){
+      const a=c.agreement||{};
+      return a.rule==='voices'||a.bar==='own' ? 'no held stretch: the newest 15% is test, where the committee is worked out, and the rest trains' : 'no held stretch: all of it trains';
+    }
+    return '';
+  };
   $('#view').innerHTML=`
     <div class="panel"><div class="row">
       <b style="font-size:1rem">${esc(s.name)}</b>
@@ -914,8 +932,9 @@ async function drawDetail(){
           // undefined and this panel could only ever fall through to the legacy
           // line or to "not set" (found by audit, 2026-08-21).
           const p = s.trainPolicy;
-          if (p && p.mode === 'rolling') return cfgRow('Members train', 'rolling — retrained through the latest closed outcome');
-          if (p && p.mode === 'frozen') return cfgRow('Members train', `frozen at ${new Date(p.throughMs).toISOString().slice(0,10)}`);
+          if (p && p.mode === 'construct') return cfgRow('Members train', `as trained by Construct — ${trainWords('construct')}`);
+          if (p && p.mode === 'rolling') return cfgRow('Members train', `rolling — retrained through the latest closed outcome; ${trainWords('rolling')}`);
+          if (p && p.mode === 'frozen') return cfgRow('Members train', `frozen at ${new Date(p.throughMs).toISOString().slice(0,10)}; ${trainWords('frozen')}`);
           return cfgRow('Members train', 'not set — this deployment has no training policy');
         })()}
         ${cfgRow('Config version', `<code>${esc(c.configVersion||'')}</code>`)}
@@ -933,13 +952,17 @@ async function drawDetail(){
            book with no answer, and the book could decide nothing. The choice is
            the owner's, on the same row of settings as the clip. -->
       <div class="row" style="margin-top:.5rem">
-        <label class="muted" title="when this book's members are trained. rolling: again at every decision, on everything whose outcome has closed by then. frozen at: once, on everything whose outcome had closed by 00:00 UTC on the date beside it, and never again.">Members train
+        <label class="muted" title="when this book's members are trained, and on what. as trained by Construct: on exactly the prices Construct kept with the set, cut exactly as Construct cut them — train, test, and held, which is not read — with the same weighing of training days; its dates are shown beside it. frozen at: once, on everything whose outcome had closed by 00:00 UTC on the date beside it, and never again. rolling: again at every decision, on everything whose outcome has closed by then. frozen at and rolling start where the set's history started and keep no held stretch: all of it trains, or the newest 15% is the test stretch when the agreement is voices or is measured against the committee's own reach.">Members train
           <select id="trainIn">
             ${s.trainPolicy?'':'<option value="" selected>— not set —</option>'}
-            <option value="rolling" ${s.trainPolicy&&s.trainPolicy.mode==='rolling'?'selected':''}>rolling</option>
+            <option value="construct" ${s.trainPolicy&&s.trainPolicy.mode==='construct'?'selected':''}>as trained by Construct</option>
             <option value="frozen" ${s.trainPolicy&&s.trainPolicy.mode==='frozen'?'selected':''}>frozen at</option>
+            <option value="rolling" ${s.trainPolicy&&s.trainPolicy.mode==='rolling'?'selected':''}>rolling</option>
           </select></label>
-        <label class="muted" title="frozen at: the members are trained on everything whose outcome had closed by 00:00 UTC on this date">date (UTC) <input id="trainAt" type="date" value="${s.trainPolicy&&s.trainPolicy.mode==='frozen'?new Date(s.trainPolicy.throughMs).toISOString().slice(0,10):new Date().toISOString().slice(0,10)}" ${s.trainPolicy&&s.trainPolicy.mode==='frozen'?'':'disabled'}></label>
+        <!-- CONSTRUCT'S DATES IN PLACE OF THE DATE BOX (3.283.0): "as trained by
+             Construct" has no date to pick; what it trains on is shown instead -->
+        <label class="muted" id="trainAtBox" title="frozen at: the members are trained on everything whose outcome had closed by 00:00 UTC on this date">date (UTC) <input id="trainAt" type="date" value="${s.trainPolicy&&s.trainPolicy.mode==='frozen'?new Date(s.trainPolicy.throughMs).toISOString().slice(0,10):new Date().toISOString().slice(0,10)}" ${s.trainPolicy&&s.trainPolicy.mode==='frozen'?'':'disabled'}></label>
+        <span id="trainOn" class="muted" style="font-size:.8rem"></span>
       </div>
       <!-- VERBOSE (owner, 2026-09-25): every hourly check of the trailing stop
            written down by the engine and shown on LIVE, on or off at any time. -->
@@ -987,7 +1010,7 @@ async function drawDetail(){
       <p><b>${esc(an.anatomy.features.note)}</b></p>
       <p>Each asset contributes ${an.anatomy.features.perAsset} numbers: <code>${esc(an.anatomy.features.perAssetNames.join(', '))}</code></p>
       <p>Each comparison pair adds ${an.anatomy.features.crossPerPair} cross features: <code>${esc(an.anatomy.features.crossNames.join(', '))}</code></p>
-      <p>Voting: ${esc(an.anatomy.voting.rule)}. Dormant band: ±${an.anatomy.voting.dormantBandPct}% — ${esc(an.anatomy.voting.labelRule)}.</p></div></div>`:''}`;
+      <p>Voting: ${esc(an.anatomy.voting.rule)}. Dormant band: ${esc(an.anatomy.voting.labelRule)}.</p></div></div>`:''}`;
   const act=$('#actBtn'); if(act)act.onclick=async()=>{ if(await confirmActivate(g.id)) draw(); };
   const deact=$('#deactBtn'); if(deact)deact.onclick=async()=>{
     if(!confirm(`Deactivate the ${branch} channel?`))return;
@@ -1003,8 +1026,9 @@ async function drawDetail(){
     const feeRaw=$('#feeIn').value.trim();
     const body={clipUsd,stopPct,verbose:$('#verboseIn').checked};
     if(feeRaw!=='') body.feePerLeg=Number(feeRaw)/100;
-    // not set stays not set; rolling needs nothing more; frozen needs its date
+    // not set stays not set; as trained by Construct and rolling need nothing more; frozen needs its date
     const train=$('#trainIn').value;
+    if(train==='construct') body.trainPolicy={mode:'construct'};
     if(train==='rolling') body.trainPolicy={mode:'rolling'};
     if(train==='frozen'){
       const day=$('#trainAt').value;
@@ -1013,7 +1037,11 @@ async function drawDetail(){
     }
     const out=await post(`api/live/setups/${s.id}/config`,body); if(out) draw();
   };
-  $('#trainIn').onchange=()=>{ $('#trainAt').disabled=$('#trainIn').value!=='frozen'; };
+  // the date box for frozen at, Construct's dates for as trained by Construct, and what each trains on
+  const trainShow=()=>{ const v=$('#trainIn').value;
+    $('#trainAt').disabled=v!=='frozen'; $('#trainAtBox').style.display=v==='construct'?'none':'';
+    $('#trainOn').innerHTML=trainWords(v); };
+  $('#trainIn').onchange=trainShow; trainShow();
   $('#saveRouting').onclick=async()=>{
     // A platform must be picked; the key changes only when another account is picked, or the tick clears it
     const executionTargetRef=$('#targetIn').value;
@@ -1233,8 +1261,9 @@ async function drawLive(){
         <b>window</b> = the feature window it was computed from ·
         <b>member votes</b> = the committee in order — UP = long, DOWN = short, no call = named no direction ·
         <b>call</b> = what the quorum decided · <b>field</b> = what the coin’s decision field said and what its gate made of the call ·
+        <b>members trained</b> = a fingerprint of the members as trained for this decision, and how long the training took ·
         <b>outcome</b> = what the executor did with it</div>
-      <table><thead><tr>${th('entry (UTC)','entryUtc','text-align:left')}${th('window','chunk','text-align:left')}${th('member votes','votes','text-align:left')}${th('call','side','text-align:left')}${th('field','field','text-align:left')}${th('outcome','outcome','text-align:left')}</tr></thead><tbody>
+      <table><thead><tr>${th('entry (UTC)','entryUtc','text-align:left')}${th('window','chunk','text-align:left')}${th('member votes','votes','text-align:left')}${th('call','side','text-align:left')}${th('field','field','text-align:left')}${th('members trained','membersFp','text-align:left')}${th('outcome','outcome','text-align:left')}</tr></thead><tbody>
       ${(st.decisions||[]).length?st.decisions.map(dec=>{
         // Each member's vote carries the page's direction colours: UP green,
         // DOWN red, no call muted. Read as a row of words they were all the same
@@ -1254,11 +1283,21 @@ async function drawLive(){
           :`${f.sign>0?'<span class="pos">up</span>':f.sign<0?'<span class="neg">down</span>':'<span class="muted">none</span>'}`
             +`${f.agreement!=null?` · agreement ${Number(f.agreement).toFixed(0)}`:''}${f.certainty!=null?` · certainty ${Number(f.certainty).toFixed(0)}`:''}`
             +` · <span class="${/^blocked/.test(f.why||'')?'neg':'muted'}">${esc(f.why||'')}</span>`;
+        // WHAT THE MEMBERS WERE TRAINED ON (3.283.0): the fingerprint of what
+        // came out and how long it took, the stretches in the hover; a frozen at
+        // or as trained by Construct book whose members came out different on
+        // the same stretch says so
+        const to=dec.trained_on, mw={construct:'as trained by Construct',frozen:'frozen at',rolling:'rolling'};
+        const mtip=to?`${mw[to.mode]||to.mode}: train ${String(to.fromUtc||'').slice(0,10)} to ${String(to.toUtc||'').slice(0,10)} (${to.train} periods) · test ${to.test} · held ${to.held}${to.bandPct!=null?` · dormant band ±${Number(to.bandPct).toFixed(2)}%, worked out on train`:''}`:'';
+        const mtxt=!dec.members_fp?'<span class="muted">—</span>'
+          :`<code>${esc(dec.members_fp.slice(0,8))}</code>${dec.train_ms!=null?` · ${(dec.train_ms/1000).toFixed(1)} s`:''}`
+            +(dec.membersChanged?` · <span class="warn">not the members of the decision before (${esc(dec.membersChanged.slice(0,8))}), on the same stretch</span>`:'');
         return `<tr><td style="text-align:left;white-space:nowrap">${esc((dec.entry_utc||'').replace('T',' ').slice(0,16))||'—'}</td>
         <td style="text-align:left;white-space:nowrap" class="muted">${esc((dec.chunk_start||'').slice(0,10))}</td>
         <td style="text-align:left">${vtxt}</td><td style="text-align:left;white-space:nowrap" class="${lab[1]}"><b>${lab[0]}</b></td>
         <td style="text-align:left">${ftxt}</td>
-        <td style="text-align:left" class="muted">${esc(dec.fate||'')}</td></tr>`;}).join(''):'<tr><td colspan="6" class="empty">no decisions recorded yet</td></tr>'}
+        <td style="text-align:left" ${mtip?`title="${esc(mtip).replace(/"/g,'&quot;')}"`:''}>${mtxt}</td>
+        <td style="text-align:left" class="muted">${esc(dec.fate||'')}</td></tr>`;}).join(''):'<tr><td colspan="7" class="empty">no decisions recorded yet</td></tr>'}
       </tbody></table></div>
     <div class="panel"><div class="k">Incidents</div>
       <table style="margin-top:.4rem"><thead><tr>${th('utc','utc')}${th('kind','kind')}${th('detail','detail','text-align:left')}</tr></thead><tbody>

@@ -144,9 +144,13 @@ module.exports = {
     // RE-AIMED 3.91.0: the three callers now go through decideFor, which picks
     // the engine the configuration speaks for; the fee rides on every call and
     // decideFor hands it to the stage engine, so it can never price a trade as free.
-    const calls = src.match(/decideFor\(cfg, target, trainChunks, chunks, maps, geo, views, bandPct, freeze\.throughMs, fee\)/g) || [];
+    // RE-AIMED 3.283.0: the fee rides in prepare()'s `train` -- the profile's
+    // own on frozen at and rolling; on "as trained by Construct" the fees
+    // Construct trained and tuned the members at, so they come out the same
+    const calls = src.match(/decideFor\(cfg, target, trainChunks, chunks, maps, geo, views, bandPct, freeze\.throughMs, train\.fee, train\)/g) || [];
     assert.strictEqual(calls.length, 3, `all three live callers must pass the fee; ${calls.length} do`);
-    assert.ok(/stageCommitteeCallFor\(cfg, target, trainChunks, chunks, maps, geo, views, freezeMs, feePerLeg\)/.test(src),
+    assert.ok(/train: \{ fee, opts: \{ mode: freeze\.mode \} \}/.test(src), 'frozen at and rolling do not train at the profile\'s own fee');
+    assert.ok(/stageCommitteeCallFor\(cfg, target, trainChunks, chunks, maps, geo, views, freezeMs, feePerLeg, \(train && train\.opts\) \|\| \{\}\)/.test(src),
       'decideFor does not hand the fee to the stage engine');
   },
 

@@ -205,6 +205,11 @@ function greenlightFromStage4(src, { by = 'owner', why, name } = {}) {
       unread: rd.reserve ? { pnl: rd.reserve.money ?? null, trades: rd.reserve.trades ?? null, look: rd.reserve.look ?? null } : null,
     },
     configSnapshot: cfg,
+    // THE HISTORY CONSTRUCT TRAINED THIS RULE ON (3.283.0): the prices kept with
+    // the set, the stretches it cut them into and the fees behind the members --
+    // what "as trained by Construct" trains on. Evidence, like the rest of this
+    // record; the rule itself says nothing about training history.
+    construct: src.construct || null,
     // the stop and the ladder as the set froze them at its press, and the half-life the survivor carries (3.149.0), read off the set
     frozen: { stop: src.stop || null, sizing: src.stop && src.stop.sizing ? src.stop.sizing : null, halfLifeMonths: src.survivor && src.survivor.halfLife != null ? src.survivor.halfLife : null },
     shuttledSetupIds: [],
@@ -310,6 +315,28 @@ function listGreenlights() {
   } catch (_) { return []; }
 }
 
+// ---- REPAIR (3.283.0) -- DELETE THIS BLOCK ONCE EVERY GREENLIGHT ON THE BOX CARRIES `construct` ----
+// A greenlight made before 3.283.0 carries no record of the history Construct
+// trained its rule on, so "as trained by Construct" has nothing to train on.
+// Filled in once, from the Stage 4 set the greenlight names, by the same
+// function a new greenlight is built through (lib/stages.js
+// constructHistoryForSet). A set no longer on the box is recorded as lost, in
+// words; that greenlight can still be trained frozen at or rolling.
+async function fillConstructHistory() {
+  const done = [];
+  for (const g of listGreenlights()) {
+    if (Object.prototype.hasOwnProperty.call(g, 'construct') || g.target !== 'stage4' || !g.sourceSet) continue;
+    let construct;
+    try {
+      construct = await require('../stages').constructHistoryForSet(g.sourceSet.id, ((g.configSnapshot || {}).training || {}).halfLifeMonths ?? null);
+    } catch (e) { construct = { lost: `its history could not be read from ${g.sourceSet.name || g.sourceSet.id}: ${e.message}` }; }
+    atomicWrite(fileFor(g.id), { ...g, construct });
+    done.push({ id: g.id, name: g.name, construct: construct.lost ? `lost: ${construct.lost}` : `kept (${Object.keys(construct.hours.coins).join(', ')})` });
+  }
+  return done;
+}
+// ---- END REPAIR ----
+
 // THE SHUTTLE (point 4): greenlight -> new draft setup, snapshot + provenance
 // riding along. The greenlight record keeps the reverse link.
 function shuttle(greenlightId, { name, clipUsd, stopPct = null, feePerLeg, by = 'owner', channel = null, trainPolicy = null, executionTargetRef = null, keyRef = null } = {}) {
@@ -382,4 +409,6 @@ module.exports = {
   relabel, validName, NAME_MAX,
   getGreenlight, listGreenlights, shuttle, revoke, glDir,
   greenlightFromStage4, configFromStage4, stage4Refusal, notYetStartable, startsOn,
+  // REPAIR (3.283.0): goes with its block above
+  fillConstructHistory,
 };

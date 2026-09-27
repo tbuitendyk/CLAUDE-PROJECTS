@@ -303,6 +303,18 @@ function installLiveRoutes(app, { csrfGuard }) {
           e.code = 'BAD_ROUTING'; throw e;
         }
       }
+      // MEMBERS TRAIN, ONE OF THE THREE, AND ONLY WHEN IT CAN TRAIN (3.283.0):
+      // "as trained by Construct" needs the greenlight's record of Construct's history
+      if (b.trainPolicy != null) {
+        const tp = require('./trainpolicy');
+        const pe = tp.validatePolicy(b.trainPolicy);
+        if (pe.length) { const e = new Error(pe.join('; ')); e.code = 'BAD_SETUP'; throw e; }
+        const cur = reg.getSetup(req.params.id);
+        if (cur && b.trainPolicy.mode === 'construct') {
+          const why = tp.constructRefusal(cur.provenanceRef ? require('./greenlight').getGreenlight(cur.provenanceRef) : null);
+          if (why) { const e = new Error(`Members train: "as trained by Construct" cannot be picked — ${why}`); e.code = 'BAD_SETUP'; throw e; }
+        }
+      }
       const s = reg.updateSetup(req.params.id, b, 'owner');
       res.json({ ok: true, setup: summarize(s) });
     } catch (e) { res.status(errStatus(e)).json({ error: e.message }); }
@@ -426,6 +438,17 @@ function installLiveRoutes(app, { csrfGuard }) {
       pickedBy: g.pick ? g.pick.by || null : null,
     };
   };
+  // WHAT "as trained by Construct" TRAINS ON (3.283.0): the stretches Construct
+  // cut, each to the last hour its last trade could reach -- or why there is
+  // nothing, in words. Null on a greenlight that carries no record of it.
+  const constructOf = (g) => {
+    const k = g.construct;
+    if (!k) return null;
+    if (k.lost) return { lost: k.lost };
+    const w = k.windows || {};
+    const span = (x) => (x && Number.isFinite(x.fromTs) && Number.isFinite(x.toTs) ? { fromUtc: new Date(x.fromTs).toISOString(), toUtc: new Date(x.toTs).toISOString(), periods: x.chunks ?? null } : null);
+    return { train: span(w.train), test: span(w.test), held: span(w.hold) };
+  };
   app.get('/api/live/configs', (req, res) => {
     try {
       const configs = gl.listGreenlights().filter((g) => !g.revoked).map((g) => {
@@ -461,7 +484,7 @@ function installLiveRoutes(app, { csrfGuard }) {
           id: g.id, name: g.name || null, createdUtc: g.createdUtc, campaign: g.campaign || null,
           pair: g.configSnapshot?.combo?.trade || null, target: g.target,
           why: g.why || '', engineVersion: g.engineVersion || null,
-          ident: identOf(g),
+          ident: identOf(g), construct: constructOf(g),
           status: ch.statusLine(parts), channels,
         };
       });

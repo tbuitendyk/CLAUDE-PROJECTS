@@ -43,12 +43,33 @@ function cfgOf(setup) {
 // called through the one definition of a committee's call it shares with
 // stage 3 (lib/live/stagesignal.js). The older engine's vote count against an
 // integer quorum went with that engine (3.97.0).
-async function decideFor(cfg, target, trainChunks, chunks, maps, geo, views, bandPct, freezeMs, feePerLeg) {
-  return require('./stagesignal').stageCommitteeCallFor(cfg, target, trainChunks, chunks, maps, geo, views, freezeMs, feePerLeg);
+// `train` is prepare()'s: the policy's cut and the fee and prices each member's
+// own bar is tuned on (3.283.0); left out, the fee handed in serves both.
+async function decideFor(cfg, target, trainChunks, chunks, maps, geo, views, bandPct, freezeMs, feePerLeg, train = null) {
+  return require('./stagesignal').stageCommitteeCallFor(cfg, target, trainChunks, chunks, maps, geo, views, freezeMs, feePerLeg, (train && train.opts) || {});
+}
+
+// THE HISTORY CONSTRUCT TRAINED THE RULE ON (3.283.0), from the greenlight the
+// setup came from; refused in words when there is none to train on
+function constructHistoryFor(setup) {
+  const gl = setup.provenanceRef ? require('./greenlight').getGreenlight(setup.provenanceRef) : null;
+  const why = require('./trainpolicy').constructRefusal(gl);
+  if (why) throw new Error(`setup ${setup.id}: "as trained by Construct" cannot train — ${why}`);
+  return gl.construct;
+}
+// WHERE A BOOK'S TRAINING STARTS (3.283.0): where the set's did -- every hour
+// loaded, or its start month -- so frozen at and rolling add history only at
+// the new end. The prices read stay every hour loaded: the field reads them.
+function trainStartOf(training) {
+  const t = training || {};
+  return t.allLoaded !== false || !t.startMonth ? null : Date.parse(`${t.startMonth}-01T00:00:00Z`);
 }
 
 // Shared preamble: build the combo, freeze-split, return the working pieces.
-async function prepare(setup) {
+// `history: false` leaves Construct's history unread (trainChunks and train
+// null) for a caller that may not decide anything -- the every-minute producer
+// -- and withHistory() reads it when it does.
+async function prepare(setup, { history = true } = {}) {
   // The freeze comes from the DEPLOYMENT, not the rule. A rule says what to
   // trade; when its members train is a property of putting it to work. See
   // lib/live/trainpolicy.js for why these were ever one field.
@@ -73,12 +94,31 @@ async function prepare(setup) {
   const bandPct = Math.abs(cfg.branch.band);
   for (const c of chunks) c.label = c.diffPct == null ? null : scoreDiff(c.diffPct / 100, bandPct / 100);
   const outcomeMs = (geo.exitOffsetH || 0) * 3600000;
-  const { trainChunks } = splitFrozen(chunks, freeze.throughMs, undefined, outcomeMs);
-  if (!trainChunks.length) throw new Error('live signal: no training chunks at/before the freeze');
   // AND THE VIEWS KNOW HOW MANY THERE ARE, or a member added from a walk set
   // has no slice to read and the committee cannot be rebuilt at all
   const views = bracketLib.comboViews(cfg.combo.size, geo.featureHours / 24, extras.length).views;
-  return { cfg, freeze, geo, maps, chunks, bandPct, trainChunks, views, fee };
+  // AS TRAINED BY CONSTRUCT (3.283.0): the members train on the prices Construct
+  // kept with the set, cut as Construct cut them, weighed at the fee they were
+  // trained under, each member's bar tuned at stage 3's fee on those prices.
+  // The instant trained through is the end of Construct's own training stretch.
+  if (freeze.mode === 'construct') {
+    const base = { cfg, freeze, geo, maps, chunks, bandPct, views, fee, trainChunks: null, train: null };
+    return history ? withHistory(setup, base) : base;
+  }
+  const start = trainStartOf(cfg.training);
+  const closed = splitFrozen(chunks, freeze.throughMs, undefined, outcomeMs).trainChunks.filter((c) => start == null || c.startTs >= start);
+  if (!closed.length) throw new Error('live signal: no training chunks at/before the freeze');
+  return { cfg, freeze, geo, maps, chunks, bandPct, trainChunks: closed, views, fee, train: { fee, opts: { mode: freeze.mode } } };
+}
+// Construct's history read into what prepare() returned, when it was left out
+async function withHistory(setup, prep) {
+  if (prep.trainChunks) return prep;
+  const ch = constructHistoryFor(setup);
+  const { closed, maps: keptMaps, trainEndTs } = await require('./stagesignal').constructHistoryChunks(prep.cfg, ch);
+  return {
+    ...prep, freeze: { ...prep.freeze, throughMs: trainEndTs }, trainChunks: closed,
+    train: { fee: ch.trainFee ?? prep.fee, opts: { mode: 'construct', tauFee: ch.tauFee ?? prep.fee, tauMap: keptMaps.trade } },
+  };
 }
 
 // Window selectors — same math as pilotsignal (kept as pure functions there;
@@ -131,7 +171,7 @@ function missingFeatureCandle(target, geo, maps) {
 // plus setup_id and the setup's execution params — the executor cross-checks
 // them against its own per-box allowlist (defense in depth; plan 3.1).
 async function computeSignal(setup, now, opts = {}) {
-  const { cfg, freeze, geo, maps, chunks, bandPct, trainChunks, views, fee } = await prepare(setup);
+  const { cfg, freeze, geo, maps, chunks, bandPct, trainChunks, views, train } = await prepare(setup);
 
   const target = actionableChunk(chunks, geo, cfg.cell.tHours, now);
   if (!target) {
@@ -152,7 +192,7 @@ async function computeSignal(setup, now, opts = {}) {
   }
 
   const { call, perMember, side, priceAt, inputHash, agreement, field } =
-    await decideFor(cfg, target, trainChunks, chunks, maps, geo, views, bandPct, freeze.throughMs, fee);
+    await decideFor(cfg, target, trainChunks, chunks, maps, geo, views, bandPct, freeze.throughMs, train.fee, train);
 
   let entryOpen = chooseEntryOpen(priceAt, null);
   if (call !== 0 && entryOpen == null && typeof opts.liveOpenFetcher === 'function') {
@@ -206,7 +246,7 @@ async function computeSignal(setup, now, opts = {}) {
 // Archival recompute for the per-setup mirror (QC 110 semantics preserved:
 // price_pending defers ONLY the price check while the entry candle is uncached).
 async function computeSignalForChunk(setup, chunkStartMs) {
-  const { cfg, freeze, geo, maps, chunks, bandPct, trainChunks, views, fee } = await prepare(setup);
+  const { cfg, freeze, geo, maps, chunks, bandPct, trainChunks, views, train } = await prepare(setup);
   const target = chunks.find((c) => c.startTs === chunkStartMs);
   if (!target) {
     return { found: false, chunk_start: new Date(chunkStartMs).toISOString(),
@@ -218,7 +258,7 @@ async function computeSignalForChunk(setup, chunkStartMs) {
       note: `current data missing ${miss.name} feature candle ${new Date(miss.lastFeatureTs).toISOString()} — cannot recompute yet` };
   }
   const { side, perMember, priceAt, inputHash, agreement, field } =
-    await decideFor(cfg, target, trainChunks, chunks, maps, geo, views, bandPct, freeze.throughMs, fee);
+    await decideFor(cfg, target, trainChunks, chunks, maps, geo, views, bandPct, freeze.throughMs, train.fee, train);
   return {
     found: true,
     price_pending: priceAt == null,
@@ -237,7 +277,7 @@ async function computeSignalForChunk(setup, chunkStartMs) {
 
 // Decision preview per setup (same semantics as the F1 preview).
 async function computePreview(setup, now) {
-  const { cfg, freeze, geo, maps, chunks, bandPct, trainChunks, views, fee } = await prepare(setup);
+  const { cfg, freeze, geo, maps, chunks, bandPct, trainChunks, views, train } = await prepare(setup);
   const target = previewableChunk(chunks, geo, now);
   if (!target) {
     return { available: false,
@@ -250,7 +290,7 @@ async function computePreview(setup, now) {
       note: `feature window closed but ${miss.name}'s last candle is not cached yet — preview available shortly`,
       entry_utc: new Date(entryAt).toISOString() };
   }
-  const { side, perMember, agreement, field } = await decideFor(cfg, target, trainChunks, chunks, maps, geo, views, bandPct, freeze.throughMs, fee);
+  const { side, perMember, agreement, field } = await decideFor(cfg, target, trainChunks, chunks, maps, geo, views, bandPct, freeze.throughMs, train.fee, train);
   return {
     available: true,
     setup_id: setup.id,
@@ -268,7 +308,7 @@ async function computePreview(setup, now) {
 }
 
 module.exports = {
-  computeSignal, computeSignalForChunk, computePreview, prepare, missingFeatureCandle,
+  computeSignal, computeSignalForChunk, computePreview, prepare, withHistory, constructHistoryFor, missingFeatureCandle,
   actionableChunk, previewableChunk, chooseEntryOpen,
   decideFor, ENTRY_FRESH_H,
 };

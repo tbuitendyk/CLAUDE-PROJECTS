@@ -2110,6 +2110,13 @@ const listener = app.listen(PORT, '127.0.0.1', () => {
     if (done.moved) console.log(`walk sets: ${done.moved} of ${done.sets} had their promotions moved beside them (${done.named.join(', ')})`);
     if (done.failed.length) console.log(`walk sets: ${done.failed.length} could NOT be moved — ${done.failed.join('; ')}`);
   } catch (err) { console.log(`walk sets could not be checked: ${err.message}`); }
+  // A GREENLIGHT CARRIES THE HISTORY CONSTRUCT TRAINED ITS RULE ON (3.283.0,
+  // RULE NINE; the block it calls is written to be deleted, RULE TEN --
+  // lib/live/greenlight.js fillConstructHistory). Two greenlights on the box
+  // when it was written; each read from its own Stage 4 set, once.
+  require('./lib/live/greenlight').fillConstructHistory()
+    .then((done) => { if (done.length) console.log(`greenlights given the history Construct trained their rule on: ${done.map((d) => `${d.name}: ${d.construct}`).join('; ')}`); })
+    .catch((err) => console.log(`greenlights could not be given Construct's history: ${err.message}`));
   // A SET'S PRICE RECORD BECOMES THE HOURS IT READ (3.271.0, RULE NINE; the
   // block it calls is written to be deleted, RULE TEN -- lib/stages.js
   // keepHoursOfOlderSets). Here in the listen callback like the walk sets'
