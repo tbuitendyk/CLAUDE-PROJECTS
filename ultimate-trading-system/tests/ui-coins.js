@@ -105,12 +105,7 @@ function requirePlaywright() {
     downloaded: 18, records: RECORDS, unreadable, recordVersion: 8,
     passers: { bar: passBar, default: 2, trials: 50, rows: passRows() },
   }) }); });
-  let cleanPresses = 0;
-  let unreadable = UNREADABLE;
-  await page.route('**/api/coins/cleanup', (route) => {
-    cleanPresses++; unreadable = [];
-    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ removed: ['FFFUSDT.json'], failed: [] }) });
-  });
+  const unreadable = UNREADABLE;
   await page.route('**/api/coins/passers', (route) => {
     const b = JSON.parse(route.request().postData() || '{}'); passPosts.push(b);
     if ('bar' in b) passBar = Number(b.bar);
@@ -157,8 +152,8 @@ function requirePlaywright() {
   // are checked in tests/test-coinscan.js, which reads them out of the source.
   const SCOPE = '#view > .panel input, #view > .panel select, #view > .panel button, #view > .panel textarea';
   const controls = await page.evaluate((sel) => [...document.querySelectorAll(sel)].map((e) => e.id).filter(Boolean), SCOPE);
-  expect(controls.sort().join(',') === ['cAuto', 'cBacks', 'cBand', 'cClean', 'cCoins', 'cPassBar', 'cRun'].join(','),
-    `the reading's three boxes, the button, the band, its tick and the bar, plus the cleanup while there is something to remove, and nothing else: ${controls.join(', ')}`);
+  expect(controls.sort().join(',') === ['cAuto', 'cBacks', 'cBand', 'cCoins', 'cPassBar', 'cRun'].join(','),
+    `the reading's three boxes, the button, the band, its tick and the bar, and nothing else -- the files it cannot draw are reclaimed under The sweep processor on Compute (3.272.0): ${controls.join(', ')}`);
   const unnamed = await page.evaluate((sel) => [...document.querySelectorAll(sel)].filter((e) => !e.id).map((e) => e.className), SCOPE);
   expect(unnamed.length === 2 && unnamed.every((c) => c === 'cpass'), `the only controls without a name are the passers' row ticks: ${JSON.stringify(unnamed)}`);
   // THE PASSERS' TABLE sits after the controls and before the first coin, with its numbers
@@ -297,14 +292,9 @@ function requirePlaywright() {
   expect(/DDDUSDT.*more month\(s\) cached since/.test(body), 'the coin whose history has grown since reads as behind');
   expect(!/AAAUSDT[^]*?more month\(s\) cached since[^]*?DDDUSDT/.test(body), 'and the one that has not does not');
   expect(/FFFUSDT/.test(body) && /record shape 6/.test(body), 'a file this release cannot draw is named, not dropped');
-  // THE CLEANUP THE OWNER CAN REACH: offered beside the note, removes what it
-  // names, and goes away with the note once there is nothing left to remove.
-  expect(/removes exactly the 1 file\(s\) named above and nothing else/.test(body), 'the control says what it removes');
-  await page.locator('#cClean').click();
-  await page.waitForTimeout(500);
-  expect(cleanPresses === 1, 'the press reached the service');
-  expect(await page.locator('#cClean').count() === 0, 'with nothing left to remove the control is gone');
-  expect(!/cannot draw/.test(await text()), 'and so is the note');
+  // THE FILES IT CANNOT DRAW ARE RECLAIMED WITH EVERYTHING ELSE (3.272.0), under
+  // The sweep processor on Compute: the note names them, and no button of its own
+  expect(await page.locator('#cClean').count() === 0, 'the Coins screen carries no clean-up button of its own');
 
   // THE HOVER NAMES THE DECISION UNDER THE POINTER.
   const cv = page.locator('canvas.cbar').first();

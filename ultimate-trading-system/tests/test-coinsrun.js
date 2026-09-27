@@ -321,7 +321,7 @@ module.exports = {
       });
       const before = runner.coinsRecords();
       assert.deepStrictEqual(before.unreadable.map((u) => u.file).filter((f) => /ZZZCLN/.test(f)).sort(), [path.basename(old1), path.basename(old2), path.basename(junk)].sort());
-      assert.ok(before.unreadable.every((u) => /or remove it below/.test(u.why)), 'every named file says the control removes it');
+      assert.ok(before.unreadable.every((u) => /or reclaim it under The sweep processor on the Compute tab of Setup/.test(u.why)), 'every named file says where it is reclaimed');
       const ans = runner.coinsCleanup();
       assert.deepStrictEqual(ans.failed, []);
       for (const f of [old1, old2, junk]) assert.ok(!fs.existsSync(f), `${path.basename(f)} was named as undrawable and is still there`);
@@ -384,7 +384,7 @@ module.exports = {
       const served = runner.coinsRecords();
       assert.ok(!served.records.some((r) => r.coin === 'ZZZOLDUSDT'), 'an old-shape record is not drawn as though current');
       const named = served.unreadable.find((u) => u.coin === 'ZZZOLDUSDT');
-      assert.ok(named && /record shape 6/.test(named.why) && new RegExp(`shape ${runner.RECORD_V}`).test(named.why) && /or remove it below/.test(named.why), `named with both shapes and the way out: ${named && named.why}`);
+      assert.ok(named && /record shape 6/.test(named.why) && new RegExp(`shape ${runner.RECORD_V}`).test(named.why) && /or reclaim it under The sweep processor on the Compute tab of Setup/.test(named.why), `named with both shapes and the way out: ${named && named.why}`);
       assert.strictEqual(named.release, '3.124.0');
       const bad = served.unreadable.find((u) => u.coin === 'ZZZJUNKUSDT');
       assert.ok(bad && /could not be read back/.test(bad.why), 'an unparseable file is named too');

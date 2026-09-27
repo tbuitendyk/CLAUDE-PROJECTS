@@ -181,6 +181,21 @@ app.post('/api/compute-config', (req, res) => {
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+// ---- THE SWEEP PROCESSOR: what Construct keeps on this machine (3.272.0) ------
+// Owner order 2026-09-26: "a real time report of Construct storage ... and a
+// maintenance option that reports space that can be reclaimed and that actually
+// does the reclaim". The Compute tab reads the report every time it refreshes;
+// the reclaim takes a fresh survey at the press and removes only the kinds the
+// owner ticked (lib/storage.js).
+app.get('/api/storage', (req, res) => {
+  try { return res.json(require('./lib/storage').report()); }
+  catch (err) { return res.status(500).json({ error: err.message }); }
+});
+app.post('/api/storage/reclaim', (req, res) => {
+  try { return res.json(require('./lib/storage').reclaim((req.body || {}).keys)); }
+  catch (err) { return res.status(409).json({ error: err.message }); }
+});
+
 // ---- Account (owner order, 2026-09-18) --------------------------------------
 // WHAT THIS ACCOUNT PAYS TO TRADE. The fee used to be a constant in
 // lib/paper.js that nothing on any screen could move, while the Coins screens
@@ -343,12 +358,6 @@ app.get('/api/coins/records', (req, res) => {
 // THE SIT-OUT BAND'S ONE DOOR. The number has one home (data/settings.json);
 // the screen sets it here and reads it back inside /api/coins/records, and
 // Sweep's dual member voting mode reads the same key when it is built.
-// THE CLEANUP DOOR: removes exactly the files the screen names as ones this
-// release cannot draw, found again on the box at the moment of the press.
-app.post('/api/coins/cleanup', (req, res) => {
-  try { return res.json(coinsrun.coinsCleanup()); }
-  catch (err) { return res.status(409).json({ error: err.message }); }
-});
 // THE LOOK-BACKS' ONE DOOR. They are measured from candles at read time, so
 // changing them says so rather than pretending a walk will pick them up.
 app.post('/api/coins/lookbacks', (req, res) => {

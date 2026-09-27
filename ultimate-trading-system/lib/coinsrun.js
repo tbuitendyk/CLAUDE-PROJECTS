@@ -622,17 +622,17 @@ function scanRecords() {
     const coin = f.slice(0, f.length - '.json'.length).split('__')[0];
     let rec = null;
     try { rec = JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8')); } catch (err) {
-      unreadable.push({ coin, file: f, why: `this file could not be read back: ${String(err.message || err)} — read the coin again, or remove it below` });
+      unreadable.push({ coin, file: f, why: `this file could not be read back: ${String(err.message || err)} — read the coin again, or reclaim it under The sweep processor on the Compute tab of Setup` });
       continue;
     }
     if (!rec || typeof rec !== 'object') {
-      unreadable.push({ coin, file: f, why: 'this file holds nothing a reading could be taken from — read the coin again, or remove it below' });
+      unreadable.push({ coin, file: f, why: 'this file holds nothing a reading could be taken from — read the coin again, or reclaim it under The sweep processor on the Compute tab of Setup' });
       continue;
     }
     if (rec.v !== RECORD_V) {
       unreadable.push({
         coin, file: f,
-        why: `this reading was written under record shape ${rec.v == null ? '(none)' : rec.v} and this release reads shape ${RECORD_V} — read the coin again, or remove it below`,
+        why: `this reading was written under record shape ${rec.v == null ? '(none)' : rec.v} and this release reads shape ${RECORD_V} — read the coin again, or reclaim it under The sweep processor on the Compute tab of Setup`,
         release: rec.provenance ? rec.provenance.release : null,
         capturedAt: rec.provenance ? rec.provenance.capturedAt : null,
       });
@@ -647,7 +647,9 @@ function scanRecords() {
 // cleanup mechanism that the user can reach"). It removes exactly the files
 // the screen names as ones this release cannot draw -- found again here, at
 // the moment of the press, never taken from the page -- and nothing else. A
-// record this release CAN draw is never touched by it.
+// record this release CAN draw is never touched by it. Since 3.272.0 it is
+// reached from The sweep processor on Compute, with every other kind of space
+// that can be reclaimed (lib/storage.js), and no longer from a button of its own.
 function coinsCleanup() {
   if (run && !run.finishedAt && !run.error) throw new Error('a Coins reading is running — wait for it to finish before removing files');
   const { unreadable } = scanRecords();

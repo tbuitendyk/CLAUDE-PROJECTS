@@ -207,6 +207,9 @@ let cErrEng = null;
 let cEngEdit = null;         // the engine record being changed in the form, or null when the form is closed
 let cEngTyped = {};          // what is typed in the form, kept across the thirty-second redraw
 let cSvcMsg = {};            // what the last press of each button on this tab answered, beside it, kept across the redraw
+let cStore = null;           // what Construct keeps on this machine, from the trading service (3.272.0)
+let cErrStore = null;
+let cReclaimTicks = {};      // the reclaim boxes as ticked, kept across the thirty-second redraw
 let cEs = null;              // the engine setups: the template and one checklist per engine (owner, 2026-09-25)
 let cErrEs = null;
 let cEsTyped = '';           // the descriptive name typed for another engine, kept across the redraw
@@ -567,7 +570,75 @@ async function loadCompute() {
   const b = getJson('api/compute-config').then((d) => { cCfg = d; cErrCfg = null; }, (e) => { cErrCfg = e.message; });
   const c = getJson('api/live/engines').then((d) => { cEng = d; cErrEng = null; }, (e) => { cErrEng = e.message; });
   const d = getJson('api/live/engine-setups').then((x) => { cEs = x; cErrEs = null; }, (e) => { cErrEs = e.message; });
-  await Promise.all([a, b, c, d]);
+  const f = getJson('api/storage').then((x) => { cStore = x; cErrStore = null; }, (e) => { cErrStore = e.message; });
+  await Promise.all([a, b, c, d, f]);
+}
+
+// ---- THE SWEEP PROCESSOR (3.272.0, owner order 2026-09-26) ----------------------
+// "a section on the top of the Compute tab called 'The sweep processor' which has
+// a real time report of Construct storage allocated by the account and a
+// maintenance option that reports space that can be reclaimed and that actually
+// does the reclaim. that's in place of all the types of maintenance deletes that
+// are suggested now". Read from the trading service with the rest of this tab,
+// every thirty seconds. Every byte of Construct's data folder is in exactly one
+// row of the first table; the second lists what can go, each kind with a box. The
+// kinds the software can prove nothing reads start ticked; the two kept on
+// purpose never do. Each box stays as it was left across the redraws.
+const space = (b) => b == null ? '—' : b >= 1073741824 ? (b / 1073741824).toFixed(2) + ' GB'
+  : b >= 10485760 ? Math.round(b / 1048576) + ' MB' : b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB'
+    : b >= 1024 ? Math.round(b / 1024) + ' KB' : b + ' bytes';
+const reclaimTicked = (k) => (k.key in cReclaimTicks ? cReclaimTicks[k.key] : !!k.ticked);
+function sweepProcessorHtml() {
+  const head = '<div class="panel"><h3 style="margin-top:0">The sweep processor</h3>';
+  if (!cStore) {
+    return head + '<p class="note neg">the trading service did not answer, so what Construct keeps on this machine cannot be shown'
+      + (cErrStore ? ' — ' + esc(cErrStore) : '') + '</p></div>';
+  }
+  const s = cStore;
+  const cell = (x) => '<td>' + x + '</td>';
+  const stored = s.rows.map((r) => '<tr><td style="text-align:left">' + esc(r.label) + '</td>'
+    + cell(r.count == null ? '' : Number(r.count).toLocaleString()) + cell(space(r.bytes)) + '</tr>').join('');
+  const kinds = s.reclaim.map((k) => '<tr><td style="text-align:left"><label class="c"><input type="checkbox" data-reclaim="' + esc(k.key) + '"'
+    + (k.count && reclaimTicked(k) ? ' checked' : '') + (k.count ? '' : ' disabled') + '> ' + esc(k.label) + '</label></td>'
+    + cell(k.count ? Number(k.count).toLocaleString() : 'none') + cell(k.count ? space(k.bytes) : '') + '</tr>').join('');
+  const ticked = s.reclaim.filter((k) => k.count && reclaimTicked(k));
+  // the two tables share their columns, so each "how many" and "space" stands
+  // under the one above it
+  const cols = '<colgroup><col><col style="width:14%"><col style="width:24%"></colgroup>';
+  return head
+    + '<p class="note">What Construct keeps on this machine, measured at ' + esc(String(s.at || '').slice(11, 19)) + ' UTC. Every byte of its data folder is in one row.</p>'
+    + '<table style="table-layout:fixed">' + cols + '<thead><tr><th style="text-align:left">Construct storage</th><th>how many</th><th>space</th></tr></thead><tbody>' + stored
+    + '<tr><td style="text-align:left"><b>all of it</b></td><td></td><td><b>' + space(s.total) + '</b></td></tr>'
+    + (s.free ? '<tr><td style="text-align:left">free on this machine&#39;s disk</td><td></td><td>' + space(s.free.bytes) + ' of ' + space(s.free.of) + '</td></tr>' : '')
+    + '</tbody></table>'
+    + '<table style="table-layout:fixed; margin-top:.8rem">' + cols + '<thead><tr><th style="text-align:left">Space that can be reclaimed</th><th>how many</th><th>space</th></tr></thead><tbody>' + kinds + '</tbody></table>'
+    + '<p class="note">Found again at the moment of the press, never taken from this page. The kinds that start ticked are ones the software can prove nothing reads; '
+    + 'the copies kept before a repair and the backups are kept on purpose, and go only if you tick them. Nothing is reclaimed while anything heavy is running.</p>'
+    + '<div class="row"><button id="cReclaim" class="danger"' + (ticked.length ? '' : ' disabled') + '>Reclaim the ticked space</button>'
+    + '<span class="note">' + (cSvcMsg.reclaim || (ticked.length ? space(ticked.reduce((n, k) => n + k.bytes, 0)) + ' ticked' : 'nothing ticked')) + '</span></div>'
+    + '</div>';
+}
+function wireSweepProcessor() {
+  document.querySelectorAll('[data-reclaim]').forEach((b) => {
+    b.onchange = () => { cReclaimTicks[b.dataset.reclaim] = b.checked; cSvcMsg.reclaim = ''; drawCompute(); };
+  });
+  const go = $('#cReclaim');
+  if (!go) return;
+  go.onclick = async () => {
+    const ticked = (cStore ? cStore.reclaim : []).filter((k) => k.count && reclaimTicked(k));
+    if (!ticked.length) return;
+    const lines = ticked.map((k) => '  ' + k.label + ': ' + Number(k.count).toLocaleString() + ', ' + space(k.bytes)).join('\n');
+    if (!confirm('Reclaim this space? It cannot be undone.\n\n' + lines + '\n\nWhat is removed is found again at the press, so the counts can differ slightly.')) return;
+    go.disabled = true;
+    cSvcMsg.reclaim = 'reclaiming…';
+    try {
+      const out = await postJson('api/storage/reclaim', { keys: ticked.map((k) => k.key) });
+      cSvcMsg.reclaim = '<span class="pos">reclaimed ' + space(out.reclaimed) + '</span>'
+        + (out.failed && out.failed.length ? ' <span class="neg">— ' + out.failed.length + ' could not be: '
+          + esc(out.failed.slice(0, 3).map((x) => x.what + ' (' + x.why + ')').join('; ')) + '</span>' : '');
+    } catch (e) { cSvcMsg.reclaim = '<span class="neg">nothing was reclaimed — ' + esc(e.message) + '</span>'; }
+    refreshCompute(true);
+  };
 }
 
 // WORKERS x SHARE, AND THE CEILING IT IS HELD UNDER (3.270.0, owner order
@@ -970,6 +1041,8 @@ function drawCompute() {
     + '<button id="cNow" title="asks again right now instead of waiting for the thirty seconds">Read it again</button>'
     + '</div>'
 
+    + sweepProcessorHtml()
+
     + '<div class="panel"><h3 style="margin-top:0">Where each part runs</h3>'
     + roles
     // ONE ROW SHAPE FOR ALL THREE (owner, 2026-09-25): the same height, the
@@ -1025,6 +1098,7 @@ function drawCompute() {
 
   // wiring
   wireEngine();
+  wireSweepProcessor();
   const now = $('#cNow');
   if (now) now.onclick = () => refreshCompute(true);
   document.querySelectorAll('[data-role]').forEach((sel) => {

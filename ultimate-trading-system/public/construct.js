@@ -13981,8 +13981,7 @@ async function drawCoins() {
     </div>
     ${st && st.error ? `<p class="note warn">the last reading stopped: ${esc(st.error)}</p>` : ''}
     ${(st && st.couldNotRead && st.couldNotRead.length) ? `<p class="note warn">could not be read: ${st.couldNotRead.map((c) => `<b>${esc(c.coin)}</b> — ${esc(c.why)}`).join('; ')}</p>` : ''}
-    ${unreadable.length ? `<p class="note warn">${unreadable.length} file(s) on disk this release cannot draw: ${unreadable.map((u) => `<b>${esc(u.coin)}</b> — ${esc(u.why)}`).join('; ')}</p>
-    <div class="row"><button id="cClean" class="danger"${off}>Remove these files</button><span id="cCleanOut" class="muted">removes exactly the ${unreadable.length} file(s) named above and nothing else</span></div>` : ''}
+    ${unreadable.length ? `<p class="note warn">${unreadable.length} file(s) on disk this release cannot draw: ${unreadable.map((u) => `<b>${esc(u.coin)}</b> — ${esc(u.why)}`).join('; ')}</p>` : ''}
   </div>
   <div class="panel">
     <h3 style="margin-top:0">How each coin reads</h3>
@@ -14175,24 +14174,6 @@ async function drawCoins() {
     }
     draw();
   };
-  // THE CLEANUP THE OWNER CAN REACH. It removes exactly what the note above
-  // names, found again on the box at the moment of the press, and redraws.
-  if ($('#cClean')) {
-    $('#cClean').onclick = async () => {
-      $('#cClean').disabled = true;
-      let ans = null;
-      try { ans = await post('api/coins/cleanup', {}); } catch (err) {
-        $('#cCleanOut').innerHTML = '<span class="warn">' + esc(err.message) + '</span>';
-        $('#cClean').disabled = false;
-        return;
-      }
-      if (ans && ans.failed && ans.failed.length) {
-        $('#cCleanOut').innerHTML = '<span class="warn">' + esc(`${ans.removed.length} removed; ${ans.failed.length} could not be: ${ans.failed.map((f) => `${f.file} — ${f.why}`).join('; ')}`) + '</span>';
-        return;
-      }
-      draw();
-    };
-  }
   cWalkBind();
   cWalkTick();
   cFieldBind();
