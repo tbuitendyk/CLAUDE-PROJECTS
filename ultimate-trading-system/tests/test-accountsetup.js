@@ -275,14 +275,14 @@ module.exports = {
     const locks = new Function('esc', 'aTr', `${lockSrc}; return { asLocksHtml, LOCK_CMD };`)(esc, aTr);
     const lockHtml = locks.asLocksHtml();
     assert.ok(/<span class="k">Platform One<\/span><span class="note">the fingerprint of its lock, worked out in this browser:<\/span> <b>0a1b2c3d4e5f60718293<\/b>/.test(lockHtml), 'each platform\'s fingerprint is on the step');
-    assert.ok(lockHtml.includes(esc("sudo sed -n 's/.*\"lock\":\"\\([^\"]*\\)\".*/\\1/p' /var/lib/uts-engine-box-1/link-status.json")), 'a Linux machine is given its command');
+    assert.ok(lockHtml.includes(esc("sudo sed -n 's/.*\"lock\":\"\\([^\"]*\\)\".*/\\1\\n/p' /var/lib/uts-engine-box-1/link-status.json")), 'a Linux machine is given its command, the fingerprint on a line of its own');
     assert.ok(lockHtml.includes(esc('(Get-Content "$env:ProgramData\\uts-engine-box-2\\link-status.json" | ConvertFrom-Json).lock')) && /in PowerShell, as administrator/.test(lockHtml), 'a Windows machine its own');
     assert.ok(/this system does not know that machine&#39;s operating system yet/.test(lockHtml) && /the platform did not answer/.test(lockHtml), 'and a machine whose system is not known says so, as does one that did not answer');
     // THE COMMANDS ARE HELD TO THE INSTALL SCRIPTS: where each keeps the file, and how Linux reads it
     const inst = (f) => fs.readFileSync(path.join(__dirname, '..', 'engine', 'install', f), 'utf8');
     const lin = inst('linux.sh');
     assert.ok(lin.includes('NAME="uts-engine-$SHORT"') && lin.includes('DATA="/var/lib/$NAME"') && lin.includes(`sed -n 's/.*"lock":"\\([^"]*\\)".*/\\1/p' "$DATA/link-status.json"`), 'the Linux install keeps its lock somewhere else now: step 3\'s command must follow');
-    assert.ok(inst('mac.sh').includes('DATA="/usr/local/var/$NAME"') && locks.LOCK_CMD.mac('x').endsWith('/usr/local/var/uts-engine-x/link-status.json'), 'the Mac install moved its record');
+    assert.ok(inst('mac.sh').includes('DATA="/usr/local/var/$NAME"') && locks.LOCK_CMD.mac('x').endsWith('/usr/local/var/uts-engine-x/link-status.json; echo'), 'the Mac install moved its record, or its fingerprint runs into the prompt');
     assert.ok(inst('windows.ps1').includes('$name = "uts-engine-$Short"') && inst('windows.ps1').includes('$data = Join-Path $env:ProgramData $name'), 'the Windows install moved its record');
     assert.ok(/fs\.writeFileSync\(t, JSON\.stringify\(\{ \.\.\.this\.state, lock: this\.lock \? this\.lock\.info\(\)\.fingerprint : null \}\)/.test(fs.readFileSync(path.join(__dirname, '..', 'engine', 'link.js'), 'utf8')), 'the platform no longer writes its lock\'s fingerprint where the command reads it');
     assert.ok(/system: \(\{ linux: 'linux', darwin: 'mac', win32: 'windows' \}\)\[\(t\.machine \|\| \{\}\)\.platform\] \|\| null/.test(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8')), 'the Account tab is told each platform\'s system');

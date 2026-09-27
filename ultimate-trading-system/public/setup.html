@@ -422,8 +422,11 @@ function asNewHtml() {
 // machine's own copy on that machine -- from the file the platform keeps it in, where each
 // install command puts it (engine/install/*): a copy printed once at install is not a check.
 const LOCK_CMD = {
-  linux: (id) => "sudo sed -n 's/.*\"lock\":\"\\([^\"]*\\)\".*/\\1/p' /var/lib/uts-engine-" + id + '/link-status.json',
-  mac: (id) => "sudo sed -n 's/.*\"lock\":\"\\([^\"]*\\)\".*/\\1/p' /usr/local/var/uts-engine-" + id + '/link-status.json',
+  // THE FINGERPRINT ON A LINE OF ITS OWN (3.278.1, the owner's own command, 2026-09-27): the platform
+  // writes its record with no line ending, so the fingerprint ran into the prompt. Linux's sed ends
+  // the line itself (\n); the Mac's sed does not read \n, so an echo follows it there.
+  linux: (id) => "sudo sed -n 's/.*\"lock\":\"\\([^\"]*\\)\".*/\\1\\n/p' /var/lib/uts-engine-" + id + '/link-status.json',
+  mac: (id) => "sudo sed -n 's/.*\"lock\":\"\\([^\"]*\\)\".*/\\1/p' /usr/local/var/uts-engine-" + id + '/link-status.json; echo',
   windows: (id) => '(Get-Content "$env:ProgramData\\uts-engine-' + id + '\\link-status.json" | ConvertFrom-Json).lock',
 };
 function asLocksHtml() {
