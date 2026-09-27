@@ -25,7 +25,7 @@ const { BinanceMarket } = require('./venues/binance-market');
 const { SimulatedExchange } = require('./venues/simulated');
 const { KeyStore } = require('./keystore');
 const { Lock } = require('./lock');
-const { BinanceAccount, keyVerdict } = require('./venues/binance-account');
+const { BinanceAccount, keyCheck } = require('./venues/binance-account');
 
 const VERSION = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'VERSION.json'), 'utf8')); } catch (_) { return { release: 'unknown' }; } })();
 const DATA = process.env.ENGINE_DATA || '/var/lib/uts-engine';
@@ -92,7 +92,7 @@ const checkKey = keystore ? async (account, pair, { anyAddress = false } = {}) =
   const acc = new BinanceAccount({ signer: keystore.signerOf(account, pair, 'checking what the key is allowed to do') });
   await acc.syncClock();
   const r = await acc.restrictions();
-  return r.ok ? { checked: true, ...keyVerdict(r, { anyAddress }) } : { checked: false, why: r.why };
+  return keyCheck(r, { anyAddress });
 } : null;
 const deps = { runner, journal, health, keystore, checkKey, lock };
 // THE ENGINE CALLS OUT (engine/link.js): nothing listens on this machine at all

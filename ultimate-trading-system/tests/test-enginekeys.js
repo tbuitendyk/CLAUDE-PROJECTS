@@ -43,13 +43,13 @@ module.exports = {
       const ks = store(dir, lines);
       assert.strictEqual(fs.statSync(path.join(dir, 'keystore.key')).mode & 0o777, 0o600, 'the store\'s own key is the engine user\'s alone');
       const got = ks.put('ltc-1', { apiKey: API_KEY, secret: SECRET });
-      assert.deepStrictEqual(got, { account: 'ltc-1', present: true, addedAt: '2026-09-25T09:00:00.000Z', anyAddress: false, tied: null });
+      assert.deepStrictEqual(got, { account: 'ltc-1', present: true, addedAt: '2026-09-25T09:00:00.000Z', anyAddress: false, tied: null, checkedAt: null, refused: null });
       const onDisk = fs.readFileSync(path.join(dir, 'keys', 'ltc-1.key'), 'utf8');
       assert.ok(!onDisk.includes(API_KEY) && !onDisk.includes(SECRET), 'neither half of the key is on disk as it was typed');
       assert.strictEqual(fs.statSync(path.join(dir, 'keys', 'ltc-1.key')).mode & 0o777, 0o600);
-      assert.deepStrictEqual(ks.list(), [{ account: 'ltc-1', present: true, addedAt: '2026-09-25T09:00:00.000Z', anyAddress: false, tied: null }]);
+      assert.deepStrictEqual(ks.list(), [{ account: 'ltc-1', present: true, addedAt: '2026-09-25T09:00:00.000Z', anyAddress: false, tied: null, checkedAt: null, refused: null }]);
       // the owner's choice about addresses, and what the exchange said, kept beside the keys
-      assert.deepStrictEqual(ks.put('ltc-open', { apiKey: API_KEY, secret: SECRET }, { anyAddress: true, tied: false }), { account: 'ltc-open', present: true, addedAt: '2026-09-25T09:00:00.000Z', anyAddress: true, tied: false });
+      assert.deepStrictEqual(ks.put('ltc-open', { apiKey: API_KEY, secret: SECRET }, { anyAddress: true, tied: false }), { account: 'ltc-open', present: true, addedAt: '2026-09-25T09:00:00.000Z', anyAddress: true, tied: false, checkedAt: '2026-09-25T09:00:00.000Z', refused: null });
       ks.remove('ltc-open');
       assert.deepStrictEqual(ks.describe('other'), { account: 'other', present: false });
       // the secret signs here and never leaves: the signature is the one Binance expects
@@ -188,6 +188,111 @@ module.exports = {
       assert.ok(/"what":"entered"/.test(rec) && /"what":"removed"/.test(rec), 'every entry and removal is written down');
       assert.ok(!rec.split('\n').filter(Boolean).map((l) => JSON.parse(l)).some((l) => l.what === 'entered' && l.account === 'ltc-2'), 'a refused key is never entered: it was never kept');
       assert.ok(!rec.includes(SECRET) && !rec.includes(API_KEY), 'the engine\'s record never holds the key');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  },
+
+  // A KEY THE EXCHANGE REFUSES IS A REFUSAL (3.279.0, owner 2026-09-27): -2014, -2015 and -1022
+  // are the exchange's verdict on the key itself; no answer, a limit or a clock out of step leave
+  // it unchecked, never refused
+  async aKeyTheExchangeRefusesIsARefusalAndNoAnswerIsNot() {
+    const { keyCheck, KEY_REFUSED } = require('../engine/venues/binance-account');
+    const good = { ok: true, ipRestrict: true, enableWithdrawals: false, enableInternalTransfer: false, permitsUniversalTransfer: false, enableMargin: true, enableSpotAndMarginTrading: true };
+    assert.deepStrictEqual(keyCheck(good), { checked: true, ok: true, refusals: [], tied: true });
+    assert.deepStrictEqual(keyCheck({ ...good, ipRestrict: false }, { anyAddress: true }), { checked: true, ok: true, refusals: [], tied: false }, 'the owner\'s tick reaches the verdict');
+    assert.deepStrictEqual(keyCheck({ ...good, enableWithdrawals: true }).refusals, ['it allows withdrawals'], 'what the key may do is still the verdict');
+    assert.deepStrictEqual([...KEY_REFUSED].sort((a, b) => a - b), [-2015, -2014, -1022]);
+    for (const code of [-2015, -2014, -1022]) {
+      assert.deepStrictEqual(keyCheck({ ok: false, why: `Binance answered 401 (${code}): words`, status: 401, code }),
+        { checked: true, ok: false, refused: true, refusals: [`the exchange refused the key: Binance answered 401 (${code}): words`], tied: null }, `${code} is a refusal`);
+    }
+    for (const r of [{ ok: false, why: 'Binance answered 400 (-1021): Timestamp for this request is outside of the recvWindow.', status: 400, code: -1021 },
+      { ok: false, why: 'Binance answered 429 (-1003): Too many requests', status: 429, code: -1003 },
+      { ok: false, why: 'Binance did not answer: no answer in 10 seconds', status: 0, code: null }]) {
+      assert.deepStrictEqual(keyCheck(r), { checked: false, why: r.why }, `${r.why}: unchecked, never refused`);
+    }
+    assert.deepStrictEqual(keyCheck(null), { checked: false, why: 'the exchange could not be asked' });
+    // the exchange's own code travels with its words, from the answer itself
+    const dir = tmp();
+    try {
+      const ks = store(dir);
+      ks.put('ltc-1', { apiKey: API_KEY, secret: SECRET });
+      const wrong = new BinanceAccount({ signer: { header: () => 'another', sign: () => 'bad' }, request: fakeBinance({}), now: () => Date.UTC(2026, 8, 25, 9) });
+      const r = await wrong.restrictions();
+      assert.deepStrictEqual([r.ok, r.status, r.code], [false, 401, -2015]);
+      assert.strictEqual(keyCheck(r).refused, true, 'a key Binance does not take is a refusal, in its words');
+      const silent = new BinanceAccount({ signer: ks.signer('ltc-1', 'x'), request: async () => ({ status: 0, json: null, text: 'getaddrinfo ENOTFOUND api.binance.com', ms: 1 }), now: () => 0 });
+      const q = await silent.restrictions();
+      assert.deepStrictEqual([q.ok, q.status, q.code, keyCheck(q).checked, keyCheck(q).why], [false, 0, null, false, 'Binance did not answer: getaddrinfo ENOTFOUND api.binance.com'], 'an exchange that could not be reached leaves the key unchecked');
+      // the platform itself asks through this one classification
+      const main = fs.readFileSync(path.join(__dirname, '..', 'engine', 'main.js'), 'utf8');
+      assert.ok(/const r = await acc\.restrictions\(\);\n  return keyCheck\(r, \{ anyAddress \}\);/.test(main), 'the platform\'s check of a key goes through keyCheck');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  },
+
+  // CHECK THE KEYS AGAIN (3.279.0, owner 2026-09-27: "make a button to recheck the stored keys"):
+  // the kept pair asked of the exchange once more, with the tick it was kept with; the answer --
+  // tied, open, or refused in the exchange's words -- written beside the keys, which do not change;
+  // an exchange that could not be asked changes nothing; no answer carries the key
+  async theKeptKeysAreAskedAgainAndTheAnswerIsKeptBesideThem() {
+    const { makeHandler } = require('../engine/api');
+    const { Journal } = require('../engine/journal');
+    const { Lock } = require('../engine/lock');
+    const { lockKeys } = require('../public/keylock');
+    const { keyCheck } = require('../engine/venues/binance-account');
+    const dir = tmp();
+    const journal = new Journal(path.join(dir, 'journal.jsonl'));
+    let clock = Date.UTC(2026, 8, 27, 4);
+    const ks = new KeyStore({ dir: path.join(dir, 'keys'), masterFile: path.join(dir, 'keystore.key'), record: (l) => journal.append(l), now: () => clock }).open();
+    const lock = new Lock(path.join(dir, 'lock.json')).open();
+    let verdict = null;
+    const asked = [];
+    const deps = { runner: { view: () => [] }, journal, health: () => ({ ok: true }), keystore: ks, lock };
+    const handle = makeHandler({ ...deps, checkKey: async (account, pair, opts) => { asked.push([account, pair.apiKey === API_KEY && pair.secret === SECRET, opts.anyAddress]); return verdict; } });
+    const call = async (method, p, body = {}) => JSON.parse(JSON.stringify(await handle(method, p, body)));
+    const pub = lock.info().publicKey;
+    const refusal = keyCheck({ ok: false, why: 'Binance answered 401 (-2015): Invalid API-key, IP, or permissions for action.', status: 401, code: -2015 });
+    try {
+      // kept while the exchange could not be asked
+      verdict = { checked: false, why: 'Binance did not answer: timeout' };
+      await call('POST', '/keys/ltc-1', { locked: await lockKeys(pub, 'ltc-1', API_KEY, SECRET), anyAddress: true });
+      const before = fs.readFileSync(path.join(dir, 'keys', 'ltc-1.key'), 'utf8');
+      assert.deepStrictEqual([ks.describe('ltc-1').tied, ks.describe('ltc-1').checkedAt, ks.describe('ltc-1').refused], [null, null, null]);
+      // asked again, still no answer: nothing changes, and it says why
+      clock += 60000;
+      let r = await call('POST', '/keys/ltc-1/check');
+      assert.deepStrictEqual([r.status, r.json.checked, r.json.ok, r.json.why, r.json.present], [200, false, null, 'Binance did not answer: timeout', true]);
+      assert.strictEqual(fs.readFileSync(path.join(dir, 'keys', 'ltc-1.key'), 'utf8'), before, 'an exchange that could not be asked changes nothing');
+      assert.deepStrictEqual(asked[asked.length - 1], ['ltc-1', true, true], 'asked with the kept pair and the tick it was kept with');
+      // refused: the exchange's words kept beside the keys, which stay as they were
+      verdict = refusal;
+      clock += 60000;
+      r = await call('POST', '/keys/ltc-1/check');
+      assert.deepStrictEqual([r.status, r.json.checked, r.json.ok, r.json.present, r.json.tied, r.json.checkedAt], [200, true, false, true, null, '2026-09-27T04:02:00.000Z']);
+      assert.strictEqual(r.json.refused, 'the exchange refused the key: Binance answered 401 (-2015): Invalid API-key, IP, or permissions for action.');
+      assert.strictEqual(r.json.why, r.json.refused);
+      assert.strictEqual(ks.describe('ltc-1').refused, r.json.refused, 'the refusal is kept beside the keys');
+      assert.strictEqual(ks.signer('ltc-1', 'x').header(), API_KEY, 'and the keys themselves do not change');
+      // put right on the exchange and asked again: the refusal goes and the answer is written
+      verdict = { checked: true, ok: true, refusals: [], tied: true };
+      clock += 60000;
+      r = await call('POST', '/keys/ltc-1/check');
+      assert.deepStrictEqual([r.json.checked, r.json.ok, r.json.why, r.json.tied, r.json.refused, r.json.checkedAt, r.json.addedAt], [true, true, null, true, null, '2026-09-27T04:03:00.000Z', '2026-09-27T04:00:00.000Z']);
+      assert.deepStrictEqual((await call('GET', '/keys')).json.keys.map((k) => [k.account, k.tied, k.refused, k.checkedAt]), [['ltc-1', true, null, '2026-09-27T04:03:00.000Z']], 'the list says what the exchange last said');
+      // nothing kept, a bad name, no way to ask
+      assert.strictEqual((await call('POST', '/keys/ltc-9/check')).status, 404);
+      assert.strictEqual((await call('POST', '/keys/..%2Fescape/check')).status, 400);
+      const blind = makeHandler({ ...deps, checkKey: null });
+      const b = JSON.parse(JSON.stringify(await blind('POST', '/keys/ltc-1/check', {})));
+      assert.deepStrictEqual([b.status, b.json.checked, b.json.why], [200, false, 'this platform cannot ask the exchange what the key may do']);
+      // A KEY REFUSED WHEN IT ARRIVES IS NOT KEPT: the same verdict at the door
+      verdict = refusal;
+      const no = await call('POST', '/keys/ltc-2', { locked: await lockKeys(pub, 'ltc-2', API_KEY, SECRET) });
+      assert.deepStrictEqual([no.status, no.json.error], [400, 'the keys were not kept: the exchange refused the key: Binance answered 401 (-2015): Invalid API-key, IP, or permissions for action.']);
+      assert.deepStrictEqual(ks.describe('ltc-2'), { account: 'ltc-2', present: false });
+      // every check written down; no answer and no record carries the key
+      const rec = fs.readFileSync(path.join(dir, 'journal.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+      assert.deepStrictEqual(rec.filter((l) => l.type === 'keys' && /check/.test(l.what)).map((l) => [l.what, l.account]), [['refused on a check', 'ltc-1'], ['checked', 'ltc-1']]);
+      assert.ok(!JSON.stringify(rec).includes(API_KEY) && !JSON.stringify(rec).includes(SECRET), 'the record never holds the key');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   },
 

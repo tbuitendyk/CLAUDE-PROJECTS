@@ -250,7 +250,7 @@ app.get('/api/account/trading', async (req, res) => {
     await Promise.all(engines.map(async (t) => {
       const r = await link.call(t, 'GET', '/keys', null, 4000);
       keys[t.id] = r.ok && r.json && Array.isArray(r.json.keys)
-        ? { answers: true, keys: r.json.keys.map((k) => ({ account: k.account, present: !!k.present, addedAt: k.addedAt || null, anyAddress: k.anyAddress === true, tied: typeof k.tied === 'boolean' ? k.tied : null })), lock: r.json.lock && typeof r.json.lock.publicKey === 'string' ? { publicKey: r.json.lock.publicKey, fingerprint: r.json.lock.fingerprint } : null }
+        ? { answers: true, keys: r.json.keys.map((k) => ({ account: k.account, present: !!k.present, addedAt: k.addedAt || null, anyAddress: k.anyAddress === true, tied: typeof k.tied === 'boolean' ? k.tied : null, checkedAt: k.checkedAt || null, refused: typeof k.refused === 'string' ? k.refused : null })), lock: r.json.lock && typeof r.json.lock.publicKey === 'string' ? { publicKey: r.json.lock.publicKey, fingerprint: r.json.lock.fingerprint } : null }
         : { answers: false, why: r.why || (r.json && r.json.error) || `the platform answered ${r.status}` };
     }));
     const as = require('./lib/accountsetup');
@@ -265,7 +265,7 @@ app.get('/api/account/trading', async (req, res) => {
       const mine = setupsNow.filter((x) => x.keyRef === acctId && x.state !== 'retired');
       return {
         platforms: engines.map(nameOf), unanswered: engines.filter((t) => !keys[t.id].answers).map(nameOf),
-        keysOn: holding((k) => k.present), checkedOn: holding((k) => k.present && typeof k.tied === 'boolean'),
+        keysOn: holding((k) => k.present), checkedOn: holding((k) => k.present && typeof k.tied === 'boolean'), refusedOn: holding((k) => k.present && !!k.refused),
         named: mine.length, live: mine.filter((x) => x.state === 'live').length, realOn,
       };
     };
@@ -316,6 +316,16 @@ app.post('/api/account/trading/:id/keys', csrfGuard, async (req, res) => {
     const target = require('./lib/live/targets').getTarget(String(b.engine || ''));
     if (!target || target.kind !== 'engine') return res.status(400).json({ error: 'pick the trading engine the keys go to' });
     const link = require('./lib/live/enginelink');
+    // ASK AGAIN WITH THE KEPT KEYS (3.279.0): nothing travels but the question; the platform asks the
+    // exchange with the keys it keeps and says what came back. A platform on a release before this
+    // one does not know the question, and is said to need bringing up to date.
+    if (b.check === true) {
+      const r = await link.call(target, 'POST', `/keys/${encodeURIComponent(id)}/check`, {}, 15000);
+      if (r.status === 404 && r.json && /no such address on the platform/.test(String(r.json.error || ''))) return res.status(409).json({ error: 'this platform\'s release cannot check kept keys: bring it up to date with a new install command (Compute tab, Set up a trading platform, step 2)' });
+      if (!r.ok) return res.status(r.status >= 400 && r.status < 500 ? r.status : 502).json({ error: (r.json && r.json.error) || r.why || `the platform answered ${r.status}` });
+      const j = r.json || {};
+      return res.json({ ok: true, account: id, engine: target.id, present: !!j.present, tied: typeof j.tied === 'boolean' ? j.tied : null, checked: !!j.checked, passed: j.ok === true, refused: typeof j.refused === 'string' ? j.refused : null, why: j.why || null });
+    }
     // ONLY LOCKED: a pair that reaches this machine readable is refused and goes nowhere
     if (b.remove !== true && (b.apiKey !== undefined || b.secret !== undefined)) return res.status(400).json({ error: 'the keys must be locked in the browser with the platform\'s lock before they are sent: reload the page and send them again' });
     const locked = b.locked;

@@ -93,12 +93,35 @@ class KeyStore {
     const f = this.fileOf(account);
     KeyStore.checkPair({ apiKey, secret });
     const was = fs.existsSync(f);
-    const rec = { v: 1, account, addedAt: new Date(this.now()).toISOString(), anyAddress: anyAddress === true, tied: typeof tied === 'boolean' ? tied : null, box: this.seal(account, { apiKey, secret }) };
+    const at = new Date(this.now()).toISOString();
+    const rec = { v: 1, account, addedAt: at, anyAddress: anyAddress === true, tied: typeof tied === 'boolean' ? tied : null, checkedAt: typeof tied === 'boolean' ? at : null, refused: null, box: this.seal(account, { apiKey, secret }) };
     const tmp = `${f}.tmp${process.pid}`;
     fs.writeFileSync(tmp, JSON.stringify(rec), { mode: 0o600 });
     fs.renameSync(tmp, f);
     this.record({ type: 'keys', what: was ? 'replaced' : 'entered', account });
     return this.describe(account);
+  }
+
+  // THE EXCHANGE'S LATEST WORD ON KEPT KEYS (3.279.0): written beside them when they are asked again --
+  // tied or open when it answered about what the key may do, refused (in its words) when it refused
+  // the key -- and nothing else about them changes
+  mark(account, { tied = null, refused = null } = {}) {
+    const f = this.fileOf(account);
+    const r = this.read(account);
+    if (!r) { const e = new Error(`no keys are stored for the trading account ${account}`); e.code = 'NO_KEYS'; throw e; }
+    const rec = { ...r, tied: typeof tied === 'boolean' ? tied : null, refused: typeof refused === 'string' && refused ? refused.slice(0, 300) : null, checkedAt: new Date(this.now()).toISOString() };
+    const tmp = `${f}.tmp${process.pid}`;
+    fs.writeFileSync(tmp, JSON.stringify(rec), { mode: 0o600 });
+    fs.renameSync(tmp, f);
+    this.record({ type: 'keys', what: rec.refused ? 'refused on a check' : 'checked', account });
+    return this.describe(account);
+  }
+
+  // the kept pair, for asking the exchange again in this process; never handed to anything that answers
+  pairOf(account) {
+    const r = this.read(account);
+    if (!r) { const e = new Error(`no keys are stored for the trading account ${account}`); e.code = 'NO_KEYS'; throw e; }
+    return this.unseal(account, r.box);
   }
 
   remove(account) {
@@ -117,7 +140,7 @@ class KeyStore {
 
   describe(account) {
     const r = this.read(account);
-    return r ? { account, present: true, addedAt: r.addedAt, anyAddress: r.anyAddress === true, tied: typeof r.tied === 'boolean' ? r.tied : null } : { account, present: false };
+    return r ? { account, present: true, addedAt: r.addedAt, anyAddress: r.anyAddress === true, tied: typeof r.tied === 'boolean' ? r.tied : null, checkedAt: r.checkedAt || null, refused: typeof r.refused === 'string' ? r.refused : null } : { account, present: false };
   }
 
   list() {

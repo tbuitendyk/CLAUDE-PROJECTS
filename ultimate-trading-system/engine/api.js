@@ -17,6 +17,8 @@
 //                           checked with the exchange, and kept encrypted if it passes.
 //                           A pair that arrives unlocked is refused: nothing between
 //                           the browser and this engine may be able to read it.
+//   POST /keys/:account/check   the kept keys asked of the exchange again (3.279.0): the
+//                           answer written beside them, and said -- never the keys
 //   POST /keys/:account/delete  the keys taken away
 //   POST /setups/:id/verbose  { on } -- every hourly trail check of this setup's
 //                           plans written down, or not (Verbose on Setup detail)
@@ -48,6 +50,27 @@ function makeHandler({ runner, journal, health, keystore = null, checkKey = null
       if (u.pathname === '/keys' || u.pathname.startsWith('/keys/')) {
         if (!keystore) return { status: 503, json: { error: 'this platform has no key store' } };
         if (method === 'GET' && u.pathname === '/keys') return { status: 200, json: { keys: keystore.list(), lock: lock ? lock.info() : null } };
+        // ASK AGAIN WITH THE KEYS ALREADY KEPT (3.279.0, owner 2026-09-27: "make a button to recheck
+        // the stored keys"): the same question as when they arrived, with the owner's tick as it was
+        // kept. An answer is written beside the keys -- tied or open, or refused in the exchange's
+        // words -- and no answer changes them; an exchange that could not be asked changes nothing.
+        const kc = /^\/keys\/([^/]+)\/check$/.exec(u.pathname);
+        if (method === 'POST' && kc) {
+          const account = decodeURIComponent(kc[1]);
+          try {
+            keystore.fileOf(account);   // the account's name, checked before anything else
+            const stored = keystore.read(account);
+            if (!stored) return { status: 404, json: { error: `no keys are kept for ${account} on this platform` } };
+            if (!checkKey) return { status: 200, json: { ...keystore.describe(account), checked: false, ok: null, why: 'this platform cannot ask the exchange what the key may do' } };
+            const v = await checkKey(account, keystore.pairOf(account), { anyAddress: stored.anyAddress === true });
+            if (!v.checked) return { status: 200, json: { ...keystore.describe(account), checked: false, ok: null, why: v.why } };
+            const kept = keystore.mark(account, v.ok ? { tied: v.tied } : { refused: v.refusals.join('; ') });
+            return { status: 200, json: { ...kept, checked: true, ok: !!v.ok, why: v.ok ? null : v.refusals.join('; ') } };
+          } catch (e) {
+            const mine = e.code === 'BAD_ACCOUNT' || e.code === 'NO_KEYS';
+            return { status: mine ? 400 : 500, json: { error: mine ? e.message : 'the kept keys could not be asked about' } };
+          }
+        }
         const km = /^\/keys\/([^/]+)(\/delete)?$/.exec(u.pathname);
         if (method === 'POST' && km) {
           const account = decodeURIComponent(km[1]);

@@ -198,7 +198,12 @@ module.exports = {
     assert.strictEqual(at({ ...none, unanswered: ['box-1'] })[2].said[0].text, 'the keys are not on any trading platform that answered (box-1 did not): press Enter the keys on this account\'s record below');
     // keys on the platform, kept without the exchange asked: step 3 done, step 4 not
     st = at({ ...none, keysOn: ['box-1'] });
-    assert.deepStrictEqual([st[2].done, st[3].done, st[3].said[0].text], [true, false, 'the keys on box-1 were kept without the exchange being asked: press Change the keys on this account\'s record below and send them again']);
+    assert.deepStrictEqual([st[2].done, st[3].done, st[3].said[0].text], [true, false, 'the exchange has not answered about the keys on box-1: press Check the keys again on this account\'s record below']);
+    // REFUSED BY THE EXCHANGE (3.279.0): said, with what to do, and never hidden by another platform's answer
+    assert.deepStrictEqual([at({ ...none, keysOn: ['box-1'], refusedOn: ['box-1'] })[3].done, at({ ...none, keysOn: ['box-1'], refusedOn: ['box-1'] })[3].said[0].text],
+      [false, 'the exchange refused the keys kept on box-1: put the key or its addresses right on the exchange, then press Check the keys again on this account\'s record below']);
+    st = at({ ...none, platforms: ['box-1', 'box-2'], keysOn: ['box-1', 'box-2'], checkedOn: ['box-1'], refusedOn: ['box-2'] });
+    assert.deepStrictEqual([st[3].done, st[3].said[0].text], [false, 'the exchange refused the keys kept on box-2 (it answered box-1): put the key or its addresses right on the exchange, then press Check the keys again on this account\'s record below'], 'one platform answering does not hide another refused');
     // the exchange answered: step 4 done; no setup names the account yet
     st = at({ ...none, keysOn: ['box-1'], checkedOn: ['box-1'] });
     assert.deepStrictEqual([st[3].done, st[4].done, st[4].said[0].text], [true, false, 'no setup names this account yet: type binance-sub-1 into Sub-account key on a setup\'s Setup detail, on the Trade tab, and press Save']);
@@ -237,13 +242,13 @@ module.exports = {
     // ONE PLATFORM, NO KEYS: Enter the keys, nothing to remove
     const one = { ...base, engines: [E('box-1', 'Platform One')], keys: { 'box-1': none('fp-a') } };
     let html = card(one);
-    assert.ok(/<button data-takeys="sub-1">Enter the keys<\/button>/.test(html) && !/data-tarm=/.test(html), 'one platform without keys: Enter the keys, and nothing to remove');
+    assert.ok(/<button data-takeys="sub-1">Enter the keys<\/button>/.test(html) && !/data-tarm=/.test(html) && !/data-tacheck=/.test(html), 'one platform without keys: Enter the keys, and nothing to remove or check');
     // TWO PLATFORMS, KEYS ON ONE: Change the keys and Remove the keys; the send form ticks both,
     // saying what sending does on each, each with its own lock
     const two = { ...base, engines: [E('box-1', 'Platform One'), E('box-2', 'Platform Two', { system: 'windows' })], keys: { 'box-1': held('2026-09-27T01:00:00Z'), 'box-2': none('fp-b') } };
     html = card(two);
-    assert.ok(/<button data-takeys="sub-1">Change the keys<\/button><button data-tarm="sub-1" class="danger"/.test(html), 'once a platform holds them: Change the keys and Remove the keys');
-    assert.strictEqual((html.match(/data-takeys=|data-tarm=/g) || []).length, 2, 'one pair of buttons for the account, however many platforms');
+    assert.ok(/<button data-takeys="sub-1">Change the keys<\/button><button data-tacheck="sub-1" title="[^"]*">Check the keys again<\/button><button data-tarm="sub-1" class="danger"/.test(html), 'once a platform holds them: Change the keys, Check the keys again and Remove the keys');
+    assert.strictEqual((html.match(/data-takeys=|data-tacheck=|data-tarm=/g) || []).length, 3, 'one set of buttons for the account, however many platforms');
     html = card(two, 'sub-1', 'send');
     assert.ok(/data-tatick="box-1" checked> Platform One<\/label><span class="note">holds keys entered 2026-09-27 01:00 UTC — these replace them<\/span><span class="note">the fingerprint of its lock <b>fp-01<\/b><\/span>/.test(html), 'the platform holding keys is ticked, and says they are replaced, with its lock');
     assert.ok(/data-tatick="box-2" checked> Platform Two<\/label><span class="note">holds none — these are added<\/span><span class="note">the fingerprint of its lock <b>fp-b<\/b><\/span>/.test(html), 'the one holding none is ticked too, and says they are added');
@@ -322,7 +327,7 @@ module.exports = {
     assert.ok(/querySelectorAll\('\[data-as-fieldsave\]'\)/.test(src) && /'\/field', \{ step, field, value: box\.value \}/.test(src), 'the save sends the box to the service');
     assert.ok(/if \(req\.params\.what === 'field'\) return res\.json\(\{ ok: true, setup: as\.setField\(/.test(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8')), 'the service takes it');
     assert.ok(/'<span class="note">sub-account: ' \+ esc\(a\.setup\.fields\.subIds\) \+ '<\/span>'/.test(src), 'the account\'s card shows what the exchange calls the sub-account');
-    assert.ok(!/tied to one address/.test(src) && (src.match(/tied to one or more addresses/g) || []).length === 2, 'the key line and the kept message say one or more addresses');
+    assert.ok(!/tied to one address/.test(src) && (src.match(/tied to one or more addresses/g) || []).length === 3, 'the key line, the kept message and the check\'s answer say one or more addresses');
     // WHAT THE SYSTEM SEES FOR ITSELF (3.275.0) is said on the step, met or not
     const seen = { choices: { kind: 'sub', address: 'tied' }, ticks: {}, fields: {}, steps: t.steps.map((st, i) => ({ open: i === 2, done: false, said: i === 2 ? [{ ok: true, text: 'the keys are on box-1' }] : i === 3 ? [{ ok: false, text: 'x' }] : [] })) };
     const seenHtml = draw('as', seen, t, null);

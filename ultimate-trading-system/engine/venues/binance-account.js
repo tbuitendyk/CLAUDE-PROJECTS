@@ -46,7 +46,8 @@ class BinanceAccount {
   }
 
   static answer(r, pick) {
-    if (r.status !== 200) return { ok: false, why: binanceWords(r), ms: r.ms };
+    // a refusal says what the exchange said: its status and its own code beside its words
+    if (r.status !== 200) return { ok: false, why: binanceWords(r), ms: r.ms, status: r.status, code: r.json && Number.isFinite(r.json.code) ? r.json.code : null };
     try { return { ok: true, ms: r.ms, ...pick(r.json) }; } catch (e) { return { ok: false, why: `Binance's answer could not be read: ${e.message}`, ms: r.ms }; }
   }
 
@@ -124,4 +125,17 @@ function keyVerdict(r, { anyAddress = false } = {}) {
   return { ok: refusals.length === 0, refusals, tied: r.ipRestrict === true };
 }
 
-module.exports = { BinanceAccount, binanceWords, keyVerdict, REST };
+// WHAT ONE CHECK OF A KEY COMES TO (3.279.0, owner 2026-09-27: a key Binance refuses is not kept;
+// "kept, but not checked" only when the exchange could not be asked). An answer about what the key
+// may do is the verdict above. The exchange refusing the key itself -- a key it does not know
+// (-2014, -2015), one not signed with its secret (-1022), or one not to be used from where it was
+// sent (-2015) -- is a verdict too, and a refusal. Anything else -- no answer, a limit, a clock out
+// of step -- leaves the key unchecked, never refused.
+const KEY_REFUSED = new Set([-2014, -2015, -1022]);
+function keyCheck(r, { anyAddress = false } = {}) {
+  if (r && r.ok) return { checked: true, ...keyVerdict(r, { anyAddress }) };
+  if (r && KEY_REFUSED.has(r.code)) return { checked: true, ok: false, refused: true, refusals: [`the exchange refused the key: ${r.why}`], tied: null };
+  return { checked: false, why: (r && r.why) || 'the exchange could not be asked' };
+}
+
+module.exports = { BinanceAccount, binanceWords, keyVerdict, keyCheck, KEY_REFUSED, REST };

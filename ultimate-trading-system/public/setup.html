@@ -317,6 +317,9 @@ function tradingKeysLine(a) {
       : s.mine
         ? '<span class="pos">present</span> <span class="muted">entered ' + keyDate(s.mine)
           + (s.mine.tied === true ? ' · tied to one or more addresses' : s.mine.tied === false ? ' · open to any address, as ticked when they were sent' : '') + '</span>'
+          // WHAT THE EXCHANGE LAST SAID OF THEM (3.279.0): refused in its words, or not answered yet
+          + (s.mine.refused ? ' <span class="neg">refused on the last check</span> <span class="muted">(' + esc(s.mine.refused) + ')</span>'
+            : s.mine.tied === null ? ' <span class="warn">not checked with the exchange yet</span>' : '')
         : '<span class="neg">missing</span>';
     return '<div class="row" style="align-items:baseline; margin-top:.35rem"><span class="k">keys on ' + esc(g.name) + '</span> ' + said + '</div>';
   }).join('');
@@ -379,6 +382,7 @@ function tradingAccountCard(a) {
       : open === 'remove' ? keyRemoveForm(a)
         : '<div class="row" style="margin-top:.5rem">'
           + (reachable.length ? '<button data-takeys="' + esc(a.id) + '">' + (holders.length ? 'Change the keys' : 'Enter the keys') + '</button>' : '')
+          + (holders.length ? '<button data-tacheck="' + esc(a.id) + '" title="asks the exchange again, from every platform that keeps these keys, with the keys already kept: nothing is typed and nothing about the keys changes but what the exchange says of them">Check the keys again</button>' : '')
           + (holders.length ? '<button data-tarm="' + esc(a.id) + '" class="danger" title="takes the keys off the trading platforms you tick; the account record stays">Remove the keys</button>' : '')
           + '<button data-tadel="' + esc(a.id) + '" class="danger" title="takes the record away; refused while any setup names it as its account">Delete the trading account</button>'
           + '</div>'
@@ -537,6 +541,30 @@ function wireTradingAccounts() {
   document.querySelectorAll('[data-takeys]').forEach((b) => { b.onclick = () => openForm(b.dataset.takeys, 'send'); });
   document.querySelectorAll('[data-tarm]').forEach((b) => { b.onclick = () => openForm(b.dataset.tarm, 'remove'); });
   document.querySelectorAll('[data-tatick]').forEach((c) => { c.onchange = () => { aTrKeysTicks[c.dataset.tatick] = c.checked; }; });
+  // CHECK THE KEYS AGAIN (3.279.0, owner 2026-09-27: "make a button to recheck the stored keys"):
+  // every platform that keeps this account's keys asks the exchange once more with them
+  document.querySelectorAll('[data-tacheck]').forEach((b) => {
+    b.onclick = async () => {
+      const acct = b.dataset.tacheck;
+      const holders = (aTr.engines || []).filter((g) => keyStanding(acct, g).mine);
+      b.disabled = true;
+      const o = $('#taOut_' + acct);
+      if (o) o.innerHTML = 'asking the exchange again…';
+      const lines = [];
+      for (const g of holders) {
+        try {
+          const got = await postJson('api/account/trading/' + encodeURIComponent(acct) + '/keys', { engine: g.id, check: true });
+          lines.push(esc(g.name) + ': ' + (!got.checked
+            ? '<span class="warn">the exchange could not be asked — ' + esc(got.why || 'no reason given') + '</span>'
+            : got.passed
+              ? '<span class="pos">checked — the exchange says the key can trade and borrow, cannot move money, and ' + (got.tied ? 'is tied to one or more addresses' : 'is open to any address, as ticked') + '</span>'
+              : '<span class="neg">refused — ' + esc(got.why || got.refused || 'the exchange gave no words') + '</span>'));
+        } catch (e) { lines.push(esc(g.name) + ': <span class="neg">not checked — ' + esc(e.message) + '</span>'); }
+      }
+      aTrKeysOut[acct] = lines.join('<br>');
+      await redraw();
+    };
+  });
   document.querySelectorAll('[data-tadel]').forEach((b) => {
     b.onclick = async () => {
       if (!confirm('Delete the trading account "' + b.dataset.tadel + '"?\n\nRefused while any setup names it as its account. Its keys on the trading platforms are not touched — remove them first if they should go too.')) return;
