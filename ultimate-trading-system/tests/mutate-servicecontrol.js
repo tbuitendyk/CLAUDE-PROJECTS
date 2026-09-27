@@ -2974,6 +2974,19 @@ const GUARDS = [
     "keysGoToAndComeOffAnyNumberOfPlatformsAndStepThreeShowsTheLocks", "the remove form offers platforms that hold no keys"],
   [path.join(ROOT, "public", "setup.html"), "      if (!s.lockable) return '<div class=\"row\" style=\"margin-top:.25rem\"><span class=\"muted\">' + esc(g.name) + ' \u2014 has not said what its lock is", "      if (false) return '<div class=\"row\" style=\"margin-top:.25rem\"><span class=\"muted\">' + esc(g.name) + ' \u2014 has not said what its lock is",
     "keysGoToAndComeOffAnyNumberOfPlatformsAndStepThreeShowsTheLocks", "a platform with no lock can be ticked, and the keys cannot be locked for it"],
+  // 3.278.0 Compute: decision engine, Expand and Hide, its section
+  [path.join(ROOT, "lib", "compute.js"), "  { key: 'decisions', label: 'decision engine' },", "  { key: 'decisions', label: 'trade decision engine' },",
+    "theThreePartsCanBeTuckedAwayAndTheDecisionEngineHasASection", "the row goes back to saying trade decision engine"],
+  [path.join(ROOT, "public", "setup.html"), "(cAway[key] ? 'Expand' : 'Hide')", "('Hide')",
+    "theThreePartsCanBeTuckedAwayAndTheDecisionEngineHasASection", "a tucked-away section's button still says Hide"],
+  [path.join(ROOT, "public", "setup.html"), "    + (cAway.decisions ? '' : decisionEngineHtml())", "    + ''",
+    "theThreePartsCanBeTuckedAwayAndTheDecisionEngineHasASection", "The decision engine has no section"],
+  [path.join(ROOT, "public", "setup.html"), "    + (cAway.platform ? '' : engineHtml())", "    + engineHtml()",
+    "theThreePartsCanBeTuckedAwayAndTheDecisionEngineHasASection", "The trading platform cannot be tucked away"],
+  [path.join(ROOT, "public", "setup.html"), " try { localStorage.setItem('setup-compute-away', JSON.stringify(cAway)); } catch (_) { /* not remembered */ } drawCompute(); };", " drawCompute(); };",
+    "theThreePartsCanBeTuckedAwayAndTheDecisionEngineHasASection", "a tucked-away section springs back at every visit"],
+  [path.join(ROOT, "public", "setup.html"), "      + awayBtn(r.key)\n", "",
+    "theThreePartsCanBeTuckedAwayAndTheDecisionEngineHasASection", "the sweep processor and the decision engine have no button beside their names"],
 ];
 
 const only = process.argv[2] || '';
