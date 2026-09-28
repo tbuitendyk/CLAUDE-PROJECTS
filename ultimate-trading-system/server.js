@@ -320,15 +320,22 @@ app.post('/api/account/trading/:id/keys', csrfGuard, async (req, res) => {
     // on step 2 doesn't fix the key check"): the account's own checklist, read here for every send and
     // every check, never a tick on the page. Not chosen yet is tied to addresses, as before.
     const anyAddress = (((acc.tradingAccount(id) || {}).setup || {}).choices || {}).address === 'any';
+    // WHICH POT IT TRADES TRAVELS WITH THE KEYS (3.289.0, owner 2026-09-28: the
+    // account is "a valid cross margin account", and then "I AUTHORIZE IT TO BE
+    // PLUMBED THROUGH"). Read from the account's own checklist for every send and
+    // every check, never a tick on the page -- the same one place `anyAddress` is
+    // read from. Not chosen yet travels as nothing, and the platform's keyed reads
+    // then refuse in words rather than asking the wrong pot.
+    const margin = (((acc.tradingAccount(id) || {}).setup || {}).choices || {}).margin || null;
     // ASK AGAIN WITH THE KEPT KEYS (3.279.0): nothing travels but the question and the choice; the
     // platform asks the exchange with the keys it keeps and says what came back. A platform on a
     // release before this one does not know the question, and is said to need bringing up to date.
     if (b.check === true) {
-      const r = await link.call(target, 'POST', `/keys/${encodeURIComponent(id)}/check`, { anyAddress }, 15000);
+      const r = await link.call(target, 'POST', `/keys/${encodeURIComponent(id)}/check`, { anyAddress, margin }, 15000);
       if (r.status === 404 && r.json && /no such address on the platform/.test(String(r.json.error || ''))) return res.status(409).json({ error: 'this platform\'s release cannot check kept keys: bring it up to date with a new install command (Compute tab, Set up a trading platform, step 2)' });
       if (!r.ok) return res.status(r.status >= 400 && r.status < 500 ? r.status : 502).json({ error: (r.json && r.json.error) || r.why || `the platform answered ${r.status}` });
       const j = r.json || {};
-      return res.json({ ok: true, account: id, engine: target.id, present: !!j.present, anyAddress, tied: typeof j.tied === 'boolean' ? j.tied : null, checked: !!j.checked, passed: j.ok === true, refused: typeof j.refused === 'string' ? j.refused : null, why: j.why || null });
+      return res.json({ ok: true, account: id, engine: target.id, present: !!j.present, anyAddress, margin: j.margin || margin || null, tied: typeof j.tied === 'boolean' ? j.tied : null, checked: !!j.checked, passed: j.ok === true, refused: typeof j.refused === 'string' ? j.refused : null, why: j.why || null });
     }
     // ONLY LOCKED: a pair that reaches this machine readable is refused and goes nowhere
     if (b.remove !== true && (b.apiKey !== undefined || b.secret !== undefined)) return res.status(400).json({ error: 'the keys must be locked in the browser with the platform\'s lock before they are sent: reload the page and send them again' });
@@ -336,9 +343,9 @@ app.post('/api/account/trading/:id/keys', csrfGuard, async (req, res) => {
     if (b.remove !== true && (!locked || typeof locked.epk !== 'string' || typeof locked.iv !== 'string' || typeof locked.data !== 'string' || locked.data.length > 4096)) return res.status(400).json({ error: 'the locked keys did not arrive whole: send them again' });
     const r = b.remove === true
       ? await link.call(target, 'POST', `/keys/${encodeURIComponent(id)}/delete`, {}, 8000)
-      : await link.call(target, 'POST', `/keys/${encodeURIComponent(id)}`, { locked: { v: 1, epk: locked.epk, iv: locked.iv, data: locked.data }, anyAddress }, 15000);
+      : await link.call(target, 'POST', `/keys/${encodeURIComponent(id)}`, { locked: { v: 1, epk: locked.epk, iv: locked.iv, data: locked.data }, anyAddress, margin }, 15000);
     if (!r.ok) return res.status(r.status >= 400 && r.status < 500 ? r.status : 502).json({ error: (r.json && r.json.error) || r.why || `the platform answered ${r.status}` });
-    return res.json({ ok: true, account: id, engine: target.id, present: !!(r.json && r.json.present), addedAt: (r.json && r.json.addedAt) || null, anyAddress: !!(r.json && r.json.anyAddress), tied: r.json && typeof r.json.tied === 'boolean' ? r.json.tied : null, checked: !!(r.json && r.json.checked), why: (r.json && r.json.why) || null });
+    return res.json({ ok: true, account: id, engine: target.id, present: !!(r.json && r.json.present), addedAt: (r.json && r.json.addedAt) || null, anyAddress: !!(r.json && r.json.anyAddress), margin: (r.json && r.json.margin) || margin || null, tied: r.json && typeof r.json.tied === 'boolean' ? r.json.tied : null, checked: !!(r.json && r.json.checked), why: (r.json && r.json.why) || null });
   } catch (err) { return res.status(500).json({ error: 'the keys could not be passed to the platform' }); }
 });
 

@@ -16,6 +16,14 @@
 //   * every use is written down -- which account, what for, when -- and never
 //     what the key is.
 // No part of either half of a key ever reaches a record, a log line or an answer.
+// WHICH POT AN ACCOUNT TRADES (3.289.0). The owner chooses it on the account's
+// checklist (lib/accountsetup.js, the `margin` choice) and it travels here with
+// the keys, because every keyed read has to ask the pot the account actually
+// trades. Defined here, on the record's own file, so there is one list and the
+// venue module reads it rather than keeping a second.
+const MARGINS = ['cross', 'isolated'];
+const marginOrNull = (m) => (MARGINS.includes(m) ? m : null);
+
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -89,12 +97,12 @@ class KeyStore {
   // With them: whether the owner let them trade from any address, and whether
   // the exchange says they are tied to one (owner, 2026-09-25: tying a key to
   // one address is the owner's choice where the exchange allows it)
-  put(account, { apiKey, secret } = {}, { anyAddress = false, tied = null } = {}) {
+  put(account, { apiKey, secret } = {}, { anyAddress = false, tied = null, margin = null } = {}) {
     const f = this.fileOf(account);
     KeyStore.checkPair({ apiKey, secret });
     const was = fs.existsSync(f);
     const at = new Date(this.now()).toISOString();
-    const rec = { v: 1, account, addedAt: at, anyAddress: anyAddress === true, tied: typeof tied === 'boolean' ? tied : null, checkedAt: typeof tied === 'boolean' ? at : null, refused: null, box: this.seal(account, { apiKey, secret }) };
+    const rec = { v: 1, account, addedAt: at, anyAddress: anyAddress === true, tied: typeof tied === 'boolean' ? tied : null, margin: marginOrNull(margin), checkedAt: typeof tied === 'boolean' ? at : null, refused: null, box: this.seal(account, { apiKey, secret }) };
     const tmp = `${f}.tmp${process.pid}`;
     fs.writeFileSync(tmp, JSON.stringify(rec), { mode: 0o600 });
     fs.renameSync(tmp, f);
@@ -105,11 +113,11 @@ class KeyStore {
   // THE EXCHANGE'S LATEST WORD ON KEPT KEYS (3.279.0): written beside them when they are asked again --
   // tied or open when it answered about what the key may do, refused (in its words) when it refused
   // the key -- with the owner's choice of address it was asked with (3.280.0); the keys never change
-  mark(account, { tied = null, refused = null, anyAddress = null } = {}) {
+  mark(account, { tied = null, refused = null, anyAddress = null, margin = null } = {}) {
     const f = this.fileOf(account);
     const r = this.read(account);
     if (!r) { const e = new Error(`no keys are stored for the trading account ${account}`); e.code = 'NO_KEYS'; throw e; }
-    const rec = { ...r, anyAddress: typeof anyAddress === 'boolean' ? anyAddress : r.anyAddress === true, tied: typeof tied === 'boolean' ? tied : null, refused: typeof refused === 'string' && refused ? refused.slice(0, 300) : null, checkedAt: new Date(this.now()).toISOString() };
+    const rec = { ...r, margin: marginOrNull(margin) || marginOrNull(r.margin), anyAddress: typeof anyAddress === 'boolean' ? anyAddress : r.anyAddress === true, tied: typeof tied === 'boolean' ? tied : null, refused: typeof refused === 'string' && refused ? refused.slice(0, 300) : null, checkedAt: new Date(this.now()).toISOString() };
     const tmp = `${f}.tmp${process.pid}`;
     fs.writeFileSync(tmp, JSON.stringify(rec), { mode: 0o600 });
     fs.renameSync(tmp, f);
@@ -140,7 +148,14 @@ class KeyStore {
 
   describe(account) {
     const r = this.read(account);
-    return r ? { account, present: true, addedAt: r.addedAt, anyAddress: r.anyAddress === true, tied: typeof r.tied === 'boolean' ? r.tied : null, checkedAt: r.checkedAt || null, refused: typeof r.refused === 'string' ? r.refused : null } : { account, present: false };
+    return r ? { account, present: true, addedAt: r.addedAt, anyAddress: r.anyAddress === true, tied: typeof r.tied === 'boolean' ? r.tied : null, margin: marginOrNull(r.margin), checkedAt: r.checkedAt || null, refused: typeof r.refused === 'string' ? r.refused : null } : { account, present: false };
+  }
+
+  // WHICH POT, for building a reader of this account. null when it was never
+  // recorded -- the reads refuse in words rather than guessing (binance-account).
+  marginOf(account) {
+    const r = this.read(account);
+    return r ? marginOrNull(r.margin) : null;
   }
 
   list() {
@@ -172,4 +187,4 @@ class KeyStore {
   }
 }
 
-module.exports = { KeyStore, ACCOUNT_RE };
+module.exports = { KeyStore, ACCOUNT_RE, MARGINS, marginOrNull };

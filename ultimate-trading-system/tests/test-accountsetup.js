@@ -68,7 +68,8 @@ module.exports = {
     ]);
     const rest4 = JSON.stringify(later);
     for (const w of ['tick each trading platform that should hold them', 'the command that prints the machine\'s own copy on that machine', 'press Send the keys to the ticked platforms',
-      'ask the exchange what the key may do, before it keeps them', 'In this release it does not read how much is in the pot', 'this release has no reading of the cross rate',
+      'ask the exchange what the key may do, before it keeps them', 'In this release it does not read how much is in the pot', 'The borrowing rate is read of the cross pot',
+      'that choice travels to the platform with the keys',
       'its Sub-account key holds this account\'s name', 'in the setup\'s Setup detail, and kept with Save', 'press Activate real for its config on Greenlights',
       'In this release the trading platform places no real orders', 'this step cannot be done']) assert.ok(rest4.includes(w), `steps 3 to 6 say ${w}`);
     // a checklist never takes a key: every choice is one of its options and every tick is on or off
@@ -182,7 +183,7 @@ module.exports = {
     assert.ok(!/id="takAny"/.test(src) && !/these keys may trade from any address/.test(src + words), 'no tick of its own anywhere, and no words that name one');
     assert.ok(/<span class="k">Where it may trade from<\/span> <span>' \+ esc\(keyAddressWords\(a\)\) \+ '<\/span>'/.test(src), 'the key form shows step 2\'s choice');
     assert.ok(/const anyAddress = \(\(\(acc\.tradingAccount\(id\) \|\| \{\}\)\.setup \|\| \{\}\)\.choices \|\| \{\}\)\.address === 'any';/.test(server), 'the service reads step 2 for the account');
-    assert.ok(/\/check`, \{ anyAddress \}, 15000\)/.test(server) && /anyAddress \}, 15000\);\n    if \(!r\.ok\)/.test(server), 'and sends it with every check and every send');
+    assert.ok(/\/check`, \{ anyAddress, margin \}, 15000\)/.test(server) && /anyAddress, margin \}, 15000\);\n    if \(!r\.ok\)/.test(server), 'and sends it, with the pot, on every check and every send');
     const kaw = new Function(`${src.slice(src.indexOf('function keyAddressWords(a) {'), src.indexOf('function tradingKeysLine('))}; return keyAddressWords;`)();
     assert.deepStrictEqual([kaw({ setup: { choices: { address: 'any' } } }), kaw({ setup: { choices: { address: 'tied' } } }), kaw({ setup: { choices: {} } }), kaw({})],
       ['open to any address', 'tied to one or more addresses', 'tied to one or more addresses, until step 2 says otherwise', 'tied to one or more addresses, until step 2 says otherwise'], 'in step 2\'s own words, and tied until it says otherwise');
@@ -230,8 +231,24 @@ module.exports = {
     // and step 4's words about what the platform reads are held to what it reads
     const acctSrc = fs.readFileSync(path.join(__dirname, '..', 'engine', 'venues', 'binance-account.js'), 'utf8');
     const runner = fs.readFileSync(path.join(__dirname, '..', 'engine', 'runner.js'), 'utf8');
-    assert.ok(/isIsolated: 'TRUE'/.test(acctSrc.slice(acctSrc.indexOf('async hourlyRate('), acctSrc.indexOf('async isolatedWallet('))) && !/isolatedWallet\(/.test(runner),
-      'the platform now reads the cross rate or the pot, so step 4 no longer tells the truth: write it again');
+    // 3.289.0: the platform now reads whichever pot the account trades, so the
+    // tripwire turns round. What step 4 must keep telling the truth about is
+    // that the rate follows the mode, that the mode is never guessed, and that
+    // the pot's own size is still not read. The day any of those changes, this
+    // fails and the step is written again.
+    const rateSrc = acctSrc.slice(acctSrc.indexOf('async hourlyRate('), acctSrc.indexOf('async wallet('));
+    assert.ok(/isIsolated: this\.margin === 'isolated' \? 'TRUE' : 'FALSE'/.test(rateSrc),
+      'the borrowing rate no longer follows the account\'s own margin, so step 4 no longer tells the truth: write it again');
+    assert.ok(/if \(!this\.margin\) return this\.unrecorded\(/.test(rateSrc),
+      'a rate is now read without the pot being recorded, so step 4\'s promise that it asks nothing until it knows is untrue: write it again');
+    assert.ok(!/wallet\(/.test(runner),
+      'the platform now reads how much is in the pot, so step 4 no longer tells the truth: write it again');
+    const reads = as.TEMPLATE.steps.find((x) => x.id === 'reads');
+    const noteFor = (m) => (reads.guidance.find((g) => g.when && g.when.margin === m) || { paras: [] }).paras.join(' ');
+    assert.ok(/read of the cross pot/.test(noteFor('cross')) && !/no reading of the cross rate/.test(noteFor('cross')),
+      'step 4 still tells a cross account it gets the isolated rate');
+    assert.ok(/this pair's own isolated pot/.test(noteFor('isolated')),
+      'step 4 says nothing to an isolated account about which pot it is read of');
   },
 
   // KEYS TO AND FROM ANY NUMBER OF PLATFORMS, AND STEP 3 SHOWS EVERY LOCK (3.277.0, owner
@@ -332,7 +349,7 @@ module.exports = {
     const route = server.slice(server.indexOf("app.post('/api/account/trading/:id/keys'"), server.indexOf('\n});\n', server.indexOf("app.post('/api/account/trading/:id/keys'")));
     const branch = route.slice(route.indexOf('if (b.check === true) {'), route.indexOf('// ONLY LOCKED'));
     assert.ok(branch.length > 100 && route.indexOf('if (b.check === true) {') < route.indexOf('// ONLY LOCKED'), 'the question is answered before the locked-only rule');
-    assert.ok(/link\.call\(target, 'POST', `\/keys\/\$\{encodeURIComponent\(id\)\}\/check`, \{ anyAddress \}, 15000\)/.test(branch) && !/b\.(locked|apiKey|secret|anyAddress)/.test(branch), 'nothing travels but the question and step 2\'s choice');
+    assert.ok(/link\.call\(target, 'POST', `\/keys\/\$\{encodeURIComponent\(id\)\}\/check`, \{ anyAddress, margin \}, 15000\)/.test(branch) && !/b\.(locked|apiKey|secret|anyAddress|margin)/.test(branch), 'nothing travels but the question and the two choices, both read off the account and never off the page');
     assert.ok(/res\.status\(409\)\.json\(\{ error: 'this platform\\'s release cannot check kept keys: bring it up to date with a new install command \(Compute tab, Set up a trading platform, step 2\)' \}\)/.test(branch), 'a platform too old to know the question is said to need updating');
     assert.ok(/refused: typeof j\.refused === 'string' \? j\.refused : null, why: j\.why \|\| null/.test(branch), 'the answer carries the exchange\'s words and nothing else');
     // and the service tells the page what each platform last heard

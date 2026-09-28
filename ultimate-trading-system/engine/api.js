@@ -12,12 +12,12 @@
 //                           entriesOnly an open position is left to close by its rules)
 //   GET  /keys              each trading account: keys present or missing, when they
 //                           were entered, and the engine's lock -- never a key
-//   POST /keys/:account     { locked, anyAddress } -- the pair, locked in the browser
+//   POST /keys/:account     { locked, anyAddress, margin } -- the pair, locked in the browser
 //                           with this engine's lock (engine/lock.js); opened here,
 //                           checked with the exchange, and kept encrypted if it passes.
 //                           A pair that arrives unlocked is refused: nothing between
 //                           the browser and this engine may be able to read it.
-//   POST /keys/:account/check   { anyAddress } -- the kept keys asked of the exchange again
+//   POST /keys/:account/check   { anyAddress, margin } -- the kept keys asked of the exchange again
 //                           (3.279.0), with the owner's choice of address as it stands now
 //                           (3.280.0): the answer and the choice written beside them, and
 //                           said -- never the keys
@@ -25,6 +25,8 @@
 //   POST /setups/:id/verbose  { on } -- every hourly trail check of this setup's
 //                           plans written down, or not (Verbose on Setup detail)
 //   GET  /journal?since=N   the record, numbered lines from N
+const { marginOrNull } = require('./keystore');
+
 function makeHandler({ runner, journal, health, keystore = null, checkKey = null, lock = null }) {
   // one question in, { status, json } out -- never throws
   return async function handle(method, target, body = {}) {
@@ -68,9 +70,12 @@ function makeHandler({ runner, journal, health, keystore = null, checkKey = null
             if (!stored) return { status: 404, json: { error: `no keys are kept for ${account} on this platform` } };
             if (!checkKey) return { status: 200, json: { ...keystore.describe(account), checked: false, ok: null, why: 'this platform cannot ask the exchange what the key may do' } };
             const anyAddress = typeof b.anyAddress === 'boolean' ? b.anyAddress : stored.anyAddress === true;
+            // the pot rides with every send AND every check, so a key kept before the
+            // choice travelled is brought up to date by pressing check again
+            const margin = marginOrNull(b.margin);
             const v = await checkKey(account, keystore.pairOf(account), { anyAddress });
             if (!v.checked) return { status: 200, json: { ...keystore.describe(account), checked: false, ok: null, why: v.why } };
-            const kept = keystore.mark(account, v.ok ? { tied: v.tied, anyAddress } : { refused: v.refusals.join('; '), anyAddress });
+            const kept = keystore.mark(account, v.ok ? { tied: v.tied, anyAddress, margin } : { refused: v.refusals.join('; '), anyAddress, margin });
             return { status: 200, json: { ...kept, checked: true, ok: !!v.ok, why: v.ok ? null : v.refusals.join('; ') } };
           } catch (e) {
             const mine = e.code === 'BAD_ACCOUNT' || e.code === 'NO_KEYS';
@@ -88,13 +93,14 @@ function makeHandler({ runner, journal, health, keystore = null, checkKey = null
             const pair = lock.unlock(b.locked, account);
             require('./keystore').KeyStore.checkPair(pair);
             const anyAddress = b.anyAddress === true;
+            const margin = marginOrNull(b.margin);
             // WHAT THE KEY MAY DO, asked of the exchange with the key itself BEFORE
             // it is kept: a key that can move money, or is open to any address
             // without the owner's tick, is never written down
-            if (!checkKey) return { status: 200, json: { ...keystore.put(account, pair, { anyAddress }), checked: false, why: 'this platform cannot ask the exchange what the key may do' } };
+            if (!checkKey) return { status: 200, json: { ...keystore.put(account, pair, { anyAddress, margin }), checked: false, why: 'this platform cannot ask the exchange what the key may do' } };
             const v = await checkKey(account, pair, { anyAddress });
             if (v.checked && !v.ok) return { status: 400, json: { error: `the keys were not kept: ${v.refusals.join('; ')}` } };
-            const kept = keystore.put(account, pair, { anyAddress, tied: v.checked ? v.tied : null });
+            const kept = keystore.put(account, pair, { anyAddress, margin, tied: v.checked ? v.tied : null });
             return { status: 200, json: { ...kept, checked: !!v.checked, why: v.checked ? null : v.why } };
           } catch (e) {
             // words the key store or the lock chose, or the request's shape -- never anything that could carry the key

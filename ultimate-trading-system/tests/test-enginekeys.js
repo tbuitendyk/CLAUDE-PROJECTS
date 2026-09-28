@@ -32,6 +32,69 @@ function fakeBinance(answers, seen = []) {
 }
 
 module.exports = {
+  // EVERY KEYED READ ASKS THE POT THE ACCOUNT ACTUALLY TRADES (3.289.0, owner
+  // 2026-09-28: the account is "a valid cross margin account that's funded
+  // already", then "I AUTHORIZE IT TO BE PLUMBED THROUGH"). Binance keeps cross
+  // and isolated apart, so the mode chosen on the account's checklist travels
+  // with the keys and is kept beside them. The read that matters most is the
+  // open orders: asked of the wrong pot it comes back EMPTY, which reads as "no
+  // orders" rather than as a question asked in the wrong place.
+  async eachAccountIsReadAgainstItsOwnPotAndAnUnrecordedPotIsRefused() {
+    const dir = tmp();
+    try {
+      const ks = store(dir);
+      ks.put('x-1', { apiKey: API_KEY, secret: SECRET }, { margin: 'cross' });
+      assert.strictEqual(ks.marginOf('x-1'), 'cross', 'the pot is kept beside the key');
+      assert.strictEqual(ks.describe('x-1').margin, 'cross', 'and it is said when the key is described');
+
+      const seen = [];
+      const request = fakeBinance({
+        '/sapi/v1/margin/account': { marginLevel: '999', tradeEnabled: true, borrowEnabled: true, userAssets: [{ asset: 'USDT', free: '1693.57', locked: '0', borrowed: '0', interest: '0', netAsset: '1693.57' }] },
+        '/sapi/v1/margin/isolated/account': { assets: [{ symbol: 'LTCUSDT', baseAsset: { asset: 'LTC', free: '1.2', locked: '0', borrowed: '0.5', interest: '0', netAsset: '0.7' }, quoteAsset: { asset: 'USDT', free: '80', locked: '5', borrowed: '0', interest: '0', netAsset: '85' }, marginLevel: '3.2', tradeEnabled: true }] },
+        '/sapi/v1/margin/next-hourly-interest-rate': [{ asset: 'LTC', nextHourlyInterestRate: '0.00000842' }],
+        '/sapi/v1/margin/openOrders': [],
+      }, seen);
+      const at = (margin) => new BinanceAccount({ signer: ks.signer('x-1', 'reads'), margin, request, now: () => Date.UTC(2026, 8, 25, 9) });
+
+      // CROSS: the whole-account pot, and an asset it does not list is none of it
+      const cross = at('cross');
+      const cw = await cross.wallet('LTCUSDT', 'LTC', 'USDT');
+      assert.deepStrictEqual([cw.ok, cw.margin, cw.quote.free, cw.marginLevel], [true, 'cross', 1693.57, 999]);
+      assert.deepStrictEqual([cw.base.asset, cw.base.free, cw.base.borrowed], ['LTC', 0, 0], 'an asset the cross pot does not list is held in none, not a refusal');
+      await cross.hourlyRate('LTC');
+      await cross.openOrders('LTCUSDT');
+      const crossAsked = seen.filter((x) => x.path !== '/api/v3/time');
+      assert.ok(crossAsked.some((x) => x.path === '/sapi/v1/margin/account'), 'cross reads the cross pot');
+      assert.ok(crossAsked.every((x) => !/isIsolated=TRUE/.test(x.query)), 'and never asks the isolated question');
+      assert.ok(crossAsked.some((x) => x.path === '/sapi/v1/margin/next-hourly-interest-rate' && /isIsolated=FALSE/.test(x.query)), 'the rate is the cross rate, said outright');
+      assert.ok(crossAsked.some((x) => x.path === '/sapi/v1/margin/openOrders' && !/isIsolated/.test(x.query)), 'the orders are the cross ones');
+
+      // ISOLATED: the pair's own wallet, through the same one reader
+      seen.length = 0;
+      const iso = at('isolated');
+      const iw = await iso.wallet('LTCUSDT', 'LTC', 'USDT');
+      assert.deepStrictEqual([iw.ok, iw.margin, iw.base.borrowed, iw.quote.locked, iw.marginLevel], [true, 'isolated', 0.5, 5, 3.2]);
+      await iso.hourlyRate('LTC');
+      await iso.openOrders('LTCUSDT');
+      assert.ok(seen.filter((x) => x.path !== '/api/v3/time').every((x) => x.path === '/sapi/v1/margin/isolated/account' || /isIsolated=TRUE/.test(x.query)), 'every isolated read says so');
+
+      // NOT RECORDED: refused in words, and Binance is asked NOTHING
+      seen.length = 0;
+      const blind = at(null);
+      assert.strictEqual(blind.margin, null, 'an unknown pot is never defaulted to one of them');
+      for (const r of [await blind.wallet('LTCUSDT', 'LTC', 'USDT'), await blind.hourlyRate('LTC'), await blind.openOrders('LTCUSDT')]) {
+        assert.strictEqual(r.ok, false, 'a read with no pot recorded does not answer');
+        assert.ok(/margin is not recorded/.test(r.why) && /send this account's keys again/.test(r.why), `and says what to do about it: ${r.why}`);
+      }
+      assert.deepStrictEqual(seen, [], 'nothing was asked of the exchange at all');
+
+      // a pot that is not one of the two is not a pot
+      assert.strictEqual(at('spot').margin, null, 'only the two the checklist offers are pots');
+      ks.put('x-2', { apiKey: API_KEY, secret: SECRET }, { margin: 'sideways' });
+      assert.strictEqual(ks.marginOf('x-2'), null, 'and the store keeps no other');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  },
+
   // S8: ENCRYPTED AT REST, NEVER HANDED BACK. The file on disk holds neither half
   // of the key; the list says present or missing and when; a file copied under
   // another account's name does not open; the store's own key is readable by the
@@ -43,13 +106,13 @@ module.exports = {
       const ks = store(dir, lines);
       assert.strictEqual(fs.statSync(path.join(dir, 'keystore.key')).mode & 0o777, 0o600, 'the store\'s own key is the engine user\'s alone');
       const got = ks.put('ltc-1', { apiKey: API_KEY, secret: SECRET });
-      assert.deepStrictEqual(got, { account: 'ltc-1', present: true, addedAt: '2026-09-25T09:00:00.000Z', anyAddress: false, tied: null, checkedAt: null, refused: null });
+      assert.deepStrictEqual(got, { account: 'ltc-1', present: true, addedAt: '2026-09-25T09:00:00.000Z', anyAddress: false, tied: null, margin: null, checkedAt: null, refused: null });
       const onDisk = fs.readFileSync(path.join(dir, 'keys', 'ltc-1.key'), 'utf8');
       assert.ok(!onDisk.includes(API_KEY) && !onDisk.includes(SECRET), 'neither half of the key is on disk as it was typed');
       assert.strictEqual(fs.statSync(path.join(dir, 'keys', 'ltc-1.key')).mode & 0o777, 0o600);
-      assert.deepStrictEqual(ks.list(), [{ account: 'ltc-1', present: true, addedAt: '2026-09-25T09:00:00.000Z', anyAddress: false, tied: null, checkedAt: null, refused: null }]);
+      assert.deepStrictEqual(ks.list(), [{ account: 'ltc-1', present: true, addedAt: '2026-09-25T09:00:00.000Z', anyAddress: false, tied: null, margin: null, checkedAt: null, refused: null }]);
       // the owner's choice about addresses, and what the exchange said, kept beside the keys
-      assert.deepStrictEqual(ks.put('ltc-open', { apiKey: API_KEY, secret: SECRET }, { anyAddress: true, tied: false }), { account: 'ltc-open', present: true, addedAt: '2026-09-25T09:00:00.000Z', anyAddress: true, tied: false, checkedAt: '2026-09-25T09:00:00.000Z', refused: null });
+      assert.deepStrictEqual(ks.put('ltc-open', { apiKey: API_KEY, secret: SECRET }, { anyAddress: true, tied: false }), { account: 'ltc-open', present: true, addedAt: '2026-09-25T09:00:00.000Z', anyAddress: true, tied: false, margin: null, checkedAt: '2026-09-25T09:00:00.000Z', refused: null });
       ks.remove('ltc-open');
       assert.deepStrictEqual(ks.describe('other'), { account: 'other', present: false });
       // the secret signs here and never leaves: the signature is the one Binance expects
@@ -93,18 +156,19 @@ module.exports = {
       const request = fakeBinance({
         '/sapi/v1/asset/tradeFee': [{ symbol: 'LTCUSDT', makerCommission: '0.001', takerCommission: '0.001' }],
         '/sapi/v1/margin/next-hourly-interest-rate': [{ asset: 'LTC', nextHourlyInterestRate: '0.00000842' }],
+        '/sapi/v1/margin/account': { marginLevel: '999', tradeEnabled: true, borrowEnabled: true, userAssets: [{ asset: 'USDT', free: '1693.57', locked: '0', borrowed: '0', interest: '0', netAsset: '1693.57' }] },
         '/sapi/v1/margin/isolated/account': { assets: [{ symbol: 'LTCUSDT', baseAsset: { asset: 'LTC', free: '1.2', locked: '0', borrowed: '0.5', interest: '0.0001', netAsset: '0.6999' }, quoteAsset: { asset: 'USDT', free: '80', locked: '5', borrowed: '0', interest: '0', netAsset: '85' }, marginLevel: '3.2', tradeEnabled: true }] },
         '/sapi/v1/margin/openOrders': [],
         '/sapi/v1/account/apiRestrictions': { ipRestrict: true, enableWithdrawals: false, enableInternalTransfer: false, permitsUniversalTransfer: false, enableMargin: true, enableSpotAndMarginTrading: true, enableReading: true },
       }, seen);
-      const acc = new BinanceAccount({ signer: ks.signer('ltc-1', 'reads'), request, now: () => Date.UTC(2026, 8, 25, 9) });
+      const acc = new BinanceAccount({ signer: ks.signer('ltc-1', 'reads'), margin: 'isolated', request, now: () => Date.UTC(2026, 8, 25, 9) });
       assert.deepStrictEqual((await acc.syncClock()).offsetMs, 1500, 'the clock is set to Binance\'s before anything is signed');
       const fee = await acc.fee('LTCUSDT');
       assert.deepStrictEqual([fee.ok, fee.maker, fee.taker], [true, 0.001, 0.001]);
       const rate = await acc.hourlyRate('LTC');
       assert.deepStrictEqual([rate.ok, rate.rate], [true, 0.00000842]);
-      const w = await acc.isolatedWallet('LTCUSDT');
-      assert.deepStrictEqual([w.base.borrowed, w.quote.locked, w.marginLevel], [0.5, 5, 3.2]);
+      const w = await acc.wallet('LTCUSDT', 'LTC', 'USDT');
+      assert.deepStrictEqual([w.margin, w.base.borrowed, w.quote.locked, w.marginLevel], ['isolated', 0.5, 5, 3.2]);
       assert.deepStrictEqual((await acc.openOrders('LTCUSDT')).orders, []);
       const rs = await acc.restrictions();
       assert.deepStrictEqual(keyVerdict(rs), { ok: true, refusals: [], tied: true });

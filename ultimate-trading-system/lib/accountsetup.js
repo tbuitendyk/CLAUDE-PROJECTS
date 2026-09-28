@@ -131,9 +131,13 @@ const TEMPLATE = {
         { paras: [
           'When the keys arrive, the platform uses them to ask the exchange what the key may do, before it keeps them: whether it can trade, borrow on margin or move money, and whether it is tied to addresses. The exchange answering is this step: it shows the platform can reach this account with its keys. Check the keys again, on this account\'s record, asks once more with the keys already kept, after anything is put right on the exchange.',
           'After that, the platform reads the account only while a setup that names it is trading: the fee the exchange charges this account on the pair, and the hourly rate it would charge to borrow, each read at most once an hour and used in place of the setup\'s own figures. In this release it does not read how much is in the pot.',
+          'Which pot it asks about is the Margin choice in step 1, and that choice travels to the platform with the keys. So if you change it after the keys have gone, send them again — or press Check the keys again on this account\'s record — or the platform will go on asking about the pot you chose before. Until it knows, it asks nothing and says so instead of reading the wrong pot.',
         ] },
         { when: { margin: 'cross' }, heading: 'Cross margin', paras: [
-          'The borrowing rate the platform reads is the isolated rate for the coin: this release has no reading of the cross rate.',
+          'The borrowing rate is read of the cross pot, which is the one this account trades. So is the list of orders open on the pair, which matters more than it sounds: asked of the wrong pot that list comes back empty, and an empty list reads as no orders rather than as a question asked in the wrong place.',
+        ] },
+        { when: { margin: 'isolated' }, heading: 'Isolated margin', paras: [
+          'The borrowing rate is read of this pair\'s own isolated pot, and so is the list of orders open on it. Each pair has its own wallet, so a pair with no isolated wallet on the exchange has nothing for the platform to read, and it says so rather than reading the account\'s other money.',
         ] },
       ],
       needs: ['checked'],

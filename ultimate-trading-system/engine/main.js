@@ -66,7 +66,11 @@ try {
 let lock = null;
 let lockProblem = null;
 try { lock = new Lock(path.join(DATA, 'lock.json')).open(); } catch (e) { lockProblem = e.message; lock = null; }
-const accounts = keystore ? (account) => new BinanceAccount({ signer: keystore.signer(account, 'a read for paper: the fee and the borrowing rate') }) : null;
+// Each account is read against the pot it actually trades (3.289.0): the choice
+// made on its checklist travels with its keys and is kept beside them, so it is
+// read here rather than assumed. An account whose pot was never recorded gets a
+// reader that refuses its keyed reads in words instead of asking the wrong one.
+const accounts = keystore ? (account) => new BinanceAccount({ signer: keystore.signer(account, 'a read for paper: the fee and the borrowing rate'), margin: keystore.marginOf(account) }) : null;
 runner = new Runner({ journal, market, venues: { simulated }, accounts, liveEnabled: false });
 
 let link = null;
