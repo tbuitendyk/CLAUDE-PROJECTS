@@ -2731,6 +2731,19 @@ const GUARDS = [
     "stepTwoInstallsTheEngineWithAOneTimeCode", "a web-only release marks every engine as behind again"],  // CURRENT MEANS THE SAME CODE (3.266.2)
   [path.join(ROOT, "engine", "main.js"), "code: CODE, startedAt", "code: null, startedAt",
     "anEngineStartedWithItsCodeCallsInAndAnswersOverItsLink", "the engine stops saying which code it runs"],
+  // REAL ORDERS: THE PART THAT PLACES ONE, AND THE SWITCH IN FRONT OF IT (3.290.0, 3.291.0)
+  [path.join(ROOT, "engine", "runner.js"), "    return this.liveEnabled || purpose === 'exit' ? v : null;", "    return v;",
+    "realOrdersOffStopsANewRealPositionAndNeverStrandsAnOpenOne", "real orders switched off no longer stops a new real position"],
+  [path.join(ROOT, "engine", "runner.js"), "    if (want && !this.venues.live) return { ok: false, problems: ['this platform has no live exchange module'] };", "    if (false) return { ok: false, problems: ['this platform has no live exchange module'] };",
+    "realOrdersOffStopsANewRealPositionAndNeverStrandsAnOpenOne", "a platform with no live exchange module can be switched to real orders"],
+  [path.join(ROOT, "engine", "main.js"), "runner = new Runner({ journal, market, venues: { simulated, live }, accounts, liveEnabled: cfg.liveEnabled === true });", "runner = new Runner({ journal, market, venues: { simulated, live }, accounts, liveEnabled: true });",
+    "stepsThreeToSixAreDoneByWhatTheSystemSees", "every engine starts with real orders on, whatever its config says"],
+  [path.join(ROOT, "engine", "venues", "binance-live.js"), "    if (margin !== 'cross' && margin !== 'isolated') return { status: 'refused', why: `this account's margin is not recorded on this platform", "    if (false) return { status: 'refused', why: `this account's margin is not recorded on this platform",
+    "aRealOrderIsNeverSentUntilItCanBeAimedAndSigned", "a real order is sent at a pot nobody recorded"],
+  [path.join(ROOT, "engine", "venues", "binance-live.js"), "    if (back.found) return { ...this.read(back.order, { name, filters }), said, confirmed: true };", "    if (false) return { ...this.read(back.order, { name, filters }), said, confirmed: true };",
+    "anOrderThatMayStandIsAskedAboutBeforeItIsCalledARefusal", "an order that already stands on the exchange is sent again as though it never was"],
+  [path.join(ROOT, "public", "setup.html"), "(canReal ? '' : ' disabled')", "''",
+    "theRealOrdersPressSaysWhichWayItGoesAndAsksBeforeItArms", "the real-orders press is offered on a platform that cannot place one"],
   // THE TUNNEL GONE, THE CEILING ROWS AND THE SECTION'S NAME (3.267.0, 3.267.1)
   [path.join(ROOT, "engine", "main.js"), "if (!cfg.link || typeof cfg.link.url !== 'string' || !cfg.link.url) {", "if (false) {",
     "anEngineWithNoWebServerToCallRefusesToStart", "an engine with no web server to call starts anyway"],
