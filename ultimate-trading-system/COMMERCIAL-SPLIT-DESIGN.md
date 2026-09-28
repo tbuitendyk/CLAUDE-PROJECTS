@@ -53,6 +53,16 @@ subscription actions.
 **The planned machine**: IONOS Dedicated Server AR6-32 SSD with Debian 13, 6
 cores, 32 GB RAM, 2 × 480 GB SATA SSD, its own IP address.
 
+**Said after the first draft of this file, answering two of its open questions
+and giving the reason for the timing:**
+
+9. "promoted trading rules are ours".
+10. "polling cadence should be part of the admin-only interface".
+11. "the reason i am talking about this now is at this stage the project will be
+    moving to the new server for further dev and rollout" — so the machine in
+    point 8's spec is not only the production target, it is where the work
+    happens from here.
+
 ---
 
 ## B. The line: what we hold, and what we never hold
@@ -64,7 +74,7 @@ This is the section to read first, and the one everything else has to obey.
 | Stage 1, 2, 3 and 4 record sets | **Theirs, only.** Never ours. | Owner, point 8: "we DO NOT store users' stage 1,2,3,4 data at all." |
 | The row stores under them — votes, tau, models, records | **Theirs, only.** | They are the record sets. |
 | The price history a sweep reads | **Theirs.** | It is the large dataset of point 6. |
-| Promoted trading rules | **Probably ours.** | Owner, point 8: "promoted trading rules yes, probably." Marked probably here because the owner said probably. |
+| Promoted trading rules | **Ours.** Settled 2026-09-28: "promoted trading rules are ours". | A promoted rule is a coin, a chunk shape, a look-back and a band — chosen, not computed from prices, so it is metadata by the test below. |
 | Every piece of metadata | **Ours, definitely.** | Owner, point 8: "all metadata to maintain complete control of the environment, definitely." |
 | Accounts, subscriptions, billing, admin | **Ours.** | They are the product. |
 | Exchange keys | **Theirs, and not even readable by us.** | See section H — this is already true today. |
@@ -247,27 +257,41 @@ What actually decides whether the machine is right:
 
 ---
 
-## I. Not decided, and three readings that were wrong
+## I. Decided since the first draft
+
+**Promoted trading rules are ours** (owner, 2026-09-28). Section B's table is
+corrected. They pass the test in that section: a promoted rule is a coin, a
+chunk shape, a look-back and a band that a walk found — chosen and named, not
+computed from prices. It is the one thing we keep that came out of a record set,
+and it is kept because it is the thing a user trades from, not the working that
+produced it.
+
+**The polling cadence belongs to the admin-only interface** (owner,
+2026-09-28). It stops being a number in the page and becomes a setting we can
+change per deployment without a release — which is RULE FIVE pointed at
+ourselves rather than at the subscriber. FOUND, so the numbers it replaces are
+on the record: while a sweep runs the Sweep screen asks every **4 seconds**
+(`setInterval(swProgress, 4000)` in `public/construct.js`), and the Trade tab's
+live view every **3 seconds** when an engine is live (`public/trade.html`).
+
+**PROPOSED, and not agreed**: making the cadence a setting answers how often we
+ask, and it does not answer whether asking is the right shape at all. A facility
+that pushes when something changes costs one message per change; polling costs a
+message per user per interval whether anything happened or not. The admin
+setting is worth having either way — it is the brake — but it should not be
+mistaken for the fix.
+
+---
+
+## J. Not decided, and three readings that were wrong
 
 **Not decided, and the owner should decide them before the work starts:**
 
-1. **Promoted trading rules — ours or theirs?** The owner said "yes, probably".
-   Until it is settled, nothing should be built that depends on them being ours.
-   The question underneath it: a promoted rule is a coin, a chunk shape, a
-   look-back and a band — that is metadata by section B's test, not something
-   computed from prices, which argues for ours.
-2. **How the browser reaches a facility.** Redirected to it, or proxied through
+1. **How the browser reaches a facility.** Redirected to it, or proxied through
    our server. Redirect means every facility needs its own name and certificate;
    proxy means our server is in the path for every page even though it computes
    none of them. This drives DNS, TLS and the bandwidth line.
-3. **The polling cadence, which was built for local disk.** FOUND: while a sweep
-   runs the Sweep screen asks every **4 seconds** (`setInterval(swProgress,
-   4000)` in `public/construct.js`) and the Trade tab's live view every **3
-   seconds** when an engine is live (`public/trade.html`). Across a link to
-   someone else's machine, at many users, that cadence is the first thing that
-   will hurt. The answer is probably for the facility to push rather than for us
-   to poll, and it is a decision to take before the split, not after.
-4. **How much of a screen's answer we may keep.** Section E says only what the
+2. **How much of a screen's answer we may keep.** Section E says only what the
    page draws. The moment that becomes "and keep it so it is fast", section B is
    broken quietly.
 
