@@ -186,6 +186,37 @@ async function cancelLeftovers(engines, setups, asked = new Map(), now = Date.no
   return out;
 }
 
+// ---- WHAT A PLATFORM STILL HOLDS OF A SETUP (3.287.0) ---------------------
+//
+// Owner order 2026-09-28: "stopping orphaned orders on exchanges under random
+// execution platforms is important". A plan sent to a platform is carried out
+// there to its end -- its entry hour waited for, its levels watched, its
+// position closed -- whatever the setup's routing says afterwards. Moving the
+// routing away from a plan still in play left it running on the platform it was
+// sent to, with every screen reading the new one: an order nobody could see. So
+// the routing moves only when this is empty. Held is every plan of the setup
+// the platform's record shows still in play, and every plan this service sent
+// there that the record has not shown yet while its hold could still run.
+function heldOn(target, setup, now = Date.now()) {
+  const { TERMINAL } = require('../../engine/plan');
+  const out = [];
+  const seen = new Set();
+  for (const x of mirrorFor(target).plansOf(setup.id)) {
+    seen.add(x.plan.planId);
+    const phase = x.state ? x.state.phase : 'waiting';
+    if (!TERMINAL.includes(phase)) out.push({ planId: x.plan.planId, phase });
+  }
+  const cfg = setup.configSnapshot || {};
+  const geo = require('../dataset').GEOMETRIES[(cfg.branch || {}).geometry] || {};
+  const holdMs = ((geo.entryOffsetH || 0) + (Number((cfg.cell || {}).tHours) || 0)) * 3600000;
+  for (const d of require('./mirror').loadDecisions(setup.id)) {
+    const e = d.engine || {};
+    if (!e.ok || !e.traded || e.target !== target.id || !e.planId || seen.has(e.planId)) continue;
+    if (now < Date.parse(d.chunk_start) + holdMs) { seen.add(e.planId); out.push({ planId: e.planId, phase: 'sent' }); }
+  }
+  return out;
+}
+
 // ---- VERBOSE, AS THE OWNER TICKED IT --------------------------------------
 //
 // Verbose is ticked on Setup detail and kept on the setup; the engine keeps its
@@ -237,4 +268,4 @@ function followAll(list) {
   for (const t of list) mirrorFor(t).start();
 }
 
-module.exports = { call, health, postPlan, cancelPlan, cancelLeftovers, engineState, setVerbose, syncVerbose, translate, Mirror, mirrorFor, followAll, restartMirror, MIRROR_DIR };
+module.exports = { call, health, postPlan, cancelPlan, cancelLeftovers, heldOn, engineState, setVerbose, syncVerbose, translate, Mirror, mirrorFor, followAll, restartMirror, MIRROR_DIR };

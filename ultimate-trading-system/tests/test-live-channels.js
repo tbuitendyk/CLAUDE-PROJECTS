@@ -279,3 +279,116 @@ module.exports.activateBringsTheStopPickedOnTuneIntoStopPct = function () { retu
   assert.strictEqual(ch.tunedStopOf({ ...g, frozen: { stop: { stopPct: null } } }), null);
   assert.strictEqual(ch.tunedStopOf({ ...g, frozen: null }), null);
 }); };
+
+// THE ROUTING IS SAVED ON SETUP DETAIL ONCE A RUN (3.287.0, owner order 2026-09-28: "stopping orphaned
+// orders on exchanges under random execution platforms is important"; "the save routing button is single
+// use at activation of a setup"; "a deactivated setup *can* have it's routing changed at restart").
+// A second platform, answering, to move to; and a plan planted in the first platform's own record.
+function onTwoPlatforms(fn) {
+  return onOwnPlatform(() => {
+    if (!targets.getTarget('other-platform')) targets.saveCallingEngine({ id: 'other-platform', name: 'Other platform', tokenHash: 'd'.repeat(64) });
+    link.mirrorFor(targets.getTarget('other-platform')).lastHealth = { at: new Date(Date.now() + 3600e3).toISOString(), health: { realOrders: 'off' } };
+    return fn(link.mirrorFor(targets.getTarget('test-platform')));
+  });
+}
+function plant(m, s, day, phase) {
+  const planId = `${s.id}|2026-01-${day}T00:00:00.000Z`;
+  m.take({ type: 'plan', plan: { planId, setupId: s.id } }, false);
+  if (phase) m.take({ type: 'state', planId, state: { phase } }, false);
+  return planId;
+}
+function unplant(m, planId) { m.plans.delete(planId); m.states.delete(planId); }
+
+module.exports.saveRoutingIsOneUseARunAndARestartOpensItAgain = function () { return onTwoPlatforms(() => {
+  const g = mkGreenlight();
+  const s = activate(g.id, 'paper');
+  assert.strictEqual(reg.routingSavedThisRun(reg.getSetup(s.id)), false, 'a book just started still has its one Save routing');
+  const saved = reg.saveRouting(s.id, { executionTargetRef: 'other-platform' });
+  assert.strictEqual(saved.executionTargetRef, 'other-platform', 'the one Save routing moves a book that holds nothing');
+  assert.ok(saved.routingSavedUtc && reg.routingSavedThisRun(saved), 'the save is stamped as this run\'s');
+  let err = null;
+  try { reg.saveRouting(s.id, { executionTargetRef: 'test-platform' }); } catch (e) { err = e; }
+  assert.strictEqual(err && err.code, 'ROUTING_FIXED', 'a second Save routing in the same run is refused');
+  assert.strictEqual(reg.getSetup(s.id).executionTargetRef, 'other-platform', 'the refused save moved nothing');
+  // a stopped book's routing is picked again at the restart, never on Setup detail
+  ch.deactivate(g.id, 'paper');
+  err = null;
+  try { reg.saveRouting(s.id, { executionTargetRef: 'test-platform' }); } catch (e) { err = e; }
+  assert.strictEqual(err && err.code, 'ROUTING_FIXED');
+  assert.ok(/Activate paper on Greenlights/.test(err.message), err.message);
+  // the restart picks it again, and is a new run: the one Save routing is open once more
+  activate(g.id, 'paper', { executionTargetRef: 'test-platform' });
+  assert.strictEqual(reg.getSetup(s.id).executionTargetRef, 'test-platform', 'a restart may pick the routing again');
+  reg.setRunEpoch(s.id, new Date(Date.now() + 1000).toISOString());   // the restart's run begins after the old save
+  assert.strictEqual(reg.routingSavedThisRun(reg.getSetup(s.id)), false, 'a restart opens the one Save routing again');
+}); };
+
+module.exports.aMoveIsRefusedWhileThePlatformStillHoldsAPlanOfTheBook = function () { return onTwoPlatforms((m) => {
+  const g = mkGreenlight();
+  const s = activate(g.id, 'paper');
+  const planId = plant(m, s, '03', 'open');
+  try {
+    let err = null;
+    try { reg.saveRouting(s.id, { executionTargetRef: 'other-platform' }); } catch (e) { err = e; }
+    assert.strictEqual(err && err.code, 'ROUTING_HELD', 'a move off an open position is refused');
+    assert.ok(/^Test platform still holds 1 plan of this book \(open\): moved now, it would go on running there/.test(err.message), err.message);
+    assert.strictEqual(reg.getSetup(s.id).executionTargetRef, 'test-platform', 'nothing moved');
+    assert.ok(!reg.routingSavedThisRun(reg.getSetup(s.id)), 'a refused save leaves the run\'s one Save routing unused');
+    // once the platform's record says it is over, the move goes
+    m.take({ type: 'state', planId, state: { phase: 'closed' } }, false);
+    assert.strictEqual(reg.saveRouting(s.id, { executionTargetRef: 'other-platform' }).executionTargetRef, 'other-platform');
+  } finally { unplant(m, planId); }
+}); };
+
+module.exports.saveRoutingThatChangesNothingIsAllowedWhileAPlanIsHeld = function () { return onTwoPlatforms((m) => {
+  const g = mkGreenlight();
+  const s = activate(g.id, 'paper');
+  const planId = plant(m, s, '04', 'armed');
+  try {
+    const out = reg.saveRouting(s.id, { executionTargetRef: 'test-platform' });
+    assert.strictEqual(out.executionTargetRef, 'test-platform');
+    assert.ok(reg.routingSavedThisRun(out), 'the press is still the run\'s one Save routing');
+  } finally { unplant(m, planId); }
+}); };
+
+module.exports.aRestartMayPickTheRoutingAgainButNeverOffAPlan = function () { return onTwoPlatforms((m) => {
+  const g = mkGreenlight();
+  const s = activate(g.id, 'paper');
+  ch.deactivate(g.id, 'paper');
+  // an entry the platform has not yet taken back: no state of its own yet reads as waiting
+  const planId = plant(m, s, '05', null);
+  try {
+    let err = null;
+    try { activate(g.id, 'paper', { executionTargetRef: 'other-platform' }); } catch (e) { err = e; }
+    assert.strictEqual(err && err.code, 'ROUTING_HELD', 'a restart off a waiting entry is refused');
+    assert.ok(/\(waiting\)/.test(err.message), err.message);
+    assert.strictEqual(reg.getSetup(s.id).state, 'stopped', 'the refused restart started nothing');
+    assert.strictEqual(reg.getSetup(s.id).executionTargetRef, 'test-platform', 'and moved nothing');
+    m.take({ type: 'state', planId, state: { phase: 'cancelled' } }, false);
+    activate(g.id, 'paper', { executionTargetRef: 'other-platform' });
+    assert.strictEqual(reg.getSetup(s.id).executionTargetRef, 'other-platform', 'once it is taken back, the restart moves the book');
+  } finally { unplant(m, planId); }
+}); };
+
+// WHAT THIS SERVICE SENT COUNTS BEFORE THE PLATFORM'S RECORD SHOWS IT, while its hold could still run
+module.exports.aPlanSentButNotYetOnThePlatformsRecordIsHeldUntilItsHoldIsOver = function () { return onTwoPlatforms(() => {
+  const g = mkGreenlight();
+  const s = reg.getSetup(activate(g.id, 'paper').id);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-ch-dec-'));
+  const was = process.env.GC_LIVE_DECISIONS;
+  process.env.GC_LIVE_DECISIONS = dir;
+  try {
+    const t = targets.getTarget('test-platform');
+    const dec = (chunk, planId, extra = {}) => fs.appendFileSync(path.join(dir, `${s.id}.jsonl`), `${JSON.stringify({ chunk_start: chunk, side: 'LONG', engine: { target: 'test-platform', planId, traded: true, ok: true, ...extra } })}\n`);
+    const now = Date.now();
+    dec(new Date(now - 3600e3).toISOString(), `${s.id}|recent`);
+    dec(new Date(now - 400 * 86400e3).toISOString(), `${s.id}|long-over`);
+    dec(new Date(now - 7200e3).toISOString(), `${s.id}|refused`, { ok: false });
+    const held = link.heldOn(t, s, now);
+    assert.deepStrictEqual(held, [{ planId: `${s.id}|recent`, phase: 'sent' }], 'only the recent plan the platform took is held; one long over, and one it refused, are not');
+    assert.deepStrictEqual(link.heldOn(targets.getTarget('other-platform'), s, now), [], 'a plan sent to one platform is not held on another');
+  } finally {
+    if (was === undefined) delete process.env.GC_LIVE_DECISIONS; else process.env.GC_LIVE_DECISIONS = was;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}); };

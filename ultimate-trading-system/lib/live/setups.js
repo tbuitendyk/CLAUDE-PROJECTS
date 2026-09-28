@@ -374,7 +374,9 @@ function liveGateErrors(s, to) {
   return errs;
 }
 
-function updateSetup(id, patch, by = 'owner') {
+// `stamp` is written with the patch but is not the owner's to send: only
+// saveRouting passes it, with the moment the routing was saved.
+function updateSetup(id, patch, by = 'owner', stamp = null) {
   const s = getSetup(id);
   if (!s) { const e = new Error(`no such setup ${id}`); e.code = 'NOT_FOUND'; throw e; }
   const offered = Object.keys(patch || {});
@@ -422,8 +424,66 @@ function updateSetup(id, patch, by = 'owner') {
       throw e;
     }
   }
+  if (stamp && stamp.routingSavedUtc) next.routingSavedUtc = stamp.routingSavedUtc;
   atomicWrite(fileFor(id), next);
   return next;
+}
+
+// THE ROUTING IS SAVED ON SETUP DETAIL ONCE A RUN (3.287.0, owner order
+// 2026-09-28: "stopping orphaned orders on exchanges under random execution
+// platforms is important"; "the save routing button is single use at
+// activation of a setup"; "a deactivated setup *can* have it's routing changed
+// at restart"; "they become display only on the setup detail tabs only after
+// they've been saved there the first time").
+//
+// The trading platform and the trading account are picked at Activate. Save
+// routing on Setup detail may change them once in a run, while the book is paper
+// or live; after that they stay as they are until the book is deactivated and
+// started again, when Activate picks them afresh. A run is the stretch since
+// runEpochUtc, which every activation stamps, so a new run opens the save again
+// with nothing to reset. And neither door moves a book off a platform that still
+// holds a plan of it (lib/live/enginelink.js heldOn): the plan would go on
+// running there, with no screen showing it.
+function routingSavedThisRun(s) {
+  if (!s || !s.routingSavedUtc) return false;
+  const run = s.runEpochUtc ? Date.parse(s.runEpochUtc) : NaN;
+  return !Number.isFinite(run) || Date.parse(s.routingSavedUtc) >= run;
+}
+function routingChanges(s, patch) {
+  const p = patch || {};
+  return ('executionTargetRef' in p && (p.executionTargetRef || null) !== (s.executionTargetRef || null))
+    || ('keyRef' in p && (p.keyRef || null) !== (s.keyRef || null));
+}
+// the refusal for a move that would leave a plan behind on the platform, or null
+function routingLeavesBehind(s, now = Date.now()) {
+  const t = require('./targets').listEngines().find((x) => x.id === s.executionTargetRef);
+  if (!t) return null;
+  const held = require('./enginelink').heldOn(t, s, now);
+  if (!held.length) return null;
+  const one = held.length === 1;
+  return `${t.name || t.id} still holds ${held.length} plan${one ? '' : 's'} of this book (${held.map((h) => h.phase).join(', ')}): `
+    + `moved now, ${one ? 'it' : 'they'} would go on running there with no screen showing ${one ? 'it' : 'them'}. `
+    + `The routing can change once ${one ? 'it has' : 'they have'} closed, expired or been taken back.`;
+}
+function saveRouting(id, patch, by = 'owner') {
+  const s = getSetup(id);
+  if (!s) { const e = new Error(`no such setup ${id}`); e.code = 'NOT_FOUND'; throw e; }
+  const refuse = (message, code) => { const e = new Error(message); e.code = code; throw e; };
+  const start = s.channel === 'real' ? 'Activate real' : 'Activate paper';
+  if (s.state !== 'paper' && s.state !== 'live') {
+    refuse(`the routing of a ${s.state} book is picked when it is started again, with ${start} on Greenlights`, 'ROUTING_FIXED');
+  }
+  if (routingSavedThisRun(s)) {
+    refuse(`Save routing was used in this run at ${String(s.routingSavedUtc).slice(11, 16)} UTC: the trading platform and the trading account `
+      + 'stay as they are until the book is deactivated and started again', 'ROUTING_FIXED');
+  }
+  const routing = {};
+  for (const k of ['executionTargetRef', 'keyRef']) if (k in (patch || {})) routing[k] = patch[k];
+  if (routingChanges(s, routing)) {
+    const why = routingLeavesBehind(s);
+    if (why) refuse(why, 'ROUTING_HELD');
+  }
+  return updateSetup(id, routing, by, { routingSavedUtc: new Date().toISOString() });
 }
 
 // State machine. Every transition is journaled in stateHistory with who/when.
@@ -520,5 +580,6 @@ module.exports = {
   createSetup, getSetup, listSetups, readSetups, tradableSetups, setupProblems,
   setupFee, feeIsInherited,
   updateSetup, transition, deleteDraft, setRunEpoch, liveGateErrors,
+  saveRouting, routingSavedThisRun, routingChanges, routingLeavesBehind,
   STATES, TRANSITIONS, MIN_STOP_PCT, setupsDir,
 };

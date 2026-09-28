@@ -81,6 +81,7 @@ function activate(greenlightId, channel, { by = OWNER_ID, clipUsd, name, trainPo
   if (!g) { const e = new Error(`no such greenlight ${greenlightId}`); e.code = 'NOT_FOUND'; throw e; }
   if (g.revoked) { const e = new Error('this config was nuked back to not-greenlighted; re-greenlight it first'); e.code = 'REVOKED'; throw e; }
   let s = channelSetup(greenlightId, channel);
+  const restart = !!s;
   const target = ACTIVE_STATE[channel];
   // EVERY SETUP RUNS ON A TRADING PLATFORM, AND ONE MUST BE PICKED (3.282.0, owner 2026-09-27: "simply show
   // the list where execution targets are all available and one must be picked"). Settled before anything is
@@ -151,6 +152,15 @@ function activate(greenlightId, channel, { by = OWNER_ID, clipUsd, name, trainPo
   if (picked && s.executionTargetRef !== picked.id) patch.executionTargetRef = picked.id;
   else if (!s.executionTargetRef) patch.executionTargetRef = eng.id;
   if (keyRef !== undefined && (keyRef || null) !== (s.keyRef || null)) patch.keyRef = keyRef || null;
+  // A RESTART MAY PICK THE ROUTING AGAIN, BUT NEVER OFF A PLAN (3.287.0, owner
+  // order 2026-09-28: "a deactivated setup *can* have it's routing changed at
+  // restart"). A stopped book's waiting entries are taken back within minutes
+  // and its open positions already refuse the restart above; one not yet taken
+  // back would be left running on the platform the book is moving off.
+  if (restart && reg.routingChanges(s, patch)) {
+    const why = reg.routingLeavesBehind(s);
+    if (why) { const e = new Error(why); e.code = 'ROUTING_HELD'; throw e; }
+  }
   if (Object.keys(patch).length) s = reg.updateSetup(s.id, patch, by);
   if (!targets.listEngines().some((t) => t.id === s.executionTargetRef)) {
     const e = new Error('This setup\'s execution target is not a trading platform -- pick one in Execution target on its Setup detail.');

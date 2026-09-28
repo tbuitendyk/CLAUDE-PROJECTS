@@ -696,6 +696,7 @@ async function drawConfigs(){
         <label class="muted" title="the trading account on the Account tab this book is linked to${afReal?' — real orders are placed only from it':''}">Sub-account key
           <select id="afKey" style="min-width:14rem">${accountOptions(accts,afCh&&afCh.keyRef,afReal?null:'no trading account')}</select></label>
       </div>
+      <p class="muted" style="font-size:.74rem;margin:.4rem 0 0">The trading platform and the trading account stay with the book for its run: Save routing on Setup detail can change them once, and after that only deactivating and starting it again can.</p>
       <div class="row" style="margin-top:.5rem"><button id="afGo" class="pri">${afReal?'Activate real':'Activate paper'}</button><button id="afNo">Do not activate</button><span id="afMsg" class="note"></span></div>
       ${afReal?'<p class="muted" style="font-size:.74rem;margin:.4rem 0 0"><b class="warn">Real channel — real money when armed.</b></p>':''}</div>`:'';
   $('#view').innerHTML=`${afHtml}<div class="panel"><table><thead><tr>
@@ -977,23 +978,33 @@ async function drawDetail(){
            full live gate on every change (QC-137), so offering them here weakens
            nothing: a blanked key or a box that does not serve the pair is still
            refused on a trading setup (found 2026-08-18). -->
-      <div class="row" style="margin-top:.5rem">
+      <!-- SAVED HERE ONCE A RUN (3.287.0, owner order 2026-09-28: "stopping orphaned
+           orders on exchanges under random execution platforms is important"; "the
+           save routing button is single use at activation of a setup"; "they become
+           display only on the setup detail tabs only after they've been saved there
+           the first time"). While the book runs and Save routing has not been used
+           since it started, the two lists and the button; after it, or on a stopped
+           book, what they are, as words -- Activate picks them again at a restart.
+           The rule is the service's (routingSaved), not a second copy of it here. -->
+      ${(s.state==='paper'||s.state==='live')&&!s.routingSaved?`<div class="row" style="margin-top:.5rem">
         <label class="muted" title="the trading account on the Account tab this setup is linked to. Real money requires one, so that no two books share a balance and borrow pool.">Sub-account key
-          <!-- PICKED FROM THE ACCOUNT TAB'S LIST (3.282.0). The list holds only real
-               account names, so nothing can be saved over the reference that is
-               not an account -- the fault a typed box once allowed (2026-08-21).
-               What is already set stays set unless another is picked; clearing it
-               is its own deliberate act. -->
-          <select id="keyIn" style="min-width:14rem">${accountOptions(accts,s.keyRef,null)}</select></label>
-        <label class="muted"><input type="checkbox" id="keyClear"> clear the key</label>
+          <!-- PICKED FROM THE ACCOUNT TAB'S LIST (3.282.0), with the same choices as
+               Activate: no trading account is one of them on Paper Books, and a live
+               book must keep its own. -->
+          <select id="keyIn" style="min-width:14rem">${accountOptions(accts,s.keyRef,branch==='real'?null:'no trading account')}</select></label>
         <label class="muted" title="the trading platform this setup runs on">Execution target
           <select id="targetIn" style="min-width:14rem">${platformOptions(tg,s.executionTargetRef)}</select></label>
       </div>
       <!-- A BUTTON GETS A ROW OF ITS OWN (RULE FOUR-A, owner 2026-09-25): it sat
            at the end of the key and target row, against the fields. -->
       <div class="row" style="margin-top:.5rem"><button id="saveRouting">Save routing</button></div>
-      <p class="muted" style="font-size:.74rem;margin:.4rem 0 0">A change here is re-checked against the same gate that
-        guards going live, and a live setup must keep its own key.</p><span id="routeMsg" class="note"></span></div>
+      <p class="muted" style="font-size:.74rem;margin:.4rem 0 0">Save routing can be used once each time this book is started;
+        after it, the trading account and the trading platform stay as they are until the book is deactivated and started again.
+        It is refused while the platform still holds a plan of this book, which would go on running there unseen, and a live book must keep its own key.</p>`
+      :`<div class="row" style="margin-top:.5rem"><span class="muted">Sub-account key</span> <b>${s.keyRef?esc(s.keyRef):'none'}</b>
+        <span class="muted" style="margin-left:1rem">Execution target</span> <b>${esc(platformName(tg,s.executionTargetRef)||'none picked')}</b></div>
+      <p class="muted" style="font-size:.74rem;margin:.4rem 0 0">${s.routingSaved&&(s.state==='paper'||s.state==='live')?`Saved with Save routing at ${esc(String(s.routingSavedUtc||'').slice(11,16))} UTC in this run. `:''}They are picked again when the book is started again, with ${branch==='real'?'Activate real':'Activate paper'} on Greenlights.</p>`}
+      <span id="routeMsg" class="note"></span></div>
     ${(an&&an.anatomy)?`
     <div class="panel"><div class="k">Tested configuration — how these trades are set up</div>
       <div style="margin-top:.5rem">${Object.entries(an.config||{}).map(([k,v])=>cfgRow(esc(k),
@@ -1041,15 +1052,16 @@ async function drawDetail(){
     $('#trainAt').disabled=v!=='frozen'; $('#trainAtBox').style.display=v==='construct'?'none':'';
     $('#trainOn').innerHTML=trainWords(v); };
   $('#trainIn').onchange=trainShow; trainShow();
-  $('#saveRouting').onclick=async()=>{
-    // A platform must be picked; the key changes only when another account is picked, or the tick clears it
+  const sr=$('#saveRouting'); if(sr) sr.onclick=async()=>{
+    // A platform must be picked; the key changes only when another choice is picked -- no trading account among
+    // them on Paper Books -- and this press is the run's one Save routing (3.287.0)
     const executionTargetRef=$('#targetIn').value;
     if(!executionTargetRef){ $('#routeMsg').innerHTML='<span class="neg">pick a trading platform in Execution target first</span>'; return; }
     const pickedKey=$('#keyIn').value;
-    const clearKey=$('#keyClear') && $('#keyClear').checked;
-    const keyRef=clearKey?null:(pickedKey&&pickedKey!==s.keyRef?pickedKey:undefined);
+    const keyRef=pickedKey===(s.keyRef||'')?undefined:(pickedKey||null);
     const body={executionTargetRef};
     if(keyRef!==undefined) body.keyRef=keyRef;   // say nothing, change nothing
+    if(!confirm('Save routing can be used once each time this book is started.\n\nAfter this, the trading account and the trading platform stay as they are until the book is deactivated and started again.\n\nSave routing now?')) return;
     const out=await post(`api/live/setups/${s.id}/config`,body); if(out) draw();
   };
 }

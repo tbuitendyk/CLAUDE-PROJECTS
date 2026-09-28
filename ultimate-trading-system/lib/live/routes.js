@@ -15,7 +15,8 @@ function errStatus(e) {
     case 'NOT_FOUND': return 404;
     case 'BAD_TRANSITION': case 'IMMUTABLE': case 'BAD_SETUP': case 'BAD_CONFIG': case 'NOT_DRAFT':
     case 'NOT_LIVE_EXECUTABLE': case 'BAD_CHANNEL': case 'NOT_ACTIVE': case 'NO_PLATFORM': case 'BAD_ROUTING': return 400;
-    case 'EXISTS': case 'ALREADY_ACTIVE': case 'CHANNEL_ACTIVE': case 'DEACTIVATING': case 'REVOKED': return 409;
+    case 'EXISTS': case 'ALREADY_ACTIVE': case 'CHANNEL_ACTIVE': case 'DEACTIVATING': case 'REVOKED':
+    case 'ROUTING_FIXED': case 'ROUTING_HELD': return 409;
     default: return 500;
   }
 }
@@ -197,8 +198,9 @@ function installLiveRoutes(app, { csrfGuard }) {
   app.get('/api/live/setups/:id', (req, res) => {
     const s = reg.getSetup(req.params.id);
     if (!s) return res.status(404).json({ error: `no such setup ${req.params.id}` });
-    // the full record: the trading account it names (3.282.0), and presence under a name that says presence
-    res.json({ ...s, keyRef: s.keyRef || null, hasKeyRef: Boolean(s.keyRef) });
+    // the full record: the trading account it names (3.282.0), and presence under a name that says presence;
+    // and whether Save routing has been used in this run, worked out once, here (3.287.0)
+    res.json({ ...s, keyRef: s.keyRef || null, hasKeyRef: Boolean(s.keyRef), routingSaved: reg.routingSavedThisRun(s) });
   });
 
   // Per-setup live book + execution fidelity, derived from the synced box
@@ -324,7 +326,13 @@ function installLiveRoutes(app, { csrfGuard }) {
           if (why) { const e = new Error(`Members train: "as trained by Construct" cannot be picked — ${why}`); e.code = 'BAD_SETUP'; throw e; }
         }
       }
-      const s = reg.updateSetup(req.params.id, b, 'owner');
+      // THE ROUTING THROUGH ITS OWN DOOR (3.287.0, owner order 2026-09-28): once a run,
+      // and never off a plan the platform still holds (lib/live/setups.js saveRouting)
+      const routing = {};
+      const rest = {};
+      for (const [k, v] of Object.entries(b)) (k === 'executionTargetRef' || k === 'keyRef' ? routing : rest)[k] = v;
+      let s = Object.keys(routing).length ? reg.saveRouting(req.params.id, routing, 'owner') : null;
+      if (Object.keys(rest).length || !s) s = reg.updateSetup(req.params.id, rest, 'owner');
       res.json({ ok: true, setup: summarize(s) });
     } catch (e) { res.status(errStatus(e)).json({ error: e.message }); }
   });
