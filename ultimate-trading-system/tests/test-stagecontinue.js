@@ -863,6 +863,80 @@ module.exports = {
   // DELETE paused jobs also"). The stage 3 section's box already picks a paused
   // run; a delete beside the start press acts on it, through the one flow
   // Boards and the Funnel delete through, and is live only while one is chosen.
+  // WHAT IS OPEN FOLLOWS ITS SET THROUGH A PAUSE (3.292.5, owner 2026-09-28:
+  // "when the pause button is used the interface behavior is wonky ... fix all
+  // that insanity", stage 1 and 2 alike). A set that can be started again is
+  // offered ONLY as `continue:<id>`; a running one under its plain id. So a run
+  // that paused left what was open naming an option that no longer existed --
+  // and every symptom followed from that: the box fell back to new, the level
+  // still read as set so Put away stayed live, swContinueOf came back null so
+  // Delete stayed dead and the section was never greyed, and Start launched a
+  // NEW set from the paused set's own name, which the service refuses.
+  //
+  // Run here, not read: the two functions are lifted out and driven.
+  theOpenSetFollowsItsRunThroughAPauseAndBackAgain() {
+    const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const block = src.slice(src.indexOf('// WHAT IS OPEN FOLLOWS ITS SET THROUGH A PAUSE'), src.indexOf('function swLetGoFrom(n) {'));
+    let store = {};
+    const boxes = {};
+    const fakeBox = (value, opts) => ({ value, options: (opts || []).map((v) => ({ value: v })) });
+    const deps = [
+      (sel) => boxes[sel] || null,                                   // $
+      { 1: '#a', 2: '#b', 3: '#c' },                                 // SW_PICK
+      'cx-sweep-opened',                                             // SW_OPEN_KEY
+      { getItem: () => JSON.stringify(store), setItem: (k, v) => { store = JSON.parse(v); } },
+      () => ({ ...store }),                                          // swOpenedAll
+      (n) => String(store[String(n)] || ''),                         // swOpened
+      (x) => !!(x && x.startsAgain),                                 // swPausedRow
+    ];
+    // eslint-disable-next-line no-new-func
+    const { swFollowPaused, swSelectOpened } = new Function('$', 'SW_PICK', 'SW_OPEN_KEY', 'localStorage', 'swOpenedAll', 'swOpened', 'swPausedRow',
+      `${block}\nreturn { swFollowPaused, swSelectOpened };`)(...deps);
+
+    // STAGE 2 PAUSES: what is open moves to the paused form, and stage 3 under it
+    // is NOT let go -- it is the same set, only the name the box offers changed
+    store = { 1: 's1-a', 2: 's2-b', 3: 's3-c' };
+    let sets = [{ id: 's1-a' }, { id: 's2-b', startsAgain: true }, { id: 's3-c' }];
+    assert.deepStrictEqual(swFollowPaused(sets), [2]);
+    assert.deepStrictEqual(store, { 1: 's1-a', 2: 'continue:s2-b', 3: 's3-c' });
+    // STARTED AGAIN: it is running once more, so it goes back to its plain id
+    sets = [{ id: 's1-a' }, { id: 's2-b' }, { id: 's3-c' }];
+    assert.deepStrictEqual(swFollowPaused(sets), [2]);
+    assert.deepStrictEqual(store, { 1: 's1-a', 2: 's2-b', 3: 's3-c' });
+    // STAGE 1 TOO (owner: "make sure that stage 1 and 2 pausing restarting
+    // behavior is sane"), and nothing moves when nothing changed
+    sets = [{ id: 's1-a', startsAgain: true }, { id: 's2-b' }, { id: 's3-c' }];
+    assert.deepStrictEqual(swFollowPaused(sets), [1]);
+    assert.strictEqual(store['1'], 'continue:s1-a');
+    assert.deepStrictEqual(swFollowPaused(sets), [], 'it rewrites what is already right');
+    // a set that has gone from the list is left alone here -- swRefillPicks lets it go
+    assert.deepStrictEqual(swFollowPaused([]), []);
+    assert.strictEqual(store['1'], 'continue:s1-a');
+
+    // THE BOX GOES BACK ON IT, but only where it was already on that set or empty
+    store = { 2: 'continue:s2-b' };
+    boxes['#b'] = fakeBox('s2-b', ['', 'continue:s2-b']);            // the old form
+    swSelectOpened([2]);
+    assert.strictEqual(boxes['#b'].value, 'continue:s2-b', 'the box is not put back on what is open');
+    boxes['#b'] = fakeBox('', ['', 'continue:s2-b']);                // fell back to new
+    swSelectOpened([2]);
+    assert.strictEqual(boxes['#b'].value, 'continue:s2-b');
+    boxes['#b'] = fakeBox('s2-other', ['', 's2-other', 'continue:s2-b']);
+    swSelectOpened([2]);
+    assert.strictEqual(boxes['#b'].value, 's2-other', 'a box the owner pointed at another set is taken off it');
+    // and never onto an option that is not there
+    boxes['#b'] = fakeBox('', ['']);
+    swSelectOpened([2]);
+    assert.strictEqual(boxes['#b'].value, '');
+
+    // AND THE POLL RUNS BOTH, before the boxes are rebuilt and after
+    assert.ok(src.includes('const swFollowed = swFollowPaused(swSetsCache);\n  const swMoved = swRefillParents(swSetsCache);'),
+      'the poll no longer follows a paused run before it rebuilds the boxes');
+    assert.ok(src.includes('    swSelectOpened(swFollowed);\n    swApplyAway();'),
+      'the poll no longer puts the box back on it, or leaves Put away reading the wrong thing');
+    assert.ok(src.includes('  if (swMoved || swFollowed.length) {'), 'a follow no longer wakes the counts line, so Delete record set stays dead');
+  },
+
   async aPausedRunCanBeDeletedFromWhereItIsChosen() {
     const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     // drawn beside each stage's start press, dead until a paused run is chosen (every stage since 3.269.0)

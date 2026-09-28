@@ -928,6 +928,58 @@ function swSetOpened(n, v) {
   all[String(n)] = String(v || '');
   try { localStorage.setItem(SW_OPEN_KEY, JSON.stringify(all)); } catch (_) { /* private window */ }
 }
+// WHAT IS OPEN FOLLOWS ITS SET THROUGH A PAUSE (3.292.5, owner 2026-09-28: "when
+// the pause button is used the interface behavior is wonky ... fix all that
+// insanity", and stage 1 and 2 alike).
+//
+// A set that can be started again is offered ONLY as `continue:<id>` -- it is
+// taken out of the plain list (swSetOptions). A RUNNING set is offered under its
+// plain id, and that is what a launch opens (swLandOn). So the moment a run was
+// paused, what was open still said `<id>` while the box could only offer
+// `continue:<id>`, and every symptom the owner listed followed from that one
+// disagreement: the box fell back to "— new stage N sweep —" because its value
+// named an option that no longer existed; the level still read as SET, so its
+// Put away stayed live; swContinueOf came back null, so Delete record set stayed
+// dead and the section was never greyed; and Start launched a NEW set from the
+// boxes still holding the paused set's name -- which the service refused,
+// because that name already exists. The workaround was to put away, pick it
+// again and reopen, which is exactly the rewrite below done by hand.
+//
+// It is the same SET either way, so this never lets go of the levels under it --
+// which is why it does not go through swSetOpened, whose job is to let go when
+// the set itself changes. Pausing stage 2 does not invalidate stage 3's pick.
+function swFollowPaused(sets) {
+  const moved = [];
+  for (const n of [1, 2, 3]) {
+    const v = swOpened(n);
+    if (!v) continue;
+    const id = v.startsWith('continue:') ? v.slice('continue:'.length) : v;
+    const row = (sets || []).find((x) => x.id === id);
+    if (!row) continue;                       // gone from the list: swRefillPicks lets it go
+    const want = swPausedRow(row) ? `continue:${id}` : id;
+    if (want === v) continue;
+    const all = swOpenedAll();
+    all[String(n)] = want;
+    try { localStorage.setItem(SW_OPEN_KEY, JSON.stringify(all)); } catch (_) { /* private window */ }
+    moved.push(n);
+  }
+  return moved;
+}
+// and the box goes back on it, once the options have been rebuilt around the new
+// name. Only where the box was already on that set -- in either form -- or empty:
+// a box the owner has pointed at something else is theirs, and its Open says so.
+function swSelectOpened(stages) {
+  for (const n of stages || []) {
+    const box = $(SW_PICK[n]);
+    const v = swOpened(n);
+    if (!box || !v) continue;
+    const id = v.startsWith('continue:') ? v.slice('continue:'.length) : v;
+    const was = String(box.value || '');
+    const wasId = was.startsWith('continue:') ? was.slice('continue:'.length) : was;
+    if (was && wasId !== id) continue;
+    if ([...box.options].some((o) => o.value === v)) box.value = v;
+  }
+}
 function swLetGoFrom(n) {
   const all = swOpenedAll();
   for (let m = n; m <= 3; m++) all[String(m)] = '';
@@ -1101,7 +1153,14 @@ async function swProgress() {
   // cost line are both judged off it, so a stale copy would answer for a box
   // that has just moved.
   swSetsCache = st.sets || [];
+  // a run that has just paused, or one that has just been started again, moves
+  // between the two lists: what is open follows it before the boxes are rebuilt
+  const swFollowed = swFollowPaused(swSetsCache);
   const swMoved = swRefillParents(swSetsCache);
+  if (swFollowed.length) {
+    swSelectOpened(swFollowed);
+    swApplyAway();     // Put away / Open now reads what is really open
+  }
   // THE HEADING COLOURS ARE REPAINTED ON EVERY TICK, NOT ONLY WHEN A BOX MOVED
   // (3.76.2, owner order 2026-09-06: "JUST THINK ABOUT IT AND CODE IT RIGHT SO
   // THE DROP DOWNS FILL AND THE COLORS SET").
@@ -1121,8 +1180,10 @@ async function swProgress() {
   // memory that only has something new to save when they have.
   swProvenance();
   swSayCut2();   // what the stage 1 filters leave the carry (3.220.0)
-  if (swMoved) {
+  if (swMoved || swFollowed.length) {
     rememberSweepForm();
+    // and the counts line lights Delete record set and says how far the paused
+    // run got, through swContinueMode -- which now has a paused run to see
     swCountsSoon();
   }
   // the start buttons sleep while a run is going — one heavy job at a time,
