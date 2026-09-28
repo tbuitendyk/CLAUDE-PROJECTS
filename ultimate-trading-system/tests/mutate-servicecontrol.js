@@ -3042,7 +3042,7 @@ const GUARDS = [
     "theTradePagePicksThePlatformAndAccountAndSaysWhatABookIsLinkedTo", "LIVE's title cannot say what the book is linked to"],
   [path.join(ROOT, "lib", "live", "routes.js"), "    keyRef: s.keyRef || null,\n    executionTargetRef: s.executionTargetRef,", "    executionTargetRef: s.executionTargetRef,",
     "theSubAccountKeyIsShownAsTheAccountItNames", "the setups list no longer names the trading account"],
-  [path.join(ROOT, "lib", "live", "routes.js"), "    res.json({ ...s, keyRef: s.keyRef || null, hasKeyRef: Boolean(s.keyRef) });", "    res.json({ ...s, keyRef: undefined, hasKeyRef: Boolean(s.keyRef) });",
+  [path.join(ROOT, "lib", "live", "routes.js"), "    res.json({ ...s, keyRef: s.keyRef || null, hasKeyRef: Boolean(s.keyRef), routingSaved:", "    res.json({ ...s, keyRef: undefined, hasKeyRef: Boolean(s.keyRef), routingSaved:",
     "theSubAccountKeyIsShownAsTheAccountItNames", "the setup no longer names its trading account"],
   [path.join(ROOT, "public", "trade.html"), "const platformsOf=(tg)=>((tg&&tg.targets)||[]).filter(t=>t.kind==='engine');", "const platformsOf=(tg)=>((tg&&tg.targets)||[]);",
     "theTradePagePicksThePlatformAndAccountAndSaysWhatABookIsLinkedTo", "mx-1 is offered again as an execution target"],
