@@ -2552,7 +2552,7 @@ function s4CampWire(redraw) {
 // have a Rename button before the Delete Stage 4 record set... on each tab that
 // button occurs so the selected record set can be renamed")
 function s4DeleteRowHtml(chosen) {
-  return `<div class="row"><button class="s4Rename" ${chosen ? '' : 'disabled'} title="renames the Stage 4 record set chosen in the box above to the name you type, whole, nothing cut or added. The sets that name it -- the held and reserve sets read from it and the sets saved from it -- carry the new name.">Rename</button><button class="danger s4Delete" ${chosen ? '' : 'disabled'} title="permanently deletes the Stage 4 record set chosen in the box above. A rule takes the held and reserve sets read from it along; every read of the held-back or reserve window that goes is written onto a set of the same family and still counts as a look. Refused while the set is being worked on, or while a greenlight written from it stands. Nothing is deleted until the set's id is typed back.">Delete Stage 4 record set…</button></div>`;
+  return `<div class="row"><button class="s4Rename" ${chosen ? '' : 'disabled'} title="renames the Stage 4 record set chosen in the box above to the name you type, whole, nothing cut or added. The sets that name it -- the held and reserve sets read from it and the sets saved from it -- carry the new name.">Rename</button><button class="danger s4Delete" ${chosen ? '' : 'disabled'} title="permanently deletes the Stage 4 record set chosen in the box above, and every record set below it: a rule takes the held and reserve sets read from it along. Each is listed on its own line before anything goes, and every read of the held-back or reserve window that goes is written onto a set of the same family and still counts as a look. A set a book on Trade is running from is kept, with the sets above it. Refused while a set is being worked on. Nothing is deleted until the set's id is typed back.">Delete Stage 4 record set…</button></div>`;
 }
 // the name typed is the name: offered with the set's own, sent whole
 function s4RenameWire(chosen, name, after) {
@@ -5581,11 +5581,10 @@ async function drawBoards() {
         if (!id) return;
         const done = await deleteSetFlow(id);
         if (!done) return;
-        const patch = { [`s${stage}`]: null, openS3: [] };
-        if (stage <= 2) patch.s3 = null;
-        if (stage === 1) patch.s2 = null;
-        // and what the boxes had chosen there and under it goes with it (3.242.0)
-        for (const k of [1, 2, 3]) if (k >= stage) patch[`p${k}`] = undefined;
+        // what was picked here and under it goes with it (3.242.0) -- except a
+        // set kept because a set below it runs on Trade, which stays picked (3.286.0)
+        const patch = { openS3: [] };
+        for (const k of [1, 2, 3]) if (k >= (done.deletedSelf ? stage : stage + 1)) { patch[`s${k}`] = null; patch[`p${k}`] = undefined; }
         bSaveView(patch);
         bRedrawPeggedTo(`#bPick${stage}`);
       };
@@ -6021,26 +6020,73 @@ async function drawBoardsHoldingPlace() {
 // then is it deleted. Two copies of these lines had already drifted apart on
 // one detail; a third would not have stayed the same either. Returns what
 // was deleted, or null when nothing was.
+//
+// AND EVERY SET BELOW IT GOES TOO, LISTED ONE LINE EACH (3.286.0, owner order
+// 2026-09-28: "if there are children they are listed LINE BY LINE in a box
+// TYPE:NAME and when the parent is deleted they all go too unless they cannot
+// be deleted due to RUNNING on Trade"). The browser's own prompt box held the
+// words before; a list of sixteen does not fit in it, so the box is the page's
+// own, drawn over it like the wait box.
 async function deleteSetFlow(id) {
   const look = await tryPost(`api/stageset/${encodeURIComponent(id)}/delete`, {});
   if (!look) return null;
   if (!look.preview) { alert('Nothing was deleted — the service answered strangely.'); return null; }
-  // A STAGE 4 RULE SAYS WHAT GOES WITH IT, and where its looks are kept (3.249.0)
-  const also = (look.alsoDeletes || []).length
-    ? `\n\nWith it go the ${look.alsoDeletes.length} held and reserve set(s) read from it:\n${look.alsoDeletes.map((x) => `  ${x.name}`).join('\n')}` : '';
-  const kept = look.readsKept
-    ? (look.readsKeptOn
-      ? `\n\n${look.readsKept} read(s) of the held-back or reserve window go too; each is written onto ${look.readsKeptOn}, saved from the same original, and still counts as a look there.`
-      : `\n\n${look.readsKept} read(s) of the held-back or reserve window go too, and no set saved from the same original stays to count them.`) : '';
-  const typed = prompt(`Permanently delete ${look.name} (stage ${look.stage}, ${look.status})?\n\n`
-    + `${Number(look.rows).toLocaleString()} record row(s), ${(look.bytes / 1048576).toFixed(1)} MB on disk`
-    + `${look.desc ? `\n"${look.desc}"` : ''}${also}${kept}\n\nType the record set id back to confirm:\n${look.confirmWith}`, '');
+  const typed = await deleteBox(look);
   if (typed === null) return null;
-  if (typed.trim() !== look.confirmWith) { alert('That is not the record set id — nothing was deleted.'); return null; }
-  const done = await tryPost(`api/stageset/${encodeURIComponent(id)}/delete`, { confirm: typed.trim() });
+  const done = await tryPost(`api/stageset/${encodeURIComponent(id)}/delete`, { confirm: typed });
   if (!(done && done.deleted)) return null;
-  alert(`Deleted ${done.name}${(done.alsoDeleted || []).length ? ` and the ${done.alsoDeleted.length} held and reserve set(s) read from it` : ''} — ${Number(done.rows).toLocaleString()} row(s), ${(done.bytes / 1048576).toFixed(1)} MB freed.`);
+  const also = (done.alsoDeleted || []).length ? ` and the ${done.alsoDeleted.length} record set(s) below it` : '';
+  const kept = (done.kept || []).length ? ` Kept, running on Trade or above a set that is: ${done.kept.map((x) => x.name).join(', ')}.` : '';
+  alert(`Deleted ${done.deletedSelf ? done.name : `what could go under ${done.name}`}${done.deletedSelf ? also : ''} — ${Number(done.rows).toLocaleString()} row(s), ${(done.bytes / 1048576).toFixed(1)} MB freed.${kept}`);
   return done;
+}
+// WHAT KIND OF RECORD SET A LINE IS, in the words its own screen names it by
+function setTypeWords(x) {
+  if (x.stage !== 4) return `stage ${x.stage} record set`;
+  return x.kind === 'held' ? 'held set' : x.kind === 'reserve' ? 'reserve set' : 'Stage 4 record set';
+}
+// The box: what goes, one line each; what is kept and why, one line each; the
+// id typed back. Resolves to the id typed, or null when nothing is to go.
+function deleteBox(look) {
+  return new Promise((resolve) => {
+    const old = $('#delbox');
+    if (old) old.remove();
+    const box = document.createElement('div');
+    box.id = 'delbox';
+    const going = (look.below || []).filter((x) => !x.keep);
+    const kept = [...(look.keepSelf ? [{ ...look, keep: look.keepSelf }] : []), ...(look.below || []).filter((x) => x.keep)];
+    const lines = (list, why) => `<div class="dellist">${list.map((x) => `<div>${esc(setTypeWords(x))}: ${esc(x.name)}${why ? ` <span class="muted">— kept, ${esc(x.keep)}</span>` : ''}</div>`).join('')}</div>`;
+    const nothing = !!look.keepSelf && !going.length;
+    const reads = !look.readsKept && !look.readsLost ? ''
+      : `<p class="note">${Number(look.readsKept + look.readsLost).toLocaleString()} read(s) of the held-back or reserve window go too; `
+        + `${look.readsKept ? `${Number(look.readsKept).toLocaleString()} written onto ${esc((look.readsKeptOn || []).join(', '))}, saved from the same original, and still counted as a look there` : ''}`
+        + `${look.readsKept && look.readsLost ? '; ' : ''}${look.readsLost ? `${Number(look.readsLost).toLocaleString()} with no set saved from the same original left to count them` : ''}.</p>`;
+    box.innerHTML = `<div>
+      <b>${nothing ? `Nothing here can be deleted` : `Permanently delete ${esc(look.name)}?`}</b>
+      <p class="note">${esc(setTypeWords(look))}, ${esc(look.status || '')} · ${Number(look.rows).toLocaleString()} record row(s), ${(look.bytes / 1048576).toFixed(1)} MB on disk${look.desc ? ` · "${esc(look.desc)}"` : ''}</p>
+      ${going.length ? `<p>With it go the ${going.length} record set(s) below it:</p>${lines(going, false)}` : (look.keepSelf ? '' : '<p class="note">No record set is below it.</p>')}
+      ${kept.length ? `<p>Kept — ${kept.length} record set(s) that cannot be deleted:</p>${lines(kept, true)}` : ''}
+      ${reads}
+      ${nothing ? '' : `<p>Type the record set id back to confirm: <code>${esc(look.confirmWith)}</code></p>
+      <div class="row"><label class="f">record set id<input id="delboxId" autocomplete="off" style="width:18rem"></label></div>
+      <p class="note" id="delboxSay"></p>`}
+      <div class="row">${nothing ? '' : '<button class="danger" id="delboxGo">Delete</button>'}<button id="delboxNo">${nothing ? 'Close' : 'Cancel'}</button></div>
+    </div>`;
+    document.body.appendChild(box);
+    const close = (v) => { box.remove(); resolve(v); };
+    $('#delboxNo').onclick = () => close(null);
+    const go = $('#delboxGo');
+    if (go) {
+      const input = $('#delboxId');
+      go.onclick = () => {
+        const typed = input.value.trim();
+        if (typed !== look.confirmWith) { $('#delboxSay').textContent = 'That is not the record set id — nothing was deleted.'; return; }
+        close(typed);
+      };
+      input.onkeydown = (e) => { if (e.key === 'Enter') go.onclick(); if (e.key === 'Escape') close(null); };
+      input.focus();
+    }
+  });
 }
 
 // A PICK ON BOARDS HOLDS ITS OWN BOX STILL (3.132.0, owner report 2026-09-14:
@@ -9583,7 +9629,7 @@ function fTitle(d, st, name, away, open) {
       ${fCutPickBox(d, st)}
       <button class="s4Rename" ${chosen ? '' : 'disabled'} title="renames the Stage 4 record set chosen beside this to the name you type, whole, nothing cut or added.">Rename</button>
       <button id="fCutDelete" class="danger" ${chosen ? '' : 'disabled'}
-        title="permanently deletes the Stage 4 record set chosen beside this, and nothing else. Its parent stage 3 set, and the stage 2 and stage 1 sets above that, cannot be deleted while a set cut from them is still here — so this is what clears the way.">Delete Stage 4 record set…</button>
+        title="permanently deletes the Stage 4 record set chosen beside this, and every record set below it -- the held and reserve sets read from it. Each is listed on its own line before anything goes. A set a book on Trade is running from is kept, with the sets above it.">Delete Stage 4 record set…</button>
       ${away == null ? '' : putAwayBtn('ffold', 1, !away, chosen
     ? 'the Stage 4 record set open below this row'
     : 'the steps below this row, and the rule so far', `${gap}${dead}`)}

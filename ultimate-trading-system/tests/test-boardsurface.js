@@ -181,7 +181,9 @@ module.exports = {
     assert.ok(fn.includes('const done = await deleteSetFlow(st.cut);'), 'it does not go through the one delete flow');
     const flow = UI.slice(UI.indexOf('async function deleteSetFlow(id) {'), UI.indexOf('\n}\n', UI.indexOf('async function deleteSetFlow(id) {')));
     assert.ok(flow.includes("await tryPost(`api/stageset/${encodeURIComponent(id)}/delete`, {})"), 'it previews first');
-    assert.ok(flow.includes("if (typed.trim() !== look.confirmWith) { alert('That is not the record set id — nothing was deleted.'); return null; }"),
+    // the id is typed back in the page's own box since 3.286.0, which refuses anything else
+    const box = UI.slice(UI.indexOf('function deleteBox(look) {'), UI.indexOf('\n}\n', UI.indexOf('function deleteBox(look) {')));
+    assert.ok(flow.includes('const typed = await deleteBox(look);') && box.includes("if (typed !== look.confirmWith) { $('#delboxSay').textContent = 'That is not the record set id — nothing was deleted.'; return; }"),
       'and refuses anything but the record set id typed back');
     // ...and it only ever deletes the set that is CHOSEN, never the walk
     assert.ok(fn.includes('if (dl && st.cut && st.cut !== F_NEW)'),

@@ -310,18 +310,28 @@ function deleteCampaign(name) {
     } catch (_) { /* counted only when it went */ }
   }
 
-  // Stage record sets go DEEPEST FIRST, because a set another set names as its
-  // parent refuses deletion (lib/stages.js). Sorting on the stage number does
-  // that for a 1 → 2 → 3 chain and used to be the whole rule; it is not enough
-  // once the list carries the sets that came OUT of those, which sit at stage
-  // 4 and above and have to go before their parents. A refusal that still
-  // fires leaves that set behind and SAYS SO — a delete that half-lies about
-  // what went is the fault class this file keeps naming.
+  // Stage record sets go DEEPEST FIRST (sorting on the stage number), so each
+  // set's own campaign's sets below it are gone before it is reached. A set
+  // left behind SAYS SO — a delete that half-lies about what went is the
+  // fault class this file keeps naming.
+  // A DELETE NOW TAKES EVERYTHING BELOW THE SET (3.286.0), so a set another
+  // campaign built on is looked at first and stays, saying which -- a campaign
+  // deletes its own record sets and nothing of another's. What a delete took
+  // below a set of this campaign is counted with it, and skipped when reached.
   const leftBehind = [];
+  const mine = new Set(found.stageSets.map((x) => x.id));
   for (const s of [...found.stageSets].sort((a, b) => b.stage - a.stage)) {
     try {
-      require('./stages').deleteSet(s.id, s.id);
-      removed.stageSets += 1;
+      const S = require('./stages');
+      if (!S.getSet(s.id)) continue;
+      const foreign = (S.deleteSet(s.id).below || []).filter((b) => !mine.has(b.id));
+      if (foreign.length) {
+        leftBehind.push(`${s.name || s.id}: ${foreign.map((b) => b.name).join(', ')} ${foreign.length === 1 ? 'is' : 'are'} built on it and belong${foreign.length === 1 ? 's' : ''} to another campaign, so it stays`);
+        continue;
+      }
+      const done = S.deleteSet(s.id, s.id);
+      removed.stageSets += (done.deletedSelf ? 1 : 0) + (done.alsoDeleted || []).filter((b) => mine.has(b.id)).length;
+      if (!done.deletedSelf) leftBehind.push(`${s.name || s.id}: kept, ${((done.kept || []).find((k) => k.id === s.id) || {}).keep || 'a set below it runs on Trade'}`);
     } catch (err) { leftBehind.push(`${s.name || s.id}: ${err.message}`); }
   }
 

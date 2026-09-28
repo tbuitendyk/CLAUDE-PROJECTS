@@ -1424,8 +1424,8 @@ module.exports = {
       // deleting a copy deletes its captured trades and leaves the original's
       stages.deleteSet(both.out.id, both.out.id);
       assert.ok(!fs.existsSync(stages.captureFile(both.out.id)) && fs.existsSync(stages.captureFile(c.cut.id)), 'the copy\'s capture goes with it');
-      // REFUSED WHERE A DELETE WOULD LOSE EVIDENCE (3.249.0)
-      const delRefusal = (id) => { try { stages.deleteSet(id); } catch (e) { return e.message; } return null; };
+      // A SET IS KEPT ONLY WHILE A BOOK ON TRADE RUNS FROM IT (3.286.0; a standing
+      // greenlight kept its set outright from 3.249.0 until then)
       const os = require('os');
       const gdir = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-del-gl-'));
       const prevG = process.env.GC_GREENLIGHTS_DIR;
@@ -1433,8 +1433,18 @@ module.exports = {
       try {
         const gl = { id: 'gl-deltest-1', createdUtc: new Date().toISOString(), seq: 1, name: 'a standing greenlight', sourceSet: { id: hs.id, name: hs.name }, revoked: false };
         fs.writeFileSync(path.join(gdir, 'gl-deltest-1.json'), JSON.stringify(gl));
-        assert.ok(/greenlight a standing greenlight was written from .* and is still greenlighted/.test(delRefusal(neither.out.id) || ''), 'a rule whose held set a standing greenlight came from is kept');
-        assert.ok(/still greenlighted/.test(delRefusal(hs.id) || ''), 'and so is that held set');
+        const idle = stages.deleteSet(neither.out.id);
+        assert.deepStrictEqual([idle.preview, idle.keepSelf, (idle.below.find((x) => x.id === hs.id) || {}).keep], [true, null, null],
+          'a greenlight with no book running on it still keeps its set, though it carries everything a book needs');
+        const ch = require('../lib/live/channels');
+        const was = ch.channelSetups;
+        ch.channelSetups = (gid) => (gid === gl.id ? { paper: { id: 'setup-deltest', state: 'paper' }, real: null } : { paper: null, real: null });
+        try {
+          const run = stages.deleteSet(neither.out.id);
+          assert.ok(/^running on Trade — a standing greenlight \(active paper\)$/.test((run.below.find((x) => x.id === hs.id) || {}).keep || ''), 'the held set a book on Trade runs from is not kept, or not said why');
+          assert.strictEqual(run.keepSelf, 'a set below it runs on Trade', 'the rule above that held set would be deleted from under it');
+          assert.throws(() => stages.deleteSet(hs.id, hs.id), /nothing here can be deleted: .* is kept, running on Trade/, 'a set a book runs from, with nothing below it, is deleted anyway');
+        } finally { ch.channelSetups = was; }
         fs.writeFileSync(path.join(gdir, 'gl-deltest-1.json'), JSON.stringify({ ...gl, revoked: true }));
         assert.strictEqual(stages.deleteSet(neither.out.id).preview, true, 'a greenlight nuked no longer holds it');
       } finally {
@@ -1443,10 +1453,10 @@ module.exports = {
       }
       const fakeId = `s4-${Date.now().toString(36)}-deltest`;
       fs.writeFileSync(path.join(SETS_DIR, `${fakeId}.json`), JSON.stringify({ id: fakeId, seq: 0, stage: 4, kind: 'reserve', status: 'done', name: `reserve set of ${neither.doc.name}`, createdAt: new Date().toISOString(), from: { id: neither.out.id, name: neither.doc.name }, standsOn: { id: hs.id, name: hs.name }, parent: neither.doc.parent, block: { at: new Date().toISOString(), look: 1 } }));
-      assert.ok(/stands on .* delete that reserve set first/.test(delRefusal(hs.id) || ''), 'a held set a reserve set stands on is kept');
+      assert.deepStrictEqual(stages.deleteSet(hs.id).below.map((x) => x.id), [fakeId], 'a held set does not take the reserve set standing on it along');
       // A RULE TAKES ITS HELD AND RESERVE SETS WITH IT, AND THEIR LOOKS STAY (3.249.0)
       const look = stages.deleteSet(neither.out.id);
-      assert.deepStrictEqual([look.preview, look.alsoDeletes.map((x) => x.id).sort(), look.readsKept, look.readsKeptOn], [true, [hs.id, fakeId].sort(), 2, src0.name], 'the preview names the held and reserve sets that go and where their looks are kept');
+      assert.deepStrictEqual([look.preview, look.below.map((x) => x.id).sort(), look.readsKept, look.readsLost, look.readsKeptOn], [true, [hs.id, fakeId].sort(), 2, 0, [src0.name]], 'the preview names the held and reserve sets that go and where their looks are kept');
       stages.deleteSet(neither.out.id, neither.out.id);
       assert.ok(!stages.getSet(hs.id) && !stages.getSet(fakeId), 'the held and reserve sets read from it went with it');
       assert.strictEqual(stages.getSet(again.id).copiedFrom.id, c.cut.id, 'the set saved from the deleted copy now names the set that copy was saved from');

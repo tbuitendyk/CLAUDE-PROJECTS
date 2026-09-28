@@ -269,7 +269,7 @@ function reclaim(keys, { dataDir = DATA, now = Date.now(), busy = null, deleteSe
     let count = 0;
     let bytes = 0;
     if (k.key === 'checkSets') {
-      // a set another set names as its parent is never deleted, so the deepest go first
+      // the deepest go first, so each delete takes only its own set and its count is its own
       for (const x of s.found.checkSets.slice().sort((a, b) => b.stage - a.stage)) {
         try { del(x.id); count++; bytes += x.bytes; } catch (err) { failed.push({ what: x.id, why: String((err && err.message) || err) }); }
       }

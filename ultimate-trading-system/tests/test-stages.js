@@ -2355,40 +2355,84 @@ module.exports = {
     }
   },
 
-  // Deleting a record set asks for the name back, refuses a named parent,
-  // and actually removes the files when confirmed (owner order, 2026-08-27:
-  // "yes" to the delete control).
-  async theDeleteAsksForTheNameBackAndProtectsParents() {
+  // ANY RECORD SET CAN BE DELETED, AND WHAT IS BELOW IT GOES WITH IT (3.286.0,
+  // owner order 2026-09-28: "any record set can be deleted -- if there are
+  // children they are listed LINE BY LINE in a box TYPE:NAME and when the
+  // parent is deleted they all go too unless they cannot be deleted due to
+  // RUNNING on Trade"). Until then a parent was refused until every set naming
+  // it had been deleted by hand. It still asks first, and takes the id back.
+  async anyRecordSetCanBeDeletedAndWhatIsBelowItGoesUnlessRunningOnTrade() {
+    const os = require('os');
     const stamp = Date.now().toString(36);
-    const parent = { id: `s1-test-${stamp}-p`, stage: 1, seq: 999996, name: 'S1 #del-p', status: 'done', createdAt: new Date().toISOString(), plan: { units: 1 } };
-    const child = { id: `s2-test-${stamp}-c`, stage: 2, seq: 999996, name: 'S2 #del-c', status: 'done', createdAt: new Date().toISOString(), parent: { id: parent.id, name: parent.name }, plan: { units: 1 } };
+    const at = (n) => new Date(Date.UTC(2026, 0, 1, 0, n)).toISOString();
+    const mk = (id, stage, name, n, extra = {}) => ({ id, stage, seq: 999996, name: `${name} ${stamp}`, status: 'done', createdAt: at(n), plan: { units: 1 }, ...extra });
+    const s1 = mk(`s1-test-${stamp}-a`, 1, 'S1 #del', 1);
+    const s2 = mk(`s2-test-${stamp}-b`, 2, 'S2 #del', 2, { parent: { id: s1.id, name: s1.name } });
+    const s3 = mk(`s3-test-${stamp}-c`, 3, 'S3 #del', 3, { parent: { id: s2.id, name: s2.name } });
+    const up3 = { parent: { id: s3.id, name: s3.name } };
+    const rule = mk(`s4-test-${stamp}-d`, 4, 'rule #del', 4, { kind: 'funnel', ...up3 });
+    const held = mk(`s4-test-${stamp}-e`, 4, 'held set of rule #del', 5, { kind: 'held', ...up3, from: { id: rule.id, name: rule.name, kind: 'funnel' }, block: { at: at(5), look: 1 } });
+    const reserve = mk(`s4-test-${stamp}-f`, 4, 'reserve set of rule #del', 6, { kind: 'reserve', ...up3, from: { id: rule.id, name: rule.name, kind: 'funnel' }, standsOn: { id: held.id, name: held.name }, block: { at: at(6), look: 1 } });
+    const other = mk(`s4-test-${stamp}-g`, 4, 'other rule #del', 7, { kind: 'funnel', ...up3 });
+    const lone = mk(`s4-test-${stamp}-h`, 4, 'lone rule #del', 8, { kind: 'funnel', parent: { id: 's3-not-here', name: 'gone' } });
+    const all = [s1, s2, s3, rule, held, reserve, other, lone];
     const file = (d) => path.join(SETS_DIR, `${d.id}.json`);
+    const gdir = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-del-cascade-'));
+    const prevG = process.env.GC_GREENLIGHTS_DIR;
+    const ch = require('../lib/live/channels');
+    const was = ch.channelSetups;
+    const books = new Map();
     try {
       fs.mkdirSync(SETS_DIR, { recursive: true });
-      fs.writeFileSync(file(parent), JSON.stringify(parent));
-      fs.writeFileSync(file(child), JSON.stringify(child));
-      const w = rowstore.writer(child.id, 'records');
+      for (const d of all) fs.writeFileSync(file(d), JSON.stringify(d));
+      const w = rowstore.writer(s2.id, 'records');
       w.push({ u: 0, si: 0, label: 'x · argmax auto 24/7', trade: 'AAA', geometry: 'daily-1d', beat: 1, pairs: 9 });
       w.close();
-
-      assert.throws(() => stages.deleteSet(parent.id), /is the parent of .*S2 #del-c/,
-        'a set another set names as its parent must be refused by the child\'s name');
-      const look = stages.deleteSet(child.id);
-      assert.strictEqual(look.preview, true);
-      assert.strictEqual(look.confirmWith, child.id);
-      assert.ok(fs.existsSync(file(child)), 'asking what would go must delete nothing');
-      const wrong = stages.deleteSet(child.id, 'not-the-id');
-      assert.strictEqual(wrong.preview, true, 'a wrong name back deletes nothing');
-      const done = stages.deleteSet(child.id, child.id);
-      assert.strictEqual(done.deleted, true);
-      assert.ok(!fs.existsSync(file(child)), 'the set document must be gone');
-      assert.ok(!fs.existsSync(rowstore.storeDir(child.id)), 'the set\'s rows must be gone');
-      const doneP = stages.deleteSet(parent.id, parent.id);
-      assert.strictEqual(doneP.deleted, true, 'with the child gone the parent may go');
+      process.env.GC_GREENLIGHTS_DIR = gdir;
+      ch.channelSetups = (gid) => books.get(gid) || { paper: null, real: null };
+      // THE WHOLE CHAIN, nothing running: every set below, each once, in the
+      // order a reader takes it -- and asking deletes nothing
+      const look = stages.deleteSet(s1.id);
+      assert.deepStrictEqual([look.preview, look.confirmWith, look.keepSelf], [true, s1.id, null]);
+      assert.deepStrictEqual(look.below.map((x) => [x.id, x.stage, x.kind, x.keep]),
+        [[s2.id, 2, null, null], [s3.id, 3, null, null], [rule.id, 4, 'funnel', null], [held.id, 4, 'held', null], [reserve.id, 4, 'reserve', null], [other.id, 4, 'funnel', null]],
+        'the sets below a stage 1 set are not every set built from it, through the parent, the rule read and the held set stood on');
+      assert.strictEqual(look.rows, 1, 'the rows counted are not the rows of everything that goes');
+      assert.ok(all.every((d) => fs.existsSync(file(d))), 'asking what would go deleted something');
+      assert.strictEqual(stages.deleteSet(s1.id, 'not-the-id').preview, true, 'a wrong id back deletes');
+      // RUNNING ON TRADE: a standing greenlight written from the held set, with
+      // a book on it active on paper -- kept, and everything above it kept
+      fs.writeFileSync(path.join(gdir, 'gl-cascade.json'), JSON.stringify({ id: 'gl-cascade', createdUtc: at(9), seq: 1, name: 'the cascade greenlight', sourceSet: { id: held.id, name: held.name }, revoked: false }));
+      books.set('gl-cascade', { paper: { id: 'setup-cascade', state: 'paper' }, real: null });
+      const kept = stages.deleteSet(s1.id);
+      const keepOf = new Map(kept.below.map((x) => [x.id, x.keep]));
+      assert.strictEqual(keepOf.get(held.id), 'running on Trade — the cascade greenlight (active paper)', 'the held set a book runs from is not kept, or not said why');
+      for (const d of [rule, s3, s2]) assert.strictEqual(keepOf.get(d.id), 'a set below it runs on Trade', `${d.name} would be deleted from under a set that runs on Trade`);
+      assert.strictEqual(kept.keepSelf, 'a set below it runs on Trade', 'the set pressed would be deleted from under a set that runs on Trade');
+      assert.deepStrictEqual([keepOf.get(reserve.id), keepOf.get(other.id)], [null, null], 'a set nothing runs from is kept too');
+      const done = stages.deleteSet(s1.id, s1.id);
+      assert.deepStrictEqual([done.deleted, done.deletedSelf, done.alsoDeleted.map((x) => x.id).sort(), done.kept.map((x) => x.id)],
+        [true, false, [reserve.id, other.id].sort(), [s1.id, s2.id, s3.id, rule.id, held.id]], 'the delete did not take what could go and keep the rest');
+      assert.ok(!fs.existsSync(file(reserve)) && !fs.existsSync(file(other)), 'a set nothing runs from is still on disk');
+      assert.ok([s1, s2, s3, rule, held].every((d) => fs.existsSync(file(d))), 'a set running on Trade, or above one, was deleted');
+      // A SET A BOOK RUNS FROM, WITH NOTHING BELOW IT, CANNOT GO AT ALL
+      fs.writeFileSync(path.join(gdir, 'gl-lone.json'), JSON.stringify({ id: 'gl-lone', createdUtc: at(10), seq: 2, name: 'the lone greenlight', sourceSet: { id: lone.id, name: lone.name }, revoked: false }));
+      books.set('gl-lone', { paper: null, real: { id: 'setup-lone', state: 'live' } });
+      assert.strictEqual(stages.deleteSet(lone.id).keepSelf, 'running on Trade — the lone greenlight (active real)', 'a set a live book runs from is not kept');
+      assert.throws(() => stages.deleteSet(lone.id, lone.id), /nothing here can be deleted: .* is kept, running on Trade — the lone greenlight \(active real\)/);
+      // A STOPPED BOOK WITH NOTHING OPEN IS NOT RUNNING, and a greenlight with no
+      // book running on it keeps nothing: the rest goes, the set pressed with it
+      books.set('gl-cascade', { paper: { id: 'setup-cascade', state: 'stopped' }, real: null });
+      const rest = stages.deleteSet(s1.id, s1.id);
+      assert.deepStrictEqual([rest.deletedSelf, rest.kept.length, rest.alsoDeleted.map((x) => x.id).sort()], [true, 0, [s2.id, s3.id, rule.id, held.id].sort()]);
+      assert.ok([s1, s2, s3, rule, held].every((d) => !fs.existsSync(file(d))), 'the chain is still on disk');
+      assert.ok(!fs.existsSync(rowstore.storeDir(s2.id)), 'a set below went and left its rows');
     } finally {
-      try { fs.rmSync(file(parent), { force: true }); } catch (_) { /* fixture */ }
-      try { fs.rmSync(file(child), { force: true }); } catch (_) { /* fixture */ }
-      try { fs.rmSync(rowstore.storeDir(child.id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+      ch.channelSetups = was;
+      if (prevG === undefined) delete process.env.GC_GREENLIGHTS_DIR; else process.env.GC_GREENLIGHTS_DIR = prevG;
+      fs.rmSync(gdir, { recursive: true, force: true });
+      for (const d of all) { try { fs.rmSync(file(d), { force: true }); } catch (_) { /* fixture */ } }
+      try { fs.rmSync(rowstore.storeDir(s2.id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
     }
   },
 
@@ -2737,7 +2781,7 @@ module.exports = {
       const outB = campaign.deleteCampaign(nameB);
       assert.strictEqual(outB.removed.stageSets, 0, 'the named parent must stay');
       assert.strictEqual(outB.leftBehind.length, 1, 'and the delete must say so');
-      assert.ok(/S2 #cd-4/.test(outB.leftBehind[0]), 'the reason names the child that protects it');
+      assert.ok(/S2 #cd-4.* belongs to another campaign, so it stays/.test(outB.leftBehind[0]), `the reason does not name the child that keeps it: ${outB.leftBehind[0]}`);
       assert.ok(fs.existsSync(file(p2)), 'the protected set document must still be there');
     } finally {
       for (const d of [s1, s2, p2, foreign]) { try { fs.rmSync(file(d), { force: true }); } catch (_) { /* fixture */ } }

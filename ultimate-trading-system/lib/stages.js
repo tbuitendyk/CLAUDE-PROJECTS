@@ -5902,37 +5902,164 @@ function ownedFilesOf(id) {
     || f === `${key}.funnelrich.json`
     || (f.endsWith('.before-rebuild') && (f.startsWith(`${key}.`) || f.startsWith(`${key}-`))));
 }
+// ANY RECORD SET CAN BE DELETED, AND WHAT IS BELOW IT GOES WITH IT (3.286.0,
+// owner order 2026-09-28: "any record set can be deleted -- if there are
+// children they are listed LINE BY LINE in a box TYPE:NAME and when the parent
+// is deleted they all go too unless they cannot be deleted due to RUNNING on
+// Trade"). A parent used to be refused outright until every set naming it had
+// been found and deleted by hand -- one old stage 3 set on 2026-09-28 carried
+// fifteen Stage 4 sets, each its own trip to its own screen.
+//
+// BELOW A SET is every set that names it -- its children by parent, and on
+// Stage 4 the held and reserve sets read from a rule and a reserve set standing
+// on a held set -- all the way down. They go child first, each through the
+// removal a set deleted on its own goes through, so every read of the held-back
+// or reserve window that goes is still written onto a set of its family that
+// stays, and a set saved from one that goes still names its line.
+//
+// THE ONE THING KEPT is a set a book on Trade is running from, and every set
+// above it the delete would otherwise take, so a kept set never loses a set it
+// names. Running is Trade's own word for a book: active on paper or live, or
+// stopped with positions still open (lib/live/channels.js). A greenlight with no
+// book running on it no longer keeps its set: it carries everything a book
+// needs, and it stays on Trade either way.
 function deleteSet(id, confirm) {
   const doc = getSet(String(id || ''));
   if (!doc) throw new Error(`no record set called "${id}"`);
   if (activeSet) {
     throw new Error(`${activeSet.name || activeSet.id} is being written right now — nothing is deleted while a stage run is going`);
   }
-  if (tallyRun && !tallyRun.error && tallyRun.id === doc.id) {
-    throw new Error(`the tables of ${doc.name} are totalling right now — nothing is deleted while its records are being read`);
+  const plan = deletePlanOf(doc);
+  const going = new Set(plan.going);
+  if (tallyRun && !tallyRun.error && going.has(tallyRun.id)) {
+    throw new Error(`the tables of ${(plan.docs.get(tallyRun.id) || {}).name || tallyRun.id} are totalling right now — nothing is deleted while its records are being read`);
   }
-  const children = childrenOf(doc.id);
-  if (children.length) {
-    throw new Error(`${doc.name} is the parent of ${children.map((c) => c.name).join(', ')} — a set another set names as its `
-      + 'parent is never deleted. Delete the children first.');
-  }
-  // a Stage 4 rule takes the held and reserve sets read from it along (3.249.0)
-  const plan = doc.stage === 4 ? stage4DeletePlan(doc) : null;
-  const rows = rowstore.count(doc.id, 'records');
-  const bytes = rowstore.bytes(doc.id);
+  const work = stage4WorkOn(going);
+  if (work) throw new Error(`${work} — nothing is deleted while a set is being worked on`);
+  const rows = plan.going.reduce((n, x) => n + rowstore.count(x, 'records'), 0);
+  const bytes = plan.going.reduce((n, x) => n + rowstore.bytes(x), 0);
+  const line = (x) => {
+    const d = plan.docs.get(x) || {};
+    return { id: x, name: d.name || x, stage: d.stage, kind: d.stage === 4 ? (d.kind || 'funnel') : null, keep: plan.keep.get(x) || null };
+  };
+  const below = plan.below.map(line);
   if (String(confirm || '') !== doc.id) {
     return {
-      preview: true, id: doc.id, name: doc.name, stage: doc.stage, status: doc.status,
-      desc: doc.desc || '', rows, bytes, confirmWith: doc.id,
-      ...(plan ? { kind: doc.kind || 'funnel', alsoDeletes: plan.judged.map((d) => ({ id: d.id, name: d.name, kind: d.kind })), readsKept: plan.reads.length, readsKeptOn: plan.keeper ? plan.keeper.name : null } : {}),
+      preview: true, id: doc.id, name: doc.name, stage: doc.stage, kind: doc.stage === 4 ? (doc.kind || 'funnel') : null, status: doc.status,
+      desc: doc.desc || '', rows, bytes, confirmWith: doc.id, keepSelf: plan.keep.get(doc.id) || null, below, ...readsGoing(plan),
     };
   }
-  if (plan) {
-    stage4DeleteCarry(doc, plan);
-    for (const j of plan.judged) removeSetFiles(j);
+  if (!plan.going.length) throw new Error(`nothing here can be deleted: ${doc.name} is kept, ${plan.keep.get(doc.id)}`);
+  for (const x of plan.going) {
+    const d = getSet(x);
+    if (!d) continue;
+    if (d.stage === 4) stage4DeleteCarry(d, stage4DeletePlan(d));
+    removeSetFiles(d);
   }
-  removeSetFiles(doc);
-  return { deleted: true, id: doc.id, name: doc.name, rows, bytes, ...(plan ? { alsoDeleted: plan.judged.map((d) => ({ id: d.id, name: d.name })), readsKept: plan.reads.length } : {}) };
+  return {
+    deleted: true, id: doc.id, name: doc.name, deletedSelf: going.has(doc.id), rows, bytes,
+    alsoDeleted: below.filter((b) => !b.keep), kept: [...(plan.keep.has(doc.id) ? [line(doc.id)] : []), ...below.filter((b) => b.keep)],
+  };
+}
+// Everything a delete of `doc` takes and keeps: `below`, every set under it in
+// the order a reader takes it (each set, then what is under it); `keep`, a
+// reason for each set that stays; `going`, what goes, children before parents.
+function deletePlanOf(doc) {
+  const s4all = listFunnelSets();
+  const docs = new Map(listSets().map((r) => [r.id, r]));
+  for (const d of s4all) docs.set(d.id, d);
+  docs.set(doc.id, docs.get(doc.id) || doc);
+  // the sets one set names: its parent, and on Stage 4 the rule it was read
+  // from and the held set it stands on
+  const namesOf = (x) => {
+    const d = docs.get(x) || {};
+    return [...new Set([(d.parent || {}).id, (d.from || {}).id, (d.standsOn || {}).id])].filter((y) => y && y !== x && docs.has(y));
+  };
+  const under = new Map();
+  for (const x of docs.keys()) for (const up of namesOf(x)) { if (!under.has(up)) under.set(up, []); under.get(up).push(x); }
+  const byAge = (a, b) => String((docs.get(a) || {}).createdAt || '').localeCompare(String((docs.get(b) || {}).createdAt || ''));
+  const below = [];
+  const seen = new Set([doc.id]);
+  const walk = (x) => {
+    for (const k of (under.get(x) || []).slice().sort(byAge)) {
+      if (seen.has(k)) continue;
+      seen.add(k);
+      below.push(k);
+      walk(k);
+    }
+  };
+  walk(doc.id);
+  const running = setsRunningOnTrade();
+  const keep = new Map();
+  for (const x of seen) if (running.has(x)) keep.set(x, running.get(x));
+  const climb = (x) => {
+    for (const y of namesOf(x)) {
+      if (!seen.has(y) || keep.has(y)) continue;
+      keep.set(y, 'a set below it runs on Trade');
+      climb(y);
+    }
+  };
+  for (const x of [...keep.keys()]) climb(x);
+  const going = [];
+  const done = new Set();
+  const post = (x) => {
+    if (done.has(x)) return;
+    done.add(x);
+    for (const k of (under.get(x) || [])) if (seen.has(k)) post(k);
+    if (!keep.has(x)) going.push(x);
+  };
+  post(doc.id);
+  return { docs, s4all, below, keep, going };
+}
+// THE SETS A BOOK ON TRADE IS RUNNING FROM (3.286.0): the Stage 4 set a
+// standing greenlight was written from, while a book on it is active on paper
+// or live, or stopped with positions still open -- Trade's own "active" and
+// "deactivating" (lib/live/channels.js statusLine). Keyed by set id, each with
+// the words the delete box shows beside it.
+function setsRunningOnTrade() {
+  const out = new Map();
+  const gl = require('./live/greenlight');
+  const ch = require('./live/channels');
+  for (const g of gl.listGreenlights()) {
+    if (g.revoked || !g.sourceSet || !g.sourceSet.id) continue;
+    const chans = ch.channelSetups(g.id);
+    const parts = [];
+    for (const c of ['real', 'paper']) {
+      const s = chans[c];
+      if (!s) continue;
+      let open = 0;
+      if (s.state === 'stopped') {
+        try { open = (require('./live/view').setupStatus(s).openPositions || []).filter((p) => (c === 'paper' ? !!p.paper : !p.paper)).length; } catch (_) { open = 0; }
+      }
+      parts.push({ channel: c, state: s.state, open });
+    }
+    const words = ch.statusLine(parts);
+    if (words === 'idle') continue;
+    const said = `running on Trade — ${g.name || g.id} (${words})`;
+    out.set(g.sourceSet.id, out.has(g.sourceSet.id) ? `${out.get(g.sourceSet.id)}; ${said}` : said);
+  }
+  return out;
+}
+// the reads of the held-back or reserve window a delete takes, and the sets of
+// the same family that stay to count them (3.249.0; across a whole delete since
+// 3.286.0) -- worked out as the removal itself will do it, child first
+function readsGoing(plan) {
+  const going = new Set(plan.going);
+  let kept = 0;
+  let lost = 0;
+  const on = new Set();
+  for (const x of plan.going) {
+    const d = plan.docs.get(x);
+    if (!d || d.stage !== 4) continue;
+    const judge = isJudgeSet(d);
+    const n = judge ? 1 : ['held', 'reserve'].reduce((a, k) => a + (((d.deletedReads || {})[k]) || []).length, 0);
+    if (!n) continue;
+    const rule = judge ? plan.s4all.find((m) => m.id === (d.from || {}).id) : d;
+    const stay = rule ? familyOf(rule, plan.s4all).filter((m) => !going.has(m.id)) : [];
+    const keeper = stay.find((m) => m.id === familyRootOf(m)) || stay[0] || null;
+    if (keeper) { kept += n; on.add(keeper.name); } else lost += n;
+  }
+  return { readsKept: kept, readsLost: lost, readsKeptOn: [...on] };
 }
 // every kept copy any set on the box still names (3.271.0)
 function keptFilesInUse() {
@@ -5995,12 +6122,8 @@ function stage4DeletePlan(doc) {
   const ids = new Set(going.map((d) => d.id));
   const work = stage4WorkOn(ids);
   if (work) throw new Error(`${work} — nothing is deleted while a set is being worked on`);
-  const gl = require('./live/greenlight');
-  const stands = gl.listGreenlights().filter((g) => !g.revoked && g.sourceSet && ids.has(g.sourceSet.id));
-  if (stands.length) {
-    throw new Error(`${stands.map((g) => `greenlight ${g.name || g.id}`).join(', ')} was written from ${stands.map((g) => g.sourceSet.name).join(', ')} and is still greenlighted `
-      + '— a set a standing greenlight came from is kept');
-  }
+  // (a set a standing greenlight came from was refused here until 3.286.0; a
+  // set a book on Trade is running from is now kept by the delete's own plan)
   if (doc.kind === 'held') {
     const on = all.filter((x) => x.kind === 'reserve' && x.standsOn && x.standsOn.id === doc.id && !ids.has(x.id));
     if (on.length) throw new Error(`${on.map((x) => x.name).join(', ')} stands on ${doc.name} — delete that reserve set first`);
@@ -11980,7 +12103,7 @@ async function examWait(id, label, ms = 20 * 60 * 1000) {
   }
 }
 function examCleanup(run) {
-  // children first: a set another set names as its parent is never deleted
+  // children first, so each delete takes only its own set
   for (const id of run.sets.slice().reverse()) {
     try { deleteSet(id, id); } catch (_) { /* a set that was never written */ }
     try { fs.rmSync(funnelRichDir(id), { recursive: true, force: true }); } catch (_) { /* none */ }

@@ -902,26 +902,30 @@ module.exports = {
     const cutWire = src.slice(src.indexOf("const dl = $('#fCutDelete');"), src.indexOf("const dl = $('#fCutDelete');") + 600);
     assert.ok(cutWire.includes('const done = await deleteSetFlow(st.cut);'), 'the Funnel keeps its own delete flow');
     assert.strictEqual(src.split('Type the record set id back to confirm:').length - 1, 1, 'the delete dialog is written in more than one place');
-    // the flow itself, run here: previews, refuses a wrong id without a second post, deletes on the right one
+    // the flow itself, run here: previews, hands the owner's answer on, deletes only on the id typed back.
+    // THE ID IS TYPED IN THE PAGE'S OWN BOX SINCE 3.286.0 (every set below the one pressed is listed
+    // there, one line each), so the box is stood in for here and read on its own below
     const flowSrc = src.slice(src.indexOf('async function deleteSetFlow(id) {'), src.indexOf('\n}\n', src.indexOf('async function deleteSetFlow(id) {')) + 3);
     const run = async (answer, look, done) => {
-      const posts = []; const alerts = [];
+      const posts = []; const alerts = []; const boxes = [];
       const tryPost = async (p, body) => { posts.push([p, body]); return body && body.confirm != null ? done : look; };
+      const deleteBox = async (l) => { boxes.push(l); return answer; };
       // eslint-disable-next-line no-new-func
-      const flow = new Function('tryPost', 'prompt', 'alert', `${flowSrc}\nreturn deleteSetFlow;`)(tryPost, () => answer, (m) => alerts.push(m));
-      return { out: await flow('s3-x'), posts, alerts };
+      const flow = new Function('tryPost', 'deleteBox', 'alert', `${flowSrc}\nreturn deleteSetFlow;`)(tryPost, deleteBox, (m) => alerts.push(m));
+      return { out: await flow('s3-x'), posts, alerts, boxes };
     };
-    const look = { preview: true, id: 's3-x', name: 'S3 #x', stage: 3, status: 'paused', desc: '', rows: 12, bytes: 1048576, confirmWith: 's3-x' };
-    const wrong = await run('s3-y', look, { deleted: true });
-    assert.deepStrictEqual([wrong.out, wrong.posts.length], [null, 1], 'a wrong id typed back still deletes, or never previewed');
-    assert.ok(wrong.alerts.some((m) => /not the record set id/.test(m)), 'a wrong id is not refused in words');
+    const look = { preview: true, id: 's3-x', name: 'S3 #x', stage: 3, status: 'paused', desc: '', rows: 12, bytes: 1048576, confirmWith: 's3-x', below: [], keepSelf: null };
     const cancelled = await run(null, look, { deleted: true });
-    assert.deepStrictEqual([cancelled.out, cancelled.posts.length, cancelled.alerts.length], [null, 1, 0], 'cancelling the dialog deletes, or nags');
-    const right = await run(' s3-x ', look, { deleted: true, name: 'S3 #x', rows: 12, bytes: 1048576 });
-    assert.deepStrictEqual([right.out && right.out.deleted, right.posts.length, right.posts[1][1]], [true, 2, { confirm: 's3-x' }], 'the right id typed back does not delete, or sends it untrimmed');
+    assert.deepStrictEqual([cancelled.out, cancelled.posts.length, cancelled.alerts.length, cancelled.boxes.length], [null, 1, 0, 1], 'cancelling the box deletes, nags, or never showed the box');
+    const right = await run('s3-x', look, { deleted: true, deletedSelf: true, name: 'S3 #x', rows: 12, bytes: 1048576, alsoDeleted: [], kept: [] });
+    assert.deepStrictEqual([right.out && right.out.deleted, right.posts.length, right.posts[1][1]], [true, 2, { confirm: 's3-x' }], 'the id typed back does not delete');
     assert.ok(right.alerts.some((m) => /^Deleted S3 #x/.test(m)), 'a delete is not reported');
     const odd = await run('s3-x', { nope: true }, { deleted: true });
-    assert.deepStrictEqual([odd.out, odd.posts.length], [null, 1], 'a strange answer to the preview is deleted through anyway');
+    assert.deepStrictEqual([odd.out, odd.posts.length, odd.boxes.length], [null, 1, 0], 'a strange answer to the preview is deleted through anyway, or put in the box');
+    // the box: a wrong id is refused in words and the box stays; only the id typed back, trimmed, leaves it
+    const boxSrc = src.slice(src.indexOf('function deleteBox(look) {'), src.indexOf('\n}\n', src.indexOf('function deleteBox(look) {')));
+    assert.ok(boxSrc.includes("const typed = input.value.trim();\n        if (typed !== look.confirmWith) { $('#delboxSay').textContent = 'That is not the record set id — nothing was deleted.'; return; }\n        close(typed);"),
+      'a wrong id typed back is not refused in words, or leaves the box, or the id is sent untrimmed');
     // and the help names it
     const help = fs.readFileSync(path.join(ROOT, 'public', 'help-content.js'), 'utf8');
     for (const n of [1, 2, 3]) assert.ok(help.includes(`swDelete${n}: {`), `stage ${n}'s delete has no help entry`);

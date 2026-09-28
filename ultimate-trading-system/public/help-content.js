@@ -55,7 +55,7 @@ const BOARD_SECTION_CONTROLS = (() => {
     };
     out[`bDelete${n}`] = {
       what: 'Permanently removes the record set picked in this section — its records, kept votes and tables. You are shown what will go, and have to type the record set id back, before anything is deleted.',
-      more: 'It refuses two things, by name: a set another set names as its parent (delete the children first), and any deletion while a stage run is going, because a run may be reading its parent at that moment.',
+      more: 'Every record set below it goes with it -- the next stages built from it, and the held and reserve sets read from them -- each listed on its own line, as what kind of record set it is and its name, before anything is deleted. The one thing kept is a record set a book on Trade is running from, and the record sets above it; the list says which, and why. Nothing is deleted while a stage run is going, because a run may be reading its parent at that moment.',
     };
     out[`bCopySettings${n}`] = {
       what: `Fills the stage ${n} box on Sweep with this record set's exact settings and description, so you can do it again or change one thing.`,
@@ -804,8 +804,8 @@ window.HELP = {
         more: 'Eighty characters at most, and no two record sets may share a name. The name is what every list and heading shows, so changing it here changes it everywhere.',
       },
       fCutDelete: {
-        what: 'Permanently deletes the Stage 4 record set chosen beside it, and nothing else. It asks for the record set id typed back first.',
-        more: 'It is here because this is the only screen a Stage 4 record set appears on, and because without it whole chains could not be cleared: a record set that another set was cut from refuses to be deleted while that set is still here, so one Stage 4 set left behind made its stage 3 parent undeletable, and the stage 2 and stage 1 sets above that with it. Deleting the Stage 4 sets first is what clears the way. The screen drops back to new rule afterwards, because the set it was showing is gone.',
+        what: 'Permanently deletes the Stage 4 record set chosen beside it, and every record set below it -- the held and reserve sets read from it. It lists each one on its own line and asks for the record set id typed back first.',
+        more: 'A record set a book on Trade is running from is kept, with the record sets above it, and the list says so beside each. The screen drops back to new rule afterwards, because the set it was showing is gone.',
       },
       fHeldBack: {
         what: 'Shows the held-back window on the Stage 4 record set\'s table: the held-back row under each setting and the sorts on it. Off every time the Funnel is opened and every time the record set showing changes. Ticking it on is written on this Stage 4 record set as one dated look, which Held counts the way it counts a look on Boards.',
