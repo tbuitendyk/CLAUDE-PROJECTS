@@ -56,6 +56,7 @@ module.exports = {
     const missing = [];
     const S = require('./sweep-words').servedSourceForTests();
     const heads = new Set();
+    const named = new Set();
     for (const t of tabs()) {
       const raw = htmlTemplates(drawBody(t.fn)).join('\n');
       const seen = new Set();
@@ -104,6 +105,66 @@ module.exports = {
           }
         }
       }
+      // A WORD HELD IN A NAME IS VISIBLE TOO (owner order, 2026-09-28: "fix the
+      // missing line"). The line at the top of a set on Boards prints
+      // ${esc(trained)} and ${esc(days)}, each a const holding the words, so all
+      // it says after "campaign:" was on the owner's screen and on no list -- and
+      // this check could not see it either. Read here by its own pattern, not the
+      // collector's: a name printed whole in a piece of page's own text (every
+      // other ${...} blanked, so a name inside code handed to a call is never
+      // text), where text goes (the last tag mark before it closes a tag, no
+      // attribute is open, and a piece that closes a tag before opening one
+      // starts inside it), not against a word, and defined once in the screen's
+      // code as a const holding no markup, gives up the quoted strings standing
+      // as a choice's side or as the whole value, and the text a template
+      // standing there opens with -- its own interpolations blanked, and a word
+      // one of them cuts in two left out.
+      const blanked = (x, keepNames) => {
+        let out = '';
+        for (let k = 0; k < x.length; k++) {
+          if (x[k] === '$' && x[k + 1] === '{') {
+            let d = 1;
+            let j = k + 2;
+            while (j < x.length && d) { if (x[j] === '{') d++; else if (x[j] === '}') d--; j++; }
+            const inner = x.slice(k + 2, j - 1);
+            out += keepNames && /^\s*(?:esc\(\s*[A-Za-z_$][\w$]*\s*\)|[A-Za-z_$][\w$]*)\s*$/.test(inner) ? `\${${inner}}` : '\u0001';
+            k = j - 1;
+            continue;
+          }
+          out += x[k];
+        }
+        return out;
+      };
+      const lastTagMark = (x, whole) => {
+        for (let k = x.length - 1; k >= 0; k--) {
+          if (x[k] === '>' && x[k - 1] !== '=' && x[k + 1] !== '=') return '>';
+          if (x[k] === '<' && /[A-Za-z/!]/.test(x[k + 1] || '')) return '<';
+        }
+        const a = whole.search(/(?<!=)>/);
+        const b = whole.search(/<[A-Za-z/!]/);
+        return a >= 0 && (b < 0 || a < b) ? '<' : '>';
+      };
+      for (const tpl of htmlTemplates(body)) {
+        const own = blanked(tpl, true);
+        for (const m of own.matchAll(/\$\{\s*(?:esc\(\s*([A-Za-z_$][\w$]*)\s*\)|([A-Za-z_$][\w$]*))\s*\}/g)) {
+          const before = own.slice(0, m.index);
+          if (lastTagMark(before, own) === '<' || /[\w-]+="[^"<>]*$/.test(before.slice(-200))) continue;
+          if (/[A-Za-z0-9]$/.test(before) || /^[A-Za-z0-9]/.test(own.slice(m.index + m[0].length))) continue;
+          const name = m[1] || m[2];
+          const defs = [...body.matchAll(new RegExp(`(?<![\\w$.])const\\s+${name.replace(/\$/g, '\\$')}\\s*=\\s*([^;]*);`, 'g'))];
+          if (defs.length !== 1 || /<\/?[a-z][a-z0-9]*[\s>]/i.test(defs[0][1])) continue;
+          const value = blanked(defs[0][1], false);
+          const texts = [];
+          for (const c of value.matchAll(/(?:^\s*|(?<![?])[?:](?![?.])\s*)(['"])((?:(?!\1)[^\\]|\\.)*)\1/g)) texts.push(c[2]);
+          for (const c of value.matchAll(/(?:^\s*|(?<![?])[?:](?![?.])\s*)`([^`\u0001]*)(\u0001?)/g)) texts.push(c[2] ? c[1].replace(/[A-Za-z0-9]+$/, '') : c[1]);
+          if (texts.some((x) => /[A-Za-z]{2}/.test(x))) named.add(`${t.label}|${name}`);
+          for (const x of texts) {
+            for (const w of x.replace(/\\u[0-9a-fA-F]{4}/g, ' ').replace(/&[#\w]+;/g, ' ').split(/[^A-Za-z0-9%/.\-]+/)) {
+              if (w && /[A-Za-z]/.test(w) && w.length > 1) seen.add(w);
+            }
+          }
+        }
+      }
       const have = new Set(collect(t.fn).words);
       for (const w of seen) if (!have.has(w)) missing.push(`${t.label}: "${w}"`);
     }
@@ -114,6 +175,10 @@ module.exports = {
     // and the heading reader has something to read: the two tables on Tune and the table of every survivor on Greenlight
     for (const h of ['Tune|winners cut', 'Tune|return % on $ traded', 'Greenlight|deviance from centre', 'Greenlight|neighbouring settings that survived']) {
       assert.ok(heads.has(h), `the heading ${h.split('|')[1]} on ${h.split('|')[0]} was not read, so this check reads no headings at all`);
+    }
+    // and the name reader has something to read: the line at the top of a set on Boards
+    for (const n of ['Boards|trained', 'Boards|days']) {
+      assert.ok(named.has(n), `the words ${n.split('|')[1]} holds on ${n.split('|')[0]} were not read, so this check reads no names at all`);
     }
   },
 

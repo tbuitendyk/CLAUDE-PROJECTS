@@ -1,8 +1,8 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html \u2014 so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "d3a3565db6fc7e2876440cd9d2e43793a020b8ce",
-  "subject": "3.285.0: 24/5 is a stage 1 choice; the stage 3 box and its permute removed",
-  "capturedAt": "2026-09-28T00:12:49Z",
+  "commit": "9902392f0fa729ec7e5da63a68ac41636c2cef6f",
+  "subject": "3.285.1: the count beside Start stage 1 is the units the launch will train",
+  "capturedAt": "2026-09-28T00:55:53Z",
   "files": {
     "public/construct.js": {
       "sha256": "39f67d444124cab3d086b1c7d9d43d9ff7906630a2d35f06e48e91f11ead065d",

@@ -2508,7 +2508,10 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'live', 'setups.js'), 'const SETUP_NAME_MAX = 100;', 'const SETUP_NAME_MAX = 80;',
     'aConfigNameTakesAHundredCharactersEverywhereItIsCarried', 'a rename on the Trade tab to a name over 80 characters is refused by the deployments it reaches'],
   // THE NEW TRADING ENGINE (loop of 2026-09-25): 3.253.0 to 3.255.0
-  [path.join(ROOT, "engine", "plan.js"), "  if (state.stop != null && (state.dir === 1 ? price <= state.stop : price >= state.stop)) {", "  if (false) {",
+  // re-aimed 2026-09-28: 3.262.0 split the stop check in two (the price past the
+  // stop is worked out on the line above, strict for a market entry's stop), so
+  // this guard's old line was gone and it had tested nothing since
+  [path.join(ROOT, "engine", "plan.js"), "  if (state.stop != null && past) {", "  if (false) {",
     "theEngineTakesTheLabsTradesToTheCentOnTheLabsPrices", "a position whose price crosses its stop is never closed there"],
   [path.join(ROOT, "engine", "plan.js"), "    const next = state.stop == null ? want : (state.dir === 1 ? Math.max(state.stop, want) : Math.min(state.stop, want));", "    const next = want;",
     "theEngineTakesTheLabsTradesToTheCentOnTheLabsPrices", "the trailing stop moves back against the position"],
@@ -3147,6 +3150,19 @@ const GUARDS = [
     "twentyFourFiveIsChosenAtStageOneAndEveryStageAfterItReadsTheSetsOwn", "loading a stage 1 set does not show its 24/5"],
   [path.join(ROOT, "public", "construct.js"), "const days = p.weekdaysOnly === true ? '24/5: trained on the weekday windows only' : 'trained on every day of the week';", "const days = '';",
     "twentyFourFiveIsChosenAtStageOneAndEveryStageAfterItReadsTheSetsOwn", "a set no longer says which days its members trained on"],
+  // 3.285.1: the count beside Start stage 1 is the launch's own units; the word list reads a name the page prints whole
+  [path.join(ROOT, "server.js"), "    return res.json(stages.stage1Count(b));", "    return res.json({ units: 0, trainings: 0 });",
+    "theStageOneCountIsTheUnitsTheLaunchWillTrain", "the count beside Start stage 1 no longer asks the launch's own resolution"],
+  [path.join(ROOT, "lib", "stages.js"), "trainings: units.reduce((n, u) => n + trainingsPerUnit(u), 0) };", "trainings: units.reduce((n, u) => n + require('./bracketwork').slimViewsFor(u.size === 1 ? 1 : 2).length, 0) };",
+    "theStageOneCountIsTheUnitsTheLaunchWillTrain", "a walk unit's extra members are left out of the trainings the count says"],
+  [path.join(ROOT, "lib", "stages.js"), "  const passers = dropExtras((!Array.isArray(params.passers) && source !== 'none')", "  const passers = dropExtras((!Array.isArray(params.passers) && params.passers === true)",
+    "theStageOneCountIsTheUnitsTheLaunchWillTrain", "with the units taken from Coins, the count and the launch read the greyed boxes"],
+  [path.join(ROOT, "tests", "sweep-words.js"), "  said.push(...phrases(namedWords(body).join('\\n')));\n", "",
+    "theWordListSeesEveryVisibleLabel", "words the page prints through a name -- the line at the top of a set on Boards -- are on no list again"],
+  [path.join(ROOT, "tests", "sweep-words.js"), "      if ((glue.left && /^[A-Za-z0-9]/.test(t)) || (glue.right && /[A-Za-z0-9]$/.test(t))) continue;\n", "",
+    "theListIsNotStale", "half a word printed against a word is put on a list as a word"],
+  [path.join(ROOT, "tests", "sweep-words.js"), "    if (tagged(lit)) return [BREAK];\n    let all = [''];", "    let all = [''];",
+    "theListIsNotStale", "markup held in a name is read a second time, its classes taken for words"],
 ];
 
 const only = process.argv[2] || '';

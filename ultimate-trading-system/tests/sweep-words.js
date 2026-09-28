@@ -433,6 +433,193 @@ function literalOf(arg) {
   return m ? m[1].replace(/\\(.)/g, '$1') : null;
 }
 
+// A WORD HELD IN A NAME IS VISIBLE TOO (owner order, 2026-09-28: "fix the
+// missing line"). The line at the top of a set on Boards is written
+//
+//     const days = p.weekdaysOnly === true ? '24/5: …' : 'trained on every day of the week';
+//     return `<span class="note">campaign: … · ${esc(trained)} · ${esc(days)}</span>`;
+//
+// so its words sit in a name, and the page prints the name. The reading took a
+// word only where the page's own interpolation held it, so everything that line
+// says after "campaign:" was on the owner's screen and on no list -- the way
+// each set was trained, since 3.69.0. Kept as narrow as the choice reading: only
+// a name printed whole -- `${name}` or `${esc(name)}` in the page's text, never
+// inside a tag -- that the screen's code defines exactly once, as a const whose
+// value is written out: a quoted string, a template, or a choice between them.
+// Its words are what those can print; anything worked out prints nothing this
+// can know. A name defined twice in one screen's code is left alone rather than
+// guessed at.
+function namedWords(body) {
+  const names = new Map();                         // name -> how the page glues it to a word
+  for (const t of htmlTemplates(body)) printedNames(t, names);
+  const out = [];
+  for (const [name, glue] of names) {
+    const defs = [...body.matchAll(new RegExp(`(?<![\\w$.])const\\s+${name.replace(/\$/g, '\\$')}\\s*=\\s*`, 'g'))];
+    if (defs.length !== 1) continue;
+    const from = defs[0].index + defs[0][0].length;
+    for (const t of printable(body.slice(from, endOfValue(body, from)))) {
+      // PRINTED AGAINST A WORD, A VALUE THAT STARTS OR ENDS IN A LETTER IS HALF
+      // OF ONE (`cop${ending}` with 'ies'), and half a word is not a word
+      if ((glue.left && /^[A-Za-z0-9]/.test(t)) || (glue.right && /[A-Za-z0-9]$/.test(t))) continue;
+      out.push(readableText(t));
+    }
+  }
+  return out;
+}
+// The names a piece of page prints whole in its text, at any depth: a template
+// with a tag inside an interpolation is page too, and is walked the same way.
+// A PIECE OF PAGE CAN START INSIDE A TAG: Help writes one <input> as two strings
+// joined by `+`, the second opening ` style="width:${width}"`. So a piece that
+// closes a tag before it opens one starts inside it, and a name printed inside
+// a quoted attribute is never text wherever the tag began.
+function printedNames(src, names) {
+  const plain = src.replace(/\$\{/g, '\u0000');
+  let inTag = plain.indexOf('>') >= 0 && (plain.indexOf('<') < 0 || plain.indexOf('>') < plain.indexOf('<'));
+  let i = 0;
+  let q = null;
+  while (i < src.length) {
+    if (src[i] === '$' && src[i + 1] === '{') {
+      const end = endOfInterpolation(src, i + 2);
+      const code = src.slice(i + 2, Math.max(i + 2, end - 1));
+      const m = !inTag && !q && !/[\w-]+="[^"<>]*$/.test(src.slice(Math.max(0, i - 200), i))
+        && /^\s*(?:esc\(\s*([A-Za-z_$][\w$]*)\s*\)|([A-Za-z_$][\w$]*))\s*$/.exec(code);
+      if (m) {
+        const name = m[1] || m[2];
+        const had = names.get(name) || { left: false, right: false };
+        names.set(name, { left: had.left || /[A-Za-z0-9]$/.test(src.slice(0, i)), right: had.right || /^[A-Za-z0-9]/.test(src.slice(end)) });
+      }
+      for (let j = 0; j < code.length;) {
+        const ch = code[j];
+        if (ch === '\\') { j += 2; continue; }
+        { const k = skipComment(code, j); if (k !== j) { j = k; continue; } }
+        { const k = endOfRegex(code, j); if (k > 0) { j = k; continue; } }
+        if (ch === "'" || ch === '"') { j = endOfQuote(code, j + 1, ch); continue; }
+        if (ch === '`') {
+          const e = endOfTemplate(code, j + 1);
+          const lit = code.slice(j + 1, Math.max(j + 1, e - 1));
+          if (/<\/?[a-z][a-z0-9]*[\s>]/i.test(lit)) printedNames(lit, names);
+          j = e;
+          continue;
+        }
+        j++;
+      }
+      i = end;
+      continue;
+    }
+    const ch = src[i];
+    if (inTag) {
+      if (q) { if (ch === q) q = null; } else if (ch === '"' || ch === "'") q = ch; else if (ch === '>') inTag = false;
+    } else if (ch === '<' && /[A-Za-z/!]/.test(src[i + 1] || '')) inTag = true;
+    i++;
+  }
+}
+// Where a const's value ends: its `;`, or a line break, outside every bracket,
+// quote, template and comment.
+function endOfValue(code, i) {
+  let depth = 0;
+  while (i < code.length) {
+    const ch = code[i];
+    if (ch === '\\') { i += 2; continue; }
+    { const j = skipComment(code, i); if (j !== i) { i = j; continue; } }
+    { const j = endOfRegex(code, i); if (j > 0) { i = j; continue; } }
+    if (ch === "'" || ch === '"') { i = endOfQuote(code, i + 1, ch); continue; }
+    if (ch === '`') { i = endOfTemplate(code, i + 1); continue; }
+    if ('([{'.includes(ch)) { depth++; i++; continue; }
+    if (')]}'.includes(ch)) { depth--; i++; continue; }
+    if (!depth && ch === ';') return i;
+    if (!depth && ch === '\n' && !/^\s*[?:.|&+(]/.test(code.slice(i + 1, i + 200)) && !/[?:=(,|&+]\s*$/.test(code.slice(Math.max(0, i - 200), i))) return i;
+    i++;
+  }
+  return i;
+}
+// The `?` and `:` of a choice standing at the top of a value, or null.
+function topLevelChoice(code) {
+  let depth = 0;
+  let at = -1;
+  let open = 0;
+  for (let i = 0; i < code.length;) {
+    const ch = code[i];
+    if (ch === '\\') { i += 2; continue; }
+    { const j = skipComment(code, i); if (j !== i) { i = j; continue; } }
+    { const j = endOfRegex(code, i); if (j > 0) { i = j; continue; } }
+    if (ch === "'" || ch === '"') { i = endOfQuote(code, i + 1, ch); continue; }
+    if (ch === '`') { i = endOfTemplate(code, i + 1); continue; }
+    if ('([{'.includes(ch)) { depth++; i++; continue; }
+    if (')]}'.includes(ch)) { depth--; i++; continue; }
+    if (!depth && ch === '?' && (code[i + 1] === '?' || (code[i + 1] === '.' && !/\d/.test(code[i + 2] || '')))) { i += 2; continue; }
+    if (!depth && ch === '?') { if (at < 0) at = i; open++; i++; continue; }
+    if (!depth && ch === ':' && at >= 0) { open--; if (!open) return { a: code.slice(at + 1, i), b: code.slice(i + 1) }; }
+    i++;
+  }
+  return null;
+}
+// Everything a written-out value can print, each as a whole string. A choice is
+// either of its sides; a template is its own text with each choice inside it
+// joined back in -- `cop${one ? 'y' : 'ies'}` is "copy" and "copies", never
+// "cop" and "ies" -- so a word split by a choice is read whole. Anything worked
+// out is a break in the text: nothing this reading can know is printed there.
+// MARKUP HELD IN A NAME IS NOT READ HERE: a template with a tag in it is page
+// text wherever it is written, and the page reading above already walks it with
+// its tags -- read here, a class or a tooltip in it would be taken for words
+// (`class="${b.ok ? 'pos' : 'neg'}"` was, on the first try).
+const BREAK = '\n';
+function printable(code, depth = 0) {
+  const c = code.trim();
+  if (!c || depth > 8) return [BREAK];
+  const choice = topLevelChoice(c);
+  if (choice) return [...new Set([...printable(choice.a, depth + 1), ...printable(choice.b, depth + 1)])];
+  if (c[0] === '(' && c[c.length - 1] === ')' && argsAt(c, 1).length === 1 && (c.slice(1).indexOf(argsAt(c, 1)[0]) === 0) && argsAt(c, 1)[0].length === c.length - 2) {
+    return printable(c.slice(1, -1), depth + 1);
+  }
+  const tagged = (lit) => /<\/?[a-z][a-z0-9]*[\s>]/i.test(lit);
+  if ((c[0] === "'" || c[0] === '"') && endOfQuote(c, 1, c[0]) === c.length) {
+    const lit = unescaped(c.slice(1, -1));
+    return tagged(lit) ? [BREAK] : [lit];
+  }
+  if (c[0] === '`' && endOfTemplate(c, 1) === c.length) {
+    const lit = c.slice(1, -1);
+    if (tagged(lit)) return [BREAK];
+    let all = [''];
+    let text = '';
+    const join = (options) => {
+      const next = [];
+      for (const a of all) for (const o of options) next.push(a + text + o);
+      all = next.length > 64 ? [all.join(BREAK) + text + BREAK + options.join(BREAK)] : next;
+      text = '';
+    };
+    for (let i = 0; i < lit.length;) {
+      if (lit[i] === '\\') { const e = escapeAt(lit, i); text += e.ch; i = e.next; continue; }
+      if (lit[i] === '$' && lit[i + 1] === '{') {
+        const end = endOfInterpolation(lit, i + 2);
+        join(printable(lit.slice(i + 2, Math.max(i + 2, end - 1)), depth + 1));
+        i = end;
+        continue;
+      }
+      text += lit[i];
+      i++;
+    }
+    join(['']);
+    return all;
+  }
+  return [BREAK];
+}
+// A written-out value's escapes, as the page prints them: × is ×, \n a line
+function escapeAt(lit, i) {
+  const n = lit[i + 1] || '';
+  if (n === 'u' && /^[0-9a-fA-F]{4}$/.test(lit.slice(i + 2, i + 6))) return { ch: String.fromCharCode(parseInt(lit.slice(i + 2, i + 6), 16)), next: i + 6 };
+  if (n === 'n') return { ch: '\n', next: i + 2 };
+  return { ch: n, next: i + 2 };
+}
+function unescaped(lit) {
+  let out = '';
+  for (let i = 0; i < lit.length;) {
+    if (lit[i] === '\\') { const e = escapeAt(lit, i); out += e.ch; i = e.next; continue; }
+    out += lit[i];
+    i++;
+  }
+  return out;
+}
+
 // Strip the things a person never reads: comments, tooltips, ids, classes,
 // styles, and the code inside interpolations.
 function readableText(src) {
@@ -580,6 +767,8 @@ function collect(fnName = 'drawSweep') {
   const body = drawBody(fnName);
   // the page's own text, and the headings its tables are given through a helper (2026-09-24)
   const said = phrases([...htmlTemplates(body).map(readableText), ...headingWords(body)].join('\n'));
+  // and what the page prints through a name it holds its words in (2026-09-28)
+  said.push(...phrases(namedWords(body).join('\n')));
   const opts = optionWords(body);
   const dataValues = dataValueWords(body);
 
@@ -606,7 +795,7 @@ function collect(fnName = 'drawSweep') {
   };
 }
 
-module.exports = { collect, drawSweepBody, drawBody, tabs, htmlTemplates, readableText, stripInterpolations, headingWords,
+module.exports = { collect, drawSweepBody, drawBody, tabs, htmlTemplates, readableText, stripInterpolations, headingWords, namedWords,
   // the served screen source itself, for a check that must NOT go through
   // this file's own idea of what is on it
   servedSourceForTests: () => SRC };
