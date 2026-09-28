@@ -158,7 +158,29 @@ function pastRegex(S, i) {
 // out identical. Following depth without this would authorise every word in the
 // app on every screen, which is the fault this whole file exists to prevent,
 // wearing the fix. draw() and every drawX() renderer are dead ends.
-function helperBodies(S, body, isScreen) {
+//
+// AND WHAT RUNS AFTER THE PAGE MOVES TO ANOTHER SCREEN IS THAT SCREEN'S
+// (3.286.1). `Copy settings into the form` on Boards sets tab = 'sweep',
+// redraws, and only then fills Sweep's form, so everything that fill draws is
+// on Sweep, where the owner has just been taken, and none of it is on Boards.
+// From the move to the end of the block it sits in is blanked before the walk
+// looks for calls, so nothing called there is followed from this screen. A
+// move to the screen being read is no move at all and is left alone.
+function elsewhere(body, here) {
+  let out = body;
+  for (const m of body.matchAll(/\btab\s*=\s*'([a-z]+)'/g)) {
+    if (m[1] === here) continue;
+    let i = m.index;
+    for (let depth = 0; i < body.length; i++) {
+      if (body[i] === '{') depth++;
+      else if (body[i] === '}') { if (depth === 0) break; depth--; }
+    }
+    out = out.slice(0, m.index) + ' '.repeat(i - m.index) + out.slice(i);
+  }
+  return out;
+}
+
+function helperBodies(S, body, isScreen, here) {
   const out = [];
   const defined = new Map();
   for (const m of S.matchAll(/^(?:async )?function ([A-Za-z_$][\w$]*)\s*\(/gm)) {
@@ -171,7 +193,7 @@ function helperBodies(S, body, isScreen) {
   const queue = [body];
   while (queue.length) {
     const cur = queue.shift();
-    for (const m of cur.matchAll(/\b([A-Za-z_$][\w$]*)\s*\(/g)) {
+    for (const m of elsewhere(cur, here).matchAll(/\b([A-Za-z_$][\w$]*)\s*\(/g)) {
       const name = m[1];
       if (seen.has(name) || !defined.has(name)) continue;
       if (isScreen(name)) { seen.add(name); continue; }
@@ -188,7 +210,21 @@ function helperBodies(S, body, isScreen) {
       // narrow on purpose: it admits a helper that writes `'pick',` or reads a
       // list from the engine, and nothing else, and screen renderers are still
       // dead ends so no other screen's words can arrive this way.
-      if (!/<[a-z]/i.test(b) && !/'pick',/.test(b) && !/\bVOCAB\.[A-Za-z_$]/.test(b)) continue;
+      //
+      // AND A HELPER THAT DRAWS ONLY BY CALLING ANOTHER IS FOLLOWED THROUGH
+      // (3.286.1, owner order 2026-09-28: the delete box). Every delete button
+      // calls deleteSetFlow, which draws nothing itself and hands the owner to
+      // deleteBox -- so the box, on every screen with a delete button, stopped
+      // the walk one hop short and its words were on no list, though the
+      // comment above always said a helper that only calls others is followed
+      // through. It is followed, not read: its own body adds no words.
+      //
+      // The first try put 34 of Sweep's words on Boards and was caught by
+      // diffing the lists: `Copy settings into the form` fills Sweep's form
+      // through a helper that draws nothing, and following it reached Sweep's
+      // count lines. elsewhere() above is what stops that, because the fill
+      // runs after the page has moved to Sweep.
+      if (!/<[a-z]/i.test(b) && !/'pick',/.test(b) && !/\bVOCAB\.[A-Za-z_$]/.test(b)) { queue.push(b); continue; }
       out.push(b);
       queue.push(b);
     }
@@ -205,7 +241,8 @@ function drawBody(fnName, src) {
   // included, so a helper that redraws the page cannot drag another screen's
   // words onto this list.
   const screens = new Set(['draw', ...tabs(S).map((t) => t.fn)]);
-  return [body, ...helperBodies(S, body, (n) => screens.has(n))].join('\n');
+  const here = (tabs(S).find((t) => t.fn === fnName) || {}).key;
+  return [body, ...helperBodies(S, body, (n) => screens.has(n), here)].join('\n');
 }
 
 // The words immediately before a control, which is what the owner reads as its

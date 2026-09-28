@@ -82,6 +82,22 @@ const RUN_NOTES_CONTROLS = (() => {
   }
   return out;
 })();
+// THE DELETE BOX IS ONE PIECE OF CODE, opened by every delete button on every
+// screen that has one, so its help is written once here and spread into each.
+const DELETE_BOX_CONTROLS = {
+  delboxId: {
+    what: 'Type the record set id shown above it, exactly, to confirm the delete.',
+    more: 'Anything else is refused and nothing is deleted. Enter does the same as Delete, and Escape the same as Cancel.',
+  },
+  delboxGo: {
+    what: 'Deletes, for good, the record set named at the top and every record set listed as going with it.',
+    more: 'It deletes nothing until the record set id in the box matches. The record sets listed as kept stay exactly as they are.',
+  },
+  delboxNo: { what: 'Closes the box and deletes nothing.' },
+  delboxClose: {
+    what: 'Closes the box. It stands in place of Delete and Cancel when nothing in the box can be deleted.',
+  },
+};
 // HELD AND RESERVE SHARE ONE SCREEN, SO THEY SHARE ONE HELP. The two tabs are
 // one renderer handed the stretch, and their help is written once here with
 // the stretch's own words filled in, so the two explanations cannot drift any
@@ -122,6 +138,7 @@ const JUDGE_HELP = (() => {
         + `every rule declared before its number and every look counted. Each press writes a ${kind} of the rule, `
         + 'which is what Greenlight reads.',
       controls: {
+        ...DELETE_BOX_CONTROLS,
         vSet: {
           what: `Which rule to read on the ${w} window, from every rule on this box, newest first, each by the name it was given and nothing else; the line under the box says the rule chosen's coin and shape and survivors, and the ${kind}s read from it are drawn under the press.${stretch === 'reserve' ? ' Only a rule whose layout keeps a reserve and whose newest held set passed is offered.' : ' A rule whose layout keeps no reserve says held alone.'}`,
           more: `Choosing a rule reads its footing only: whether it still gives back its own survivors, what it was checked against, its marks, and how many looks the ${w} window has already had. No ${w} figure is read until the button is pressed.`,
@@ -240,6 +257,7 @@ window.HELP = {
     ],
     controls: {
       ...CAMPAIGN_PANEL_CONTROLS,
+      ...DELETE_BOX_CONTROLS,
       swUni: { what: 'The coins this run buys and sells. Leave it blank to use all of the ones held; write them separated by commas to narrow it down.' },
       // WHERE A RUN TAKES ITS UNITS FROM (3.185.0). One tick meaning "both
       // lists" became three choices, because a boolean cannot say which.
@@ -620,6 +638,7 @@ window.HELP = {
         + 'and picking one there puts it in force here too, because the table and the Funnel read the one filter.'],
     ],
     controls: {
+      ...DELETE_BOX_CONTROLS,
       bHeldBack: {
         what: 'Shows the held-back window on the stage 3 tables: the held-back columns of Table 3.A and Table 3.B and of the records under a row. Off every time this tab is opened. Ticking it on is written on this record set as one dated look, which Held counts the way it counts a scan on Tune.',
         more: 'Off, a sort saved on a held-back column is set aside and the table reads in its own order, and a floor on a held-back column is not applied \u2014 a table ordered or cut by hidden held-back money would still be a look. The held-back window is priced at stage 3 and kept for Held; nothing on the Funnel reads it, and the trade floor on the Funnel\u2019s step 6 reads test trades.',
@@ -775,6 +794,7 @@ window.HELP = {
       + 'Every figure shown is test-window money; the held-back window is opened once, at the end, on what survives. '
       + 'What it writes is the RULE you arrived at, because a rule can be checked against scrambled data and a single row cannot.',
     controls: {
+      ...DELETE_BOX_CONTROLS,
       fSource: {
         what: 'The stage 3 record set this screen walks, and which of its coins and shapes: every unit, or one of the filters saved under Table 3.C on Boards.',
         more: 'It is this screen\'s own choice, kept across visits the way every other screen keeps its record set; the first visit starts on the set Boards has open, or the newest finished stage 3 set. Picking a saved filter puts it in force on Table 3.C as well - there is one filter on the record set and both read it - so if the boxes there match no saved filter, it asks before emptying them. Every walk, each coin and shape\'s own, is kept under its record set and comes back when that set is picked again.',
@@ -1001,6 +1021,7 @@ window.HELP = {
       + 'worked in 2018 and stopped working in 2022 will still look good averaged over the whole '
       + 'history — this is what separates the two.',
     controls: {
+      ...DELETE_BOX_CONTROLS,
       hSet: {
         what: 'Which Stage 4 record set to retrain, from every set on this box, newest first, each with its coin and shape and its survivors.',
         more: 'Choosing a set reads nothing on the held-back window: it shows the set\'s window layout, which stretch the retraining trains on and which it is judged on, and how many times the run has been pressed.',
@@ -1039,6 +1060,7 @@ window.HELP = {
     intro: 'Adjusting one chosen setting rather than searching for new ones. Everything here works '
       + 'on one survivor of a Stage 4 record set whose trades were captured, over the windows ticked.',
     controls: {
+      ...DELETE_BOX_CONTROLS,
       tnSet: { what: 'Which Stage 4 record set to capture the trades of, from every set on this box, newest first.' },
       tnCapture: {
         what: 'Writes down every trade every survivor takes, each at the size its setting took it at, on the training, test and held-back windows, and on the reserve window when the set\'s layout keeps one and its seal is intact.',
@@ -1316,6 +1338,7 @@ window.HELP = {
       + 'exact settings frozen at that moment. Nothing here starts trading. It writes down the decision '
       + 'so that later, when a setup is running on the Trade tab, there is a record of what it was based on.',
     controls: {
+      ...DELETE_BOX_CONTROLS,
       gl4Set: {
         what: 'Which held set or reserve set to take a survivor from, from every one on this box, newest first, with the verdict it carries and, on a held set, whether its rule is held alone.',
         more: 'Choosing a set reads its footing only: whether its verdict stands, how many members its coin and shape were priced with, and every survivor with its distance from the middle of the rule. A set whose verdict is FAIL, a held set whose layout keeps a reserve, and a set that passed under another release line are each refused in words.',

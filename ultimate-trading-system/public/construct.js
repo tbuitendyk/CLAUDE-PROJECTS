@@ -6070,11 +6070,13 @@ function deleteBox(look) {
       ${nothing ? '' : `<p>Type the record set id back to confirm: <code>${esc(look.confirmWith)}</code></p>
       <div class="row"><label class="f">record set id<input id="delboxId" autocomplete="off" style="width:18rem"></label></div>
       <p class="note" id="delboxSay"></p>`}
-      <div class="row">${nothing ? '' : '<button class="danger" id="delboxGo">Delete</button>'}<button id="delboxNo">${nothing ? 'Close' : 'Cancel'}</button></div>
+      <div class="row">${nothing ? '<button id="delboxClose">Close</button>' : '<button class="danger" id="delboxGo">Delete</button><button id="delboxNo">Cancel</button>'}</div>
     </div>`;
     document.body.appendChild(box);
     const close = (v) => { box.remove(); resolve(v); };
-    $('#delboxNo').onclick = () => close(null);
+    // one button each for Close and Cancel, so each has one name wherever it is
+    // named -- the Help tab draws a button by the name in its markup (3.286.1)
+    $(nothing ? '#delboxClose' : '#delboxNo').onclick = () => close(null);
     const go = $('#delboxGo');
     if (go) {
       const input = $('#delboxId');
