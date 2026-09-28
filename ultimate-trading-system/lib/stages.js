@@ -1967,8 +1967,23 @@ function startStage2(params) {
   const w = writers(id);
   const p = s2TrainingOf(parent.params);
   (async () => {
-    const payloads = [];
-    for (const row of carried) payloads.push(s2PayloadOf(doc, parent, parentRecords.get(row.u), row.u, p, parentNullN, parentFee));
+    // ONE PAYLOAD AT A TIME, NOT TWELVE THOUSAND (3.292.4, owner 2026-09-28: a
+    // stage 2 sweep took the service to its heap ceiling twice and killed it --
+    // "FATAL ERROR: Ineffective mark-compacts near heap limit", and the stack
+    // under it was JsonParser::MakeString inside Builtin_JsonParse).
+    //
+    // This built EVERY unit's payload before a single one was trained, and held
+    // them all for the whole run. Each one reads the parent's stored votes,
+    // tuning votes and saved models back off disk (unitRows -> JSON.parse) and
+    // keeps a number per member per vote in s1.probs and s1.tauProbs. On the
+    // owner's 12,240-unit set that is gigabytes, allocated up front, alive until
+    // the run ends -- and the parse that builds it is exactly where V8 died.
+    //
+    // The pool has taken a lazy list since 3.220.2 -- `{ length, at(i) }`, which
+    // builds payload i when a lane is free for it "so a long run holds only the
+    // parts in flight" -- and stage 3 has used it all along (payloadAt). Stage 2
+    // did not. The same job gets the same shape (RULE ELEVEN clause 5).
+    const payloads = { length: carried.length, at: (i) => s2PayloadOf(doc, parent, parentRecords.get(carried[i].u), carried[i].u, p, parentNullN, parentFee) };
     await pool.forEach('s2Unit', payloads, (settled, i) => landS2Unit(doc, w, parent, ranking, parentRecords.get(carried[i].u), i, settled, t0, carried.length));
     if (doc.cancelRequested) { await closeWriters(w).catch(() => {}); finishFail(doc, null, pool); return; }
     await finishStage2(doc, pool, w, t0);
@@ -2201,7 +2216,8 @@ function continueStage2(doc) {
     const parentFee = Number((parent.params || {}).fee);
     const parentNullN = Math.max(0, Math.floor(num((parent.params || {}).nullN, 19)));
     if (work.length) {
-      const payloads = work.map((i) => s2PayloadOf(doc, parent, parentRecords.get(carriedList[i]), carriedList[i], p, parentNullN, parentFee));
+      // lazily, exactly as the launch above builds them
+      const payloads = { length: work.length, at: (k) => s2PayloadOf(doc, parent, parentRecords.get(carriedList[work[k]]), carriedList[work[k]], p, parentNullN, parentFee) };
       await pool.forEach('s2Unit', payloads,
         (settled, k) => landS2Unit(doc, w, parent, ranking, parentRecords.get(carriedList[work[k]]), work[k], settled, t0, carriedList.length));
     }
