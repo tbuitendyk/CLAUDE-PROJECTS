@@ -1171,18 +1171,33 @@ module.exports = {
     fs.mkdirSync(SETS_DIR, { recursive: true });
     const id = `s1-test-${Date.now().toString(36)}-list`;
     const side = path.join(SETS_DIR, `${id}.funnelrich.json`);
+    // AND A SIDECAR THE NAME RULE CANNOT SEE (3.292.1). Every other sidecar is
+    // `<id>.<kind>.json` or `.json.gz`; the tune scans are written
+    // `<id>-tunescans.json` -- a DASH -- so the name rule passes them, they
+    // parse, and a row with no id went into the listing. Six of them were on the
+    // owner's box, and because an absent createdAt sorts above every date they
+    // came out at the TOP of every listing. This case used to be untried: the
+    // guarantee below was only ever asked through a sidecar the name rule
+    // already caught, so the check could not see the hole.
+    const dashed = path.join(SETS_DIR, `${id}-tunescans.json`);
     try {
       fs.writeFileSync(path.join(SETS_DIR, `${id}.json`), JSON.stringify({
         id, stage: 1, seq: 999978, name: 'S1 #list', status: 'done', createdAt: new Date().toISOString(), params: {}, plan: { units: 1 },
       }));
       // valid JSON, and NOT a set -- which is exactly why it used to get through
       fs.writeFileSync(side, JSON.stringify({ v: 4, settings: { a: { units: { u0: { x: 1 } } } } }));
+      fs.writeFileSync(dashed, JSON.stringify({ v: 1, scans: { stop: {}, conviction: {} } }));
       const rows = stages.listSets();
       assert.ok(rows.some((r) => r.id === id), 'the set itself is no longer listed');
       assert.deepStrictEqual(rows.filter((r) => r.id == null), [], 'a sidecar is still being listed as a set with no id');
       assert.deepStrictEqual(rows.filter((r) => String(r.id || '').includes('funnelrich')), [], 'a sidecar is listed under its own name');
+      assert.deepStrictEqual(rows.filter((r) => String(r.id || '').includes('tunescans')), [], 'a dashed sidecar is listed under its own name');
+      // and it cannot reach the front of the listing, which is where a row with
+      // no createdAt lands
+      assert.ok(rows.length === 0 || rows[0].id != null, 'a row with no id sorts to the top of the listing');
     } finally {
       try { fs.rmSync(side, { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(dashed, { force: true }); } catch (_) { /* fixture */ }
       rmSet(id);
     }
   },

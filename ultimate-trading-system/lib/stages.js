@@ -230,6 +230,17 @@ function listSets() {
   for (const f of files) {
     try {
       const d = JSON.parse(fs.readFileSync(path.join(SETS_DIR, f), 'utf8'));
+      // A FILE THAT PARSES IS NOT A SET (3.292.1). The name rule above keeps the
+      // big sidecars out without reading them, and it does that by knowing every
+      // sidecar is `<id>.<kind>.json` or `.json.gz`. ONE IS NOT: the tune scans
+      // are written `<id>-tunescans.json`, with a dash, so the rule passes them,
+      // they parse, and a row with none of a set's fields went into the listing
+      // -- six of them on the owner's box. They came out FIRST every time,
+      // because the sort below reads createdAt as a string and an absent one
+      // sorts above every date. lib/storage.js has asked this question of a
+      // parsed file all along (readDocs); this asks it too, so a row without an
+      // id can never be invented, whatever slips past the name.
+      if (!d || typeof d !== 'object' || !d.id) continue;
       // A 'running' doc while nothing is running here is a set the service
       // restarted out from under — marked the moment it is seen, the same
       // lazy sweep the run list does, so a corpse never shows as alive.

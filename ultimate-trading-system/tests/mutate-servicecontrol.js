@@ -1770,6 +1770,8 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), "  if (!cWalkSt || !cWalkSt.saved || !cWalkSt.saved.id) return '';", "",
     'theSplitReadingPromotesTheWholeHistoryPickOfEveryRowShown', 'the press is drawn on a walk that has not been saved, where it can only fail'],
   // ---- A SET LISTING READS SET DOCUMENTS ONLY, AND A WALK KEEPS ITS ROWS (3.189.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "      if (!d || typeof d !== 'object' || !d.id) continue;", "      if (false) continue;",
+    "theSetListingReadsSetDocumentsAndNotTheSidecarsBesideThem", "a file that parses but is not a set is listed as a set with no id"],
   [path.join(ROOT, 'lib', 'stages.js'), "const isSetDocument = (f) => f.endsWith('.json') && !f.slice(0, -'.json'.length).includes('.');", "const isSetDocument = (f) => f.endsWith('.json');",
     'theSetListingReadsSetDocumentsAndNotTheSidecarsBesideThem', 'every listing parses the Funnel\'s sidecar as a set again -- the wedge that timed out every page for hours'],
   [path.join(ROOT, 'lib', 'coinsrun.js'), "          try { wset.appendPart(id, [row]); } catch (err) { run.saveError = String(err && err.message ? err.message : err); }", "",
