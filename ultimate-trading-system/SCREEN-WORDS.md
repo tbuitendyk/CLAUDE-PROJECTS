@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **8b7e5e6c7ab9 — what the box is serving**, not from the working tree.
+Generated from **1c0e07626a89 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -3009,7 +3009,7 @@ about About above above. after against ahead all allow alone already always an a
 
 _none_
 
-## Sentences the page prints (37)
+## Sentences the page prints (39)
 
 - Greenlight — the decision that a config is fit to trade
 - Records WHO/WHEN/WHY with the exact frozen config, engine version, and the campaign's whole
@@ -3019,6 +3019,8 @@ _none_
 - setting here — it is what the evidence was found under, and a config sent to the Trade tab starts out priced
 - at it and can be changed there. A dash means the run predates the fee being recorded.
 - Activation, deactivation and nuking live on the
+- Press a greenlight to pick its survivor in the table above: its Stage 4 record set is opened first when another is shown,
+- and the tick beside that box is cleared when it would hide the set.
 - The other way to write the decision down: from a reserve set that passed on Reserve, or from a held set that
 - passed on Held on a layout that keeps no reserve, held alone. One of its
 - survivors is taken forward, chosen by how surrounded it is (the survivor with the most of its neighbouring settings
@@ -3049,10 +3051,10 @@ _none_
 - Type the record set id back to confirm:
 - neighbouring settings that survived
 
-## Every word, flat (277)
+## Every word, flat (287)
 
 ```
-Activate Activation activation. after against agree all alone. always and appears applied are as at average back be becomes before behind being below Books both box brackets built buy by campaign can Cancel cannot capture carry centre chain. change changed chosen clear cleared clears Close config configs confirm conviction counts currently dash deactivation decision Delete deleted depth Deviance deviance dial did disk does does. down drawn each Each engine ever ever. Every every evidence evidentiary exact exactly Existing fee figure first fit for forecasts forward found four from frozen go goes Greenlight greenlight greenlighted greenlights half-life hand-built has held Held held-back here here. History history hold how id in is It it it. its keeps kept Kept layout lengths. lines live Live long look. MB means members minted money most name named neighbouring never no No none none. not notch Nothing nothing now nuked nuking of off on one One Only only or order orders other out over own pair paper Paper PASS passed per period pick picture place platforms predates press priced read real rebuild REBUILD rebuilding record recorded. Records records refused release Rename required REQUIRED reserve Reserve retraining row rule run same. sent set set. sets setting settings share short side sides simpler size sized sizing sizing. so Stage stage stand started starts state step stood stop stopped stretch surrounded survive survived surviving survivor survivors tab taken test that the The them then there there. they things this through to too trade Trade trades Trading trading Train train Tune tuning tunings Type under until up verdict version waits was way way. what when where WHO/WHEN/WHY whole why window with With without write yes yet you
+above Activate Activation activation. after against agree all alone. always and another appears applied are as at average back be becomes before behind being below beside Books both box brackets built buy by campaign can Cancel cannot capture carry centre chain. change changed chosen clear cleared clears Close config configs confirm conviction counts currently dash deactivation decision Delete deleted depth Deviance deviance dial did disk does does. down drawn each Each engine ever ever. Every every evidence evidentiary exact exactly Existing fee figure first fit for forecasts forward found four from frozen go goes Greenlight greenlight greenlighted greenlights half-life hand-built has held Held held-back here here. hide History history hold how id in is It it it. its keeps kept Kept layout lengths. lines live Live long look. MB means members minted money most name named neighbouring never no No none none. not notch Nothing nothing now nuked nuking of off on one One Only only opened or order orders other out over own pair paper Paper PASS passed per period pick picture place platforms predates Press press priced read real rebuild REBUILD rebuilding record recorded. Records records refused release Rename required REQUIRED reserve Reserve retraining row rule run same. sent set set. sets setting settings share short shown side sides simpler size sized sizing sizing. so Stage stage stand started starts state step stood stop stopped stretch surrounded survive survived surviving survivor survivors tab table taken test that the The them then there there. they things this through tick to too trade Trade trades Trading trading Train train Tune tuning tunings Type under until up verdict version waits was way way. what when where WHO/WHEN/WHY whole why window with With without would write yes yet you
 ```
 
 ---
