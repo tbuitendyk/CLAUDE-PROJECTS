@@ -1148,6 +1148,42 @@ module.exports = {
   //
   // Measured on this box: one listing went from 0.8ms to 97ms with a 10MB
   // sidecar present, and back to 1.3ms with the rule below.
+  // THE LISTING PARSES A DOCUMENT ONCE AND KEEPS IT WHILE THE FILE SITS STILL
+  // (3.292.2, owner 2026-09-28: 504s on the interface while a stage 2 sweep ran,
+  // then "cache the listing"). The Sweep screen asks for this listing every four
+  // seconds while a sweep runs; it used to read and parse every set document
+  // each time, on the main thread, beside the workers.
+  theSetListingParsesADocumentOnceWhileItsFileSitsStill() {
+    fs.mkdirSync(SETS_DIR, { recursive: true });
+    const id = `s1-test-${Date.now().toString(36)}-cache`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const doc = (name) => JSON.stringify({
+      id, stage: 1, seq: 999977, name, status: 'done', createdAt: new Date().toISOString(), params: {}, plan: { units: 1 },
+    });
+    const realRead = fs.readFileSync;
+    let reads = 0;
+    try {
+      fs.writeFileSync(file, doc('S1 #cache'));
+      assert.strictEqual(stages.listSets().find((r) => r.id === id).name, 'S1 #cache');
+      // ASKED AGAIN WITH NOTHING CHANGED: the file is statted, never read
+      fs.readFileSync = (p, ...rest) => { if (String(p) === file) reads += 1; return realRead(p, ...rest); };
+      assert.strictEqual(stages.listSets().find((r) => r.id === id).name, 'S1 #cache');
+      assert.strictEqual(stages.listSets().find((r) => r.id === id).name, 'S1 #cache');
+      assert.strictEqual(reads, 0, 'the listing is parsing every document again on every call');
+      // AND THE MOMENT THE FILE MOVES, it is read again and the listing says the
+      // new thing -- a cache that went stale would be worse than no cache
+      fs.writeFileSync(file, doc('S1 #cache renamed and longer'));
+      assert.strictEqual(stages.listSets().find((r) => r.id === id).name, 'S1 #cache renamed and longer');
+      assert.ok(reads >= 1, 'a changed document is not being read again');
+    } finally {
+      fs.readFileSync = realRead;
+      rmSet(id);
+    }
+    // AND A DELETED SET LEAVES NOTHING BEHIND: the listing drops what it is no
+    // longer shown, so the cache cannot grow for the life of the process
+    assert.deepStrictEqual(stages.listSets().filter((r) => r.id === id), []);
+  },
+
   theSetListingReadsSetDocumentsAndNotTheSidecarsBesideThem() {
     // THE RULE ITSELF, on names alone -- no files, no parsing. A set is
     // `<id>.json` and an id carries no dot; every sidecar is `<id>.<kind>.json`

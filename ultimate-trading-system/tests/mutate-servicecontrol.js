@@ -1770,6 +1770,11 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), "  if (!cWalkSt || !cWalkSt.saved || !cWalkSt.saved.id) return '';", "",
     'theSplitReadingPromotesTheWholeHistoryPickOfEveryRowShown', 'the press is drawn on a walk that has not been saved, where it can only fail'],
   // ---- A SET LISTING READS SET DOCUMENTS ONLY, AND A WALK KEEPS ITS ROWS (3.189.0) ----
+  // THE LISTING'S CACHE (3.292.2)
+  [path.join(ROOT, 'lib', 'stages.js'), "  if (had && had.key === key) return had.doc;", "  if (false) return had.doc;",
+    "theSetListingParsesADocumentOnceWhileItsFileSitsStill", "every listing parses every set document again"],
+  [path.join(ROOT, 'lib', 'stages.js'), "  const key = `${st.size}:${st.mtimeMs}`;", "  const key = 'same';",
+    "theSetListingParsesADocumentOnceWhileItsFileSitsStill", "a document that has changed on disk is served from the cache anyway"],
   [path.join(ROOT, 'lib', 'stages.js'), "      if (!d || typeof d !== 'object' || !d.id) continue;", "      if (false) continue;",
     "theSetListingReadsSetDocumentsAndNotTheSidecarsBesideThem", "a file that parses but is not a set is listed as a set with no id"],
   [path.join(ROOT, 'lib', 'stages.js'), "const isSetDocument = (f) => f.endsWith('.json') && !f.slice(0, -'.json'.length).includes('.');", "const isSetDocument = (f) => f.endsWith('.json');",

@@ -223,13 +223,49 @@ function getSet(id) {
 // a set is `<id>.json`, and an id carries no dot. A sidecar added tomorrow as
 // `<id>.whatever.json` is excluded without anybody remembering to come here.
 const isSetDocument = (f) => f.endsWith('.json') && !f.slice(0, -'.json'.length).includes('.');
+// THE SET DOCUMENTS, PARSED ONCE AND KEPT WHILE THE FILE DOES NOT MOVE
+// (3.292.2, owner 2026-09-28: the interface returned 504s while a stage 2 sweep
+// ran, and "cache the listing").
+//
+// WHAT IT COST. listSets read and JSON.parsed EVERY set document on EVERY call,
+// and while a sweep is going the Sweep screen asks for the listing every four
+// seconds. On the owner's box that is 59 documents parsed and thrown away
+// fifteen times a minute, on the main thread, beside four workers -- plus one
+// more parse for each stage 4 row, because rebuildOf reads its parent. The
+// service sat on its memory watermark, garbage collection never let the main
+// thread go, and every route timed out at the gateway. The documents themselves
+// hardly ever change: a poll now stats each file and parses only what moved.
+//
+// lib/storage.js has cached these SAME files this exact way -- size and mtime
+// together -- since it was written. This is stages.js doing what its neighbour
+// already does, not a new idea (RULE ELEVEN: the same job gets the same shape).
+//
+// WHAT COMES BACK IS READ-ONLY. getSet stays uncached and unchanged, because its
+// callers mutate what it returns and save it; nothing may ever mutate a document
+// that came from here.
+const setDocCache = new Map();   // path -> { key, doc }
+function readSetDocCached(p) {
+  let st = null;
+  try { st = fs.statSync(p); } catch (_) { setDocCache.delete(p); return null; }
+  const key = `${st.size}:${st.mtimeMs}`;
+  const had = setDocCache.get(p);
+  if (had && had.key === key) return had.doc;
+  let doc = null;
+  try { doc = JSON.parse(fs.readFileSync(p, 'utf8')); } catch (_) { doc = null; }
+  setDocCache.set(p, { key, doc });
+  return doc;
+}
+const readSetDocById = (id) => (id ? readSetDocCached(setFile(id)) : null);
 function listSets() {
   let files = [];
   try { files = fs.readdirSync(SETS_DIR).filter(isSetDocument); } catch (_) { files = []; }
   const out = [];
+  const seen = new Set();
   for (const f of files) {
     try {
-      const d = JSON.parse(fs.readFileSync(path.join(SETS_DIR, f), 'utf8'));
+      const p = path.join(SETS_DIR, f);
+      seen.add(p);
+      let d = readSetDocCached(p);
       // A FILE THAT PARSES IS NOT A SET (3.292.1). The name rule above keeps the
       // big sidecars out without reading them, and it does that by knowing every
       // sidecar is `<id>.<kind>.json` or `.json.gz`. ONE IS NOT: the tune scans
@@ -245,9 +281,17 @@ function listSets() {
       // restarted out from under — marked the moment it is seen, the same
       // lazy sweep the run list does, so a corpse never shows as alive.
       if (ownsRuns && d.status === 'running' && (!activeSet || activeSet.id !== d.id)) {
-        d.status = 'interrupted';
-        d.progress = 'the service restarted while this set was being written';
-        saveSet(d);
+        // ITS OWN COPY, never the cached one: a document from the cache is
+        // shared, and the save below moves the file anyway, so the next listing
+        // re-reads it. Mutating the cached object would leave the cache saying
+        // something the disk does not, for as long as the file sat still.
+        const fresh = getSet(d.id);
+        if (fresh) {
+          fresh.status = 'interrupted';
+          fresh.progress = 'the service restarted while this set was being written';
+          saveSet(fresh);
+          d = fresh;
+        }
       }
       out.push({
         id: d.id, stage: d.stage, seq: d.seq, name: d.name, status: d.status,
@@ -273,6 +317,8 @@ function listSets() {
       });
     } catch (_) { /* an unreadable doc is skipped, never invented */ }
   }
+  // a set that has been deleted leaves nothing of itself behind here
+  for (const p of setDocCache.keys()) if (!seen.has(p)) setDocCache.delete(p);
   out.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   return out;
 }
@@ -10829,7 +10875,9 @@ function rebuildOf(doc) {
     reasons.push({ key: 'rich', why: 'its test history numbers were worked out with every trade at the standard size, and are worked out again' });
   }
   if (doc.stage === 4) {
-    const parent = getSet((doc.parent || {}).id);
+    // read, never written (only sizesItsTrades asks it anything), so it reads
+    // through the cache -- this is one parse per stage 4 row on every listing
+    const parent = readSetDocById((doc.parent || {}).id);
     if (parent && sizesItsTrades(parent) && releaseBefore(doc.release, SIZED_FROM)) {
       reasons.push({ key: 'stage4', why: `its survivors were chosen and read on figures worked out with every trade at the standard size, under release ${doc.release || 'unknown'}` });
     }
