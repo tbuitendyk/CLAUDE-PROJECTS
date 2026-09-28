@@ -399,11 +399,11 @@ module.exports = {
       && check.includes('shapeLabel(ownT ? { ...r, tHours: bracketLib.T_OWN } : r)'),
       'the name check rewrites t own as the hours one unit priced at, so every t own block reads as misnamed');
     const sw = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
-    assert.ok(sw.includes('async function unreadChunksFor(combo, geometry, fromTs, extras = []) {')
+    assert.ok(sw.includes('async function unreadChunksFor(combo, geometry, fromTs, extras = [], weekdaysOnly = false) {')
       && sw.includes("{ allLoaded: true, hours: null, extras: Array.isArray(extras) ? extras : [] }")
       && sw.includes('if (Array.isArray(extras) && extras.length) markExtraGates(chunks, extras.map((e) => e.bandPct));'),
       'the unread window is built without the extras, so a member added from a walk set has no columns to read there');
-    assert.ok(sw.includes('const got = await unreadChunksFor(combo, geometry, task.unread.fromTs, extras);'), 'the reserve grade does not hand the unit\'s extras to the unread window');
+    assert.ok(sw.includes('const got = await unreadChunksFor(combo, geometry, task.unread.fromTs, extras, p.weekdaysOnly);'), 'the reserve grade does not hand the unit\'s extras (and the set\'s 24/5) to the unread window');
     assert.ok(sw.includes('return gate ? f.map((pr, k) => (gate(holdChunks[k]) ? pr : SAT_OUT.slice())) : f;'), 'an extra speaks ungated on the unread window');
   },
 
@@ -768,6 +768,57 @@ module.exports = {
     // (the box-by-box comparison of the stage headings went in 3.241.0: every section now shows the set its own box names, filled from it)
   },
 
+  // 24/5 IS A STAGE 1 CHOICE (3.285.0, owner 2026-09-27: "if a set-up is
+  // meant to trade only on weekdays, then odd market characteristics that show
+  // up due to thin / non-commercial weekend trading obviously should be
+  // excluded"). Refused unless plainly on or off; carried to every unit a
+  // launch, a start-again and stage 2 train; stage 3 takes it off the chain
+  // and never off the request; every rebuild of a set's windows reads it; and
+  // the screens say which a set is. The chain itself is proved end to end in
+  // tests/test-halflife.js.
+  twentyFourFiveIsChosenAtStageOneAndEveryStageAfterItReadsTheSetsOwn() {
+    const S = require('../lib/stages');
+    assert.throws(() => S.startStage1({ sizes: { singles: true }, fee: 0.05, name: 'x', weekdaysOnly: 'yes' }),
+      /24\/5 is ticked or not — got "yes"/, 'a 24/5 that is neither on nor off is accepted');
+    assert.throws(() => S.startStage1({ sizes: { singles: true }, fee: 0.05, name: 'x', weekdaysOnly: 1 }),
+      /24\/5 is ticked or not/, 'a number is taken for 24/5');
+    // what every unit is trained under: the launch, a start-again, stage 2
+    assert.strictEqual(S.s1TrainingOf({ weekdaysOnly: true }).weekdaysOnly, true, 'a unit trained after a pause drops the set\'s 24/5');
+    assert.strictEqual(S.s2TrainingOf({ weekdaysOnly: true }).weekdaysOnly, true, 'stage 2 trains the BOOST half on every day while the LOGREG half trained on weekdays');
+    assert.strictEqual(S.s2TrainingOf({}).weekdaysOnly, false, 'an every-day parent reads as 24/5 at stage 2');
+    const st = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    const launch = st.slice(st.indexOf('function startStage1(params) {'), st.indexOf('const units = passers'));
+    assert.ok(launch.includes("weekdaysOnly: params.weekdaysOnly === true && geometries.some((g) => require('./dataset').weekdaysApply(g)),"),
+      'the launch does not record 24/5, or records it on a run whose only shape has no weekday version');
+    // stage 3 takes it off the chain, both at the launch and in the count
+    const s3 = st.slice(st.indexOf('function startStage3(params) {'), st.indexOf('function startStage3(params) {') + 400);
+    assert.ok(s3.includes('params = { ...params, weekdaysOnly: setWeekdaysOf(parent), permuteWeekdays: false };'), 'stage 3 reads 24/5 off the request, not the set');
+    assert.ok(st.includes("b = { ...(b || {}), weekdaysOnly: setWeekdaysOf(parent), permuteWeekdays: false };"), 'the stage 3 count reads 24/5 off the request, not the set');
+    // every rebuild of a set's windows: the units, the unread window, History's retrain, the book's rebuild
+    const wk = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
+    assert.ok(wk.includes("const branch = { geometry, decision: 'argmax', band: 'auto', weekdaysOnly: !!p.weekdaysOnly };"), 'a unit\'s windows are rebuilt on every day whatever the set chose');
+    assert.ok(wk.includes('unreadChunksFor(combo, geometry, task.unread.fromTs, extras, p.weekdaysOnly)'), 'the unread window is read on every day on a 24/5 set');
+    assert.ok(/const trainParams = \{[^\n]*weekdaysOnly: !!p2\.weekdaysOnly \};/.test(st), 'History retrains a 24/5 set\'s members on every day');
+    const sig = fs.readFileSync(path.join(ROOT, 'lib', 'live', 'stagesignal.js'), 'utf8');
+    assert.ok(sig.includes("weekdaysOnly: !!cfg.branch.weekdaysOnly };"), '"as trained by Construct" rebuilds a 24/5 set\'s history on every day');
+    // the listing serves it, so the screens can say it
+    assert.ok(/\n    weekdaysOnly: p\.weekdaysOnly === true,\n  \};\n\}/.test(st.slice(st.indexOf('function publicParams(d) {'))), 'the set list does not serve a set\'s 24/5');
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    // offered at stage 1 first among the choices of how the members train, sent
+    // by both stage 1 bodies (a greyed tick as off), and loaded back
+    const s1row = ui.slice(ui.lastIndexOf('<div class="row"', ui.indexOf('id="swGrpWk1"')), ui.indexOf('id="swCap1"'));
+    assert.ok(s1row.includes('id="swGrpWk1"') && s1row.includes('id="swByMoney"') && s1row.indexOf('id="swGrpWk1"') < s1row.indexOf('id="swByMoney"') && !s1row.includes('</div>'),
+      '24/5 is not in the row of how the members train, ahead of weigh each trade by the money it was worth');
+    assert.strictEqual((ui.match(/weekdaysOnly: \$\('#swWk1'\)\.checked && !\$\('#swWk1'\)\.disabled,/g) || []).length, 2,
+      'the count and the start do not both send 24/5, or a greyed tick is sent as on');
+    assert.ok(ui.includes("setC('#swWk1', p.weekdaysOnly === true);"), 'loading a stage 1 set does not show its 24/5');
+    // and a set says which days its members trained on, wherever it is named, and stage 3 says what it takes
+    assert.ok(ui.includes("const days = p.weekdaysOnly === true ? '24/5: trained on the weekday windows only' : 'trained on every day of the week';"),
+      'a set does not say which days its members trained on');
+    assert.ok(ui.includes("'24/5: every setting trades the weekday windows only' : 'every setting trades every day of the week'}, as its stage 1 set was started"),
+      'the stage 3 count does not say the 24/5 its settings take from the set');
+  },
+
   // THE STAGE 2 CARRY TAKES THE STAGE 1 TABLE AS BOARDS SHOWS IT (3.220.0,
   // owner order 2026-09-21: "GO NOW! on the stage 1 filters carry fix"). The
   // saved sort and the saved filters both cut it; the launch and the set-up's
@@ -968,14 +1019,17 @@ module.exports = {
     const w = same({ cell, permuteWeekdays: true, permuteBand: true }, [1], weekly, 'a daily unit and a weekly unit, 24/5 both ways');
     assert.strictEqual(w.perUnit[1] * 2, w.perUnit[0], 'the weekly unit holds half of what the daily unit holds');
     assert.strictEqual(w.kept, w.perUnit[0], 'nothing is folded out of the block itself while the daily unit still prices both values');
-    assert.strictEqual(w.weekdaysApply, true, 'a daily unit is being priced, so 24/5 applies');
     const onlyWeekly = same({ cell, permuteWeekdays: true }, [1], [unit('WWWUSDT', 2.1, 1, 'weekly-8d'), unit('VVVUSDT', 3.3, 1, 'weekly-8d')], 'weekly units only');
-    assert.strictEqual(onlyWeekly.weekdaysApply, false, 'no unit being priced has a weekday version, so 24/5 is ghosted');
     assert.strictEqual(onlyWeekly.kept * 2, onlyWeekly.declared, 'with only weekly units the second value of 24/5 leaves the block altogether');
     // and it is the count the cost line reads
     const d = stages.stage3Declared({ ...big });
     assert.strictEqual(d.settings, stages.countDeclared(big, null, []).kept, 'with no parent named the count is the block itself');
-    assert.deepStrictEqual([d.pricings, d.unitSettings, d.weekdaysApply], [0, [], true], 'with no parent named there is nothing per unit yet, and 24/5 is not ghosted');
+    assert.deepStrictEqual([d.pricings, d.unitSettings], [0, []], 'with no parent named there is nothing per unit yet');
+    // 24/5 IS THE SET'S, NEVER THE BLOCK'S (3.285.0): whatever the request
+    // carries, the count takes the parent's own -- here none, so off, once
+    for (const asked of [{ permuteWeekdays: true }, { weekdaysOnly: true }, { weekdaysOnly: true, permuteWeekdays: true }]) {
+      assert.strictEqual(stages.stage3Declared({ ...big, ...asked }).settings, d.settings, `the count read 24/5 off the request (${JSON.stringify(asked)})`);
+    }
     // THE CONFIRM DIAL (3.130.0, COINS.md section 11): on a unit that carries
     // a lean its three values price three different sets of trades; on any
     // other unit they place the same orders and are one setting there

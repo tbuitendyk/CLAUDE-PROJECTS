@@ -224,10 +224,11 @@ window.HELP = {
         + 'table on Boards (the against-null-set rule when none is saved), and trains only the BOOST members for '
         + 'them. The LOGREG members are never retrained; after this a carried unit holds all its members\' votes.\n\n'
         + 'Stage 3 reads a finished stage 2 record set and prices any block of settings from the kept votes: '
-        + 'decision, band, 24/5, agree, entry, gate, d, t, trail, arm and the fee are all applied here, as '
+        + 'decision, band, agree, entry, gate, d, t, trail, arm and the fee are all applied here, as '
         + 'arithmetic — test window and held-back window both, with the null set dealt from the same votes and '
         + 'the same deals used for every setting so any two settings\' shares are comparable. Ask a different '
-        + 'block tomorrow and nothing retrains.'],
+        + 'block tomorrow and nothing retrains. 24/5 is not chosen here: it is chosen when stage 1 is started, '
+        + 'because it decides what the members train on, and every setting stage 3 prices takes it from the set.'],
       ['What the launches refuse, and why',
         'One heavy job at a time: a stage refuses to start while a sweep or another stage run is going. A stage '
         + 'refuses a parent that is not finished, one written by a different engine release, and one whose kept '
@@ -273,6 +274,10 @@ window.HELP = {
         what: 'How long a stretch of prices each decision looks at, and how often a decision is made. Weekly 8-day looks at eight days and decides once a week; Daily 1-day looks at one day and decides every day.',
       },
       swPermGeom: { what: 'Train every chunk shape rather than only the one chosen. A real multiplier of training, so it lives at stage 1 where the training happens.' },
+      swWk1: {
+        what: 'Train on the chunk shape\u2019s weekday windows only, so no member of this set learns from weekend trading. Train, test and held are all cut from those windows, and every stage after this one reads the same windows, so every setting priced from this set trades them.',
+        more: 'Daily 1-day keeps the windows that start Monday to Thursday, Daily 2-day Monday to Wednesday, Daily 3-day and Daily 4-day Monday only; the Daily 4-day exit lands Saturday 18:00. Weekly 8-day has no weekday version \u2014 eight days always span a weekend \u2014 so the tick changes nothing on it and is greyed while it is the only shape. A 24/5 set and an every-day set are two separate stage 1 runs: to compare the two, run both.',
+      },
       swLayout: {
         what: 'How the price history is divided up between learning, testing and the held-back look. 70/15/15 keeps one block back to check against. 61/13/13/13 keeps a second block back, sealed, to be looked at once at the very end.',
         more: 'Use the sealed one when you intend to search hard, because the honest end of a search is a block of data the search never touched.',
@@ -360,11 +365,11 @@ window.HELP = {
       },
       swTrained3: {
         what: 'Fills the boxes below with the conditions the units were actually trained and scored under in stages 1 and 2, so what those stages did can be priced here as one setting and read on the same table as everything else. Nothing is started: press Start stage 3 yourself.',
-        more: 'It sets quorum by to trained, entry to market, t to the chunk\u2019s own, band % (or auto) to auto, decision to argmax, 24/5 off and every permute off. Two of those are not fixed numbers: the chunk\u2019s own means each unit is held for exactly as long as its own chunk shape is held in stages 1 and 2 \u2014 60 hours on a weekly 8-day chunk, 17 on a daily 1-day or 2-day, 41 on a daily 3-day or 4-day \u2014 and auto means each unit is priced at the width its own stage 1 worked out. So this is ONE setting that is nevertheless right on every unit, however many chunk shapes the records carry, and both values are read off what stage 1 already stored rather than worked out again.',
+        more: 'It sets quorum by to trained, entry to market, t to the chunk\u2019s own, band % (or auto) to auto, decision to argmax and every permute off. Two of those are not fixed numbers: the chunk\u2019s own means each unit is held for exactly as long as its own chunk shape is held in stages 1 and 2 \u2014 60 hours on a weekly 8-day chunk, 17 on a daily 1-day or 2-day, 41 on a daily 3-day or 4-day \u2014 and auto means each unit is priced at the width its own stage 1 worked out. So this is ONE setting that is nevertheless right on every unit, however many chunk shapes the records carry, and both values are read off what stage 1 already stored rather than worked out again.',
       },
       // HOW THE RUN DECIDES (3.222.0): three choices that fill the boxes
-      swModeAgree: 'fills the boxes below for a run in which the members\u2019 own trained call is placed only on a day the field\u2019s sign agrees with it: quorum by trained, entry market, t the chunk\u2019s own, band % (or auto) auto, decision argmax, 24/5 off, sign only ticked, silent \u00d7 0, size rungs 100:1 and every permute off. The note under the three choices says what is still yours: the field itself, named under The field; whether to untick sign only and demand a minimum as well; whether a day the field says nothing may trade; and any permute. Nothing is started \u2014 press Start stage 3 yourself.',
-      swModeField: 'fills the boxes below for a run in which the field\u2019s sign alone is the call and the members are not read: quorum by field, entry market, t the chunk\u2019s own, band % (or auto) auto, decision argmax, 24/5 off, sign only off, size rungs 100:1 and every permute off. The minimums under The field are then the whole trigger \u2014 blank places every day the field speaks, a number demands more \u2014 and the run is refused until a field is named under The field. Nothing is started \u2014 press Start stage 3 yourself.',
+      swModeAgree: 'fills the boxes below for a run in which the members\u2019 own trained call is placed only on a day the field\u2019s sign agrees with it: quorum by trained, entry market, t the chunk\u2019s own, band % (or auto) auto, decision argmax, sign only ticked, silent \u00d7 0, size rungs 100:1 and every permute off. The note under the three choices says what is still yours: the field itself, named under The field; whether to untick sign only and demand a minimum as well; whether a day the field says nothing may trade; and any permute. Nothing is started \u2014 press Start stage 3 yourself.',
+      swModeField: 'fills the boxes below for a run in which the field\u2019s sign alone is the call and the members are not read: quorum by field, entry market, t the chunk\u2019s own, band % (or auto) auto, decision argmax, sign only off, size rungs 100:1 and every permute off. The minimums under The field are then the whole trigger \u2014 blank places every day the field speaks, a number demands more \u2014 and the run is refused until a field is named under The field. Nothing is started \u2014 press Start stage 3 yourself.',
       swModeCustom: 'leaves every box below exactly as it is, for you to set each one yourself.',
       swT: {
         what: 'How long a position is held before it is closed on time. The hours on the list are the same on every unit; the chunk\u2019s own is not a number \u2014 it holds each unit for exactly as long as its own chunk shape is held when stages 1 and 2 score it.',
@@ -374,11 +379,6 @@ window.HELP = {
       swPermDec: { what: 'Price both ways of deciding, each as its own setting in the block.' },
       swBand: { what: 'The size a move must reach to count as a move, for pricing the rails. auto uses the width each unit trained at, worked out from its own history.' },
       swPermBand: { what: 'Price every band on the menu as its own setting in the block.' },
-      swWk: {
-        what: 'Price this setting on weekday starts only. Weekly chunk shapes always span weekends, so on those units the two values place the same orders and only one is priced. Ghosted while '
-          + 'no unit being priced has a weekday version of its chunk shape: nothing in the block reads it then.',
-      },
-      swPermWk: { what: 'Price it both ways — weekdays only, and every day. Ghosted with the 24/5 box whenever nothing in the block can read it.' },
       swEntry: {
         what: 'How the position is opened. market buys or sells at the opening price of the hour, in whichever direction was called. breakout waits until the price reaches a level set d away from where it started, and opens there.',
         more: 'market carries no gate, d, trail or arm — those four boxes disappear while it is chosen, because none of them means anything to it.',

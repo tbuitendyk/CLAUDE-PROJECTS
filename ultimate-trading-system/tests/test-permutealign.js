@@ -120,15 +120,20 @@ module.exports = {
     assert.ok(sync.includes("const notVoices = $('#swAgreeRule') && $('#swAgreeRule').value !== 'voices'\n      && !($('#swPermAgreeRule') && $('#swPermAgreeRule').checked);"),
       'one voice at does not wait on quorum by being something other than voices with its permute unticked');
     assert.ok(sync.includes("swGhostGroup('#swGrpCopy', notVoices);"), 'one voice at and its tick are not ghosted under count, conviction or families');
-    // 24/5 AND ITS TICK (3.52.0): ghosted when the count says no unit being
-    // priced has a weekday version of its chunk shape -- read off the same
-    // answer the cost line reads, so the two can never disagree
-    const count3 = PAGE.slice(PAGE.indexOf("const r = await swAsk('api/stage3-count', {"), PAGE.indexOf("swSayCount(c3, html, r.why);"));
-    assert.ok(count3.includes("swGhostGroup('#swGrpWk', got.weekdaysApply === false);"), '24/5 and its tick are not ghosted when the count says no unit being priced has a weekday version');
-    assert.ok(/<div id="swGrpWk"[^>]*>\s*<label class="c"><input type="checkbox" id="swWk"> 24\/5<\/label>\s*<label class="c"><input type="checkbox" id="swPermWk"> permute<\/label>/.test(PAGE),
-      '24/5 and its tick are not one group, so they cannot be ghosted as one');
-    const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-    assert.ok(srv.includes('weekdaysApply: d.weekdaysApply'), 'the count route does not say whether 24/5 applies, so the page cannot ghost it');
+    // 24/5 AT STAGE 1 (3.285.0): greyed while the only shape the run trains has
+    // no weekday version, read off the shapes the box serves and never typed
+    // on the page; with the units taken from Coins each keeps its own shape
+    const ghosts = PAGE.slice(PAGE.indexOf('async function swCounts()'), PAGE.indexOf('const c1 = !swContinueOf(1)'));
+    assert.ok(ghosts.includes("const shape = ((VOCAB && VOCAB.geometry) || []).find((o) => o.value === ($('#swGeom') && $('#swGeom').value));"),
+      'which shapes have a weekday version is not read from the shapes the box serves');
+    assert.ok(ghosts.includes("swGhostGroup('#swGrpWk1', swSourceNow() === 'none' && !($('#swPermGeom') && $('#swPermGeom').checked)\n      && !!shape && shape.weekdays === false);"),
+      '24/5 is not greyed while the only shape the run trains has no weekday version');
+    assert.ok(/<label class="c" id="swGrpWk1"[^>]*><input type="checkbox" id="swWk1"> 24\/5<\/label>/.test(PAGE),
+      '24/5 is not its own group at stage 1, so it cannot be greyed');
+    assert.ok(!/id="swGrpWk"|id="swWk"|id="swPermWk"/.test(PAGE), 'the stage 3 24/5 box or its permute is still on the page');
+    const V = require('../lib/vocabulary').vocabulary();
+    assert.deepStrictEqual(V.geometry.filter((o) => o.weekdays === false).map((o) => o.value), ['weekly-8d'],
+      'the shapes served do not say which of them has no weekday version');
     const grp = groupAround('swAgreeCopy');
     assert.ok(grp.startsWith('<div id="swGrpCopy"'), 'one voice at and its tick are not one group, so they cannot be ghosted as one');
     assert.ok(grp.includes('id="swPermAgreeCopy"'), 'the one voice at tick is outside its group');
@@ -139,7 +144,7 @@ module.exports = {
     const H = sandbox.HELP.sweep.controls;
     assert.ok(/Ghosted while trail is static/.test(H.swArm.what), 'the arm help does not say when the box is ghosted');
     assert.ok(/Ghosted unless quorum by is voices/.test(H.swAgreeCopy.what), 'the one voice at help does not say when the box is ghosted');
-    assert.ok(/Ghosted while no unit being priced has a weekday version/.test(H.swWk.what), 'the 24/5 help does not say when the box is ghosted');
-    assert.ok(/Ghosted with the 24\/5 box/.test(H.swPermWk.what), 'the 24/5 permute help does not say it is ghosted with its box');
+    assert.ok(/is greyed while it is the only shape/.test(H.swWk1.more), 'the 24/5 help does not say when the tick is greyed');
+    assert.ok(!H.swWk && !H.swPermWk, 'the Help tab still explains the stage 3 24/5 box that is gone');
   },
 };

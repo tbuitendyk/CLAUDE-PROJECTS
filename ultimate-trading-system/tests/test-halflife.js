@@ -53,7 +53,7 @@ async function settle(statusOf, label) {
   throw new Error(`${label} did not land`);
 }
 // the same launches the stage-engine check makes, on the same two coins, on the layout asked for
-async function chain(tag, windowLayout = 'reserve61') {
+async function chain(tag, windowLayout = 'reserve61', s1Extra = {}, span = SPAN) {
   const made = [];
   // WHAT A FAILED LAUNCH MADE IS REMOVED BEFORE THE THROW: a set left behind
   // collides on its name with the next run of this very test.
@@ -85,9 +85,9 @@ async function chain(tag, windowLayout = 'reserve61') {
   let cut;
   let plant;
   try {
-  Pl.generateFabricated(SPAN, G.PLANT, G.SEEDS[G.PLANT], 0);
-  Pl.generateFabricated(SPAN, G.FAIR, G.SEEDS[G.FAIR], 1);
-  s1 = stages.startStage1({ ...S1, windowLayout, exam: true, name: `${tag} S1` });
+  Pl.generateFabricated(span, G.PLANT, G.SEEDS[G.PLANT], 0);
+  Pl.generateFabricated(span, G.FAIR, G.SEEDS[G.FAIR], 1);
+  s1 = stages.startStage1({ ...S1, windowLayout, exam: true, name: `${tag} S1`, startMonth: span.fromMonth, endMonth: span.toDate.slice(0, 7), ...s1Extra });
   made.push(s1.id);
   const d1 = await waitSet(s1.id, 'stage 1');
   if (d1.status !== 'done') throw new Error(`stage 1 ended ${d1.status}: ${JSON.stringify(d1.failures || [])}`);
@@ -141,8 +141,19 @@ async function ran(c, months) {
 // retrained members. Run on both layouts: 61/13/13/13, so the sealed reserve
 // comes off first as it does in Construct, and 70/15/15. And the comparison
 // is shown able to fail: a book's own cut gives other members.
-async function constructProof(windowLayout) {
-  const c = await chain(`construct proof test ${windowLayout}`, windowLayout);
+//
+// AND ON A 24/5 SET (3.285.0): the members trained on the shape's weekday
+// windows only, at stage 1 and stage 2 alike; stage 3 took 24/5 off the chain
+// although its request asked for every day; the book's rebuild cuts where
+// Construct cut only when it reads the set's 24/5, and is refused when it
+// does not. TWO YEARS AND A 48-MONTH HALF-LIFE there: a 24/5 daily 1-day year
+// keeps about 208 periods, 127 of them to train on, which is under the
+// training floor of 180 before any half-life weighs them down -- the thin
+// history the plan warned of, and a column the floor refuses proves nothing.
+const SPAN_WK = { fromMonth: '2023-01', toDate: '2024-12-31' };
+async function constructProof(windowLayout, weekdaysOnly = false) {
+  const c = await chain(`construct proof test ${windowLayout}${weekdaysOnly ? ' 24-5' : ''}`, windowLayout, weekdaysOnly ? { weekdaysOnly: true } : {}, weekdaysOnly ? SPAN_WK : SPAN);
+  const hlMonths = weekdaysOnly ? 48 : 12;
   try {
     const stagesignal = require('../lib/live/stagesignal');
     const bracketLib = require('../lib/bracket');
@@ -159,6 +170,20 @@ async function constructProof(windowLayout) {
     assert.ok(rec2.specs.some((sp) => sp.model === 'logreg') && rec2.specs.some((sp) => sp.model === 'boost'), 'both kinds of member');
     const s2doc = stages.getSet(c.s2);
     const s3doc = stages.getSet(c.s3);
+    // WHICH DAYS THE MEMBERS TRAINED ON (3.285.0): the set's own 24/5, down the chain
+    assert.deepStrictEqual([stages.getSet(c.s1).params.weekdaysOnly, s2doc.params.weekdaysOnly, s3doc.params.weekdaysOnly, s3doc.params.permuteWeekdays],
+      [weekdaysOnly, weekdaysOnly, weekdaysOnly, false], 'the chain\'s 24/5 is the stage 1 set\'s, whatever stage 3 was asked');
+    assert.strictEqual(G.STAGE3.weekdaysOnly, false, 'the fixture asks stage 3 for every day, so the set is shown overruling it');
+    const keeps = require('../lib/dataset').WEEKDAY_STARTS[S1.geometry];
+    const onWeekdays = (list) => list.every((v) => keeps.includes(new Date(v.ts).getUTCDay()));
+    const rec1 = rowstore.readAll(c.s1, 'records').find((r) => r.trade === G.PLANT);
+    const votes1 = rowstore.readBlocks(c.s1, 'votes', Array.from({ length: rec1.blocks.votes[1] - rec1.blocks.votes[0] }, (_, i) => rec1.blocks.votes[0] + i)).map((x) => x.row).filter((r) => r.u === rec1.u);
+    if (weekdaysOnly) {
+      assert.ok(onWeekdays(votes1) && onWeekdays(votes), 'a 24/5 set\'s members voted on a window that starts on a day the shape does not keep');
+      assert.ok(rowstore.readAll(c.s3, 'records').every((r) => r.weekdaysOnly === true), 'a setting priced from a 24/5 set trades every day');
+    } else {
+      assert.ok(!onWeekdays(votes), 'an every-day set voted on weekday windows only, so the 24/5 case below proves nothing');
+    }
     // the record a greenlight carries, as the Stage 4 door writes it
     const construct = await stages.constructHistoryForSet(c.cut.id, null);
     assert.ok(!construct.lost, `the chain's history could not be read: ${construct.lost}`);
@@ -168,7 +193,7 @@ async function constructProof(windowLayout) {
     const p2 = s2doc.params || {};
     const cfg = {
       combo: { trade: G.PLANT, ctx1: null, ctx2: null, size: 1 },
-      branch: { geometry: S1.geometry, decision: 'argmax', band: 5, weekdaysOnly: false },
+      branch: { geometry: S1.geometry, decision: 'argmax', band: 5, weekdaysOnly },
       members: rec2.specs.map((sp) => ({ model: sp.model, view: sp.view })),
       agreement: { rule: 'trained', pct: null, bar: null },
       training: { trainOn: p2.trainOn || null, weightCap: p2.weightCap ?? null, windowLayout: p2.windowLayout, halfLife: null },
@@ -203,13 +228,14 @@ async function constructProof(windowLayout) {
     assert.ok(/^[0-9a-f]{16}$/.test(out.membersFp) && out.trainMs >= 0, 'a fingerprint and a training time');
     assert.strictEqual((await call()).membersFp, out.membersFp, 'the same members, the same fingerprint');
     // WITH THE HALF-LIFE: exactly the History run's retrained members
-    const { file } = await ran(c, [12]);
+    const { file } = await ran(c, [hlMonths]);
     const h12 = file.halfLives[0];
-    const constructH = await stages.constructHistoryForSet(c.cut.id, 12);
+    assert.ok(h12 && !h12.refused, `the half-life column was refused, so the match below proves nothing: ${h12 && h12.refused}`);
+    const constructH = await stages.constructHistoryForSet(c.cut.id, hlMonths);
     assert.strictEqual(constructH.trainFee, Number(s3doc.params.fee), 'a half-life rule\'s members are retrained at the stage 3 set\'s fee, as History retrains them');
-    const cfgH = { ...cfg, training: { ...cfg.training, halfLife: HL.daysOfMonths(12), halfLifeMonths: 12 } };
+    const cfgH = { ...cfg, training: { ...cfg.training, halfLife: HL.daysOfMonths(hlMonths), halfLifeMonths: hlMonths } };
     const tH = await stagesignal.trainStageCommittee(cfgH, closed, held, views, constructH.trainFee, 'construct');
-    same(tH, { probs: (mi) => h12.members[mi].probs, tau: (mi) => h12.members[mi].tauProbs, saved: (mi) => h12.members[mi].saved }, 'as trained by Construct, half-life 12 months');
+    same(tH, { probs: (mi) => h12.members[mi].probs, tau: (mi) => h12.members[mi].tauProbs, saved: (mi) => h12.members[mi].saved }, `as trained by Construct, half-life ${hlMonths} months`);
     assert.notDeepStrictEqual(tH.members.map((m) => m.probs), t.members.map((m) => m.probs), 'the half-life changed nothing, so the match above proves nothing about it');
     // AND THE COMPARISON CAN FAIL: a book's own cut trains on more and forecasts otherwise
     const tR = await stagesignal.trainStageCommittee(cfg, closed, held, views, construct.trainFee, 'rolling');
@@ -220,6 +246,10 @@ async function constructProof(windowLayout) {
     let threw = null;
     try { await stagesignal.constructHistoryChunks(cfg, moved); } catch (e) { threw = e.message; }
     assert.ok(/does not cut where Construct cut it/.test(threw || ''), threw);
+    // AND THE REBUILD READS THE SET'S 24/5: the other way round, it is refused
+    threw = null;
+    try { await stagesignal.constructHistoryChunks({ ...cfg, branch: { ...cfg.branch, weekdaysOnly: !weekdaysOnly } }, construct); } catch (e) { threw = e.message; }
+    assert.ok(/does not cut where Construct cut it/.test(threw || ''), `the history was rebuilt on the other days and not refused: ${threw}`);
   } finally { c.cleanup(); }
 }
 
@@ -398,6 +428,9 @@ module.exports = {
   async asTrainedByConstructRetrainsConstructsOwnMembersToTheLastDigit() { await constructProof('reserve61'); },
   // and on 70/15/15, the layout the owner's sets are built on
   async asTrainedByConstructRetrainsConstructsOwnMembersOnSeventyFifteen() { await constructProof('split70'); },
+  // AND ON A 24/5 SET (3.285.0): stages 1 and 2 trained on the weekday
+  // windows, History retrained on them, and the book rebuilds them
+  async asTrainedByConstructRetrainsConstructsOwnMembersOnATwentyFourFiveSet() { await constructProof('reserve61', true); },
 
   // THE 4.h SET FROM THE TABLE (3.95.0): only rows a half-life won, each with
   // its half-life; it stands on its source and is refused where its own numbers

@@ -1459,7 +1459,7 @@ app.post('/api/stage3-count', (req, res) => {
     // what the units hold between them (3.52.0): a unit prices only the
     // settings that place different orders on it, so the disk gate and the
     // cost line read the sum of what each holds, never settings × units
-    const out = { settings: d.settings, declared: d.declared, folded: d.folded, pricings: d.pricings, unitSettings: d.unitSettings, weekdaysApply: d.weekdaysApply, holds: d.holds || [], filtered: d.filtered || null,
+    const out = { settings: d.settings, declared: d.declared, folded: d.folded, pricings: d.pricings, unitSettings: d.unitSettings, holds: d.holds || [], filtered: d.filtered || null,
       // the confirm dial's ghosting (3.130.0): how many of the units to be
       // priced carry a lean, and whether the block asked for one at all
       // and WHICH list of Coins this chain's leans could come from (3.186.0),

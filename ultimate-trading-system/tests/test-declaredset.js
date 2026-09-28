@@ -138,7 +138,7 @@ module.exports = {
   theSweepFormOffersAndSendsThePermuteTicks() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     for (const id of ['swPermEntry', 'swPermGate', 'swPermD', 'swPermT', 'swPermTrail', 'swPermArm',
-      'swPermDec', 'swPermBand', 'swPermWk',
+      'swPermDec', 'swPermBand',
       'swPermAgreeRule', 'swPermAgreeShare', 'swPermAgreeBoth', 'swPermAgreeHold']) {
       assert.ok(new RegExp(`id="${id}"`).test(ui), `the block must offer #${id}`);
     }
@@ -148,10 +148,14 @@ module.exports = {
     const at = ui.indexOf('function swBlockParams()');
     const fn = ui.slice(at, ui.indexOf('\n}', at));
     for (const id of ['swPermEntry', 'swPermGate', 'swPermD', 'swPermT', 'swPermTrail', 'swPermArm',
-      'swPermDec', 'swPermBand', 'swPermWk',
+      'swPermDec', 'swPermBand',
       'swPermAgreeRule', 'swPermAgreeShare', 'swPermAgreeBoth', 'swPermAgreeHold']) {
       assert.ok(fn.includes(`#${id}`), `#${id} is on screen but the block never reads it — the tick does nothing`);
     }
+    // 24/5 IS NOT A STAGE 3 TICK (3.285.0): it is chosen at stage 1, where the
+    // members train, so neither it nor its permute is in the block
+    assert.ok(!/id="swWk"|id="swPermWk"/.test(ui) && !/weekdaysOnly|permuteWeekdays/.test(fn),
+      '24/5 is still offered at stage 3, where it cannot change what the members trained on');
     // and the count must be visible BEFORE start stage 3, not discovered from a refusal
     assert.ok(/id="swCount"/.test(ui), 'the form must show how many settings the ticks declare');
   },

@@ -307,6 +307,9 @@ function publicParams(d) {
     extraTrainShare: Number.isFinite(Number(p.extraTrainShare)) && p.extraTrainShare != null ? Number(p.extraTrainShare) : null,
     trainOn: p.trainOn || null,
     allLoaded: p.allLoaded !== false, startMonth: p.startMonth || null, endMonth: p.endMonth || null,
+    // AND ITS 24/5 (3.285.0), chosen at stage 1 and carried down the chain, so
+    // a screen can say which days a set's members trained on
+    weekdaysOnly: p.weekdaysOnly === true,
   };
 }
 // HOW MUCH OF THE HISTORY A MEMBER ADDED FROM A WALK SET TRAINS ON (3.202.0).
@@ -826,6 +829,16 @@ function startStage1(params) {
   if (!Number.isFinite(weightCap) || weightCap < 0) {
     throw new Error(`the most one trade may count for must be 0 or more — got ${JSON.stringify(params.weightCap)}`);
   }
+  // 24/5 IS A STAGE 1 CHOICE (3.285.0, owner 2026-09-27: "if a set-up is meant
+  // to trade only on weekdays, then odd market characteristics that show up due
+  // to thin / non-commercial weekend trading obviously should be excluded"). A
+  // 24/5 set's members train on the shape's weekday windows only, its test and
+  // held are cut from those windows, and every stage after it reads the choice
+  // from here (lib/dataset.js WEEKDAY_STARTS; a shape with no weekday version
+  // is unchanged by it). Refused unless it is plainly on or off.
+  if (params.weekdaysOnly != null && typeof params.weekdaysOnly !== 'boolean') {
+    throw new Error(`24/5 is ticked or not — got ${JSON.stringify(params.weekdaysOnly)}`);
+  }
   const p = {
     allLoaded: params.allLoaded !== false,
     startMonth: params.startMonth || '2018-01',
@@ -834,6 +847,9 @@ function startStage1(params) {
     extraTrainShare,
     trainOn,
     weightCap,
+    // on only where one of the run's shapes has a weekday version: on a weekly
+    // shape alone it changes nothing, and the record says what was done
+    weekdaysOnly: params.weekdaysOnly === true && geometries.some((g) => require('./dataset').weekdaysApply(g)),
   };
   const units = passers ? unitsForPassers(passers, sizes, compare) : unitsFor(universe, sizes, geometries, compare);
   // WHAT THE RUN ACTUALLY READ, WRITTEN DOWN. A set that recorded an empty box
@@ -911,7 +927,9 @@ function startStage1(params) {
 // start-again alike, so a unit trained after a pause is trained and written
 // exactly as the launch would have written it. The fill-in that stood below
 // kept a record of its own, and it had fallen five fields behind this one.
-const S1_TRAINING_KEYS = ['allLoaded', 'startMonth', 'endMonth', 'windowLayout', 'extraTrainShare', 'trainOn', 'weightCap'];
+// weekdaysOnly: the set's 24/5 (3.285.0), so a unit trained after a pause reads
+// the same weekday windows the launch's units did
+const S1_TRAINING_KEYS = ['allLoaded', 'startMonth', 'endMonth', 'windowLayout', 'extraTrainShare', 'trainOn', 'weightCap', 'weekdaysOnly'];
 // what every unit of a run is trained under, read back off the set's own params
 function s1TrainingOf(params) {
   const p = {};
@@ -1893,6 +1911,9 @@ function s2TrainingOf(pp) {
     // the parent's split for its extra members (3.202.0), so the BOOST half of
     // a committee is cut the way the LOGREG half was
     extraTrainShare: pp.extraTrainShare,
+    // and its 24/5 (3.285.0): the BOOST half trains on the same weekday
+    // windows the LOGREG half did, or the two halves' votes would not line up
+    weekdaysOnly: pp.weekdaysOnly === true,
   };
 }
 function s2PayloadOf(doc, parent, rec, u, p, parentNullN, parentFee) {
@@ -3147,7 +3168,7 @@ function countDeclared(params, sizes, records, leans = null, fieldPairs = null) 
   const { decisions, bands, weekdays, confirms } = blockAxesFor(params);
   const { gates } = fieldAxesFor(params);
   const declared = decisions.length * bands.length * weekdays.length * cells.length * agrees.length * confirms.length * gates.length;
-  if (!Array.isArray(records) || !records.length) return { declared, kept: declared, folded: 0, perUnit: [], pricings: 0, weekdaysApply: true, leanUnits: 0, fieldUnits: 0, fieldGates: gates.length };
+  if (!Array.isArray(records) || !records.length) return { declared, kept: declared, folded: 0, perUnit: [], pricings: 0, leanUnits: 0, fieldUnits: 0, fieldGates: gates.length };
   // the field's gate multiplies only on a unit the field covers; on any other
   // unit its values fold into one (foldKeyRest)
   let fieldUnits = 0;
@@ -3170,7 +3191,6 @@ function countDeclared(params, sizes, records, leans = null, fieldPairs = null) 
   }
   const keptOnAny = new Uint8Array(items.length);
   const perUnit = [];
-  let weekdaysApply = false;
   // the plateau share multiplies the agreement only on a unit that carries a
   // plateau (3.205.0); on any other unit its values are one setting there
   const plateauValues = Math.max(1, new Set(agrees.map((a) => a.plateau)).size);
@@ -3179,7 +3199,6 @@ function countDeclared(params, sizes, records, leans = null, fieldPairs = null) 
   for (const rec of records) {
     const repOf = shapeRepsFor(items.map((x) => x.shape), [rec]);
     const wkApplies = weekdaysApplyTo(rec);
-    if (wkApplies) weekdaysApply = true;
     const hasLean = !!leanOf(leans, rec);
     if (hasLean) leanUnits++;
     const hasPlateau = hasPlateauOf(rec);
@@ -3204,13 +3223,15 @@ function countDeclared(params, sizes, records, leans = null, fieldPairs = null) 
   // lean; with none, only the first value survives the fold anywhere -- and
   // the plateau share the same way
   const kept = decisions.length * agreesOn(plateauUnits > 0) * union * (leanUnits ? confirms.length : 1) * (fieldUnits ? gates.length : 1);
-  return { declared, kept, folded: declared - kept, perUnit, pricings: perUnit.reduce((a, b) => a + b, 0), weekdaysApply, leanUnits, fieldUnits, fieldGates: gates.length };
+  return { declared, kept, folded: declared - kept, perUnit, pricings: perUnit.reduce((a, b) => a + b, 0), leanUnits, fieldUnits, fieldGates: gates.length };
 }
 function stage3Declared(b) {
   const out = { units: null, coins: null };
   let sizes = null;
   let records = null;
   const parent = getSet(String((b || {}).from || ''));
+  // the set's own 24/5, as the launch takes it (3.285.0)
+  b = { ...(b || {}), weekdaysOnly: setWeekdaysOf(parent), permuteWeekdays: false };
   if (parent && parent.stage === 2) {
     // the same resolution the launch runs, Selected records included;
     // nothing picked counts as nothing here rather than refusing, so the
@@ -3274,11 +3295,9 @@ function stage3Declared(b) {
   out.confirmWanted = confirmWanted(b || {});
   out.declared = counted.declared;
   out.folded = counted.folded;
-  // what the units will actually price, unit by unit, and whether any unit
-  // being priced has a weekday version at all (24/5 is ghosted when none does)
+  // what the units will actually price, unit by unit
   out.pricings = counted.pricings;
   out.unitSettings = records ? counted.perUnit.map((held, i) => ({ u: records[i].u, held })) : [];
-  out.weekdaysApply = counted.weekdaysApply;
   // HOW MANY MEMBERS JUDGE A COIN, COUNTED (3.195.1, owner order: "fix the
   // quorum 8 members line too").
   //
@@ -3301,9 +3320,14 @@ function stage3Declared(b) {
   out.plateauUnits = records ? records.filter((r) => hasPlateauOf(r)).length : 0;
   return out;
 }
+// A SET'S 24/5 IS ITS STAGE 1 CHOICE (3.285.0): stage 3 prices it and never
+// chooses it -- one set cannot honestly be both -- so the launch and the count
+// both take it off the chain, whatever a request carries
+function setWeekdaysOf(parent) { return !!((parent || {}).params || {}).weekdaysOnly; }
 function startStage3(params) {
   claimOrRefuse(params);
   const parent = parentOrRefuse(params.from, 2);
+  params = { ...params, weekdaysOnly: setWeekdaysOf(parent), permuteWeekdays: false };
   const fee = Number(params.fee);
   if (!Number.isFinite(fee) || fee < 0 || fee > 0.05) {
     throw new Error('fee % each way must be a real cost between 0 and 5% — it prices every trade and every directional bar here');
@@ -11695,7 +11719,7 @@ async function halfLifeRunOn(doc, months, note = null) {
   const combo = { trade: rec.trade, ctx1: rec.ctx1 || null, ctx2: rec.ctx2 || null, size: rec.size || (rec.ctx1 ? (rec.ctx2 ? 3 : 2) : 1) };
   // EVERY OTHER TRAINING CHOICE THE SET WAS MADE WITH, from the stage 2 set that trained the members
   const p2 = stage2.params || {};
-  const trainParams = { allLoaded: p2.allLoaded !== false, startMonth: p2.startMonth || null, endMonth: p2.endMonth || null, trainOn: p2.trainOn || null, weightCap: p2.weightCap ?? null, windowLayout: layout.layout };
+  const trainParams = { allLoaded: p2.allLoaded !== false, startMonth: p2.startMonth || null, endMonth: p2.endMonth || null, trainOn: p2.trainOn || null, weightCap: p2.weightCap ?? null, windowLayout: layout.layout, weekdaysOnly: !!p2.weekdaysOnly };
   const hours = hoursOf(parent);
   const of = months.length + 1 + months.length;
   let done = 0;

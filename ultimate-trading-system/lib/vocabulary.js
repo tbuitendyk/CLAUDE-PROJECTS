@@ -23,7 +23,7 @@
 //
 // Adding a value is therefore a change to the engine that implements it, and it
 // reaches the screen the moment it is made. Nothing has to be kept in step.
-const { GEOMETRIES } = require('./dataset');
+const { GEOMETRIES, weekdaysApply } = require('./dataset');
 const bracket = require('./bracket');
 const agreement = require('./agreement');
 
@@ -52,7 +52,9 @@ function vocabulary() {
       const [cadence, span] = k.split('-');
       const days = /^(\d+)d$/.exec(span || '');
       const pretty = `${cadence.charAt(0).toUpperCase()}${cadence.slice(1)}${days ? ` ${days[1]}-day` : (span ? ` ${span}` : '')}`;
-      return { value: k, label: pretty };
+      // and whether it has a 24/5 version, so the screen greys the tick on a
+      // shape it would change nothing on (3.285.0) -- read from the engine
+      return { value: k, label: pretty, weekdays: weekdaysApply(k) };
     }),
     decision: asChoices(['argmax', 'directional']),
     // THE CONFIRMATION OVERLAY'S DIAL (3.130.0, COINS.md section 11): its three

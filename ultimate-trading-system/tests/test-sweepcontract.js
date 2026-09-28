@@ -617,7 +617,7 @@ module.exports = {
       't must be the chunk\'s own, never a number picked for the owner');
     // and every permute is switched off, so the boxes the owner ends up
     // looking at are the setting that gets priced
-    for (const id of ['swPermT', 'swPermDec', 'swPermBand', 'swPermWk', 'swPermEntry', 'swPermAgreeRule']) {
+    for (const id of ['swPermT', 'swPermDec', 'swPermBand', 'swPermEntry', 'swPermAgreeRule']) {
       assert.ok(fn.includes(`setC('#${id}', false)`), `load training setup must switch off #${id}`);
     }
     // the page must not coerce the choice to a number on its way to the launch

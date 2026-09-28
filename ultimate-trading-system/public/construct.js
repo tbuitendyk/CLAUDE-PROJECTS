@@ -1506,6 +1506,15 @@ async function swCounts() {
     // that lies. Greyed, never hidden, exactly as arm is under a static stop.
     swGhostGroup('#swGrpCompare', !($('#swDoubles') && $('#swDoubles').checked)
       && !($('#swTriples') && $('#swTriples').checked));
+    // 24/5 IS GREYED WHILE THE ONLY SHAPE THIS RUN TRAINS HAS NO WEEKDAY
+    // VERSION (3.285.0; owner order, 2026-09-04: "the system should not permute
+    // 24/5 on any weekly shape. Ever."). A weekly shape spans the weekend
+    // whichever way the tick is set, so it would change nothing. Which shapes
+    // have one is served with the shapes themselves, never typed here. With the
+    // units taken from Coins each keeps its own shape, and the tick stays live.
+    const shape = ((VOCAB && VOCAB.geometry) || []).find((o) => o.value === ($('#swGeom') && $('#swGeom').value));
+    swGhostGroup('#swGrpWk1', swSourceNow() === 'none' && !($('#swPermGeom') && $('#swPermGeom').checked)
+      && !!shape && shape.weekdays === false);
   }
   // A PAUSED RUN CHOSEN AT STAGE 1 OR 2 (3.269.0): nothing to count, everything
   // to say -- the same sentence stage 3's paused run has always had
@@ -1528,6 +1537,9 @@ async function swCounts() {
       compare: ($('#swCompare').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
       sizes: { singles: $('#swSingles').checked, doubles: $('#swDoubles').checked, triples: $('#swTriples').checked },
       geometry: $('#swGeom').value, permuteGeometry: $('#swPermGeom').checked,
+      // the set's 24/5: its members train on the weekday windows only (3.285.0);
+      // greyed, it changes nothing and is sent as off
+      weekdaysOnly: $('#swWk1').checked && !$('#swWk1').disabled,
       coinsSource: swSourceNow(),
       // the control arm: the same units, without the extra members (3.194.0)
       plainUnits: !!($('#swPlainUnits') && $('#swPlainUnits').checked && swSourceNow() === 'walk'),
@@ -1587,12 +1599,6 @@ async function swCounts() {
     let html = null;
     if (r.ok) {
       const got = r.data;
-      // 24/5 IS GHOSTED WHEN NO UNIT BEING PRICED HAS A WEEKDAY VERSION (owner
-      // order, 2026-09-04: "the system should not permute 24/5 on any weekly
-      // shape. Ever."). Weekly shapes span weekends whichever way the box is
-      // set, so with only those units the box and its tick would change
-      // nothing -- ghosted the way arm is under a static stop, never hidden.
-      swGhostGroup('#swGrpWk', got.weekdaysApply === false);
       // HOW MANY MEMBERS JUDGE A COIN, COUNTED, NEVER TYPED (3.195.1, owner
       // order). The line said "8 members" in the markup. A unit carrying one
       // member from a walk set is judged by 10 and a double carrying one by 12,
@@ -1660,7 +1666,11 @@ async function swCounts() {
           : got.confirmWanted ? ` <span class="muted">(confirm reads a lean on ${Number(got.leanUnits).toLocaleString()} of the ${got.unitSettings.length.toLocaleString()} units; on the rest its values are one setting)</span>` : '';
       const fieldSaid = !got.fieldId || !Array.isArray(got.unitSettings) || !got.unitSettings.length ? ''
         : ` <span class="muted">(the field ${esc(String(got.fieldId))} covers ${Number(got.fieldUnits || 0).toLocaleString()} of the ${got.unitSettings.length.toLocaleString()} units with ${Number(got.fieldGates || 1).toLocaleString()} gate value(s); on the rest the gate is one setting)</span>`;
-      html = `declared: <b>${got.settings.toLocaleString()} settings</b>${fold}${leanSaid}${fieldSaid}${units && perUnit.length ? ` — ${perUnit.length.toLocaleString()} units hold ${pricings.toLocaleString()} between them`
+      // THE SET'S 24/5, SAID (3.285.0): stage 3 no longer chooses it, so the
+      // line says what every setting here takes from the stage 1 set
+      const wkSaid = parent ? ` <span class="muted">(${(parent.params || {}).weekdaysOnly === true
+        ? '24/5: every setting trades the weekday windows only' : 'every setting trades every day of the week'}, as its stage 1 set was started)</span>` : '';
+      html = `declared: <b>${got.settings.toLocaleString()} settings</b>${fold}${wkSaid}${leanSaid}${fieldSaid}${units && perUnit.length ? ` — ${perUnit.length.toLocaleString()} units hold ${pricings.toLocaleString()} between them`
         + (fewer ? ` <span class="muted">(${fewer.toLocaleString()} of them hold fewer than the block: a setting that places the same orders on a unit as another is priced there once)</span>` : '')
         + ` × ${per3().toLocaleString()} readings ≈ ${(pricings * per3()).toLocaleString()} pricings — no trainings` : ''}`
         + cut
@@ -1701,7 +1711,6 @@ function swBlockParams() {
     decision: $('#swDec').value, permuteDecision: $('#swPermDec').checked,
     band: $('#swBand').value.trim() === '' ? 'auto' : ($('#swBand').value.trim() === 'auto' ? 'auto' : Number($('#swBand').value)),
     permuteBand: $('#swPermBand').checked,
-    weekdaysOnly: $('#swWk').checked, permuteWeekdays: $('#swPermWk').checked,
     // THE CONFIRMATION OVERLAY (3.130.0): the dial, its permute, and the two
     // multipliers sent as typed -- the engine refuses a bad one in words
     confirm: $('#swConfirm').value, permuteConfirm: $('#swPermConfirm').checked,
@@ -1758,6 +1767,8 @@ function fillStageForm(doc) {
     const geos = p.geometries || [];
     if (geos.length) setV('#swGeom', geos[0]);
     setC('#swPermGeom', geos.length > 1);
+    // the set's 24/5, its stage 1 choice (3.285.0)
+    setC('#swWk1', p.weekdaysOnly === true);
     setV('#swLayout', p.windowLayout || 'reserve61');
     // the split for extra members, or the box's own default on a set made
     // before it existed (3.202.0)
@@ -1807,7 +1818,6 @@ function fillStageForm(doc) {
     setV('#swKeep3', p.keepN ?? 0);
     setV('#swDec', p.decision || 'argmax'); setC('#swPermDec', p.permuteDecision);
     setV('#swBand', p.band ?? 'auto'); setC('#swPermBand', p.permuteBand);
-    setC('#swWk', p.weekdaysOnly); setC('#swPermWk', p.permuteWeekdays);
     setV('#swConfirm', p.confirm || 'off'); setC('#swPermConfirm', p.permuteConfirm);
     setV('#swConfirmedX', p.confirmedX ?? 2); setV('#swUnconfirmedX', p.unconfirmedX ?? 1);
     // the field's gate, as the set carries it
@@ -2124,7 +2134,10 @@ function campaignNoteHtml(doc) {
   const trained = (p.trainOn === 'money')
     ? `trained by the money each trade was worth${Number(p.weightCap) > 0 ? `, one trade worth at most ${Number(p.weightCap)}` : ''}`
     : 'trained by direction only';
-  return doc ? `<span class="note">campaign: ${esc(p.campaign || '—')} · ${esc(doc.status)} · ${esc(p.windowLayout || '')} · ${esc(trained)}</span>` : '';
+  // AND ON WHICH DAYS (3.285.0): a 24/5 set and an every-day set are no more
+  // comparable than the two ways of training above, so the set says which
+  const days = p.weekdaysOnly === true ? '24/5: trained on the weekday windows only' : 'trained on every day of the week';
+  return doc ? `<span class="note">campaign: ${esc(p.campaign || '—')} · ${esc(doc.status)} · ${esc(p.windowLayout || '')} · ${esc(trained)} · ${esc(days)}</span>` : '';
 }
 // bold is Boards's (owner order, 2026-08-27: the description set on Sweep
 // reads BOLD when its record set is opened); Boards passes nothing and keeps
@@ -4550,7 +4563,6 @@ function swFillTrainedShape() {
   setV('#swTrail', ''); setC('#swPermTrail', false); setC('#swPermArm', false);
   setV('#swDec', 'argmax'); setC('#swPermDec', false);
   setV('#swBand', 'auto'); setC('#swPermBand', false);
-  setC('#swWk', false); setC('#swPermWk', false);
   setV('#swT', 'own'); setC('#swPermT', false);
 }
 
@@ -4661,6 +4673,10 @@ async function drawSweep() {
       <label class="f">fee % each way<input id="swFee1" type="number" value="0.125" min="0" max="5" step="0.005" style="width:5.5rem"></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
+      <!-- 24/5 IS CHOSEN AT STAGE 1, WITH HOW THE MEMBERS TRAIN (3.285.0, owner
+           2026-09-27): it decides which windows they learn from. Not in the row
+           above: a twelfth control there wraps fee % each way onto a line alone. -->
+      <label class="c" id="swGrpWk1" title="train on the chunk shape's weekday windows only, so no member of this set learns from weekend trading, and every stage after this one reads the same windows. Daily 1-day keeps the windows that start Monday to Thursday, Daily 2-day Monday to Wednesday, Daily 3-day and Daily 4-day Monday only (the Daily 4-day exit lands Saturday 18:00). Weekly 8-day has no weekday version: 24/5 changes nothing on it, and the tick is greyed while it is the only shape."><input type="checkbox" id="swWk1"> 24/5</label>
       <label class="c" title="off: every trade teaches one lesson whatever it was worth. On: a trade is weighed by the gap between the best and the worst its decision could have done, in dollars. One chunk of history is one decision and one trade -- a week on the weekly shape, a day on the daily ones."><input type="checkbox" id="swByMoney"> weigh each trade by the money it was worth</label>
       <label class="f">the most one trade may count for<input id="swCap1" type="number" value="10" min="0" step="1" style="width:6rem"></label>
       <span class="note">One chunk of history is one decision and one trade - a week on the weekly shape, a day on the
@@ -4734,10 +4750,10 @@ async function drawSweep() {
     </div>
     <p class="note" style="margin:.6rem 0 .1rem" id="swModeHead"><b>How the run decides</b> — pick one. The first two fill the boxes below for that kind of run and say what is still yours to set; custom leaves every box as it is. Nothing is started.</p>
     <div class="row">
-      <label class="c" title="fills the boxes below for a run in which the members’ own trained call is placed only on a day the field’s sign agrees with it: quorum by trained, entry market, t the chunk’s own, band % (or auto) auto, decision argmax, 24/5 off, sign only ticked, silent × 0, size rungs 100:1, every permute off. Name the field yourself under The field. Nothing is started."><input type="radio" name="swMode" id="swModeAgree" value="agree"> members + field agree</label>
+      <label class="c" title="fills the boxes below for a run in which the members’ own trained call is placed only on a day the field’s sign agrees with it: quorum by trained, entry market, t the chunk’s own, band % (or auto) auto, decision argmax, sign only ticked, silent × 0, size rungs 100:1, every permute off. Name the field yourself under The field. Nothing is started."><input type="radio" name="swMode" id="swModeAgree" value="agree"> members + field agree</label>
     </div>
     <div class="row">
-      <label class="c" title="fills the boxes below for a run in which the field’s sign alone is the call and the members are not read: quorum by field, entry market, t the chunk’s own, band % (or auto) auto, decision argmax, 24/5 off, sign only off, size rungs 100:1, every permute off. The minimums under The field are then the whole trigger. Name the field yourself under The field. Nothing is started."><input type="radio" name="swMode" id="swModeField" value="field"> field alone</label>
+      <label class="c" title="fills the boxes below for a run in which the field’s sign alone is the call and the members are not read: quorum by field, entry market, t the chunk’s own, band % (or auto) auto, decision argmax, sign only off, size rungs 100:1, every permute off. The minimums under The field are then the whole trigger. Name the field yourself under The field. Nothing is started."><input type="radio" name="swMode" id="swModeField" value="field"> field alone</label>
     </div>
     <div class="row">
       <label class="c" title="leaves every box below exactly as it is, for you to set each one yourself."><input type="radio" name="swMode" id="swModeCustom" value="custom" checked> custom</label>
@@ -4755,10 +4771,6 @@ async function drawSweep() {
       <div style="display:flex;align-items:flex-end;gap:.45rem">
         <label class="f">band % (or auto)<input id="swBand" value="auto" style="width:5rem"></label>
         <label class="c"><input type="checkbox" id="swPermBand"> permute</label>
-      </div>
-      <div id="swGrpWk" style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="c"><input type="checkbox" id="swWk"> 24/5</label>
-        <label class="c"><input type="checkbox" id="swPermWk"> permute</label>
       </div>
       <div style="display:flex;align-items:flex-end;gap:.45rem">
         <label class="f">entry<select id="swEntry">${vocabOptions('entry', 'breakout')}</select></label>
@@ -4910,6 +4922,9 @@ async function drawSweep() {
       compare: ($('#swCompare').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
       sizes: { singles: $('#swSingles').checked, doubles: $('#swDoubles').checked, triples: $('#swTriples').checked },
       geometry: $('#swGeom').value, permuteGeometry: $('#swPermGeom').checked,
+      // the set's 24/5: its members train on the weekday windows only (3.285.0);
+      // greyed, it changes nothing and is sent as off
+      weekdaysOnly: $('#swWk1').checked && !$('#swWk1').disabled,
       coinsSource: swSourceNow(),
       // the control arm: the same units, without the extra members (3.194.0)
       plainUnits: !!($('#swPlainUnits') && $('#swPlainUnits').checked && swSourceNow() === 'walk'),
@@ -5011,7 +5026,7 @@ async function drawSweep() {
     const said = $('#swTrainedSaid');
     swFillTrainedShape();
     said.textContent = 'filled in: quorum by trained, entry market, t the chunk\u2019s own, band % (or auto) auto, '
-      + 'decision argmax, 24/5 off, every permute off. That is one setting, and it prices every unit at the hold '
+      + 'decision argmax, every permute off. That is one setting, and it prices every unit at the hold '
       + 'length and the band its own stage 1 worked out \u2014 press Start stage 3 when you are ready.';
     rememberSweepForm();
     swProvenance();
@@ -5050,7 +5065,7 @@ async function drawSweep() {
     const said = $('#swModeSaid');
     if (!said) return;
     const mode = swModeNow();
-    const shape = 'entry market, t the chunk\u2019s own, band % (or auto) auto, decision argmax, 24/5 off';
+    const shape = 'entry market, t the chunk\u2019s own, band % (or auto) auto, decision argmax';
     const html = mode === 'agree'
       ? `<b>members + field agree</b> \u2014 filled in: quorum by trained, ${shape}, sign only ticked, silent \u00d7 0, size rungs 100:1, every permute off. `
         + 'The members\u2019 own call is placed only on a day the field\u2019s sign agrees with it, at the standard size; a day the field says nothing places nothing. '

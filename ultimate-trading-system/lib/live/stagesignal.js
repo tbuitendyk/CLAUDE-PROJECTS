@@ -63,7 +63,7 @@ function trainingWeightsFor(training, trainChunks, fee) {
 // THE HISTORY CONSTRUCT TRAINED ON, REBUILT (3.283.0): its chunks from the
 // prices it kept with the set -- read through the fingerprints it recorded,
 // never from the box -- exactly as stage 1 built them (lib/stagework.js
-// unitChunks: every day of the week, no chunk without an outcome), its sealed
+// unitChunks: the set's 24/5, no chunk without an outcome), its sealed
 // reserve cut off when the layout sealed one. Before a member is trained the
 // cut is held to the stretches Construct wrote down: a history that does not
 // cut where Construct's did is refused, never trained on.
@@ -71,7 +71,8 @@ async function constructHistoryChunks(cfg, construct) {
   const coins = ((construct || {}).hours || {}).coins;
   if (!coins || !Object.keys(coins).length) throw new Error('"as trained by Construct" has no kept prices to train on');
   const extras = Array.isArray(cfg.extras) ? cfg.extras : [];
-  const branch = { geometry: cfg.branch.geometry, decision: 'argmax', band: 'auto', weekdaysOnly: false };
+  // the set's 24/5 is its stage 1 choice and rides on the setting (3.285.0)
+  const branch = { geometry: cfg.branch.geometry, decision: 'argmax', band: 'auto', weekdaysOnly: !!cfg.branch.weekdaysOnly };
   const { geo, maps, chunks } = await buildCombo(cfg.combo, branch, { hours: coins, extras });
   const closed = ((cfg.training || {}).windowLayout === 'reserve61') ? chunks.slice(0, chunks.length - reserveChunks(chunks.length)) : chunks;
   const { nTrain, nTest, nHold } = splitBounds(closed.length, true);

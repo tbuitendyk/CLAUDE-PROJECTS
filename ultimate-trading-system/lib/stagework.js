@@ -812,7 +812,9 @@ function passGeometry(room, ofRaw, kRaw) {
 }
 
 async function unitChunks(combo, geometry, p) {
-  const branch = { geometry, decision: 'argmax', band: 'auto', weekdaysOnly: false };
+  // the set's 24/5, chosen at stage 1 (3.285.0): its members train, and every
+  // later stage reads, the shape's weekday windows only
+  const branch = { geometry, decision: 'argmax', band: 'auto', weekdaysOnly: !!p.weekdaysOnly };
   // THE UNIT'S EXTRAS (3.183.0). A list, so a second one is an entry and not a
   // branch. Each is a look-back in hours and a band, both declared by the walk.
   const extras = p.extras || [];
@@ -1268,8 +1270,8 @@ async function tradeMapFor(combo, geometry, params, hours) {
 // from a walk set has its columns to read, and each extra's gate is marked on
 // every chunk from the whole history behind it, exactly as stage 1 marks it,
 // so the forecasts on the unread window can be shut where the gate is shut.
-async function unreadChunksFor(combo, geometry, fromTs, extras = []) {
-  const branch = { geometry, decision: 'argmax', band: 'auto', weekdaysOnly: false };
+async function unreadChunksFor(combo, geometry, fromTs, extras = [], weekdaysOnly = false) {
+  const branch = { geometry, decision: 'argmax', band: 'auto', weekdaysOnly: !!weekdaysOnly };
   const { geo, maps, chunks } = await buildCombo(combo, branch, { allLoaded: true, hours: null, extras: Array.isArray(extras) ? extras : [] });
   if (Array.isArray(extras) && extras.length) markExtraGates(chunks, extras.map((e) => e.bandPct));
   const reachOf = (c) => c.startTs + geo.exitOffsetH * 3600000;
@@ -1351,7 +1353,7 @@ async function s3UnitTask(task) {
   // unread window too -- the hold slice below is then the reserve window, and the
   // entries it writes down are the reserve window's trades
   if (task.unread) {
-    const got = await unreadChunksFor(combo, geometry, task.unread.fromTs, extras);
+    const got = await unreadChunksFor(combo, geometry, task.unread.fromTs, extras, p.weekdaysOnly);
     if (got.chunks.length < 2) {
       throw new Error(`the unread window holds ${got.chunks.length} whole chunk(s) from ${new Date(task.unread.fromTs).toISOString().slice(0, 10)} to what the box holds — nothing to grade`);
     }
