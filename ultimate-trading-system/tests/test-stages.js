@@ -1153,6 +1153,33 @@ module.exports = {
   // then "cache the listing"). The Sweep screen asks for this listing every four
   // seconds while a sweep runs; it used to read and parse every set document
   // each time, on the main thread, beside the workers.
+  // A LONG RUN HOLDS ONLY THE PARTS IN FLIGHT (3.292.4, owner 2026-09-28, after a
+  // stage 2 sweep took the service to its heap ceiling twice and died inside
+  // Builtin_JsonParse). Stage 2 built EVERY unit's payload before training one,
+  // and each payload reads the parent's stored votes and models back off disk
+  // and keeps a number per member per vote. The pool has taken a lazy list since
+  // 3.220.2 and stage 3 has always used it; stage 2 now does too, at the launch
+  // and at the start-again alike.
+  everyStagePricesFromALazyPayloadListAndNeverBuildsThemAllFirst() {
+    const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    // the pool's contract, which this depends on
+    const pool = fs.readFileSync(path.join(ROOT, 'lib', 'pool.js'), 'utf8');
+    assert.ok(pool.includes('const at = Array.isArray(payloads) ? (i) => payloads[i] : (i) => payloads.at(i);'),
+      'the pool no longer takes a lazy list, so building payloads one at a time does nothing');
+    // stage 2, both ways in
+    assert.ok(src.includes('const payloads = { length: carried.length, at: (i) => s2PayloadOf('),
+      'a stage 2 launch builds every unit\'s payload before it trains one');
+    assert.ok(src.includes('const payloads = { length: work.length, at: (k) => s2PayloadOf('),
+      'a stage 2 start-again builds every unit\'s payload before it trains one');
+    // and stage 3, which has done it all along
+    assert.ok(src.includes('const payloads = { length: parts.length, at: payloadAt };'),
+      'stage 3 no longer prices from a lazy payload list');
+    // NOTHING BUILDS A WHOLE RUN'S PAYLOADS INTO AN ARRAY. The shape that did it
+    // is the one this fixes, and it must not come back at either stage.
+    assert.ok(!/payloads\.push\(s2PayloadOf\(/.test(src) && !/work\.map\(\(i\) => s2PayloadOf\(/.test(src),
+      'a stage 2 run is materialising all of its payloads again');
+  },
+
   theSetListingParsesADocumentOnceWhileItsFileSitsStill() {
     fs.mkdirSync(SETS_DIR, { recursive: true });
     const id = `s1-test-${Date.now().toString(36)}-cache`;

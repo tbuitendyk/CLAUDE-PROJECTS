@@ -1770,6 +1770,12 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), "  if (!cWalkSt || !cWalkSt.saved || !cWalkSt.saved.id) return '';", "",
     'theSplitReadingPromotesTheWholeHistoryPickOfEveryRowShown', 'the press is drawn on a walk that has not been saved, where it can only fail'],
   // ---- A SET LISTING READS SET DOCUMENTS ONLY, AND A WALK KEEPS ITS ROWS (3.189.0) ----
+  // ONE PAYLOAD AT A TIME (3.292.4). The break goes on the POOL's own line, not on
+  // stage 2's: swapping the lazy object for an array there cannot be done in one
+  // string without unbalancing the call, and a file that will not parse takes the
+  // whole test file down, which the harness reads as MISS rather than as a catch.
+  [path.join(ROOT, 'lib', 'pool.js'), "    const at = Array.isArray(payloads) ? (i) => payloads[i] : (i) => payloads.at(i);", "    const at = (i) => payloads[i];",
+    "everyStagePricesFromALazyPayloadListAndNeverBuildsThemAllFirst", "the pool stops taking a lazy list, so building payloads one at a time does nothing"],
   // THE LISTING'S CACHE (3.292.2)
   [path.join(ROOT, 'lib', 'stages.js'), "  if (had && had.key === key) return had.doc;", "  if (false) return had.doc;",
     "theSetListingParsesADocumentOnceWhileItsFileSitsStill", "every listing parses every set document again"],
