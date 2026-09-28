@@ -9,7 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 const { assert } = require('./helpers');
-const { collect, tabs, drawBody, htmlTemplates } = require('./sweep-words');
+const { collect, tabs, drawBody, htmlTemplates, namedWords } = require('./sweep-words');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -562,5 +562,69 @@ module.exports = {
         }
       }
     }
+  },
+
+  // A BOX OPENED THROUGH A HELPER THAT DRAWS NOTHING IS ON THE SCREEN THAT
+  // OPENED IT, AND WHAT RUNS AFTER THE PAGE MOVES TO ANOTHER SCREEN IS THAT
+  // SCREEN'S (3.286.1). Every delete button reaches the delete box through a
+  // helper with no markup of its own, so the box was on no list; following such
+  // helpers first put 34 of Sweep's words on Boards, because `Copy settings
+  // into the form` moves the page to Sweep and then fills Sweep's form. Held by
+  // behaviour on a made-up page first, so the rule is checked whatever the real
+  // screens happen to hold, then on the screens the box serves.
+  async theReaderFollowsAHelperThatDrawsNothingButNeverOntoAnotherScreen() {
+    const { drawBody: bodyIn } = require('../lib/screencontrols');
+    const src = [
+      "const TABS = [['one', 'One'], ['two', 'Two']];",
+      'async function drawOne() {',
+      "  $('#copy').onclick = () => { tab = 'two'; draw().then(() => { fillTwo(); }); };",
+      "  $('#del').onclick = () => askFirst();",
+      '}',
+      'async function drawTwo() {',
+      '  fillTwo();',
+      "  $('#stay').onclick = () => { tab = 'two'; stillTwo(); };",
+      '}',
+      "function fillTwo() { $('#x').value = 1; sayTwo(); }",
+      "function sayTwo() { $('#y').innerHTML = `<p>only on two</p>`; }",
+      "function stillTwo() { $('#z').innerHTML = `<p>still two</p>`; }",
+      'async function askFirst() { const typed = await theBox(); return typed; }',
+      "function theBox() { const b = document.createElement('div'); b.innerHTML = `<button id=\"boxGo\">Go</button>`; document.body.appendChild(b); }",
+    ].join('\n');
+    const one = bodyIn('drawOne', src);
+    const two = bodyIn('drawTwo', src);
+    assert.ok(one.includes('id="boxGo"'), 'a box opened through a helper that draws nothing is on no list of the screen that opens it');
+    assert.ok(!one.includes('only on two'), 'what runs after the page moves to another screen is put on the list of the screen that pressed');
+    assert.ok(two.includes('only on two'), 'a screen\'s own words drawn through a helper that draws nothing are on no list');
+    assert.ok(two.includes('still two'), 'a move to the screen being read is taken for a move away, and its words are lost');
+
+    for (const fn of ['drawSweep', 'drawBoards', 'drawFunnel', 'drawHistory', 'drawTune', 'drawHeld', 'drawReserve', 'drawGreenlight']) {
+      const body = drawBody(fn);
+      for (const id of ['delboxId', 'delboxGo', 'delboxNo', 'delboxClose']) {
+        assert.ok(body.includes(`id="${id}"`), `${fn}: the delete box opened from this screen is on no list (${id})`);
+      }
+    }
+    assert.ok(drawBody('drawSweep').includes('Start stage 3 will refuse:'), 'the probe below is gone from Sweep -- pick another of its count lines');
+    assert.ok(!drawBody('drawBoards').includes('Start stage 3 will refuse:'),
+      'Sweep\'s count lines are on Boards\' list again: `Copy settings into the form` fills them after the page has moved to Sweep');
+  },
+
+  // THE NAME READER READS WHOLE WORDS AND NEVER MARKUP (3.285.1, owner order
+  // 2026-09-28: "fix the guard test"). Each of these was a fault of its first
+  // try, and none of them shows on today's screens, so the served lists alone
+  // could not hold them: two guards on this reader missed for exactly that.
+  async theNameReaderReadsWholeWordsAndNeverMarkup() {
+    const read = (body) => namedWords(body).map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    assert.deepStrictEqual(read("const noun = `cop${one ? 'y' : 'ies'}`;\nreturn `<p>${noun}</p>`;").sort(), ['copies', 'copy'],
+      'a word split by a choice is not read whole');
+    assert.deepStrictEqual(read("const ending = one ? 'y' : 'ies';\nreturn `<p>cop${ending}</p>`;"), [],
+      'half a word printed against a word is read as a word');
+    assert.deepStrictEqual(read("const mark = ok ? `<span class=\"pos\">up</span>` : 'down';\nreturn `<p>${mark}</p>`;"), ['down'],
+      'markup held in a name is read a second time -- the page reading already walks it with its tags');
+    assert.deepStrictEqual(read("const width = wide ? '16rem' : '9rem';\nreturn `<label>box<input disabled` + ` style=\"width:${width}\" value=\"\"></label>`;"), [],
+      'a name printed inside a tag begun in an earlier string is read as text');
+    assert.deepStrictEqual(read("const a = 'one';\nconst a = 'two';\nreturn `<p>${a}</p>`;"), [],
+      'a name defined twice is guessed at');
+    assert.deepStrictEqual(read("const b = 'seen';\nreturn `<p>${esc(b)}</p>`;"), ['seen'],
+      'a name printed whole through esc() is not read');
   },
 };
