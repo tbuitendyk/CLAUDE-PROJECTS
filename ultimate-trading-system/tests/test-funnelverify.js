@@ -455,7 +455,7 @@ module.exports = {
     assert.ok(/^async function drawHeld\(\) \{ return drawJudge\('held'\); \}$/m.test(ui) && /^async function drawReserve\(\) \{ return drawJudge\('reserve'\); \}$/m.test(ui), 'the two tabs are one renderer handed the stretch');
     // WHAT EACH BOX LISTS (VERIFY-DESIGN.md Part 9): Held every rule, Reserve only a rule whose layout keeps a reserve and whose newest held set passed, Greenlight the sets a press made
     assert.ok(ui.includes("  const rules = (sets || []).filter((x) => (x.kind || 'funnel') === 'funnel');\n  if (stretch === 'held') return rules;\n  return rules.filter((x) => x.judge && x.judge.keepsReserve && x.judge.held && x.judge.held.stands);"), 'Held lists every rule and Reserve only the rules that stand with a reserve to read');
-    assert.ok(ui.includes(".filter((x) => x.kind === 'held' || x.kind === 'reserve'));\n  const glChosen = glRememberedSet(glSets);"), 'Greenlight lists held sets and reserve sets, never a rule');
+    assert.ok(ui.includes(".filter((x) => x.kind === 'held' || x.kind === 'reserve');\n  const glSets = s4CampList(glAll);"), 'Greenlight lists held sets and reserve sets, never a rule');
     assert.ok(/list\.length \? list\[0\]\.id : null/.test(ui), 'with nothing remembered it opens on the newest');
   },
 
@@ -1746,7 +1746,7 @@ module.exports.everyStage4RecordSetBoxCarriesTheCampaignTickAndTheDelete = funct
   // every tab reads the campaign, narrows through the helper, and wires both
   // a renderer to the next one: drawTune declares helpers of its own at the left margin, so its body is not cut at the first closing brace there
   const whole = (head) => { const at = page.indexOf(head); return page.slice(at, page.indexOf('\nasync function ', at + head.length)); };
-  for (const [head, list] of [['async function drawJudge(', 's4CampList(vRulesFor(all, stretch))'], ['async function drawHistory(', 's4CampList(hAll)'], ['async function drawTune(', "s4CampList(((await apiOr('api/funnel/sets'"], ['async function drawGreenlight(', "s4CampList(((await apiOr('api/funnel/sets'"]]) {
+  for (const [head, list] of [['async function drawJudge(', 's4CampList(vRulesFor(all, stretch))'], ['async function drawHistory(', 's4CampList(hAll)'], ['async function drawTune(', "s4CampList(((await apiOr('api/funnel/sets'"], ['async function drawGreenlight(', 's4CampList(glAll)']]) {
     const fn = whole(head);
     assert.ok(fn.includes('await s4CampRead();') && fn.includes(list), `${head} reads the campaign and narrows its list through the helper`);
     assert.ok(/s4CampWire\(/.test(fn) && /s4DeleteWire\(/.test(fn), `${head} wires the tick and the delete`);
@@ -1802,4 +1802,35 @@ module.exports.aPressOnHeldOrReserveKeepsTheSetItRead = function () {
   const keep = fn.indexOf('localStorage.setItem(JUDGE_SET_KEY[stretch], chosen)');
   const post = fn.indexOf('tryPost(`api/funnel/set/${encodeURIComponent(chosen)}/judge/${stretch}`');
   assert.ok(keep > 0 && post > keep, 'the set is remembered before the read is posted');
+};
+
+// PRESSING AN EXISTING GREENLIGHT PICKS ITS SURVIVOR (3.288.0, owner order 2026-09-28: "clicking on an
+// existing greenlight on the construct | greenlight tab must activate (turn green) the selection in the
+// survivor table above -- if the survivor table isn't currently loaded it must also select the appropriate
+// stage 4 record set in the top selector ... unchecking the "only campaign..." check box if necessary").
+// The decisions by behaviour, off the page's own helpers; the wiring by the lines that carry it.
+module.exports.pressingAGreenlightPicksItsSurvivorAndOpensItsSetFirst = function () {
+  const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const cut = (head) => page.slice(page.indexOf(head), page.indexOf('\n}\n', page.indexOf(head)) + 3);
+  const { glOpenPlan, glPickFor } = new Function(`${cut('function glOpenPlan(')}\n${cut('function glPickFor(')}\nreturn { glOpenPlan, glPickFor };`)();
+  const g = { id: 'gl-1', sourceSet: { id: 'held-2', name: 'held set two' }, pick: { by: 'depth', label: 'S-7' } };
+  const all = [{ id: 'held-1' }, { id: 'held-2' }];
+  assert.deepStrictEqual(glOpenPlan(g, all, all, 'held-2'), { act: 'pick', setId: 'held-2', label: 'S-7', by: 'depth', untick: false }, 'its set is the one shown: its survivor is picked where it is');
+  assert.deepStrictEqual(glOpenPlan(g, all, all, 'held-1'), { act: 'open', setId: 'held-2', label: 'S-7', by: 'depth', untick: false }, 'another set is shown: its own is opened first');
+  assert.strictEqual(glOpenPlan(g, all, [{ id: 'held-1' }], 'held-1').untick, true, 'the campaign tick hides its set: the tick is cleared');
+  const gone = glOpenPlan(g, [{ id: 'held-1' }], [{ id: 'held-1' }], 'held-1');
+  assert.strictEqual(gone.act, 'none');
+  assert.ok(/held set two, is no longer on this box/.test(gone.why), gone.why);
+  assert.strictEqual(glOpenPlan({ id: 'gl-x' }, all, all, 'held-1').act, 'none', 'a greenlight naming no set and survivor picks nothing');
+  // the pick the table takes, and the row it turns green is the same either way
+  assert.strictEqual(glPickFor({ by: 'depth', label: 'S-7' }, { depthPick: { label: 'S-7' } }), 'depth');
+  assert.strictEqual(glPickFor({ by: 'depth', label: 'S-7' }, { depthPick: { label: 'S-9' } }), 'S-7', 'no longer the survivor by depth: picked by its name');
+  assert.strictEqual(glPickFor({ by: 'named', label: 'S-7' }, { depthPick: { label: 'S-7' } }), 'S-7');
+  // the page: every existing greenlight a row that presses, read through the plan, the tick cleared when it hides the set
+  const gl = page.slice(page.indexOf('async function drawGreenlight('), page.indexOf('\nasync function ', page.indexOf('async function drawGreenlight(') + 10));
+  assert.ok(gl.includes('<tr data-glopen="${esc(g.id)}"'), 'an existing greenlight is not a row that can be pressed');
+  assert.ok(gl.includes('const plan = glOpenPlan(g, glAll, glSets, glChosen);'), 'the press does not go through the plan');
+  assert.ok(gl.includes("if (plan.untick) { try { localStorage.setItem(S4_CAMP_KEY, '0'); }"), 'the campaign tick is not cleared when it hides the set');
+  assert.ok(gl.includes('const glChosen = glWant && glSets.some((x) => x.id === glWant.setId) ? glWant.setId : glRememberedSet(glSets);'), 'the set a press opened is not the one drawn');
+  assert.ok(gl.includes('picked = glPickFor(want, gl4);'), 'the survivor is not picked as a press on its row picks it');
 };

@@ -4295,6 +4295,31 @@ function glRememberedSet(list) {
   if (want && list.some((x) => x.id === want)) return want;
   return list.length ? list[0].id : null;
 }
+// WHAT PRESSING AN EXISTING GREENLIGHT DOES (3.288.0, owner order 2026-09-28:
+// "clicking on an existing greenlight on the construct | greenlight tab must
+// activate (turn green) the selection in the survivor table above -- if the
+// survivor table isn't currently loaded it must also select the appropriate
+// stage 4 record set in the top selector ... unchecking the "only campaign..."
+// check box if necessary"). Worked out apart from the page, so it can be held
+// to account: the set the greenlight was taken from, whether the box above
+// already shows it, and whether the campaign tick is what hides it.
+function glOpenPlan(g, allSets, shownSets, chosen) {
+  const setId = g && g.sourceSet ? g.sourceSet.id : null;
+  const label = g && g.pick ? g.pick.label : null;
+  if (!setId || !label) return { act: 'none', why: 'this greenlight names no Stage 4 record set and survivor to pick' };
+  if (!(allSets || []).some((x) => x.id === setId)) {
+    return { act: 'none', why: `the Stage 4 record set it was greenlighted from, ${g.sourceSet.name || setId}, is no longer on this box` };
+  }
+  return { act: setId === chosen ? 'pick' : 'open', setId, label, by: g.pick.by || null, untick: !(shownSets || []).some((x) => x.id === setId) };
+}
+// the pick the survivor table takes for it: by depth while it is still the
+// survivor by depth, by its name otherwise -- the same row turns green either way
+function glPickFor(want, d) {
+  return want.by === 'depth' && d && d.depthPick && d.depthPick.label === want.label ? 'depth' : want.label;
+}
+// the greenlight a press asked for, carried across the redraw that opens its
+// set, and spent the moment that set is drawn
+let glWant = null;
 // THE PICTURE THROUGH EVERY PERIOD (3.149.0, VERIFY-DESIGN.md Part 9 release
 // 4): the rule's money on train, test, held and reserve beside the four
 // comparisons at the survivors' own hold lengths, read off the sets and the
@@ -4461,8 +4486,10 @@ async function drawGreenlight() {
   // reserve sets, each with its standing; a rule is never greenlighted, the
   // set a press made on Held or Reserve is
   await s4CampRead();
-  const glSets = s4CampList(((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []).filter((x) => x.kind === 'held' || x.kind === 'reserve'));
-  const glChosen = glRememberedSet(glSets);
+  const glAll = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []).filter((x) => x.kind === 'held' || x.kind === 'reserve');
+  const glSets = s4CampList(glAll);
+  // the set a greenlight press opened is the one shown, whatever this browser remembers (3.288.0)
+  const glChosen = glWant && glSets.some((x) => x.id === glWant.setId) ? glWant.setId : glRememberedSet(glSets);
   const gl4 = glChosen ? await apiOr(`api/live/greenlight/stage4/${encodeURIComponent(glChosen)}`, null) : null;
   $('#view').innerHTML = `<div class="panel">
     <h3 style="margin-top:0">Greenlight — the decision that a config is fit to trade</h3>
@@ -4473,7 +4500,7 @@ async function drawGreenlight() {
   ${glStage4PanelHtml(glSets, glChosen, gl4)}
   <div class="panel"><h3 style="margin-top:0">Existing greenlights</h3>
     <table><thead><tr>${cth('id','glId')}${cth('pair','asset')}${cth('campaign','campaign')}${cth('why','why','text-align:left')}${cth('fee','fee')}${cth('minted','minted')}${cth('state','state')}</tr></thead><tbody>
-    ${(gls.greenlights || []).map((g) => `<tr><td>${esc(g.id)}</td><td>${esc(g.configSnapshot?.combo?.trade || '—')}</td>
+    ${(gls.greenlights || []).map((g) => `<tr data-glopen="${esc(g.id)}" style="cursor:pointer" title="press to pick its survivor in the table above, opening its Stage 4 record set first when another is shown"><td>${esc(g.id)}</td><td>${esc(g.configSnapshot?.combo?.trade || '—')}</td>
       <td class="muted">${esc(g.campaign || '—')}</td><td style="text-align:left" class="muted">${esc((g.why || '').slice(0, 90))}</td>
       <td class="${g.sourceRun && g.sourceRun.feePerLeg != null ? '' : 'muted'}">${g.sourceRun && g.sourceRun.feePerLeg != null
     ? `${(100 * g.sourceRun.feePerLeg).toFixed(3)}%` : '—'}</td>
@@ -4482,7 +4509,9 @@ async function drawGreenlight() {
     <p class="note"><b>fee</b> is what the run behind each one was priced at, per trade and each way. It is not a
       setting here — it is what the evidence was found under, and a config sent to the Trade tab starts out priced
       at it and can be changed there. A dash means the run predates the fee being recorded.
-      Activation, deactivation and nuking live on the <a href="trade.html">Trade tab</a>.</p></div>`;
+      Activation, deactivation and nuking live on the <a href="trade.html">Trade tab</a>.
+      Press a greenlight to pick its survivor in the table above: its Stage 4 record set is opened first when another is shown,
+      and the tick beside that box is cleared when it would hide the set.</p></div>`;
   const gl4Sel = $('#gl4Set');
   if (gl4Sel) gl4Sel.onchange = () => {
     try { localStorage.setItem(GL_SET_KEY, gl4Sel.value); } catch (_) { /* private window */ }
@@ -4495,6 +4524,7 @@ async function drawGreenlight() {
   const pk = $('#gl4Pick');
   const one = document.querySelector('.gl-one');
   const rowsBox = document.querySelector('.gl-rows');
+  let pickWant = null;
   if (one && gl4 && gl4.picture) {
     let picked = pk ? pk.value : 'depth';
     const drawRows = () => {
@@ -4518,10 +4548,50 @@ async function drawGreenlight() {
       const ny = $('#gl4NotYet');
       if (ny) { const list = glNotYetOf(gl4, picked); ny.innerHTML = glNotYetHtml(list, gl4.startsOn); ny.hidden = !list.length && !gl4.startsOn; }
     };
+    // A GREENLIGHT'S SURVIVOR, PICKED AS A PRESS ON ITS ROW PICKS IT (3.288.0),
+    // and brought into view in the table
+    pickWant = (want) => {
+      if (!(gl4.picture.survivors || []).some((x) => x.label === want.label)) {
+        alert(`${want.label} is not among the survivors of ${gl4.name} now, so there is no row to pick.`);
+        return;
+      }
+      picked = glPickFor(want, gl4);
+      if (pk && [...pk.options].some((o) => o.value === picked)) pk.value = picked;
+      drawRows();
+      drawOne();
+      const row = rowsBox ? [...rowsBox.querySelectorAll('[data-glpick]')].find((r) => r.dataset.glpick === want.label) : null;
+      if (row) row.scrollIntoView({ block: 'center' });
+    };
     if (pk) pk.addEventListener('change', () => { picked = pk.value; drawRows(); drawOne(); });
     drawRows();
     drawOne();
   }
+  // THE GREENLIGHT A PRESS ASKED FOR, now that its set is the one drawn
+  if (glWant) {
+    const w = glWant;
+    glWant = null;
+    if (w.setId !== glChosen) alert('Its Stage 4 record set could not be shown in the box above.');
+    else if (pickWant) pickWant(w);
+    else alert(`${gl4 && gl4.name ? gl4.name : 'Its Stage 4 record set'} draws no survivor table here, so there is no row to pick.`);
+  }
+  // PRESSING AN EXISTING GREENLIGHT: its survivor picked in the table above when
+  // its set is the one shown; otherwise that set opened first, the campaign tick
+  // cleared when it is what hides the set
+  document.querySelectorAll('[data-glopen]').forEach((tr) => { tr.onclick = () => {
+    const g = (gls.greenlights || []).find((x) => x.id === tr.dataset.glopen);
+    const plan = glOpenPlan(g, glAll, glSets, glChosen);
+    if (plan.act === 'none') { alert(plan.why); return; }
+    const want = { setId: plan.setId, label: plan.label, by: plan.by };
+    if (plan.act === 'pick') {
+      if (pickWant) pickWant(want);
+      else alert(`${gl4 && gl4.name ? gl4.name : 'Its Stage 4 record set'} draws no survivor table here, so there is no row to pick.`);
+      return;
+    }
+    if (plan.untick) { try { localStorage.setItem(S4_CAMP_KEY, '0'); } catch (_) { /* private window */ } }
+    try { localStorage.setItem(GL_SET_KEY, plan.setId); } catch (_) { /* private window */ }
+    glWant = want;
+    drawGreenlight();
+  }; });
   const go4 = $('#gl4Go');
   if (go4 && glChosen && gl4 && !gl4.refused) go4.onclick = async () => {
     const why = $('#gl4Why').value.trim();
