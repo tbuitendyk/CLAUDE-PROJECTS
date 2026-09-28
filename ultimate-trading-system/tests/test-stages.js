@@ -1888,6 +1888,27 @@ module.exports = {
     assert.ok(UI.includes("${x.id === selected ? ' selected' : ''}>${rebuildPrefix(x)}${esc(x.name)}</option>`).join('');"), 'a Sweep stage box offers a set by more than its name');
     assert.ok(UI.includes("${x.id === sel ? ' selected' : ''}>${rebuildPrefix(x)}${esc(x.name)}</option>`).join('');"), 'a Boards record set box offers a set by more than its name');
     assert.ok(UI.includes("      swRefillPicks(false, from - 1);"), 'Put away lets go of the picks above the stage put away');
+    // A DELETED SET LEAVES NOTHING OF ITSELF ON THE SCREEN (3.292.3, owner order
+    // 2026-09-28: "after deleting a record set, the interface should not show the
+    // deleted interface name and description still with the Put away button
+    // active ... with no stage 2 open"). Delete acts on the set OPEN at that
+    // stage, and letting go of a set no longer offered already lives in
+    // swRefillPicks -- the poll never reached it, because swProgress refreshes
+    // the list and rebuilds the option lists only (swRefillParents). So the
+    // delete refreshes the list, runs that let-go against it, and puts the level
+    // away. The order matters and is held here: the list first, or the let-go is
+    // judged against a list the set is still on.
+    const delFlow = UI.slice(UI.indexOf('$(`#swDelete${n}`).onclick'), UI.indexOf('$(\'#swGo3\').onclick'));
+    for (const step of ['await swProgress();', 'swRefillPicks(false, 0);', 'swSetAway(String(n), true);', 'swApplyAway();']) {
+      assert.ok(delFlow.includes(step), `a delete no longer does: ${step}`);
+    }
+    assert.ok(delFlow.indexOf('await swProgress();') < delFlow.indexOf('swRefillPicks(false, 0);'),
+      'a delete lets go before the list it is judged against has been refreshed, so the set is still on it');
+    assert.ok(delFlow.indexOf('swRefillPicks(false, 0);') < delFlow.indexOf('say(`#swOut${n}`'),
+      'the let-go runs after the message, which wipes what the owner was told');
+    // and the let-go it reaches is still the one that drops an open set that is gone, with its boxes
+    assert.ok(UI.includes("    if (!there) { swSetOpened(n, ''); swForget(n); }"),
+      'the let-go a delete now depends on no longer drops what is open and gone, with its name and description');
     // AND THE CAMPAIGN'S BOX THE SAME (3.241.6, owner order 2026-09-24: "the
     // campaign drop down selector is not active when the open button is"): it
     // sits beside its Open, outside what Put away hides, follows its Open, and

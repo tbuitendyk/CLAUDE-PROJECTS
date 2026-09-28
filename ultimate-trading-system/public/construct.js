@@ -5046,8 +5046,32 @@ async function drawSweep() {
       if (!cont) return;
       const done = await deleteSetFlow(cont);
       if (!done) return;
-      say(`#swOut${n}`, `deleted <b>${esc(done.name)}</b> — it is gone from the box above.`);
+      // A DELETED SET LEAVES NOTHING OF ITSELF ON THE SCREEN (3.292.3, owner
+      // order 2026-09-28: "after deleting a record set, the interface should not
+      // show the deleted interface name and description still with the Put away
+      // button active ... all of the screen posted details should be wiped off
+      // the screen of course with no stage 2 open").
+      //
+      // Delete acts on the set OPEN at this stage (swContinueOf reads swOpened),
+      // and letting go of a set that is no longer offered ALREADY EXISTS, in
+      // swRefillPicks -- it drops what is open and is not on the list, with the
+      // name and description it filled. The poll never reached it: swProgress
+      // refreshes the list and calls swRefillParents, which rebuilds the option
+      // lists only. So the box lost the deleted set while the section still
+      // showed its name and description, with its level still reading as set --
+      // which is what kept Put away live and stage 3 awake beneath it.
+      //
+      // The list is refreshed first, so the let-go is judged against a list the
+      // set has really gone from; then the level is put away, because nothing is
+      // open there any more and a section standing open on an empty form reads
+      // as though something still is.
       await swProgress();
+      swRefillPicks(false, 0);
+      swSetAway(String(n), true);
+      swLockSections();
+      swApplyAway();
+      rememberSweepForm();
+      say(`#swOut${n}`, `deleted <b>${esc(done.name)}</b> — it is gone from the box above.`);
       swCountsSoon();
     };
   }
