@@ -895,7 +895,13 @@ module.exports = {
     assert.ok(src.includes('  for (const n of [1, 2, 3]) {\n    $(`#swDelete${n}`).onclick = async () => {'), 'every stage\'s delete is wired');
     assert.ok(wire.includes('const cont = swContinueOf(n);\n      if (!cont) return;'), 'the delete acts on something other than the paused run the box names');
     assert.ok(wire.includes('const done = await deleteSetFlow(cont);\n      if (!done) return;'), 'the delete does not go through the one flow, or carries on after nothing was deleted');
-    assert.ok(wire.includes('await swProgress();\n      swCountsSoon();'), 'the boxes are not refilled and the count line not asked again after a delete');
+    // the boxes refill and the count line is asked again -- checked as two things
+    // that happen in that order, not as two lines that touch. 3.292.3 put the
+    // let-go of the deleted set between them, and this read as a failure when
+    // nothing it protects had changed.
+    assert.ok(wire.includes('await swProgress();') && wire.includes('swCountsSoon();')
+      && wire.indexOf('await swProgress();') < wire.indexOf('swCountsSoon();'),
+      'the boxes are not refilled and the count line not asked again after a delete');
     // ONE FLOW: Boards and the Funnel go through the same function, and neither keeps a copy of its words
     const boards = src.slice(src.indexOf("const del = $(`#bDelete${stage}`);"), src.indexOf("document.querySelectorAll('[data-bfold]')"));
     assert.ok(boards.includes('const done = await deleteSetFlow(id);'), 'Boards keeps its own delete flow');
