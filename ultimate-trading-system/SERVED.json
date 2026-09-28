@@ -1,8 +1,8 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html \u2014 so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "f6a99d8d164ff547416e084615786f06985d7861",
-  "subject": "3.286.1: the delete box's words are on every list, and on the Help tab",
-  "capturedAt": "2026-09-28T01:39:30Z",
+  "commit": "8b7e5e6c7ab96633d03e988ee24faa4b8e63ef27",
+  "subject": "3.287.0: the routing is saved on Setup detail once a run, and never moved off a plan the platform still holds",
+  "capturedAt": "2026-09-28T02:58:00Z",
   "files": {
     "public/construct.js": {
       "sha256": "23fa5ba83f9346373989850b4744033ca5cc5905a73b4d96473d3c4106cc59e4",
