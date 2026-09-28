@@ -787,7 +787,7 @@ module.exports = {
     assert.strictEqual(S.s2TrainingOf({ weekdaysOnly: true }).weekdaysOnly, true, 'stage 2 trains the BOOST half on every day while the LOGREG half trained on weekdays');
     assert.strictEqual(S.s2TrainingOf({}).weekdaysOnly, false, 'an every-day parent reads as 24/5 at stage 2');
     const st = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
-    const launch = st.slice(st.indexOf('function startStage1(params) {'), st.indexOf('const units = passers'));
+    const launch = st.slice(st.indexOf('function startStage1(params) {'), st.indexOf('const setName = nameOrRefuse(params.name, 1);'));
     assert.ok(launch.includes("weekdaysOnly: params.weekdaysOnly === true && geometries.some((g) => require('./dataset').weekdaysApply(g)),"),
       'the launch does not record 24/5, or records it on a run whose only shape has no weekday version');
     // stage 3 takes it off the chain, both at the launch and in the count
@@ -6451,7 +6451,8 @@ theStageHeadingsFollowTheOwnersTruthTableRowForRow() {
     } finally { coinsrun.passingUnits = was; }
     // and the launch's own source: pairs replace the boxes and are written on the set
     const st = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
-    const launch = st.slice(st.indexOf('function startStage1(params) {'), st.indexOf('const setName = nameOrRefuse(params.name, 1);'));
+    // the launch resolves its units through stage1UnitsOf, written just above it (3.285.1)
+    const launch = st.slice(st.indexOf('function stage1UnitsOf(params) {'), st.indexOf('const setName = nameOrRefuse(params.name, 1);'));
     assert.ok(/const source = params\.coinsSource == null \? 'none' : String\(params\.coinsSource\);/.test(launch), 'the launch reads the source by name');
     assert.ok(/&& source !== 'none'\)\n\s+\? require\('\.\/coinsrun'\)\.passingUnits\(source\)/.test(launch), 'a named source reads that list off Coins');
     assert.ok(/const units = passers \? unitsForPassers\(passers, sizes, compare\) : unitsFor\(universe, sizes, geometries, compare\);/.test(launch), 'the pairs build the units');
@@ -6466,6 +6467,50 @@ theStageHeadingsFollowTheOwnersTruthTableRowForRow() {
     assert.ok(/const plain = params\.plainUnits === true;/.test(launch), 'the launch reads the control arm by name');
     assert.ok(/const passers = dropExtras\(/.test(launch), 'and drops the extras once, around both branches');
     assert.ok(!/passersUsed/.test(launch), 'never as a second list beside the first');
+  },
+
+  // THE COUNT BESIDE START STAGE 1 IS THE UNITS THE LAUNCH WILL TRAIN (3.285.1,
+  // owner order 2026-09-28: "fix the unit count"). The count's route kept its
+  // own copy of the launch's resolution and read a `passers` tick the screen
+  // stopped sending when the tick became three choices, so with the units
+  // taken from Coins it counted the greyed trade coins and chunk shape boxes.
+  // Both now call one function; the trainings count one more per extra member,
+  // as the run's own progress does, and none for extras the control arm drops.
+  theStageOneCountIsTheUnitsTheLaunchWillTrain() {
+    const coinsrun = require('../lib/coinsrun');
+    const per = require('../lib/bracketwork').slimViewsFor(1).length;
+    const sizes = { singles: true };
+    const boxes = { universe: ['AAAUSDT', 'BBBUSDT', 'CCCUSDT'], geometry: 'daily-4d', permuteGeometry: true };
+    const was = coinsrun.passingUnits;
+    const lists = {
+      passers: [{ coin: 'DDDUSDT', geometry: 'daily-1d', extras: [], plateaus: [] }, { coin: 'EEEUSDT', geometry: 'weekly-8d', extras: [], plateaus: [] }],
+      walk: [{ coin: 'FFFUSDT', geometry: 'daily-2d', extras: [{ lookbackHours: 48, bandPct: 3 }, { lookbackHours: 72, bandPct: 4 }], plateaus: [] }],
+    };
+    coinsrun.passingUnits = (src) => (lists[src] || []).map((u) => ({ ...u, extras: u.extras.slice() }));
+    try {
+      // the boxes: three coins at every shape
+      const fromBoxes = stages.stage1Count({ ...boxes, sizes, coinsSource: 'none' });
+      assert.strictEqual(fromBoxes.units, stages.unitsFor(boxes.universe, sizes, Object.keys(require('../lib/dataset').GEOMETRIES), []).length, 'the boxes are not what is counted when the run reads them');
+      // the list ticked on Coins, whatever the greyed boxes hold
+      assert.deepStrictEqual(stages.stage1Count({ ...boxes, sizes, coinsSource: 'passers' }), { units: 2, trainings: 2 * per },
+        'with the units taken from coins and shapes that pass, the count still reads the boxes');
+      // a walk set's rows, one training more per extra member -- and none under the control arm
+      assert.deepStrictEqual(stages.stage1Count({ ...boxes, sizes, coinsSource: 'walk' }), { units: 1, trainings: per + 2 },
+        'the extra members a walk set adds are not counted as trainings');
+      assert.deepStrictEqual(stages.stage1Count({ ...boxes, sizes, coinsSource: 'walk', plainUnits: true }), { units: 1, trainings: per },
+        'the control arm is counted with the extra members it leaves out');
+      // an empty list is refused in the launch's own words, before the button is pressed
+      lists.passers = [];
+      assert.throws(() => stages.stage1Count({ ...boxes, sizes, coinsSource: 'passers' }), /nothing is ticked under coins and shapes that pass, at the top of Coins/);
+    } finally { coinsrun.passingUnits = was; }
+    // ONE RESOLUTION: the launch and the count both call it, and the route keeps no copy
+    const st = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+    assert.ok(st.includes('  const { source, plain, passers, universe, compare, sizes, geometries, units } = stage1UnitsOf(params);'), 'the launch resolves its units some other way');
+    assert.ok(st.includes('  const { units } = stage1UnitsOf(params || {});'), 'the count resolves its units some other way');
+    const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+    const route = srv.slice(srv.indexOf("app.post('/api/stage1-count'"), srv.indexOf("app.post('/api/stage3-count'"));
+    assert.ok(route.includes('return res.json(stages.stage1Count(b));') && !/b\.passers|unitsFor\(|passingUnits\(/.test(route),
+      'the stage 1 count route resolves the units itself again, beside the launch');
   },
 
   // THE 80/20 LAYOUT IS GONE FROM STAGE 1 (owner order, 2026-09-08). It kept no

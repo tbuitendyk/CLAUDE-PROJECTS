@@ -1438,13 +1438,12 @@ app.post('/api/stage1-count', (req, res) => {
     // and the launch must never resolve it two different ways.
     const compare = Array.isArray(b.compare) && b.compare.length ? b.compare.map((s) => String(s).toUpperCase()) : [];
     if (compare.some((p) => !SYMBOL_RE.test(p))) return res.status(400).json({ error: 'compare coins must be symbols like DOTUSDT' });
-    const geometries = b.permuteGeometry ? Object.keys(require('./lib/dataset').GEOMETRIES) : [b.geometry || 'daily-4d'];
-    const sizes = { singles: !!(b.sizes || {}).singles, doubles: !!(b.sizes || {}).doubles, triples: !!(b.sizes || {}).triples };
-    // the coins and shapes ticked on Coins, as the launch itself resolves them
-    const units = b.passers ? stages.unitsForPassers(coinsrun.passingUnits(), sizes, compare) : stages.unitsFor(universe, sizes, geometries, compare);
-    const { slimViewsFor } = require('./lib/bracketwork');
-    const trainings = units.reduce((n, u) => n + slimViewsFor(u.size === 1 ? 1 : 2).length, 0);
-    return res.json({ units: units.length, trainings });
+    // THE UNITS THE LAUNCH WILL TRAIN, resolved by the launch's own function
+    // (3.285.1): the source by name, the control arm, the shapes off the pairs,
+    // and one training more per extra member. This route kept its own copy,
+    // which read a `passers` tick the screen no longer sends, so with the units
+    // taken from Coins it counted the greyed boxes instead.
+    return res.json(stages.stage1Count(b));
   } catch (err) { return res.status(400).json({ error: err.message }); }
 });
 app.post('/api/stage3-count', (req, res) => {

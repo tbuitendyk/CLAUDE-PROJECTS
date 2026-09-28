@@ -712,8 +712,14 @@ function unitsForPassers(pairs, sizes, compare = null) {
   return units;
 }
 
-function startStage1(params) {
-  claimOrRefuse(params);
+// THE UNITS A STAGE 1 RUN WILL TRAIN, RESOLVED ONCE (3.285.1, owner order
+// 2026-09-28: "fix the unit count"). The count beside Start stage 1 kept a copy
+// of this that read a `passers` tick the screen stopped sending when the one
+// tick became three choices (3.185.0), so with the units taken from Coins it
+// counted the trade coins and chunk shape boxes instead -- boxes that are greyed
+// under both of those choices. The launch and the count now both call this, so
+// the number on the screen and the units that train cannot be two answers.
+function stage1UnitsOf(params) {
   // `passers: true` reads the ticked pairs off Coins now; a list of pairs (a
   // set relaunched from its own record) is used as given, so the record says
   // what ran and never what Coins happens to say later.
@@ -803,6 +809,18 @@ function startStage1(params) {
     : params.permuteGeometry
       ? Object.keys(GEOMETRIES)
       : [GEOMETRIES[params.geometry] ? params.geometry : 'daily-4d'];
+  const units = passers ? unitsForPassers(passers, sizes, compare) : unitsFor(universe, sizes, geometries, compare);
+  return { source, plain, passers, universe, compare, sizes, geometries, units };
+}
+// what the count beside Start stage 1 says: the units, and the trainings they
+// hold -- one more per extra member, exactly as the run's own progress counts
+function stage1Count(params) {
+  const { units } = stage1UnitsOf(params || {});
+  return { units: units.length, trainings: units.reduce((n, u) => n + trainingsPerUnit(u), 0) };
+}
+function startStage1(params) {
+  claimOrRefuse(params);
+  const { source, plain, passers, universe, compare, sizes, geometries, units } = stage1UnitsOf(params);
   // THE 80/20 LAYOUT IS GONE (owner order, 2026-09-08). It kept no held-back
   // slice, so nothing cut from it could be verified; refused by name rather
   // than quietly relaid, so a launch that still asks for it hears why.
@@ -851,7 +869,6 @@ function startStage1(params) {
     // shape alone it changes nothing, and the record says what was done
     weekdaysOnly: params.weekdaysOnly === true && geometries.some((g) => require('./dataset').weekdaysApply(g)),
   };
-  const units = passers ? unitsForPassers(passers, sizes, compare) : unitsFor(universe, sizes, geometries, compare);
   // WHAT THE RUN ACTUALLY READ, WRITTEN DOWN. A set that recorded an empty box
   // would depend for ever on what empty happened to mean the day it is read
   // back (RULE NINE: a record says what it is, in today's words).
@@ -12886,7 +12903,7 @@ module.exports = {
   startStage1, startStage2, startStage3,
   missingUnitsOf, unitFillRefusal, fillMissingUnitsStart, fillMissingUnitsStatus, rebuildRanking,
   continueStage, continueStage1, continueStage2, canStartAgain, ownRuns, keepHoursOfOlderSets, hoursOf, childHoursFor, keptComplaint,
-  s1TrainingOf, s1PayloadOf, s1RecordOf, s2TrainingOf,
+  s1TrainingOf, s1PayloadOf, s1RecordOf, s2TrainingOf, stage1UnitsOf, stage1Count,
   stage1Table, stage1Ordered, stage1Carry, stage1CarryPreview, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
   settingsFor, unitsFor, unitsForPassers, unitMembers, isSetDocument, shapesOf, foldPlateauShares, agreementsFor, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, variantsOf, confirmWanted, confirmLeansFor, coinsSourceOf, confirmLabel, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
   fieldAxesFor, certaintyRefusal, fieldPairsFor, fieldFile, writeFieldSidecar, readFieldSidecar, fieldPayloadFor,
