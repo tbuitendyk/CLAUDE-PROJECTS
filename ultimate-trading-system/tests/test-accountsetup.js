@@ -487,6 +487,13 @@ module.exports = {
     assert.ok(/value="typed, not saved"/.test(typedHtml) && /Save the sub-account identifier\(s\)<\/button><span class="note">not saved yet<\/span>/.test(typedHtml), 'what is typed is lost on the redraw, or not said to be unsaved');
     assert.ok(/querySelectorAll\('\[data-as-fieldsave\]'\)/.test(src) && /'\/field', \{ step, field, value: box\.value \}/.test(src), 'the save sends the box to the service');
     assert.ok(/if \(req\.params\.what === 'field'\) return res\.json\(\{ ok: true, setup: as\.setField\(/.test(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8')), 'the service takes it');
+    // ONE READING OF A CHECKLIST, NOT TWO (3.291.1): the press asks what the
+    // drawing asks, and hands it to the write, so a step cannot be open on the
+    // screen and shut to the button
+    const srvSrc = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+    assert.ok(/async function readAccountFacts\(\) \{/.test(srvSrc) && /const \{ engines, keys, factsFor \} = await readAccountFacts\(\);/.test(srvSrc), 'the drawing no longer reads through the one gatherer');
+    assert.ok(/const facts = \(await readAccountFacts\(\)\)\.factsFor\(id\);/.test(srvSrc), 'the press no longer asks what the drawing asks');
+    for (const w of ['b.on === true, facts)', "String(b.value || ''), facts)", "String(b.value), facts)"]) assert.ok(srvSrc.includes(w), `the press hands what it read to the write: ${w}`);
     assert.ok(/'<span class="note">sub-account: ' \+ esc\(a\.setup\.fields\.subIds\) \+ '<\/span>'/.test(src), 'the account\'s card shows what the exchange calls the sub-account');
     assert.ok(!/tied to one address/.test(src) && (src.match(/tied to one or more addresses/g) || []).length === 5, 'the key line, the kept message, the check\'s answer and step 2\'s choice on the key form say one or more addresses');
     // WHAT THE SYSTEM SEES FOR ITSELF (3.275.0) is said on the step, met or not

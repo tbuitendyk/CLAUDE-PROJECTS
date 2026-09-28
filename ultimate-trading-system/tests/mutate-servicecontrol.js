@@ -2744,6 +2744,11 @@ const GUARDS = [
     "anOrderThatMayStandIsAskedAboutBeforeItIsCalledARefusal", "an order that already stands on the exchange is sent again as though it never was"],
   [path.join(ROOT, "public", "setup.html"), "(canReal ? '' : ' disabled')", "''",
     "theRealOrdersPressSaysWhichWayItGoesAndAsksBeforeItArms", "the real-orders press is offered on a platform that cannot place one"],
+  // ONE READING OF A CHECKLIST, NOT TWO (3.291.1)
+  [path.join(ROOT, "lib", "accountsetup.js"), "  if (!stepsOf(setup, facts)[i].open) bad(", "  if (!stepsOf(setup)[i].open) bad(",
+    "aStepIsOpenToAPressExactlyWhenItIsOpenOnTheScreen", "a press judges a step open by a reading the screen never used"],
+  [path.join(ROOT, "server.js"), "    const facts = (await readAccountFacts()).factsFor(id);", "    const facts = null;",
+    "theAccountTabDrawsItWithThePlatformsChecklistCode", "the press stops asking what the screen asked"],
   // THE TUNNEL GONE, THE CEILING ROWS AND THE SECTION'S NAME (3.267.0, 3.267.1)
   [path.join(ROOT, "engine", "main.js"), "if (!cfg.link || typeof cfg.link.url !== 'string' || !cfg.link.url) {", "if (false) {",
     "anEngineWithNoWebServerToCallRefusesToStart", "an engine with no web server to call starts anyway"],
@@ -2944,7 +2949,7 @@ const GUARDS = [
     "stepsThreeToSixAreDoneByWhatTheSystemSees", "keys kept without the exchange ever being asked count as the platform reaching the account"],
   [path.join(ROOT, "lib", "accountsetup.js"), "    if (f.live) return { ok: true, text:", "    if (f.named) return { ok: true, text:",
     "stepsThreeToSixAreDoneByWhatTheSystemSees", "step 6 reads real money on for an account whose setups are all on paper"],
-  [path.join(ROOT, "server.js"), "      const mine = setupsNow.filter((x) => x.keyRef === acctId && x.state !== 'retired');", "      const mine = setupsNow.filter((x) => x.keyRef === acctId);",
+  [path.join(ROOT, "server.js"), "    const mine = setupsNow.filter((x) => x.keyRef === acctId && x.state !== 'retired');", "    const mine = setupsNow.filter((x) => x.keyRef === acctId);",
     "theAccountTabDrawsItWithThePlatformsChecklistCode", "a retired setup counts as trading from the account"],
   [path.join(ROOT, "server.js"), "h.health && h.health.realOrders === 'on'); }).map(nameOf);", "h.health && h.health.realOrders); }).map(nameOf);",
     "theAccountTabDrawsItWithThePlatformsChecklistCode", "a platform saying real orders are off is counted as having them on"],
