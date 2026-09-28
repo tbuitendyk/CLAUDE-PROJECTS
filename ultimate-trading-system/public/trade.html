@@ -14,6 +14,7 @@
     --pos:#4ec9a5; --neg:#e06c75; --warn:#e5c07b; --accent:#9db4d0;
     --paper:#3b3320; --paperln:#e5c07b; --tabbg:#171c24; --tabon:#0e1116;
     --haltbg:#3a1d1f; --runbg:#16281f; --stopbg:#20242c; --stalebg:#2f2a17;
+    --bannerfig:#ffffff;
   }
   :root[data-theme="light"] {
     --bg:#f6f7f9; --fg:#1a2028; --muted:#8a94a2; --dim:#5a6472;
@@ -21,6 +22,7 @@
     --pos:#0a7d55; --neg:#c02a33; --warn:#8a6d00; --accent:#2c5fa8;
     --paper:#fff6da; --paperln:#8a6d00; --tabbg:#eceef1; --tabon:#ffffff;
     --haltbg:#fbe9ea; --runbg:#e8f6ef; --stopbg:#eef0f3; --stalebg:#faf3dc;
+    --bannerfig:#0d1a13;
   }
   * { box-sizing:border-box; }
   body { font-family:-apple-system,system-ui,sans-serif; margin:0; padding:1.1rem;
@@ -70,6 +72,13 @@
   .banner.running { background:var(--runbg); border-color:var(--pos); }
   .banner.stopped { background:var(--stopbg); }
   .banner.stale { background:var(--stalebg); border-color:var(--warn); }
+  /* THE CLIP, ON THE BOOK'S OWN STRIP (3.292.0, owner 2026-09-28: "justified to
+     the right in large white text should be the clip size"). White on the dark
+     green so it reads as the strip's headline figure; on the light theme's pale
+     green white would be invisible, so there it is the darkest ink on the page.
+     Its caption is small and quiet, because the figure is the thing. */
+  .banner .clipbig { font-size:1.9rem; line-height:1; font-weight:600; color:var(--bannerfig); white-space:nowrap; text-align:right; }
+  .banner .clipcap { display:block; color:var(--dim); font-size:.66rem; font-weight:400; text-transform:uppercase; letter-spacing:.04em; margin-bottom:.2rem; }
   .switch { display:flex; align-items:center; gap:1rem; background:var(--panel); border:1px solid var(--line);
             border-radius:10px; padding:.8rem 1rem; margin-bottom:1rem; }
   button.master { font-size:1rem; font-weight:700; padding:.6rem 1.4rem; border-radius:8px; border:none; cursor:pointer; }
@@ -1183,12 +1192,17 @@ async function drawLive(){
   const openHere=(st.openPositions||[]).filter(p=>isP?p.paper:!p.paper);
   $('#view').innerHTML=`
     ${picker}
-    <div class="banner ${st.state==='stopped'?'stopped':'running'}">
+    <div class="banner ${st.state==='stopped'?'stopped':'running'}" style="display:flex; align-items:flex-start; gap:1rem">
+      <div style="flex:1 1 auto; min-width:0">
       <b>${esc(g.name||g.id)}</b> ${isP?paperBadge:''} — ${esc(g.status)}${st.runEpochUtc?` <span class="muted">· displayed run since ${st.runEpochUtc.slice(0,16)} UTC</span>`:''}${identSub(g)}
       <!-- WHAT THIS BOOK IS LINKED TO (3.282.0, owner 2026-09-27: "there should be a clear indication if a paper
            trade is linked to a trading account"): the account and the platform, on both books -->
       <div style="margin-top:.3rem;font-size:.85rem">${st.keyRef?`linked to the trading account <b>${esc(st.keyRef)}</b>`:'<span class="warn">not linked to a trading account</span>'}
-        <span class="muted">·</span> ${st.platform?`runs on <b>${esc(st.platform.name)}</b>`:'<span class="warn">no trading platform picked</span>'}</div></div>
+        <span class="muted">·</span> ${st.platform?`runs on <b>${esc(st.platform.name)}</b>`:'<span class="warn">no trading platform picked</span>'}</div>
+      </div>
+      <!-- WHAT EVERY ENTRY ON THIS BOOK OPENS WITH, in the same dollars and the
+           same rounding the Setups table and Setup detail show it in -->
+      <div class="clipbig" title="position size per entry in US DOLLARS of notional. It does not compound — every entry is the same size."><span class="clipcap">clip</span>${st.clipUsd==null?'&mdash;':'$'+Number(st.clipUsd).toFixed(0)}</div></div>
     ${isP?'':boxControls(box)}
     ${st.journalDropped?`<div class="banner stale">⚠ ${st.journalDropped} line${st.journalDropped===1?'':'s'} of the trading record could not be read.
       Every figure on this page is worked out from the lines that could. Treat the money, the trade count and the

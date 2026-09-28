@@ -285,6 +285,34 @@ module.exports.thePendingDecisionIsDrawnFirstOnLiveByTheOnePath = function () {
   assert.ok(at > 0 && at < live.indexOf('Reproduce-check') && at < live.indexOf('<div class="grid"'), 'drawn above the check line and the money tiles');
 };
 
+// THE CLIP, ON THE BOOK'S OWN STRIP (3.292.0, owner 2026-09-28: "on the big
+// green sections at the top ... justified to the right in large white text
+// should be the clip size"). One strip drawn by one path, so Paper Books and
+// Live Trading carry the same figure, in the same dollars and the same rounding
+// the Setups table and Setup detail already show it in (RULE TWO).
+module.exports.theClipIsOnTheBooksStripInLargeTextOnBothBooks = function () {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'trade.html'), 'utf8');
+  const live = src.slice(src.indexOf('async function drawLive('));
+  const strip = live.slice(live.indexOf('<div class="banner ${st.state'), live.indexOf('${isP?\'\':boxControls(box)}'));
+  assert.ok(/class="clipbig"/.test(strip), 'the strip carries the clip');
+  // the same dollars and the same rounding as the Setups table and Setup detail
+  assert.ok(strip.includes("'$'+Number(st.clipUsd).toFixed(0)"), 'in the dollars and rounding the rest of the page uses');
+  assert.ok(/st\.clipUsd==null\?'&mdash;'/.test(strip), 'and a clip the status did not carry is said to be missing, never shown as a number');
+  // ONE PATH, BOTH BOOKS: nothing in the strip asks which book it is on except
+  // the badge that says so (RULE TWO)
+  assert.ok(!/isP\?[^:]*clip|branch==='paper'/.test(strip), 'the clip is not drawn one way on one book and another way on the other');
+  // JUSTIFIED RIGHT, AND LARGE: the strip is a row with the figure pushed to its end
+  assert.ok(/<div class="banner \$\{st\.state==='stopped'\?'stopped':'running'\}" style="display:flex; align-items:flex-start; gap:1rem">/.test(strip), 'the strip is a row, so the figure can sit at its end');
+  assert.ok(/<div style="flex:1 1 auto; min-width:0">/.test(strip), 'and what was already there takes the rest of it');
+  const css = src.slice(src.indexOf('.banner .clipbig'), src.indexOf('.banner .clipbig') + 400);
+  assert.ok(/font-size:1\.9rem/.test(css) && /text-align:right/.test(css), 'large, and justified to the right');
+  // WHITE ON THE DARK GREEN, and readable on the light theme's pale green,
+  // where white would be invisible
+  assert.ok(/--bannerfig:#ffffff;/.test(src.slice(0, src.indexOf('[data-theme="light"]'))), 'white on the dark theme');
+  assert.ok(/--bannerfig:#0d1a13;/.test(src.slice(src.indexOf('[data-theme="light"]'))), 'and dark ink on the light theme, where white could not be read');
+  assert.ok(/color:var\(--bannerfig\)/.test(css), 'the figure takes whichever of those the theme is on');
+};
+
 // WHICH CONFIG THIS IS (3.260.0): one line under the config's name, drawn by
 // one helper on all five Trade tabs of both books, from facts the configs list
 // serves -- so two configs cut from the same set can be matched tab to tab
