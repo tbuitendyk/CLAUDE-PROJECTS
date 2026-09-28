@@ -192,6 +192,43 @@ module.exports = {
     assert.ok(/createHmac\('sha256', secret\)/.test(fs.readFileSync(path.join(__dirname, '..', 'engine', 'keystore.js'), 'utf8')), 'the key store no longer signs with a secret key, so step 2 asks for the wrong kind');
   },
 
+  // A STEP IS OPEN TO A PRESS EXACTLY WHEN IT IS OPEN ON THE SCREEN (3.291.1,
+  // owner 2026-09-28: ticking step 6 answered "step 6 opens when step 5 is
+  // done" while the screen showed step 5 done). The press checked the same
+  // steps with nothing gathered, so every "what the system sees for itself"
+  // read as not met -- and step 6's tick could not be ticked on any account.
+  aStepIsOpenToAPressExactlyWhenItIsOpenOnTheScreen() {
+    onACleanFile((as, acc) => {
+      as.start('binance-sub-1', 'binance');
+      as.setChoice('binance-sub-1', 'account', 'kind', 'sub');
+      as.setChoice('binance-sub-1', 'account', 'margin', 'cross');
+      as.setTick('binance-sub-1', 'account', 'exists', true);
+      as.setTick('binance-sub-1', 'account', 'margin', true);
+      as.setField('binance-sub-1', 'account', 'subIds', '4417');
+      as.setChoice('binance-sub-1', 'key', 'address', 'tied');
+      for (const t of ['made', 'can', 'cannot', 'where']) as.setTick('binance-sub-1', 'key', t, true);
+      as.setTick('binance-sub-1', 'keys', 'fingerprint', true);
+      // what the platforms and the setups say: the keys are on one and it answered,
+      // and a setup names this account -- so steps 3, 4 and 5 are done
+      const seen = { platforms: ['CDMX'], unanswered: [], keysOn: ['CDMX'], checkedOn: ['CDMX'], refusedOn: [], named: 1, live: 0, realOn: ['CDMX'] };
+      const screen = as.withSteps(acc.tradingAccount('binance-sub-1'), seen).setup.steps;
+      assert.deepStrictEqual(screen.map((x) => [x.open, x.done]), [[true, true], [true, true], [true, true], [true, true], [true, true], [true, false]],
+        'the screen shows step 6 open, with only its own tick left');
+      // THE PRESS READS THE SAME THING, so the tick the screen offers is one it takes
+      const after = as.setTick('binance-sub-1', 'money', 'pot', true, seen);
+      assert.strictEqual(after.setup.ticks.money.pot, true, 'the tick the screen offers is a tick the press saves');
+      // and the answer says where it stands from that same reading: the tick is no
+      // longer what step 6 is waiting for -- only a setup actually on real money is
+      assert.deepStrictEqual(after.setup.steps[5].missing, ['no setup trading from this account is on real money: press Activate real for it on Live Trading']);
+      assert.deepStrictEqual(after.setup.steps.map((x) => x.done), [true, true, true, true, true, false]);
+      // IT IS STILL REFUSED WHEN THE READING REALLY DOES NOT HAVE IT: no setup names
+      // the account, so step 5 is not done and step 6 is not open -- to the screen or the press
+      const notYet = { ...seen, named: 0, live: 0 };
+      assert.strictEqual(as.withSteps(acc.tradingAccount('binance-sub-1'), notYet).setup.steps[5].open, false);
+      refused(() => as.setTick('binance-sub-1', 'money', 'pot', false, notYet), /^step 6 opens when step 5 is done$/);
+    });
+  },
+
   // STEPS 3 TO 6 ARE DONE BY WHAT THE SYSTEM SEES (3.275.0): the keys on a platform,
   // the exchange's answer about them, a setup naming the account, a setup on real
   // money -- and step 6 cannot be done while the platform places no real orders

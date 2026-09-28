@@ -240,35 +240,48 @@ app.post('/api/account/exchange', (req, res) => {
 // passes on only the locked form. It never holds a key, locked or not, after the
 // engine answers -- and the only thing it ever keeps of one is that answer:
 // present or missing, when entered, and whether it is tied to one or more addresses.
+// WHAT THE CHECKLIST CAN SEE FOR ITSELF, GATHERED ONCE AND READ BY BOTH THE
+// DRAWING AND THE PRESSING (3.291.1, owner 2026-09-28: ticking step 6 answered
+// "step 6 opens when step 5 is done" while the screen showed step 5 done).
+// It used to be gathered here for the drawing only. A press checked the same
+// steps with nothing gathered, so every "what the system sees for itself" read
+// as NOT MET, steps 3 to 5 could never be done, and step 6 never opened on any
+// account -- while the screen, reading the real thing, showed them done. One
+// checklist read two ways is the defect, and it is the shape RULE TWO exists to
+// stop; there is one reading now and both sides call it.
+async function readAccountFacts() {
+  const targets = require('./lib/live/targets');
+  const link = require('./lib/live/enginelink');
+  const engines = targets.listEngines();
+  const keys = {};
+  await Promise.all(engines.map(async (t) => {
+    const r = await link.call(t, 'GET', '/keys', null, 4000);
+    keys[t.id] = r.ok && r.json && Array.isArray(r.json.keys)
+      ? { answers: true, keys: r.json.keys.map((k) => ({ account: k.account, present: !!k.present, addedAt: k.addedAt || null, anyAddress: k.anyAddress === true, tied: typeof k.tied === 'boolean' ? k.tied : null, checkedAt: k.checkedAt || null, refused: typeof k.refused === 'string' ? k.refused : null })), lock: r.json.lock && typeof r.json.lock.publicKey === 'string' ? { publicKey: r.json.lock.publicKey, fingerprint: r.json.lock.fingerprint } : null }
+      : { answers: false, why: r.why || (r.json && r.json.error) || `the platform answered ${r.status}` };
+  }));
+  // which platforms hold each account's keys and whether the exchange answered
+  // them, the setups that name it and the ones on real money, and the platforms
+  // with real orders switched on (3.275.0)
+  const setupsNow = require('./lib/live/setups').listSetups();
+  const nameOf = (t) => t.name || t.id;
+  const realOn = engines.filter((t) => { const h = link.mirrorFor(t).lastHealth; return !!(h && Date.now() - Date.parse(h.at) < 60000 && h.health && h.health.realOrders === 'on'); }).map(nameOf);
+  const factsFor = (acctId) => {
+    const holding = (pred) => engines.filter((t) => keys[t.id].answers && keys[t.id].keys.some((k) => k.account === acctId && pred(k))).map(nameOf);
+    const mine = setupsNow.filter((x) => x.keyRef === acctId && x.state !== 'retired');
+    return {
+      platforms: engines.map(nameOf), unanswered: engines.filter((t) => !keys[t.id].answers).map(nameOf),
+      keysOn: holding((k) => k.present), checkedOn: holding((k) => k.present && typeof k.tied === 'boolean'), refusedOn: holding((k) => k.present && !!k.refused),
+      named: mine.length, live: mine.filter((x) => x.state === 'live').length, realOn,
+    };
+  };
+  return { engines, keys, factsFor };
+}
 app.get('/api/account/trading', async (req, res) => {
   try {
     const acc = require('./lib/account');
-    const targets = require('./lib/live/targets');
-    const link = require('./lib/live/enginelink');
-    const engines = targets.listEngines();
-    const keys = {};
-    await Promise.all(engines.map(async (t) => {
-      const r = await link.call(t, 'GET', '/keys', null, 4000);
-      keys[t.id] = r.ok && r.json && Array.isArray(r.json.keys)
-        ? { answers: true, keys: r.json.keys.map((k) => ({ account: k.account, present: !!k.present, addedAt: k.addedAt || null, anyAddress: k.anyAddress === true, tied: typeof k.tied === 'boolean' ? k.tied : null, checkedAt: k.checkedAt || null, refused: typeof k.refused === 'string' ? k.refused : null })), lock: r.json.lock && typeof r.json.lock.publicKey === 'string' ? { publicKey: r.json.lock.publicKey, fingerprint: r.json.lock.fingerprint } : null }
-        : { answers: false, why: r.why || (r.json && r.json.error) || `the platform answered ${r.status}` };
-    }));
     const as = require('./lib/accountsetup');
-    // WHAT THE CHECKLIST CAN SEE FOR ITSELF (3.275.0): which platforms hold each
-    // account's keys and whether the exchange answered them, the setups that name
-    // it and the ones on real money, and the platforms with real orders switched on
-    const setupsNow = require('./lib/live/setups').listSetups();
-    const nameOf = (t) => t.name || t.id;
-    const realOn = engines.filter((t) => { const h = link.mirrorFor(t).lastHealth; return !!(h && Date.now() - Date.parse(h.at) < 60000 && h.health && h.health.realOrders === 'on'); }).map(nameOf);
-    const factsFor = (acctId) => {
-      const holding = (pred) => engines.filter((t) => keys[t.id].answers && keys[t.id].keys.some((k) => k.account === acctId && pred(k))).map(nameOf);
-      const mine = setupsNow.filter((x) => x.keyRef === acctId && x.state !== 'retired');
-      return {
-        platforms: engines.map(nameOf), unanswered: engines.filter((t) => !keys[t.id].answers).map(nameOf),
-        keysOn: holding((k) => k.present), checkedOn: holding((k) => k.present && typeof k.tied === 'boolean'), refusedOn: holding((k) => k.present && !!k.refused),
-        named: mine.length, live: mine.filter((x) => x.state === 'live').length, realOn,
-      };
-    };
+    const { engines, keys, factsFor } = await readAccountFacts();
     res.json({
       // each account with its checklist and where every step stands (3.268.0)
       accounts: acc.tradingAccounts().map((a) => as.withSteps(a, factsFor(a.id))), offered: acc.EXCHANGES, setupTemplate: as.TEMPLATE,
@@ -289,15 +302,20 @@ app.post('/api/account/setups', csrfGuard, (req, res) => {
   try { res.json({ ok: true, setup: require('./lib/accountsetup').start(String(b.id == null ? '' : b.id), String(b.exchange == null ? '' : b.exchange)) }); }
   catch (err) { res.status(err.status || 500).json({ error: err.message }); }
 });
-app.post('/api/account/setups/:id/:what', csrfGuard, (req, res) => {
+app.post('/api/account/setups/:id/:what', csrfGuard, async (req, res) => {
   const as = require('./lib/accountsetup');
   const b = req.body || {};
   const id = String(req.params.id);
   try {
-    if (req.params.what === 'choice') return res.json({ ok: true, setup: as.setChoice(id, String(b.step || ''), String(b.choice || ''), String(b.value || '')) });
-    if (req.params.what === 'tick') return res.json({ ok: true, setup: as.setTick(id, String(b.step || ''), String(b.tick || ''), b.on === true) });
-    if (req.params.what === 'field') return res.json({ ok: true, setup: as.setField(id, String(b.step || ''), String(b.field || ''), b.value == null ? '' : String(b.value)) });
+    // taking a checklist away asks the platforms nothing, so it does not wait on them
     if (req.params.what === 'delete') return res.json({ ok: true, ...as.remove(id) });
+    if (!['choice', 'tick', 'field'].includes(req.params.what)) return res.status(404).json({ error: 'no such address' });
+    // THE SAME READING THE SCREEN DREW FROM (3.291.1): a step is open here if
+    // and only if it is open there, because it is the one reading
+    const facts = (await readAccountFacts()).factsFor(id);
+    if (req.params.what === 'choice') return res.json({ ok: true, setup: as.setChoice(id, String(b.step || ''), String(b.choice || ''), String(b.value || ''), facts) });
+    if (req.params.what === 'tick') return res.json({ ok: true, setup: as.setTick(id, String(b.step || ''), String(b.tick || ''), b.on === true, facts) });
+    if (req.params.what === 'field') return res.json({ ok: true, setup: as.setField(id, String(b.step || ''), String(b.field || ''), b.value == null ? '' : String(b.value), facts) });
     return res.status(404).json({ error: 'no such address' });
   } catch (err) { return res.status(err.status || 500).json({ error: err.message }); }
 });

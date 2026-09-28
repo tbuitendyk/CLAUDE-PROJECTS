@@ -256,9 +256,9 @@ function mine(id) {
   if (!a.setup) bad(`the trading account ${id} has no setup: start one`, 404);
   return a;
 }
-function save(id, setup) {
+function save(id, setup, facts = null) {
   account.saveAccountSetup(id, setup);
-  return withSteps(account.tradingAccount(id));
+  return withSteps(account.tradingAccount(id), facts);
 }
 
 // ONE PER ACCOUNT: started under the account's name and exchange. A name no
@@ -279,16 +279,21 @@ function stepOf(stepId) {
   if (!s) bad(`no step ${stepId}`);
   return s;
 }
-function mustBeOpen(setup, stepId) {
+// IS THIS STEP OPEN? Answered from the SAME reading the screen drew from
+// (3.291.1, owner 2026-09-28). Without it, every "what the system sees for
+// itself" reads as not met, steps 3 to 5 can never be done and step 6 never
+// opens -- so its one tick could not be ticked on any account, while the screen
+// showed the step open. The facts are handed in by whoever is pressing.
+function mustBeOpen(setup, stepId, facts = null) {
   const i = TEMPLATE.steps.findIndex((x) => x.id === stepId);
-  if (!stepsOf(setup)[i].open) bad(`step ${i + 1} opens when step ${i} is done`);
+  if (!stepsOf(setup, facts)[i].open) bad(`step ${i + 1} opens when step ${i} is done`);
 }
 
-function setChoice(id, stepId, choiceId, value) {
+function setChoice(id, stepId, choiceId, value, facts = null) {
   const a = mine(id);
   const s = { ...a.setup, choices: { ...(a.setup.choices || {}) }, ticks: { ...(a.setup.ticks || {}) } };
   const step = stepOf(stepId);
-  mustBeOpen(s, stepId);
+  mustBeOpen(s, stepId, facts);
   const c = (step.choices || []).find((x) => x.id === choiceId);
   if (!c) bad(`step "${step.title}" asks no choice ${choiceId}`);
   if (c.when && !matches(c.when, s.choices)) bad(`${c.label.toLowerCase()} is not asked yet`);
@@ -302,29 +307,29 @@ function setChoice(id, stepId, choiceId, value) {
   }
   s.choices[choiceId] = value;
   s.updatedUtc = new Date().toISOString();
-  return save(id, s);
+  return save(id, s, facts);
 }
 
-function setTick(id, stepId, tickId, on) {
+function setTick(id, stepId, tickId, on, facts = null) {
   const a = mine(id);
   const s = { ...a.setup, ticks: { ...(a.setup.ticks || {}) } };
   const step = stepOf(stepId);
-  mustBeOpen(s, stepId);
+  mustBeOpen(s, stepId, facts);
   const t = (step.ticks || []).find((x) => x.id === tickId);
   if (!t) bad(`step "${step.title}" has no tick ${tickId}`);
   s.ticks[stepId] = { ...(s.ticks[stepId] || {}), [tickId]: on === true };
   s.updatedUtc = new Date().toISOString();
-  return save(id, s);
+  return save(id, s, facts);
 }
 
 // A BOX OF TEXT: one line, free text, as long as the template allows, saved on
 // the account's record. Asked only when its choice is made; what was saved stays
 // when the choice changes, and comes back if it changes back.
-function setField(id, stepId, fieldId, value) {
+function setField(id, stepId, fieldId, value, facts = null) {
   const a = mine(id);
   const s = { ...a.setup, fields: { ...(a.setup.fields || {}) } };
   const step = stepOf(stepId);
-  mustBeOpen(s, stepId);
+  mustBeOpen(s, stepId, facts);
   const f = (step.fields || []).find((x) => x.id === fieldId);
   if (!f) bad(`step "${step.title}" has no box ${fieldId}`);
   if (f.when && !matches(f.when, s.choices)) {
@@ -336,7 +341,7 @@ function setField(id, stepId, fieldId, value) {
   if (text.length > f.max) bad(`${f.label}: at most ${f.max} characters — this is ${text.length}`);
   s.fields[fieldId] = text;
   s.updatedUtc = new Date().toISOString();
-  return save(id, s);
+  return save(id, s, facts);
 }
 
 // the checklist goes; the trading account record and its keys stay
