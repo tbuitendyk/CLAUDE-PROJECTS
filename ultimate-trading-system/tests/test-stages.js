@@ -5623,7 +5623,11 @@ module.exports = {
     // set, and the boxes in the section above -- and rebuilding the options
     // only ever watches the first.
     const paint = UI.indexOf('swProvenance();', prog);
-    const guard = UI.indexOf('if (swMoved) {', prog);
+    // found by its opening, not by its whole condition: 3.292.5 added a second
+    // reason to remember the form (a run that paused), and this read as a
+    // failure when the thing it protects -- the repaint coming BEFORE the guard,
+    // so it happens on every tick -- had not changed at all
+    const guard = UI.indexOf('if (swMoved', prog);
     assert.ok(paint > refill, 'the poll never repaints the stage headings');
     assert.ok(guard > paint,
       'the heading colours are set only when the boxes moved, so a colour judged off the section above it or off the '
