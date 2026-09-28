@@ -2046,7 +2046,7 @@ const GUARDS = [
     'drawJudgePicksTheRuleFromTheServersListNeverTyped', 'the Reserve tab draws the held-back window under its own name'],
   [path.join(ROOT, 'public', 'construct.js'), "  return rules.filter((x) => x.judge && x.judge.keepsReserve && x.judge.held && x.judge.held.stands);", "  return rules;",
     'drawJudgePicksTheRuleFromTheServersListNeverTyped', 'Reserve lists a rule that never stood on the held-back window, and a rule with no reserve to read'],
-  [path.join(ROOT, 'public', 'construct.js'), ".filter((x) => x.kind === 'held' || x.kind === 'reserve'));\n  const glChosen = glRememberedSet(glSets);", ".filter((x) => true));\n  const glChosen = glRememberedSet(glSets);",
+  [path.join(ROOT, 'public', 'construct.js'), ".filter((x) => x.kind === 'held' || x.kind === 'reserve');\n  const glSets = s4CampList(glAll);", ".filter((x) => true);\n  const glSets = s4CampList(glAll);",
     'drawJudgePicksTheRuleFromTheServersListNeverTyped', 'Greenlight lists rules again, which are never greenlighted, beside the sets that are'],
   // ---- THE STAGE 4 TABLE KEEPS THE HELD-BACK WINDOW BEHIND A TICK (3.140.0) ----
   [path.join(ROOT, 'lib', 'stages.js'), '  const shown = heldBack ? rows : rows.map((r) => withoutKeys(r, HELD_BACK_FIELDS_4));', '  const shown = rows;',
@@ -3210,6 +3210,17 @@ const GUARDS = [
     "theRoutingIsSavedOnSetupDetailOnceARun", "the routing is saved past its one door, so the once-a-run rule and the held plans are skipped"],
   [path.join(ROOT, "public", "trade.html"), "${(s.state==='paper'||s.state==='live')&&!s.routingSaved?`<div class=\"row\"", "${(s.state==='paper'||s.state==='live')?`<div class=\"row\"",
     "theRoutingIsSavedOnSetupDetailOnceARun", "Setup detail still offers the lists after Save routing was used in the run"],
+  // 3.288.0: pressing an existing greenlight picks its survivor, opening its Stage 4 record set first
+  [path.join(ROOT, "public", "construct.js"), "setId, label, by: g.pick.by || null, untick: !(shownSets || []).some((x) => x.id === setId) };", "setId, label, by: g.pick.by || null, untick: false };",
+    "pressingAGreenlightPicksItsSurvivorAndOpensItsSetFirst", "a set the campaign tick hides is opened without clearing the tick, so it cannot be shown"],
+  [path.join(ROOT, "public", "construct.js"), "  if (!(allSets || []).some((x) => x.id === setId)) {\n    return { act: 'none'", "  if (false) {\n    return { act: 'none'",
+    "pressingAGreenlightPicksItsSurvivorAndOpensItsSetFirst", "a greenlight whose set is gone opens nothing and says nothing"],
+  [path.join(ROOT, "public", "construct.js"), "  return want.by === 'depth' && d && d.depthPick && d.depthPick.label === want.label ? 'depth' : want.label;", "  return want.label;",
+    "pressingAGreenlightPicksItsSurvivorAndOpensItsSetFirst", "a greenlight picked by depth is picked by name, and the one survivor box stops reading by depth"],
+  [path.join(ROOT, "public", "construct.js"), "    if (plan.untick) { try { localStorage.setItem(S4_CAMP_KEY, '0'); }", "    if (false) { try { localStorage.setItem(S4_CAMP_KEY, '0'); }",
+    "pressingAGreenlightPicksItsSurvivorAndOpensItsSetFirst", "the campaign tick is never cleared, so a set it hides is never shown"],
+  [path.join(ROOT, "public", "construct.js"), "      picked = glPickFor(want, gl4);", "      picked = want.label;",
+    "pressingAGreenlightPicksItsSurvivorAndOpensItsSetFirst", "the survivor is picked apart from the one survivor box's own choice"],
 ];
 
 const only = process.argv[2] || '';
