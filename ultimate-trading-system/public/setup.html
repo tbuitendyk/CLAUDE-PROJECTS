@@ -923,6 +923,15 @@ function engineCard(e) {
     : '<span class="neg">not linked right now</span> <span class="muted">(' + esc((e.link && e.link.why) || 'not started') + ')</span>';
   // HOW IT IS REACHED (owner, 2026-09-25): an engine installed with the install
   // command calls this system and says what it is
+  // REAL ORDERS: the reading, and the press that changes it, together (3.291.0,
+  // owner 2026-09-28). A platform that cannot place them at all says why rather
+  // than offering a press that would do nothing.
+  const realOn = h.realOrders === 'on';
+  const canReal = !!e.answers && Array.isArray(h.modes) && h.modes.includes('live');
+  const realNote = !e.answers ? 'the platform is not answering, so this cannot be changed now'
+    : !canReal ? 'this platform cannot place real orders: its release is behind, or it cannot keep keys safely on its machine'
+    : realOn ? 'a setup on real money places real orders on the exchange through this platform'
+      : 'switched off, this platform opens no new real position; one already open still closes by its stop or its hold';
   const mc = e.machine || {};
   // behind means other code than this system serves, not another release number
   const behind = e.current === false;
@@ -946,6 +955,9 @@ function engineCard(e) {
     + '<span><span class="k">real orders</span> <b>' + esc(h.realOrders || '—') + '</b></span>'
     + '<span><span class="k">the link</span> ' + link + ' <span class="muted">· ' + e.recordsKept + ' lines kept</span></span>'
     + '</div>'
+    + '<div class="row" style="margin-top:.5rem"><button data-engreal="' + esc(e.id) + '" data-realon="' + (realOn ? '1' : '0') + '"' + (canReal ? '' : ' disabled') + '>'
+    + (realOn ? 'Switch real orders off' : 'Switch real orders on') + '</button>'
+    + '<span class="note' + (realOn ? ' warn' : '') + '">' + esc(realNote) + '</span></div>'
     + '<div class="row" style="align-items:baseline; margin-top:.35rem"><span class="k">setups on it</span> <span class="note">'
     + (e.setups.length ? e.setups.map((s) => esc(s.name || s.id) + ' (' + esc(s.state) + ')').join(', ') : 'none') + '</span></div>'
     + '<div class="row" style="margin-top:.5rem"><button data-engedit="' + esc(e.id) + '">Change this record</button>'
@@ -1227,6 +1239,22 @@ function wireEngine() {
       if (!confirm('Delete the platform record "' + b.dataset.engdel + '"?\n\nRefused while any setup runs on it. Nothing on the platform\'s machine is touched.')) return;
       try { await postJson('api/live/engines/' + encodeURIComponent(b.dataset.engdel) + '/delete', {}); cEngEdit = null; }
       catch (e) { alert('Not deleted — ' + e.message); }
+      refreshCompute(true);
+    };
+  });
+  // REAL ORDERS ON OR OFF. Switching on arms real money, so it is asked for
+  // plainly first; switching off strands nothing, and the question says so.
+  document.querySelectorAll('[data-engreal]').forEach((b) => {
+    b.onclick = async () => {
+      const on = b.dataset.realon !== '1';
+      if (!confirm(on
+        ? 'Switch real orders ON for "' + b.dataset.engreal + '"?\n\nFrom then on, a setup you have put on real money places real orders on the exchange with real funds. Setups on paper are not affected.'
+        : 'Switch real orders OFF for "' + b.dataset.engreal + '"?\n\nNo new real position is opened. A real position already open still closes by its stop or its hold.')) return;
+      b.disabled = true;
+      try {
+        const r = await postJson('api/live/engines/' + encodeURIComponent(b.dataset.engreal) + '/real', { on });
+        if (r && r.kept === false) alert('Real orders are ' + r.realOrders + ' now — but ' + (r.why || 'it could not be written down, so a restart will not remember it'));
+      } catch (e) { alert('Not changed — ' + e.message); }
       refreshCompute(true);
     };
   });

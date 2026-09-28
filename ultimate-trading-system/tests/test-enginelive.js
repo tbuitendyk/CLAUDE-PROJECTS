@@ -182,6 +182,88 @@ module.exports = {
     assert.deepStrictEqual(f.unpriced, [{ asset: 'BNB', amount: 0.01 }], 'BNB cannot be priced without another question, so it is named and left out of the money');
   },
 
+  // REAL ORDERS OFF STOPS A NEW REAL POSITION AND NEVER STRANDS AN OPEN ONE.
+  // D11's rule -- a setup that is stopped takes no new entry, and an open
+  // position still closes by its stop or its hold -- pointed at the switch. The
+  // other way round, an open real position could not reach its own stop.
+  async realOrdersOffStopsANewRealPositionAndNeverStrandsAnOpenOne() {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const { Journal } = require('../engine/journal');
+    const { Runner } = require('../engine/runner');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'enginelive-'));
+    const t0 = Date.UTC(2026, 8, 26, 1);
+    let now = t0 - 60000;
+    // a stand-in for the live module: it records what it was sent and fills it
+    const sent = [];
+    const live = {
+      capabilities: () => ({ name: 'recording', mode: 'live', nativeStop: false, nativeTrailing: false, linkedOrders: false, shorts: true }),
+      async placeOrder(o) { sent.push(o); const price = o.atLevel; return { status: 'filled', mode: 'live', price, qty: o.qty != null ? o.qty : o.quoteUsd / price, feeUsd: 0, ts: now, against: { venue: 'recording' } }; },
+      borrowRate: () => ({ rate: null, source: null }),
+    };
+    const market = { followed: new Set(), follow(x) { this.followed = new Set(x); }, book: () => null, trade: () => null, filtersOf: async () => FILTERS, hourOpenOf: async () => null, minutes: async () => [], status: () => ({ feed: 'none' }) };
+    const journal = new Journal(path.join(dir, 'journal.jsonl'));
+    const runner = new Runner({ journal, market, venues: { simulated: null, live }, now: () => now });
+    const plan = {
+      planId: 'setup-a|2026-09-22', setupId: 'setup-a', mode: 'live', symbol: 'LTCUSDT', entryTs: t0, call: 1, account: 'binance-sub-1',
+      cell: { entry: 'breakout', gate: 'active', dMult: 0.75, tHours: 65, trailMult: 1.5, armMult: 0.5 }, bandPct: 5,
+      size: { quoteUsd: 100 }, feePerLeg: 0.001, walletStartUsd: 1000,
+    };
+    // OFF: no real plan is taken at all
+    const off = runner.addPlan(plan);
+    assert.ok(!off.ok && off.problems.some((x) => /real orders are switched off on this platform/.test(x)), JSON.stringify(off));
+    assert.strictEqual(runner.venueFor('live', 'enter'), null, 'and no new real position could be opened');
+    assert.strictEqual(runner.venueFor('live', 'exit'), live, 'but a real position could always be closed');
+    assert.ok(/real orders are switched off on this platform/.test(runner.whyNoVenue({ mode: 'live', purpose: 'enter' })), 'and the refusal says which switch it is');
+    // ON: the owner's press, written down
+    assert.deepStrictEqual(runner.setLive(true), { ok: true, realOrders: 'on' });
+    assert.deepStrictEqual(runner.setLive(true), { ok: true, realOrders: 'on', already: true });
+    assert.ok(journal.readAll().some((r) => r.type === 'live' && r.realOrders === 'on'), 'switching real orders on is written down');
+    assert.strictEqual(runner.addPlan(plan).ok, true);
+    now = t0;
+    runner.onKline({ symbol: 'LTCUSDT', openTime: t0, open: 70 });
+    now = t0 + 10 * 60000;
+    runner.onTrade({ symbol: 'LTCUSDT', price: 72.63, ts: now });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.deepStrictEqual(sent.map((o) => [o.purpose, o.mode, o.account]), [['enter', 'live', 'binance-sub-1']], 'the real order goes out, with the account whose key signs it');
+    assert.strictEqual(runner.plans.get(plan.planId).state.phase, 'open');
+    // OFF AGAIN, with real money in the market: the close still goes out
+    assert.deepStrictEqual(runner.setLive(false), { ok: true, realOrders: 'off' });
+    now = t0 + 20 * 60000;
+    runner.onTrade({ symbol: 'LTCUSDT', price: 67.0, ts: now });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.deepStrictEqual(sent.map((o) => o.purpose), ['enter', 'exit'], 'the open position still reaches its stop with real orders off');
+    assert.strictEqual(runner.plans.get(plan.planId).state.phase, 'closed');
+    // and no new real plan is taken while it is off
+    assert.ok(!runner.addPlan({ ...plan, planId: 'another' }).ok);
+    // a platform with no live module cannot be switched on at all
+    const none = new Runner({ journal, market, venues: { simulated: null }, now: () => now });
+    assert.deepStrictEqual(none.setLive(true), { ok: false, problems: ['this platform has no live exchange module'] });
+    fs.rmSync(dir, { recursive: true, force: true });
+  },
+
+  // THE PRESS ARRIVES OVER THE LINK and nothing else decides it
+  async realOrdersAreSwitchedOnlyByThePressAndTheAnswerSaysWhatItNowIs() {
+    const { makeHandler } = require('../engine/api');
+    const runner = { view: () => [], verbose: new Map() };
+    const journal = { n: 0 };
+    const calls = [];
+    const setLive = (on) => { calls.push(on); return { ok: true, realOrders: on ? 'on' : 'off', kept: true }; };
+    const handle = makeHandler({ runner, journal, health: () => ({ ok: true }), setLive });
+    assert.deepStrictEqual(await handle('POST', '/live', { on: true }), { status: 200, json: { ok: true, realOrders: 'on', kept: true } });
+    assert.deepStrictEqual(await handle('POST', '/live', { on: false }), { status: 200, json: { ok: true, realOrders: 'off', kept: true } });
+    assert.deepStrictEqual(calls, [true, false]);
+    // a body that does not say is not a press: nothing is changed on a guess
+    const vague = await handle('POST', '/live', {});
+    assert.deepStrictEqual([vague.status, vague.json.error], [400, 'say whether real orders are on or off']);
+    assert.strictEqual((await handle('POST', '/live', { on: 'yes' })).status, 400);
+    assert.deepStrictEqual(calls, [true, false], 'and nothing reached the switch');
+    // a platform that cannot switch them says so rather than answering as though it had
+    const cannot = await makeHandler({ runner, journal, health: () => ({ ok: true }) })('POST', '/live', { on: true });
+    assert.deepStrictEqual([cannot.status, cannot.json.error], [503, 'this platform cannot switch real orders on or off']);
+  },
+
   // WHAT THIS MODULE HOLDS ON THE EXCHANGE: nothing. Stated, so the engine never
   // stops watching in the belief that the venue is watching for it.
   theLiveModuleHoldsNothingOnTheExchangeAndSaysSo() {

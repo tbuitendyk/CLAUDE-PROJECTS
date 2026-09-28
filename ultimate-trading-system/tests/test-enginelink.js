@@ -366,6 +366,25 @@ module.exports.theEngineCardSaysWhatItsPricesMean = function () {
   assert.ok(!/prices arriving|prices not arriving/.test(fn), 'the caption says prices; the value does not say it again');
 };
 
+// REAL ORDERS ON OR OFF, ON THE PLATFORM'S OWN RECORD (3.291.0, owner
+// 2026-09-28). The press that arms real money: it says which way it goes, it is
+// not offered at all where it would do nothing, and it asks before it arms.
+module.exports.theRealOrdersPressSaysWhichWayItGoesAndAsksBeforeItArms = function () {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
+  const row = src.slice(src.lastIndexOf('<div class="row"', src.indexOf('data-engreal=')), src.indexOf('</div>', src.indexOf('data-engreal=')));
+  assert.ok(/\(realOn \? 'Switch real orders off' : 'Switch real orders on'\)/.test(row), 'the button says which way the press goes, never just "real orders"');
+  assert.ok(/\(canReal \? '' : ' disabled'\)/.test(row), 'a platform that cannot place a real order offers no press that would do nothing');
+  // RULE FOUR-A: a button gets a row of its own with its own message beside it
+  assert.ok(!/<input/.test(row) && /<span class="note/.test(row), 'the press sits in a row of its own, with its own message beside it');
+  // and it cannot be pressed on a platform that is not answering, or one with no live exchange module
+  assert.ok(/const canReal = !!e\.answers && Array\.isArray\(h\.modes\) && h\.modes\.includes\('live'\);/.test(src), 'what makes the press possible is what the platform itself says');
+  // ARMING IS ASKED FOR PLAINLY; switching off strands nothing, and says so
+  assert.ok(/Switch real orders ON for[^;]*real funds/.test(src), 'switching on says it is real money before it happens');
+  assert.ok(/Switch real orders OFF for[^;]*still closes by its stop or its hold/.test(src), 'switching off says what it does not do');
+  // nothing on this page ever presses it by itself
+  assert.ok(!/\/real', \{ on: true \}\)/.test(src.replace(/const on = b\.dataset\.realon !== '1';/, '')), 'nothing switches real orders on without the press');
+};
+
 // THE ENGINE RECORD'S TWO NAMES SAY WHICH IS WHICH ON THE SCREEN (3.263.1):
 // visible labels and an example in each box, never hover text alone
 module.exports.theEngineRecordFormSaysWhichNameIsWhich = function () {

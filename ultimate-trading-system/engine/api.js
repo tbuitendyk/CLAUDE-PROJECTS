@@ -24,10 +24,15 @@
 //   POST /keys/:account/delete  the keys taken away
 //   POST /setups/:id/verbose  { on } -- every hourly trail check of this setup's
 //                           plans written down, or not (Verbose on Setup detail)
+//   POST /live              { on } -- real orders on or off for this platform
+//                           (3.291.0). The owner's own press and nothing else:
+//                           it changes what the engine will send and is written
+//                           into its config.json so a restart keeps it. Refused
+//                           on a platform with no live exchange module.
 //   GET  /journal?since=N   the record, numbered lines from N
 const { marginOrNull } = require('./keystore');
 
-function makeHandler({ runner, journal, health, keystore = null, checkKey = null, lock = null }) {
+function makeHandler({ runner, journal, health, keystore = null, checkKey = null, lock = null, setLive = null }) {
   // one question in, { status, json } out -- never throws
   return async function handle(method, target, body = {}) {
     const u = new URL(target, 'http://engine');
@@ -38,6 +43,14 @@ function makeHandler({ runner, journal, health, keystore = null, checkKey = null
       const vm = /^\/setups\/([^/]+)\/verbose$/.exec(u.pathname);
       if (method === 'POST' && vm) {
         const out = runner.setVerbose(decodeURIComponent(vm[1]), b.on === true);
+        return { status: out.ok ? 200 : 400, json: out };
+      }
+      // REAL ORDERS ON OR OFF (3.291.0). Nothing here decides it: the answer
+      // says what it now is, and whether it was written down for a restart.
+      if (method === 'POST' && u.pathname === '/live') {
+        if (!setLive) return { status: 503, json: { error: 'this platform cannot switch real orders on or off' } };
+        if (b.on !== true && b.on !== false) return { status: 400, json: { error: 'say whether real orders are on or off' } };
+        const out = setLive(b.on);
         return { status: out.ok ? 200 : 400, json: out };
       }
       if (method === 'POST' && u.pathname === '/plans') {

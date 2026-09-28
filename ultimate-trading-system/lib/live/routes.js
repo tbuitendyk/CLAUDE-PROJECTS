@@ -137,6 +137,26 @@ function installLiveRoutes(app, { csrfGuard }) {
       res.json({ ok: true, ...out });
     } catch (e) { res.status(e.code === 'IN_USE' ? 409 : e.code === 'NOT_FOUND' ? 404 : 500).json({ error: e.message }); }
   });
+  // REAL ORDERS ON OR OFF, on one trading platform (3.291.0, owner 2026-09-28:
+  // fix this: "this release of the platform places no real orders"). The press
+  // goes straight through to the platform and nothing about it is kept here --
+  // the platform is the only thing that can act on it, and it is the only thing
+  // that knows whether it wrote the answer down for its own restart.
+  app.post('/api/live/engines/:id/real', csrfGuard, async (req, res) => {
+    try {
+      const t = require('./targets').getTarget(String(req.params.id));
+      if (!t || t.kind !== 'engine') return res.status(404).json({ error: `no trading platform called ${req.params.id}` });
+      const on = (req.body || {}).on === true;
+      const r = await require('./enginelink').call(t, 'POST', '/live', { on }, 8000);
+      if (r.status === 404 && r.json && /no such address on the platform/.test(String(r.json.error || ''))) {
+        return res.status(409).json({ error: 'this platform\'s release cannot switch real orders on or off: bring it up to date with a new install command' });
+      }
+      if (!r.ok) return res.status(r.status >= 400 && r.status < 500 ? r.status : 502).json({ error: (r.json && r.json.error) || r.why || `the platform answered ${r.status}` });
+      const j = r.json || {};
+      return res.json({ ok: true, engine: t.id, realOrders: j.realOrders || (on ? 'on' : 'off'), kept: j.kept === true, why: j.why || null });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  });
+
   // SETTING UP A TRADING ENGINE, STEP BY STEP (owner, 2026-09-25): the
   // checklist on Setup > Compute, one per engine -- the template and each
   // checklist with where it stands (lib/live/enginesetup.js)

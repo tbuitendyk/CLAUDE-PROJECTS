@@ -165,7 +165,8 @@ const TEMPLATE = {
       guidance: [
         { paras: [
           'Real money is switched on one setup at a time: on Live Trading, press Activate real for its config on Greenlights. It is refused unless the setup names this account in its Sub-account key, and unless real orders are switched on on its trading platform.',
-          'In this release the trading platform places no real orders: it has no part that places them, and it starts with real orders off even when told to start with them on. Until a release that places them, this step cannot be done.',
+          'Real orders are switched on for a whole trading platform, once, before any setup on it can place one: press Switch real orders on on that platform\'s own record on the Compute tab. Every platform starts with them off, and nothing switches them on but that press.',
+          'Switching them off again opens no new real position, and leaves one already open to close by its stop or its hold. Setups on paper are not affected either way.',
         ] },
       ],
       needs: ['live'],
@@ -204,7 +205,7 @@ const NEEDS = {
   },
   live(f) {
     if (f.live) return { ok: true, text: `${f.live} setup${f.live === 1 ? '' : 's'} trading from this account ${f.live === 1 ? 'is' : 'are'} on real money` };
-    if (!f.realOn.length) return { ok: false, text: `real orders are switched off on ${f.platforms.length ? namesOf(f.platforms) : 'every trading platform'}: this release of the platform places no real orders` };
+    if (!f.realOn.length) return { ok: false, text: `real orders are switched off on ${f.platforms.length ? namesOf(f.platforms) : 'every trading platform'}: press Switch real orders on on that platform's own record on the Compute tab` };
     return { ok: false, text: 'no setup trading from this account is on real money: press Activate real for it on Live Trading' };
   },
 };

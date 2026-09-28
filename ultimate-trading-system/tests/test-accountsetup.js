@@ -71,7 +71,8 @@ module.exports = {
       'ask the exchange what the key may do, before it keeps them', 'In this release it does not read how much is in the pot', 'The borrowing rate is read of the cross pot',
       'that choice travels to the platform with the keys',
       'its Sub-account key holds this account\'s name', 'in the setup\'s Setup detail, and kept with Save', 'press Activate real for its config on Greenlights',
-      'In this release the trading platform places no real orders', 'this step cannot be done']) assert.ok(rest4.includes(w), `steps 3 to 6 say ${w}`);
+      'press Switch real orders on on that platform\'s own record on the Compute tab', 'Every platform starts with them off',
+      'leaves one already open to close by its stop or its hold']) assert.ok(rest4.includes(w), `steps 3 to 6 say ${w}`);
     // a checklist never takes a key: every choice is one of its options and every tick is on or off
     for (const st of as.TEMPLATE.steps) assert.ok(Object.keys(st).every((k) => ['id', 'title', 'guidance', 'choices', 'fields', 'ticks', 'needs', 'panel', 'writing'].includes(k)), `step ${st.id} holds nothing unexpected`);
     assert.strictEqual(later[0].panel, 'locks', 'step 3 draws each platform\'s lock');
@@ -220,14 +221,26 @@ module.exports = {
     // a setup names it: step 5 done; step 6 cannot be done while real orders are off everywhere
     st = at({ ...none, keysOn: ['box-1'], checkedOn: ['box-1'], named: 1 });
     assert.deepStrictEqual([st[4].done, st[4].said[0].text, st[5].open, st[5].done], [true, '1 setup names this account in Sub-account key', true, false]);
-    assert.strictEqual(st[5].said[0].text, 'real orders are switched off on box-1: this release of the platform places no real orders');
+    assert.strictEqual(st[5].said[0].text, 'real orders are switched off on box-1: press Switch real orders on on that platform\'s own record on the Compute tab');
     assert.strictEqual(at({ ...none, keysOn: ['box-1'], checkedOn: ['box-1'], named: 2, realOn: ['box-1'] })[5].said[0].text, 'no setup trading from this account is on real money: press Activate real for it on Live Trading');
     st = at({ ...none, keysOn: ['box-1'], checkedOn: ['box-1'], named: 2, live: 1, realOn: ['box-1'] });
     assert.deepStrictEqual([st[5].done, st[5].said[0].text], [true, '1 setup trading from this account is on real money']);
-    // THE WORDS OF STEP 6 ARE HELD TO THE PLATFORM: the day it can place real orders, this fails and the step is written again
+    // THE WORDS OF STEP 6 ARE HELD TO THE PLATFORM. Until 3.291.0 this read the
+    // other way round -- it held the platform to having no part that places a
+    // real order, and it fired the day one was written, which is what it was
+    // for. What step 6 must keep telling the truth about now is that the live
+    // exchange module is registered, that the config decides rather than the
+    // code forcing it off, that a new install starts with real orders OFF, and
+    // that a press is the only thing that changes it. The day any of those
+    // changes, this fails and the step is written again.
     const main = fs.readFileSync(path.join(__dirname, '..', 'engine', 'main.js'), 'utf8');
-    assert.ok(/realOrders: 'off'/.test(main) && /this platform has no live exchange module yet/.test(main) && !/venues: \{[^}]*live/.test(main),
-      'the platform can now place real orders, so step 6 no longer tells the truth: write it again');
+    assert.ok(/venues: \{ simulated, live \}/.test(main), 'the live exchange module is no longer registered, so step 6 no longer tells the truth: write it again');
+    assert.ok(/liveEnabled: cfg\.liveEnabled === true/.test(main), 'the config no longer decides whether real orders are on');
+    assert.ok(/simDelayMs: 0, liveEnabled: false,/.test(main), 'a new install no longer starts with real orders off');
+    assert.ok(/const setLive = \(on\) =>/.test(main) && /realOrders: runner\.liveEnabled \? 'on' : 'off'/.test(main),
+      'the press that switches real orders, or the platform saying which it is, has gone');
+    // and nothing in the engine switches them on by itself: the press is the only way in
+    assert.ok(!/setLive\(true\)|liveEnabled = true/.test(main), 'something in the engine now switches real orders on by itself');
     // and step 4's words about what the platform reads are held to what it reads
     const acctSrc = fs.readFileSync(path.join(__dirname, '..', 'engine', 'venues', 'binance-account.js'), 'utf8');
     const runner = fs.readFileSync(path.join(__dirname, '..', 'engine', 'runner.js'), 'utf8');
