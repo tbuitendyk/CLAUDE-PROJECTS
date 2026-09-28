@@ -13,11 +13,11 @@ python3 - <<'PY'
 import json, urllib.request
 g = json.load(open('/tmp/uts-l-gl.json')).get('greenlights') or []
 d = json.load(open('/tmp/uts-l-sets.json'))
-sets = {x['id']: x for x in (d if isinstance(d, list) else d.get('sets', []))}
+sets = {x.get('id'): x for x in (d if isinstance(d, list) else d.get('sets', [])) if isinstance(x, dict) and x.get('id')}
 def chain(sid):
     out = []
     while sid and sid in sets and len(out) < 8:
-        x = sets[sid]; out.append(f"{x['id']} ({x.get('name')})"); sid = (x.get('parent') or {}).get('id')
+        x = sets[sid]; out.append(f"{x.get('id')} ({x.get('name')})"); sid = (x.get('parent') or {}).get('id')
     if sid and sid not in sets: out.append(f"{sid} (not on the box)")
     return out
 print(f"greenlights: {len(g)}")
