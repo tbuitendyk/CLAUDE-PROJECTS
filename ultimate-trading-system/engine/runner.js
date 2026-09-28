@@ -196,21 +196,54 @@ class Runner {
     }
   }
 
-  venueFor(mode) {
+  // THE MODULE REGISTERED FOR A MODE, whether or not it may be sent to: what
+  // its capabilities say and what rate it quotes are read from it either way.
+  moduleFor(mode) {
     if (mode === 'simulated') return this.venues.simulated;
-    if (mode === 'live' && this.liveEnabled) return this.venues.live || null;
+    if (mode === 'live') return this.venues.live || null;
     return null;
+  }
+
+  // WHICH MODULE AN ORDER GOES TO. Real orders switched off stops NEW real
+  // positions; it never strands an open one. That is D11's rule -- a setup that
+  // is stopped takes no new entry, and an open position still closes by its
+  // stop or its hold -- pointed at the switch: money already in the market must
+  // be able to come out, or the stop it is standing on does nothing.
+  venueFor(mode, purpose = 'enter') {
+    const v = this.moduleFor(mode);
+    if (mode !== 'live') return v;
+    if (!v) return null;
+    return this.liveEnabled || purpose === 'exit' ? v : null;
+  }
+
+  // why an order has nowhere to go, in the words that say what to do about it
+  whyNoVenue(a) {
+    if (a.mode === 'live' && this.moduleFor('live') && !this.liveEnabled) return 'real orders are switched off on this platform, so no new real position is opened; an open one still closes';
+    return `no exchange module will take a ${a.mode} order on this platform`;
+  }
+
+  // REAL ORDERS ON OR OFF, the owner's own press (Setup > Compute). Nothing
+  // here switches it on by itself, and what it changes is written down.
+  setLive(on) {
+    const want = on === true;
+    if (want && !this.venues.live) return { ok: false, problems: ['this platform has no live exchange module'] };
+    if (this.liveEnabled === want) return { ok: true, realOrders: want ? 'on' : 'off', already: true };
+    this.liveEnabled = want;
+    this.write({ type: 'live', realOrders: want ? 'on' : 'off' });
+    return { ok: true, realOrders: want ? 'on' : 'off' };
   }
 
   async send(r, a) {
     const id = r.plan.planId;
-    const venue = this.venueFor(a.mode);
+    const venue = this.venueFor(a.mode, a.purpose);
     this.write({ type: 'order', planId: id, setupId: r.plan.setupId, mode: a.mode, order: a });
-    if (!venue) return this.refused(r, a, `no exchange module will take a ${a.mode} order on this platform`);
+    if (!venue) return this.refused(r, a, this.whyNoVenue(a));
     let res;
     try {
       const fee = this.feeOf(r.plan);
-      res = await venue.placeOrder({ ...a, setupId: r.plan.setupId, feePerLeg: fee.feePerLeg, feeSource: fee.source, walletStartUsd: r.plan.walletStartUsd });
+      // THE ACCOUNT RIDES WITH THE ORDER: a real order is signed with that
+      // account's own key, and the simulated module pays that account's own fee
+      res = await venue.placeOrder({ ...a, account: r.plan.account || null, setupId: r.plan.setupId, feePerLeg: fee.feePerLeg, feeSource: fee.source, walletStartUsd: r.plan.walletStartUsd });
     } catch (e) { res = { status: 'refused', why: e.message }; }
     if (res.status !== 'filled') return this.refused(r, a, res.why);
     const leg = { price: res.price, qty: res.qty, feeUsd: res.feeUsd, ts: res.ts, against: res.against, orderId: a.orderId };
@@ -284,7 +317,7 @@ class Runner {
     const hour = Math.floor(now / HOUR_MS) * HOUR_MS;
     const last = r.ledger.interestHours.length ? r.ledger.interestHours[r.ledger.interestHours.length - 1].hourTs : Math.floor(r.ledger.entry.ts / HOUR_MS) * HOUR_MS - HOUR_MS;
     if (hour <= last) return;
-    const venue = this.venueFor(r.plan.mode);
+    const venue = this.moduleFor(r.plan.mode);
     const f = this.factsOf(r.plan);
     const rate = f && f.rate && Number.isFinite(f.rate.rate)
       ? { rate: f.rate.rate, source: `${f.venue}, the hourly rate quoted to ${r.plan.account} at ${new Date(f.rate.at).toISOString().slice(11, 16)} UTC` }
