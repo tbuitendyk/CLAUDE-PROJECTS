@@ -1830,6 +1830,14 @@ function renderExchange(x, pendingFlows, profile) {
     when.textContent = fmtUtc(f.ts);
     const kind = document.createElement('td');
     kind.textContent = f.kind;
+    // Held by the router (not auto-applied): say why, right on the row.
+    if (f.hold_reason) {
+      const why = document.createElement('div');
+      why.className = 'neg';
+      why.style.fontSize = '.82rem';
+      why.textContent = `⚠ held for you: ${f.hold_reason}`;
+      kind.appendChild(why);
+    }
     const amt = document.createElement('td');
     amt.textContent = `${f.amount >= 0 ? '+' : ''}${f.amount} ${f.code.toUpperCase()}`;
     amt.className = f.amount >= 0 ? 'pos' : 'neg';
@@ -2368,12 +2376,21 @@ async function loadSubaccounts(x) {
   const lb = $('#sub-log tbody');
   lb.innerHTML = '';
   const nameOf = (id) => (data.profiles.find((p) => p.id === id) || { name: id ?? '—' }).name;
+  const isShell = (id) => Boolean((data.profiles.find((p) => p.id === id) || {}).isShell);
+  const fmtLvl = (v) => (v == null ? '—' : v.toFixed(4));
   const txnRow = (rrow) => {
     const tr = document.createElement('tr');
     tr.innerHTML =
       `<td>${fmtUtc(rrow.ts)}</td><td>${nameOf(rrow.profile_id)}</td>` +
-      `<td>${rrow.note}${rrow.rewound_by ? ' <span class="muted">(rewound)</span>' : ''}</td>`;
+      `<td>${rrow.note}${rrow.rewound_by ? ' <span class="muted">(rewound)</span>' : ''}` +
+      `${rrow.funding_id ? ' <span class="muted">(re-booked as a cash-out/in — rewind that entry to undo)</span>' : ''}</td>`;
     const act = document.createElement('td');
+    // A re-booked fill stays put until its marking is rewound (the server
+    // refuses too: undoing the fill under it would remove the jump twice).
+    if (rrow.funding_id) {
+      tr.appendChild(act);
+      return tr;
+    }
     if (rrow.kind !== 'rewind' && !rrow.rewound_by) {
       const rw = document.createElement('button');
       rw.textContent = 'Rewind';
@@ -2402,6 +2419,32 @@ async function loadSubaccounts(x) {
           } catch (err) { alert(err.message); }
         });
         act.append(sel, re);
+        if (!isShell(rrow.profile_id)) {
+          const cash = document.createElement('button');
+          cash.className = 'ghost';
+          cash.textContent = 'Cash-out / cash-in…';
+          cash.title =
+            'This fill moved money into or out of the strategy (a sale you withdrew, or a buy paid with a fresh ' +
+            'deposit) — re-book it, and the rest of its order, so neither the basket nor the value index counts it as trading';
+          cash.addEventListener('click', async () => {
+            try {
+              const plan = await api(`/txnlog/${rrow.id}/funding`, { method: 'POST', body: { preview: true } });
+              const legacy = plan.fills.some((f) => f.legacy)
+                ? '\n\n(Older fill: its effect is reconstructed from the poll snapshots around it.)'
+                : '';
+              const msg =
+                `Re-book ${plan.fills.length} fill(s) on "${plan.profileName}" as a ${plan.what}?\n\n` +
+                plan.fills.map((f) => `  • ${f.note}`).join('\n') +
+                `\n\nCurrency basket: ${fmtLvl(plan.basket.now)} → ${fmtLvl(plan.basket.after)}` +
+                `\nValue index: ${fmtLvl(plan.value.now)} → ${fmtLvl(plan.value.after)}` +
+                '\n\nQuantities do not change. Rewindable from this log.' + legacy;
+              if (!confirm(msg)) return;
+              await api(`/txnlog/${rrow.id}/funding`, { method: 'POST', body: {} });
+              await refresh();
+            } catch (err) { alert(err.message); }
+          });
+          act.append(cash);
+        }
       }
     }
     tr.appendChild(act);

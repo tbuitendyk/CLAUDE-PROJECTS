@@ -415,6 +415,17 @@ CREATE TABLE IF NOT EXISTS advice_log (
   quantity REAL NOT NULL
 );
 `);
+// Funding re-booking (2026-10, live incident: a BTC→MXN cash-out read as an
+// 18% basket loss). `idx` stamps an applied fill's exact index effect —
+// JSON {b0, b1, v0, v1}: basket + value-index levels just before/after its
+// deltas landed — so it can later be re-booked as a cash-out/cash-in.
+// `reclass_of` links a 'funding' row to the trade row it re-books.
+ensureColumn('txn_log', 'idx', 'idx TEXT');
+ensureColumn('txn_log', 'reclass_of', 'reclass_of INTEGER REFERENCES txn_log(id)');
+// A synced flow the router could not place with confidence (e.g. a
+// withdrawal of cash a strategy profile just received from a trade): auto-
+// apply skips it, it waits for a human, and that profile's alerts pause.
+ensureColumn('pending_flows', 'hold_reason', 'hold_reason TEXT');
 
 // Shells poll for VALUATION (pool prices/values in their chosen tether)
 // while alerting stays impossible (alerts off + no targets). Flip shells

@@ -720,6 +720,42 @@ Live repair path: carve 140.27 USDC Trial 1 → Production (Production spent
 it; both indices splice), then Resolve −377.27 USDC on Production as a
 missed trade leg (removes the phantom gain the clamp created).
 
+### Cash-out re-booking + withdrawal routing (2026-10-10, live incident)
+**Status: BUILT (tests green: test-funding.js).** Bitso MAIN, 2026-10-05: the
+user sold BTC for MXN inside Production (cash at 0% target) and withdrew the
+58,098 MXN. The fills were trading (no splice), so the basket read the sold
+BTC units as a loss (≈1.00 → 0.817, locked in by the withdrawal splice). The
+withdrawal auto-applied to the pool, which also holds MXN, so Production's
+books kept the gone cash for 3½ days and emailed "BTC underweight 54% vs
+72.5%" six times until the user rewound and re-applied it on 10-09. The value
+index was right throughout (the sale is value-neutral minus fees). Two
+changes, both user-chosen:
+- **Cash-out / cash-in re-booking** (`subaccounts.rebookAsFunding`,
+  `POST /api/txnlog/:id/funding`, button on the txn log): removes a fill's
+  jump from both chained indices (basket_base × b0/b1, value_base × v0/v1,
+  what a flow splice at that moment would have done); quantities untouched.
+  One click takes the whole order (same profile, pair and side within 2h),
+  with a preview first. Every applied fill now carries an exact stamp
+  (`txn_log.idx` = {b0,b1,v0,v1}, priced from the last poll; sync auto-
+  attribution and assigns both stamp). Unstamped legacy fills reconstruct
+  from the bracketing poll snapshots: exact when one targeted asset moved in
+  that sync (the cash-out shape), refused with a reason otherwise. 'funding'
+  rows (`reclass_of`) rewind by dividing the factors back out; a re-booked
+  fill can't be rewound until its marking is. Basket exactness caveat: exact
+  when no other fill landed on the profile between the re-booked one and its
+  next splice; a close approximation otherwise (arithmetic basket).
+- **Withdrawal routing** (multi path only): a withdrawal is HELD
+  (`pending_flows.hold_reason`, never auto-applied) and suggested to the
+  likeliest owner when (a) a strategy profile holds that currency from its own
+  fills in the last 7 days, (b) the default owner can't cover it but another
+  profile can, or (c) fills with that currency's proceeds are still in the
+  inbox. A one-shot "ACTION NEEDED" notice goes to the suggested profile's
+  recipients, and that profile's rebalance notifications pause (nothing
+  marked active) until the flow is confirmed. Deposits, and withdrawals the
+  pool plainly covers, behave exactly as before.
+Live repair: click Cash-out / cash-in… on any of Production's 2026-10-05
+SELL BTC/MXN fills (legacy path).
+
 ### Non-goals
 No auto-trading, no per-profile API keys, no venue-native sub-accounts
 (Bitso retail has none; Kraken's are institutional). The venue keys stay

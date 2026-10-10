@@ -343,7 +343,7 @@ app.get('/api/profiles/:id/state', (req, res) => {
     flows,
     exchange: exchangeView(profile.id),
     pendingFlows: db
-      .prepare("SELECT id, ts, kind, code, asset_id, amount, profile_id FROM pending_flows WHERE profile_id = ? AND status = 'pending' ORDER BY ts")
+      .prepare("SELECT id, ts, kind, code, asset_id, amount, profile_id, hold_reason FROM pending_flows WHERE profile_id = ? AND status = 'pending' ORDER BY ts")
       .all(profile.id),
     latestTune: latestResult(profile.id, 'tune-threshold'),
     latestCompose: latestResult(profile.id, 'compose'),
@@ -812,6 +812,22 @@ app.post('/api/txnlog/:id/rewind', async (req, res) => {
   try {
     const r = await subaccounts.rewindTxn(Number(req.params.id));
     res.json({ ok: true, warnings: r.warnings });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Re-book a fill (and, by default, the rest of its order) as a cash-out or
+// cash-in: money moving in/out of the strategy, not trading. preview=true
+// returns the before/after levels without changing anything.
+app.post('/api/txnlog/:id/funding', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const r = await subaccounts.rebookAsFunding(Number(req.params.id), {
+      preview: Boolean(b.preview),
+      siblings: b.siblings !== false,
+    });
+    res.json({ ok: true, ...r });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

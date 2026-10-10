@@ -83,18 +83,37 @@ function ensureAsset(profileId, like) {
 }
 
 // ---- transaction log --------------------------------------------------------
-function logTxn({ accountId, profileId = null, kind, ref = null, deltas = null, note, ts = Date.now() }) {
+function logTxn({ accountId, profileId = null, kind, ref = null, deltas = null, note, ts = Date.now(), idx = null, reclassOf = null }) {
   const info = db
-    .prepare('INSERT INTO txn_log (account_id, profile_id, ts, kind, ref, deltas, note) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(accountId, profileId, ts, kind, ref, deltas ? JSON.stringify(deltas) : null, note);
+    .prepare(
+      'INSERT INTO txn_log (account_id, profile_id, ts, kind, ref, deltas, note, idx, reclass_of) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    )
+    .run(accountId, profileId, ts, kind, ref, deltas ? JSON.stringify(deltas) : null, note, idx ? JSON.stringify(idx) : null, reclassOf);
   return info.lastInsertRowid;
 }
 
+// Rows for the UI: deltas parsed, plus `funding_id` on a trade row that is
+// currently re-booked as a cash-out/cash-in (its active 'funding' row).
+function decorateTxnRows(accountId, rows) {
+  const funded = new Map(
+    db
+      .prepare("SELECT id, reclass_of FROM txn_log WHERE account_id = ? AND kind = 'funding' AND rewound_by IS NULL")
+      .all(accountId)
+      .map((r) => [r.reclass_of, r.id])
+  );
+  return rows.map((r) => ({
+    ...r,
+    deltas: r.deltas ? JSON.parse(r.deltas) : null,
+    idx: r.idx ? JSON.parse(r.idx) : null,
+    funding_id: funded.get(r.id) ?? null,
+  }));
+}
+
 function listTxnLog(accountId, limit = 50) {
-  return db
-    .prepare('SELECT * FROM txn_log WHERE account_id = ? ORDER BY ts DESC, id DESC LIMIT ?')
-    .all(accountId, limit)
-    .map((r) => ({ ...r, deltas: r.deltas ? JSON.parse(r.deltas) : null }));
+  return decorateTxnRows(
+    accountId,
+    db.prepare('SELECT * FROM txn_log WHERE account_id = ? ORDER BY ts DESC, id DESC LIMIT ?').all(accountId, limit)
+  );
 }
 
 // Keyset page of the txn log, ordered like listTxnLog (ts DESC, id DESC).
@@ -110,7 +129,55 @@ function listTxnLogPage(accountId, { beforeTs = null, beforeId = null, limit = 2
           )
           .all(accountId, beforeTs, beforeTs, beforeId ?? 0, limit)
       : db.prepare('SELECT * FROM txn_log WHERE account_id = ? ORDER BY ts DESC, id DESC LIMIT ?').all(accountId, limit);
-  return rows.map((r) => ({ ...r, deltas: r.deltas ? JSON.parse(r.deltas) : null }));
+  return decorateTxnRows(accountId, rows);
+}
+
+// ---- index levels around an applied fill --------------------------------------
+// Latest polled USD price per coingecko id, from ANY profile's price history
+// (a row a fill just created — e.g. a strategy's first MXN — has none of its
+// own yet, but the pool's MXN row does). Pure DB reads: stamping a fill must
+// never wait on the network inside a sync transaction.
+function latestUsdPrices(cgIds) {
+  const assetIds = db.prepare('SELECT id FROM assets WHERE coingecko_id = ?');
+  const latest = db.prepare('SELECT usd_price, ts FROM price_history WHERE asset_id = ? ORDER BY ts DESC LIMIT 1');
+  const out = { usd: 1, 'fiat:usd': 1 };
+  for (const cg of new Set(cgIds)) {
+    let best = null;
+    for (const { id } of assetIds.all(cg)) {
+      const row = latest.get(id);
+      if (row && (!best || row.ts > best.ts)) best = row;
+    }
+    if (best) out[cg] = best.usd_price;
+  }
+  return out;
+}
+
+// Basket + value-index levels of `profile` for a quantity view (asset id →
+// quantity; assets missing from it read their stored quantity). Value is
+// null when any held asset is unpriced — a partial total would fake a jump.
+function levelsFor(profile, assets, qtyOf, usdPrices) {
+  const view = assets.map((a) => ({ ...a, quantity: qtyOf.has(a.id) ? qtyOf.get(a.id) : a.quantity }));
+  const basket = computeBasket(view, profile.basket_base);
+  const indexUsd = indexUsdFor(view, usdPrices);
+  let total = 0;
+  let priced = indexUsd != null;
+  for (const a of view) {
+    if (!(a.quantity > 0)) continue;
+    const p = priceAsset(a, indexUsd, usdPrices);
+    if (p) total += a.quantity * p.rel;
+    else priced = false;
+  }
+  return { basket, value: priced ? computeValueIndex(profile, total) : null };
+}
+
+// The exact index effect of one applied fill: {b0, b1, v0, v1} from the
+// profile's quantity views just before and just after its deltas landed.
+// Stored on the fill's txn row so a later cash-out/cash-in re-booking
+// removes exactly the jump this fill caused — no reconstruction needed.
+function stampLevels(profile, assets, qtyBefore, qtyAfter, usdPrices) {
+  const pre = levelsFor(profile, assets, qtyBefore, usdPrices);
+  const post = levelsFor(profile, assets, qtyAfter, usdPrices);
+  return { b0: pre.basket, b1: post.basket, v0: pre.value, v1: post.value };
 }
 
 // ---- attribution ------------------------------------------------------------
@@ -286,6 +353,7 @@ function assignQueuedTrade(queueId, profileId, { kind = 'trade-assign', note = n
     );
     if (od) throw new Error(`Can't assign — this fill ${overdraftReason(od, profile.name)}.`);
     const qty = new Map(legs.map((l) => [l.asset.id, l.asset.quantity]));
+    const qtyBefore = new Map(qty);
     for (const { asset, delta } of legs) {
       const prev = qty.get(asset.id);
       const next = Math.max(0, prev + delta);
@@ -301,6 +369,7 @@ function assignQueuedTrade(queueId, profileId, { kind = 'trade-assign', note = n
     db.prepare("UPDATE attribution_queue SET status = 'assigned', assigned_profile_id = ?, resolved_at = ? WHERE id = ?").run(
       profileId, Date.now(), queueId
     );
+    const profAssets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(profileId);
     logTxn({
       accountId: q.account_id,
       profileId,
@@ -312,6 +381,7 @@ function assignQueuedTrade(queueId, profileId, { kind = 'trade-assign', note = n
         `${q.side || 'trade'} ${q.pair || ''} assigned to "${profile.name}"` +
           (q.suggested_profile_id === profileId ? ' (as suggested)' : ''),
       ts: Date.now(),
+      idx: stampLevels(profile, profAssets, qtyBefore, qty, latestUsdPrices(profAssets.map((a) => a.coingecko_id))),
     });
   })();
   return { applied };
@@ -349,8 +419,32 @@ async function rewindTxn(txnId) {
   if (!row) throw new Error('log entry not found');
   if (row.kind === 'rewind') throw new Error('a rewind entry cannot itself be rewound');
   if (row.rewound_by) throw new Error('already rewound');
+  // A re-booked fill's index correction rides on its quantities being
+  // applied — undoing the fill under it would remove the jump twice.
+  const funded = row.kind.startsWith('trade-') ? activeFunding(row.id) : null;
+  if (funded) {
+    throw new Error('this fill is re-booked as a cash-out / cash-in — rewind its "re-booked as a …" log entry first');
+  }
   const deltas = row.deltas ? JSON.parse(row.deltas) : [];
   const warnings = [];
+
+  if (row.kind === 'funding') {
+    // Undo a re-booking: divide its factors back out of the chained bases.
+    let f = {};
+    try { f = row.idx ? JSON.parse(row.idx) : {}; } catch { f = {}; }
+    db.transaction(() => {
+      const p = db.prepare('SELECT basket_base, value_base FROM profiles WHERE id = ?').get(row.profile_id);
+      if (p) {
+        db.prepare('UPDATE profiles SET basket_base = ?, value_base = ? WHERE id = ?').run(
+          (p.basket_base || 1) / (f.fb > 0 ? f.fb : 1),
+          (p.value_base || 1) / (f.fv > 0 ? f.fv : 1),
+          row.profile_id
+        );
+      }
+      finishRewind(row, deltas, warnings);
+    })();
+    return { warnings };
+  }
 
   const reverseQuantities = (profileId, ds) => {
     for (const d of ds) {
@@ -500,6 +594,276 @@ async function reassignTxn(txnId, profileId) {
   } catch (err) {
     throw new Error(`Rewound — the fill is back in the inbox, but ${err.message}`);
   }
+}
+
+// ---- cash-out / cash-in re-booking -------------------------------------------
+// A fill is TRADING by default: no splice, so both indices register it. But
+// a sale whose proceeds get withdrawn (a cash-out) or a buy paid for with a
+// fresh deposit (a cash-in) is money moving in or out of the strategy — and
+// with cash at 0% target, a cash-out sale reads as a pure unit loss in the
+// basket (observed live 2026-10-05: Production's basket 1.00 → 0.817 on a
+// BTC→MXN cash-out the user then withdrew). Re-booking removes exactly the
+// jump the fill caused from both chained indices — basket_base × b0/b1,
+// value_base × v0/v1, what a flow splice at that moment would have done.
+// Quantities don't move. Exact for the value index; exact for the basket
+// when no other fill landed on the profile between this one and its next
+// splice (the cash-out shape: sell, then withdraw), close otherwise.
+// Appends one rewindable 'funding' row per fill.
+const SIBLING_WINDOW_MS = 2 * 3_600_000; // fills of one order: same pair+side within 2h
+const LEGACY_SEARCH_MS = 14 * 86_400_000; // how late a fill may have landed after it traded
+
+function tradeMeta(accountId, ref) {
+  return (
+    db.prepare('SELECT ts, pair, side FROM exchange_trades WHERE account_id = ? AND venue_trade_id = ?').get(accountId, ref) ||
+    null
+  );
+}
+
+function activeFunding(txnId) {
+  return db.prepare("SELECT id FROM txn_log WHERE kind = 'funding' AND reclass_of = ? AND rewound_by IS NULL").get(txnId) || null;
+}
+
+// Auto-attributed rows carry the venue fill time (the deltas landed at the
+// next sync, later); assigned rows carry the assign time (applied right then).
+function appliedFrom(row) {
+  if (row.kind !== 'trade-auto-t1' && row.kind !== 'trade-auto-t2') return row.ts;
+  const m = tradeMeta(row.account_id, row.ref);
+  return m ? Math.min(m.ts, row.ts) : row.ts;
+}
+
+// Fills applied before index stamping existed: reconstruct their levels
+// from the profile's poll snapshots. The basket only moves on fills, so
+// between the last snapshot before a fill landed and the first one after,
+// its change is exactly that sync's fills. With ONE targeted asset moving
+// (the cash-out shape: crypto against 0%-target cash) the change splits
+// exactly across the batch, in log order. Value levels use the after-
+// snapshot's own prices. Returns {b0,b1,v0,v1} (b* null + basketWhy when
+// the basket can't be isolated).
+function legacyLevels(row, profile) {
+  const legs = JSON.parse(row.deltas || '[]').filter((d) => d.delta !== 0);
+  if (legs.length === 0) throw new Error('this fill moved nothing');
+  const from = appliedFrom(row);
+  const ev = db
+    .prepare('SELECT weights FROM basket_events WHERE profile_id = ? AND ts <= ? ORDER BY ts DESC, id DESC LIMIT 1')
+    .get(profile.id, from);
+  let weights = null;
+  try { weights = ev && ev.weights ? JSON.parse(ev.weights) : null; } catch { weights = null; }
+  if (!weights) {
+    weights = {};
+    for (const a of db.prepare('SELECT symbol, target_pct FROM assets WHERE profile_id = ?').all(profile.id)) weights[a.symbol] = a.target_pct || 0;
+  }
+  const targeted = (sym) => (weights[sym] || 0) > 0;
+  const tLegs = legs.filter((d) => targeted(d.symbol));
+  const primary = tLegs[0] || legs[0];
+
+  // Every trade fill on this profile near this one — the candidates for "the
+  // same sync's batch".
+  const cands = db
+    .prepare("SELECT * FROM txn_log WHERE profile_id = ? AND kind LIKE 'trade-%' AND ts >= ? AND ts <= ? ORDER BY id")
+    .all(profile.id, from - LEGACY_SEARCH_MS, from + LEGACY_SEARCH_MS);
+  const fromOf = new Map(cands.map((c) => [c.id, appliedFrom(c)]));
+  const minFrom = Math.min(from, ...fromOf.values());
+  const first = db
+    .prepare('SELECT ts FROM profile_snapshots WHERE profile_id = ? AND ts <= ? ORDER BY ts DESC LIMIT 1')
+    .get(profile.id, minFrom);
+  if (!first) throw new Error('no poll snapshot before this fill — its effect cannot be reconstructed');
+  const snaps = db
+    .prepare('SELECT id, ts, basket, total_rel, quantities FROM profile_snapshots WHERE profile_id = ? AND ts >= ? AND ts <= ? ORDER BY ts')
+    .all(profile.id, first.ts, from + LEGACY_SEARCH_MS)
+    .map((s) => {
+      let Q = {};
+      try { Q = JSON.parse(s.quantities || '{}') || {}; } catch { Q = {}; }
+      return { ...s, Q };
+    });
+  // First snapshot pair after `fromTs` where `sym` moved in direction `sign`.
+  const bracket = (fromTs, sym, sign) => {
+    let i = -1;
+    for (let k = 0; k < snaps.length && snaps[k].ts <= fromTs; k++) i = k;
+    if (i < 0) return -1;
+    for (; i + 1 < snaps.length; i++) {
+      const d = (snaps[i + 1].Q[sym] || 0) - (snaps[i].Q[sym] || 0);
+      if (Math.abs(d) > 1e-12 && Math.sign(d) === Math.sign(sign)) return i;
+    }
+    return -1;
+  };
+  const k = bracket(from, primary.symbol, primary.delta);
+  if (k < 0) throw new Error(`no poll snapshot shows this fill's ${primary.symbol.toUpperCase()} landing — its effect cannot be reconstructed`);
+  const S0 = snaps[k];
+  const S1 = snaps[k + 1];
+  // The batch: candidates touching the primary asset whose own bracket is k.
+  const legOf = (c, sym) => JSON.parse(c.deltas || '[]').filter((d) => d.symbol === sym).reduce((s, d) => s + d.delta, 0);
+  const batch = cands.filter((c) => {
+    const d = legOf(c, primary.symbol);
+    return d !== 0 && bracket(fromOf.get(c.id), primary.symbol, d) === k;
+  });
+  if (!batch.some((c) => c.id === row.id)) batch.push(row);
+  batch.sort((a, b) => a.id - b.id);
+  const before = batch.filter((c) => c.id < row.id);
+  const after = batch.filter((c) => c.id > row.id);
+
+  // Basket: exact split when the primary is the ONLY targeted asset moving.
+  let b0 = null;
+  let b1 = null;
+  let basketWhy = null;
+  if (tLegs.length === 0) {
+    b0 = b1 = S0.basket; // no targeted leg: the fill cannot move the basket
+  } else if (S0.basket == null || S1.basket == null) {
+    basketWhy = 'no basket recorded around this fill';
+  } else if (tLegs.length > 1) {
+    basketWhy = 'the fill moved two targeted assets at once, so its basket effect cannot be split from the snapshots';
+  } else {
+    const movedOthers = Object.keys(weights).filter(
+      (sym) => targeted(sym) && sym !== primary.symbol && Math.abs((S1.Q[sym] || 0) - (S0.Q[sym] || 0)) > 1e-12
+    );
+    const dQ = (S1.Q[primary.symbol] || 0) - (S0.Q[primary.symbol] || 0);
+    const sumBatch = batch.reduce((s, c) => s + legOf(c, primary.symbol), 0);
+    if (movedOthers.length) {
+      basketWhy = `${movedOthers.join(', ')} also moved in the same sync, so the basket change cannot be split`;
+    } else if (Math.abs(sumBatch - dQ) > 1e-6 * Math.max(1e-9, Math.abs(dQ))) {
+      basketWhy = `the logged fills (${+sumBatch.toFixed(8)}) don't account for the ${primary.symbol} change the snapshots show (${+dQ.toFixed(8)})`;
+    } else {
+      const c = (S1.basket - S0.basket) / dQ;
+      b0 = S0.basket + c * before.reduce((s, x) => s + legOf(x, primary.symbol), 0);
+      b1 = b0 + c * legOf(row, primary.symbol);
+    }
+  }
+
+  // Value: each fill's value effect at the after-snapshot's prices.
+  const rel = new Map(
+    db.prepare('SELECT asset_id, rel_price FROM price_history WHERE profile_id = ? AND ts = ?').all(profile.id, S1.ts).map((r) => [r.asset_id, r.rel_price])
+  );
+  const dv = (c) => {
+    let s = 0;
+    for (const d of JSON.parse(c.deltas || '[]')) {
+      if (!rel.has(d.asset_id)) return null;
+      s += d.delta * rel.get(d.asset_id);
+    }
+    return s;
+  };
+  let v0 = null;
+  let v1 = null;
+  const own = dv(row);
+  const later = after.map(dv);
+  if (own != null && later.every((x) => x != null) && S1.total_rel > 0) {
+    v1 = S1.total_rel - later.reduce((s, x) => s + x, 0);
+    v0 = v1 - own;
+  }
+  return { b0, b1, v0, v1, basketWhy, legacy: true };
+}
+
+// Plan (and, unless preview, apply) the re-booking of a fill — by default
+// with its sibling fills (same profile, pair and side within 2h: one order
+// executes in pieces). Returns the before/after levels for the confirm text.
+async function rebookAsFunding(txnId, { preview = false, siblings = true } = {}) {
+  const row = db.prepare('SELECT * FROM txn_log WHERE id = ?').get(txnId);
+  if (!row) throw new Error('log entry not found');
+  if (!row.kind.startsWith('trade-')) throw new Error('only synced fills can be re-booked as a cash-out / cash-in');
+  if (row.rewound_by) throw new Error('this fill was rewound — there is nothing to re-book');
+  if (activeFunding(row.id)) throw new Error('this fill is already re-booked as a cash-out / cash-in');
+  const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(row.profile_id);
+  if (!profile) throw new Error('profile not found');
+  if (profile.is_shell) throw new Error('the unallocated pool keeps no track record — nothing to re-book');
+
+  const meta = tradeMeta(row.account_id, row.ref);
+  let rows = [row];
+  if (siblings && meta && meta.pair && meta.side) {
+    const sibs = db
+      .prepare(
+        `SELECT t.* FROM txn_log t
+           JOIN exchange_trades e ON e.account_id = t.account_id AND e.venue_trade_id = t.ref
+          WHERE t.account_id = ? AND t.profile_id = ? AND t.kind LIKE 'trade-%' AND t.rewound_by IS NULL
+            AND t.id != ? AND e.pair = ? AND e.side = ? AND e.ts BETWEEN ? AND ?`
+      )
+      .all(row.account_id, row.profile_id, row.id, meta.pair, meta.side, meta.ts - SIBLING_WINDOW_MS, meta.ts + SIBLING_WINDOW_MS);
+    rows = rows.concat(sibs.filter((s) => !activeFunding(s.id)));
+  }
+  rows.sort((a, b) => a.id - b.id);
+
+  const parts = rows.map((r) => {
+    let L = null;
+    try { L = r.idx ? JSON.parse(r.idx) : null; } catch { L = null; }
+    if (!L) L = legacyLevels(r, profile);
+    if (L.basketWhy) throw new Error(`fill #${r.id}: ${L.basketWhy} — re-baseline the basket instead (Set targets → reset basket)`);
+    return {
+      row: r,
+      fb: L.b0 > 0 && L.b1 > 0 ? L.b0 / L.b1 : 1,
+      fv: L.v0 > 0 && L.v1 > 0 ? L.v0 / L.v1 : 1,
+      legacy: Boolean(L.legacy),
+    };
+  });
+  const FB = parts.reduce((s, p) => s * p.fb, 1);
+  const FV = parts.reduce((s, p) => s * p.fv, 1);
+
+  const assets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(profile.id);
+  const now = levelsFor(profile, assets, new Map(), latestUsdPrices(assets.map((a) => a.coingecko_id)));
+  const side = String((meta && meta.side) || '').toLowerCase();
+  const what = side === 'buy' ? 'cash-in' : side === 'sell' ? 'cash-out' : 'cash-out/cash-in';
+  const plan = {
+    profileId: profile.id,
+    profileName: profile.name,
+    what,
+    fills: parts.map((p) => ({ id: p.row.id, note: p.row.note, legacy: p.legacy })),
+    basket: { now: now.basket, after: now.basket != null ? now.basket * FB : null, factor: FB },
+    value: { now: now.value, after: now.value != null ? now.value * FV : null, factor: FV },
+  };
+  if (preview) return plan;
+
+  db.transaction(() => {
+    const p = db.prepare('SELECT basket_base, value_base FROM profiles WHERE id = ?').get(profile.id);
+    db.prepare('UPDATE profiles SET basket_base = ?, value_base = ? WHERE id = ?').run(
+      (p.basket_base || 1) * FB,
+      (p.value_base || 1) * FV,
+      profile.id
+    );
+    for (const part of parts) {
+      logTxn({
+        accountId: row.account_id,
+        profileId: profile.id,
+        kind: 'funding',
+        ref: part.row.ref,
+        reclassOf: part.row.id,
+        idx: { fb: part.fb, fv: part.fv, legacy: part.legacy },
+        note:
+          `re-booked as a ${what} (money ${what === 'cash-in' ? 'entering' : 'leaving'} the strategy, not trading): ` +
+          `${part.row.note} · basket ×${part.fb.toFixed(6)}, value ×${part.fv.toFixed(6)}`,
+      });
+    }
+    // Index honesty: the correction applies from now on; snapshots taken
+    // since the fill still show the old jump — annotated, not rewritten.
+    db.prepare('INSERT INTO alert_log (profile_id, message, ts, emailed) VALUES (?, ?, ?, 0)').run(
+      profile.id,
+      `${parts.length} fill(s) re-booked as a ${what} (not trading): basket ${fmtLevel(now.basket)} → ${fmtLevel(plan.basket.after)}, ` +
+        `value index ${fmtLevel(now.value)} → ${fmtLevel(plan.value.after)}. Snapshots between the fill and now still show the old ` +
+        'jump — history is annotated, not rewritten.',
+      Date.now()
+    );
+  })();
+  return plan;
+}
+
+function fmtLevel(v) {
+  return v == null ? '—' : v.toFixed(4);
+}
+
+// Cash a profile received from fills since `sinceTs` on one asset row (gross
+// positive legs, rewound fills excluded) and the pairs that paid it — the
+// withdrawal router's "fresh proceeds" signal.
+function recentProceeds(profileId, assetId, sinceTs) {
+  let amount = 0;
+  const pairs = new Set();
+  const rows = db
+    .prepare("SELECT account_id, ref, deltas FROM txn_log WHERE profile_id = ? AND kind LIKE 'trade-%' AND rewound_by IS NULL AND ts >= ?")
+    .all(profileId, sinceTs);
+  for (const r of rows) {
+    let got = 0;
+    for (const d of JSON.parse(r.deltas || '[]')) if (d.asset_id === assetId && d.delta > 0) got += d.delta;
+    if (got > 0) {
+      amount += got;
+      const m = tradeMeta(r.account_id, r.ref);
+      pairs.add(m && m.pair ? `${String(m.side || '').toUpperCase()} ${String(m.pair).toUpperCase()}`.trim() : 'a fill');
+    }
+  }
+  return { amount, pairs: [...pairs] };
 }
 
 // ---- account summary --------------------------------------------------------
@@ -864,6 +1228,10 @@ module.exports = {
   reassignTxn,
   carveOut,
   resolveResidual,
+  rebookAsFunding,
+  recentProceeds,
+  stampLevels,
+  latestUsdPrices,
   findOverdraft,
   overdraftReason,
   T2_SIZE_TOL,

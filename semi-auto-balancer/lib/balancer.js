@@ -360,10 +360,20 @@ async function pollProfiles({ force = false, profileId = null, manual = false } 
   }
   const usdPrices = await fetchUsdPrices([...ids]);
 
+  const heldFor = db.prepare(
+    "SELECT COUNT(*) AS n FROM pending_flows WHERE profile_id = ? AND status = 'pending' AND hold_reason IS NOT NULL"
+  );
   const events = [];
   for (const p of profiles) {
     applyTimeout(p, now);
     const result = evaluateProfile(p, usdPrices, now);
+    // A withdrawal held for confirmation and suggested to this profile means
+    // its books may still count money that already left the venue — advice
+    // computed from them would be wrong (live 2026-10-06..08: six "BTC
+    // underweight" emails off withdrawn cash). Notifications wait until a
+    // human confirms; the held-flow notice already told them why. Nothing is
+    // marked active, so a real breach still notifies once the books settle.
+    if (heldFor.get(p.id).n > 0) continue;
     const event = decideNotification(p, result, manual, now);
     if (event) events.push(event);
   }

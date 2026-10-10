@@ -462,6 +462,14 @@
         venue timestamp, kind, and exact amount; on multi-profile accounts an <em>Apply to</em> picker
         (pre-set to the best guess) chooses which linked profile receives the splice. Confirm to splice,
         Dismiss if you already recorded it manually — confirming twice would double-count.</li>
+      <li><span class="term">Held withdrawals (⚠ held for you)</span> — on multi-profile accounts a
+        withdrawal is never auto-applied when its owner is in doubt: a strategy profile still holds cash
+        of that currency it received from its own trades in the last 7 days (the sell-then-withdraw
+        cash-out), the usual owner can't cover it but another profile can, or fills with that currency
+        are still in the attribution inbox. It waits in this table, suggested to the likeliest owner, with
+        the reason on the row. You get a notice (email/Telegram, "ACTION NEEDED"), and that profile's
+        rebalance alerts pause until you confirm, because its books still count the withdrawn money.
+        Deposits, and withdrawals the pool can plainly pay, keep auto-applying as before.</li>
     </ul>
 
     <h2 id="sub">13. Sub-accounts &amp; small real-allocation trials</h2>
@@ -607,6 +615,23 @@
         in a fixed-height scrollable box (sticky header) so it never lengthens the page: the newest 100
         entries load with the panel and <strong>Load older ↓</strong> at the bottom appends 200 more per
         click, all the way back to the very first entry.</li>
+      <li><span class="term">Cash-out / cash-in…</span> — a fill is counted as <em>trading</em> by
+        default. But selling crypto so you can withdraw the cash (a cash-out), or buying with a fresh
+        deposit (a cash-in), is money leaving or entering the strategy. With cash at a 0% target, a
+        cash-out sale reads as a big basket loss (selling a quarter of your BTC for MXN looked like −18%
+        "units"). Click <strong>Cash-out / cash-in…</strong> on any of the order's fills in the log: the
+        whole order (same pair and side within 2 hours) is re-booked so neither the basket nor the value
+        index counts it. Quantities don't move. A preview shows both indices before → after; nothing
+        changes until you confirm. Fills synced from now on carry an exact stamp of their index effect;
+        older fills are reconstructed from the poll snapshots around them (exact for the usual
+        cash-out shape; when it can't isolate a fill it says why and changes nothing). Each re-booked fill
+        gets a rewindable log row, and the fill itself can't be rewound until that row is.</li>
+      <li><span class="term">Doing a cash-out cleanly</span> — sell inside the strategy profile as
+        usual, then withdraw. The sync notices the profile just received that cash and <strong>holds the
+        withdrawal</strong> for you, suggested to that profile (see Exchange sync → pending flows). Confirm
+        it, then click <strong>Cash-out / cash-in…</strong> on the sale. Both numbers stay honest. A
+        cash-in is the mirror image: the deposit lands on the pool, carve it to the profile, buy, then
+        re-book the buy.</li>
     </ul>
 
     <h2 id="safety">14. Safety rails</h2>

@@ -43,6 +43,9 @@ const TRUEUP_REL = 5e-3; // 0.5%
 // quantity write (observed live: a 1.4e-14 NEAR float tail re-"snapped"
 // every hourly sync forever because an empty shell can't absorb it).
 const SNAP_NOISE = 1e-9;
+// Withdrawal routing: a strategy profile's trade proceeds count as "fresh"
+// (the likely source of a withdrawal of that currency) for this long.
+const PROCEEDS_WINDOW_MS = 7 * 86_400_000;
 
 function makeClientFor(account) {
   const venue = VENUES[account.venue];
@@ -171,6 +174,27 @@ async function applyPendingFlow(flowId, overrideProfileId = null) {
     ts: Date.now(),
   });
   return { flowId, symbol: asset.symbol, delta: flow.amount };
+}
+
+// One-shot notice for a held flow: logged on the suggested profile's screen
+// and sent to its recipients (the pool has none — then the account's owner
+// profile hears it). Not a rebalance alert: it bypasses the armed machine.
+async function noticeHeldFlow(account, h) {
+  const suggested = db.prepare('SELECT * FROM profiles WHERE id = ?').get(h.profileId);
+  const owner = db.prepare('SELECT * FROM profiles WHERE id = ?').get(account.profile_id);
+  const to = suggested && !suggested.is_shell ? suggested : owner && !owner.is_shell ? owner : null;
+  if (!to) return;
+  const f = h.flow;
+  const when = new Date(f.ts).toISOString().slice(0, 16).replace('T', ' ');
+  const paused = suggested && !suggested.is_shell;
+  const text =
+    `${account.venue} ${f.kind} of ${Math.abs(f.amount)} ${String(f.code).toUpperCase()} (${when} UTC) is waiting for you — ` +
+    `NOT auto-applied.\nWhy: ${h.hold}.\n` +
+    (paused
+      ? `Until it is confirmed, rebalance alerts for "${suggested.name}" are paused: its books still count that money.\n`
+      : '') +
+    'Confirm it (or pick the right profile) under Exchange sync → Detected deposits / withdrawals.';
+  await require('./mailer').sendSafetyNotice(to, text, 'ACTION NEEDED');
 }
 
 function dismissPendingFlow(flowId) {
@@ -501,7 +525,67 @@ async function syncAccountMulti(account, client, profiles) {
     let maxTradeTs = account.last_trade_ts;
     let maxLedgerTs = account.last_ledger_ts;
     const newPendingIds = [];
+    const heldFlows = []; // {id, flow, profileId, hold} — wait for a human
     const adoptTargets = []; // {profileId, asset, delta}
+
+    // Whose money moved? Deposits keep the plain rule (unique holder, else
+    // the pool). A WITHDRAWAL is checked against what each profile's books
+    // can pay: cash a strategy profile just received from its own fills is
+    // the likeliest thing that left (the cash-out shape: sell, then withdraw
+    // — live 2026-10-05 the pool silently took a 58,098 MXN withdrawal that
+    // Production's BTC sale had funded, and Production's books kept the
+    // gone cash for 3½ days, alerting "BTC underweight" all along). Any
+    // doubt → suggest the likeliest owner and HOLD for a human.
+    const routeFlow = (f, holders, qty) => {
+      const unique = holders.length === 1 ? holders[0] : null;
+      const def = unique ? unique.profile : shell || profiles[0];
+      let route = { profileId: def.id, assetId: unique ? unique.asset.id : null, hold: null };
+      if (!(f.amount < 0)) return route;
+      const need = -f.amount;
+      const CODE = String(f.code).toUpperCase();
+      const num = (n) => String(+Number(n).toFixed(8));
+      const have = (h) => qty.get(h.asset.id) || 0;
+      // A sole holder leaves no doubt whose money it was — only coverage is checked.
+      const fresh = (unique ? [] : holders)
+        .filter((h) => !h.profile.is_shell)
+        .map((h) => ({ h, have: have(h), got: sub.recentProceeds(h.profile.id, h.asset.id, f.ts - PROCEEDS_WINDOW_MS) }))
+        .filter((x) => x.got.amount > 0 && x.have > Math.max(SNAP_NOISE, 0.01 * need))
+        .sort((a, b) => b.have - a.have);
+      if (fresh.length) {
+        const top = fresh[0];
+        route = {
+          profileId: top.h.profile.id,
+          assetId: top.h.asset.id,
+          hold:
+            `"${top.h.profile.name}" holds ${num(top.have)} ${CODE} it received from its own trades in the last ` +
+            `${PROCEEDS_WINDOW_MS / 86_400_000} days (${top.got.pairs.join(', ')}) — if this withdrawal is that cash-out, ` +
+            'confirm it there; otherwise pick whose money it was',
+        };
+      } else {
+        const defHolder = holders.find((h) => h.profile.id === def.id);
+        const defHave = defHolder ? have(defHolder) : 0;
+        if (defHave + 1e-9 < need) {
+          const cover = holders.filter((h) => h.profile.id !== def.id && have(h) + 1e-9 >= need).sort((a, b) => have(b) - have(a));
+          route = cover.length
+            ? {
+                profileId: cover[0].profile.id,
+                assetId: cover[0].asset.id,
+                hold: `"${def.name}" holds only ${num(defHave)} ${CODE} — "${cover[0].profile.name}" is the profile that can cover it; confirm whose money it was`,
+              }
+            : { ...route, hold: `no single profile holds ${num(need)} ${CODE} on the books — check the inbox, or split it by hand` };
+        }
+      }
+      const queuedProceeds = db
+        .prepare("SELECT deltas FROM attribution_queue WHERE account_id = ? AND status = 'pending'")
+        .all(account.id)
+        .filter((q) => JSON.parse(q.deltas).some((d) => String(d.code).toLowerCase() === String(f.code).toLowerCase() && d.delta > 0)).length;
+      if (queuedProceeds) {
+        route.hold = [route.hold, `${queuedProceeds} fill(s) with ${CODE} proceeds still wait in the attribution inbox — assign them first`]
+          .filter(Boolean)
+          .join('; ');
+      }
+      return route;
+    };
     const aggFollowups = []; // {pair, side, ts, profileId, name} — aggregate-T2 sibling pulls
     const touchedProfiles = new Set();
 
@@ -576,6 +660,7 @@ async function syncAccountMulti(account, client, profiles) {
         if (decision.profileId) {
           const target = profiles.find((p) => p.id === decision.profileId);
           const applied = [];
+          const qtyBefore = new Map(qty);
           for (const d of t.deltas) {
             let asset = matchVenueAsset(assetsOf.get(target.id), d.code);
             if (!asset) {
@@ -603,6 +688,7 @@ async function syncAccountMulti(account, client, profiles) {
           summary.tradesApplied++;
           summary.attribution[decision.tier]++;
           touchedProfiles.add(target.id);
+          const targetAssets = assetsOf.get(target.id);
           sub.logTxn({
             accountId: account.id,
             profileId: target.id,
@@ -619,6 +705,9 @@ async function syncAccountMulti(account, client, profiles) {
                   ? '(unallocated asset)'
                   : '(only holder)'),
             ts: t.ts,
+            // Exact index effect of this fill, for a later cash-out/cash-in
+            // re-booking (priced from the last poll; no network in here).
+            idx: sub.stampLevels(target, targetAssets, qtyBefore, qty, sub.latestUsdPrices(targetAssets.map((a) => a.coingecko_id))),
           });
           if (decision.aggregate) {
             aggFollowups.push({
@@ -644,26 +733,25 @@ async function syncAccountMulti(account, client, profiles) {
         }
       }
 
-      // 2. Flows: pending as always; profile_id = the SUGGESTED target
-      // (unique holder, else the shell) — changeable at apply time.
+      // 2. Flows: pending as always; profile_id = the SUGGESTED target —
+      // changeable at apply time. A held flow (hold_reason) never auto-applies.
       const insFlow = db.prepare(
         `INSERT OR IGNORE INTO pending_flows
-           (account_id, profile_id, venue_ref, ts, kind, code, asset_id, amount, raw)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           (account_id, profile_id, venue_ref, ts, kind, code, asset_id, amount, raw, hold_reason)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
       for (const f of flows) {
         if (f.ts > maxLedgerTs) maxLedgerTs = f.ts;
         if (!(Math.abs(f.amount) > 0)) continue;
-        const holders = holdersOf(f.code);
-        const suggested = holders.length === 1 ? holders[0] : null;
-        const targetProfileId = suggested ? suggested.profile.id : (shell || profiles[0]).id;
+        const route = routeFlow(f, holdersOf(f.code), qty);
         const r = insFlow.run(
-          account.id, targetProfileId, f.id, f.ts, f.kind, f.code,
-          suggested ? suggested.asset.id : null, f.amount, JSON.stringify(f.raw ?? null)
+          account.id, route.profileId, f.id, f.ts, f.kind, f.code,
+          route.assetId, f.amount, JSON.stringify(f.raw ?? null), route.hold
         );
         if (r.changes > 0) {
           summary.newPendingFlows++;
-          newPendingIds.push(r.lastInsertRowid);
+          if (route.hold) heldFlows.push({ id: r.lastInsertRowid, flow: f, profileId: route.profileId, hold: route.hold });
+          else newPendingIds.push(r.lastInsertRowid);
         }
       }
 
@@ -845,6 +933,17 @@ async function syncAccountMulti(account, client, profiles) {
         } catch (err) {
           console.error(`auto-apply flow ${id} failed:`, err.message);
         }
+      }
+    }
+
+    // Held flows wait for a human: say so where they'll see it, at once —
+    // until confirmed, the suggested profile's books still count that money.
+    summary.heldFlows = heldFlows.map((h) => ({ id: h.id, profileId: h.profileId, reason: h.hold }));
+    for (const h of heldFlows) {
+      try {
+        await noticeHeldFlow(account, h);
+      } catch (err) {
+        console.error(`held-flow notice ${h.id} failed:`, err.message);
       }
     }
 

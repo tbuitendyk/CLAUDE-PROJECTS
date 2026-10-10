@@ -276,8 +276,9 @@ async function sendStatusReport(profile, view) {
 // Safety notices (freeze/unfreeze/depeg): latched one-shot messages routed
 // like status reports — recipients + alerts_enabled honored, but BYPASSING
 // the armed→notified machine (a freeze must never eat a rebalance alert's
-// slot, and vice versa). Always logged on-screen.
-async function sendSafetyNotice(profile, text) {
+// slot, and vice versa). Always logged on-screen. `tag` heads the subject
+// (other one-shot notices — e.g. a held withdrawal — reuse this routing).
+async function sendSafetyNotice(profile, text, tag = 'SAFETY') {
   db.prepare('INSERT INTO alert_log (profile_id, message, ts, emailed) VALUES (?, ?, ?, ?)').run(
     profile.id,
     text,
@@ -292,7 +293,7 @@ async function sendSafetyNotice(profile, text) {
       await transporter.sendMail({
         from: fromHeader(),
         to: emails.join(', '),
-        subject: `[Semi-Auto Balancer] SAFETY: ${profile.name} (${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC)`,
+        subject: `[Semi-Auto Balancer] ${tag}: ${profile.name} (${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC)`,
         text,
       });
     } catch (err) {
