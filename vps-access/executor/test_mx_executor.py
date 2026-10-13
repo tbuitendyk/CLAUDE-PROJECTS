@@ -39,6 +39,10 @@ class MockBinance(BaseHTTPRequestHandler):
     loans = []                # captured borrow/repay params
     loan_fails = False        # when True the borrow POST returns 400
     dead_path_calls = []      # calls to endpoints Binance has RETIRED (see do_POST)
+    repay_disabled = False    # AUTO_REPAY fills but the loan does not move (silent
+                              # repay failure — the fault the residual check exists for)
+    repay_fraction = 1.0      # only this share of the buy reaches the loan (an
+                              # outsized fee eating the received qty)
     placed = {}               # newClientOrderId -> venue order record (recovery lookup)
     time_skew_ms = 0          # exchange serverTime minus box OS clock (clock tests)
 
@@ -134,7 +138,10 @@ class MockBinance(BaseHTTPRequestHandler):
             if side == "BUY":
                 received = qty - base_fee            # fee taken in LTC
                 if eff == "AUTO_REPAY":
-                    repay = min(received, MockBinance.borrowed)
+                    # repay_disabled / repay_fraction model a repay that fills at the
+                    # venue but does not reduce the loan as it should.
+                    want = 0.0 if MockBinance.repay_disabled else received * MockBinance.repay_fraction
+                    repay = min(want, MockBinance.borrowed)
                     MockBinance.borrowed -= repay
                     MockBinance.base_bal += received - repay
                 else:
@@ -220,6 +227,8 @@ class ExecutorTest(unittest.TestCase):
         MockBinance.loans = []
         MockBinance.loan_fails = False
         MockBinance.dead_path_calls = []
+        MockBinance.repay_disabled = False
+        MockBinance.repay_fraction = 1.0
         MockBinance.commission = "0.01"
         MockBinance.commission_asset = "USDT"
         MockBinance.orders = []
@@ -733,6 +742,55 @@ class ExecutorTest(unittest.TestCase):
         order = MockBinance.orders[-1]
         self.assertEqual(order["side"], "BUY")
         self.assertEqual(order["sideEffectType"], "AUTO_REPAY")
+
+    # ---- THE FALSE HALT OF 2026-10-13 ---------------------------------------
+    # The final short cleared the pooled loan to zero and halted anyway, because
+    # the residual assertion measured the repayment against the LEG'S NOMINAL
+    # rather than against what was actually owed. On a pooled isolated wallet the
+    # two drift apart: every partial close rounds its buy UP a lot step and repays
+    # a hair more than its share, so the pool runs progressively BELOW nominal.
+    # Once that surplus passes RESIDUAL_REPAY_TOL_FRAC of a leg the final close
+    # cannot pass a nominal-based test — there is simply less debt left than the
+    # leg claims. Live numbers: repaid 0.140679, leg 0.151000, borrow 0.000000.
+
+    def test_final_close_clearing_a_pool_below_nominal_does_not_halt(self):
+        # The production signature, reproduced. One short of nominal 0.151 whose
+        # pooled debt has drifted to 0.140679 after earlier closes over-repaid.
+        # Clearing all of it is a COMPLETE repay and must not halt.
+        self.x.jlog("ENTRY_FILL", chunk_start="s-last", side="SHORT", qty=0.151,
+                    price=70.64, exit_due_ts=time.time() - 1)
+        MockBinance.borrowed = 0.140679
+        MockBinance.base_bal = 0.0
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("EXIT_FILL", ev, "the close must still happen")
+        self.assertNotIn("HALT_SET", ev,
+                         "clearing the entire outstanding loan is not a shortfall — "
+                         "this is the 2026-10-13 false halt")
+        self.assertLess(MockBinance.borrowed, self.x.QTY_STEP,
+                        "and the pool must actually be clear")
+
+    def test_a_repay_that_does_not_move_the_debt_still_halts(self):
+        # The fault the check exists for: AUTO_REPAY silently fails, debt untouched.
+        # The clamp must not blunt this.
+        self.x.jlog("ENTRY_FILL", chunk_start="s-stuck", side="SHORT", qty=0.151,
+                    price=70.0, exit_due_ts=time.time() - 1)
+        MockBinance.borrowed = 0.151
+        MockBinance.repay_disabled = True      # the buy fills; the loan does not move
+        self.x.do_run(self.bx())
+        self.assertIn("HALT_SET", self.events(),
+                      "a repay that leaves the debt untouched must still halt")
+
+    def test_a_partial_repay_well_under_what_was_owed_still_halts(self):
+        # The other fault: the buy lands but an outsized fee eats most of it, so
+        # the debt falls far less than was owed. Owed here is the full 0.151.
+        self.x.jlog("ENTRY_FILL", chunk_start="s-short", side="SHORT", qty=0.151,
+                    price=70.0, exit_due_ts=time.time() - 1)
+        MockBinance.borrowed = 0.151
+        MockBinance.repay_fraction = 0.5       # only half the buy reaches the loan
+        self.x.do_run(self.bx())
+        self.assertIn("HALT_SET", self.events(),
+                      "repaying about half of what was owed must still halt")
 
     def test_concurrency_cap_enforced(self):
         now = time.time()

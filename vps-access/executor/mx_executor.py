@@ -1637,10 +1637,32 @@ def do_run(bx):
                 resid = pbx.borrowed_base()
                 if debt is not None and resid is not None:
                     repaid = debt - resid
-                    if repaid < p["qty"] * (1 - RESIDUAL_REPAY_TOL_FRAC):
+                    # WHAT COULD BE REPAID IS THE POOLED DEBT, NOT THIS LEG'S NOMINAL.
+                    #
+                    # FALSE HALT, 2026-10-13 18:20:05Z. The final short closed, cleared
+                    # the loan to zero, and halted anyway:
+                    #   "repaid only 0.140679 of leg 0.151000 — borrow 0.000000 still
+                    #    outstanding and accruing interest"
+                    # — a shortfall reported against debt that no longer existed, in the
+                    # same sentence as the zero proving it was gone.
+                    #
+                    # Why the pool runs BELOW nominal: every partial close buys back its
+                    # own leg rounded UP to the lot step, so each repays a hair more than
+                    # its share. The surplus accumulates in the shared loan. Measured on
+                    # the live book, borrow minus journal nominal: -0.0007 (27 Sep),
+                    # -0.0022 (28), -0.0039 (2 Oct), -0.0048 (3), -0.0056 (4), -0.0062
+                    # (6), -0.0071 (8), reaching -0.0103 by the 13th. The trip is then
+                    # arithmetic, not luck: once the surplus passes 5% of a leg (~0.0076
+                    # here) the FINAL close cannot satisfy a nominal-based test, because
+                    # there is less debt left than the leg says.
+                    #
+                    # You cannot repay more than is owed. The bar is what was owed.
+                    owed = min(p["qty"], debt)
+                    if repaid < owed * (1 - RESIDUAL_REPAY_TOL_FRAC):
                         set_halt("executor", f"short close for {p['chunk_start']} repaid "
-                                 f"only {repaid:.6f} of leg {p['qty']:.6f} — borrow "
-                                 f"{resid:.6f} still outstanding and accruing interest")
+                                 f"only {repaid:.6f} of the {owed:.6f} owed (leg "
+                                 f"{p['qty']:.6f}) — borrow {resid:.6f} still "
+                                 "outstanding and accruing interest")
                 if is_last_short and debt is not None:
                     interest_cost = max(0.0, debt - p["qty"]) * fill_px
                     if resid is not None and resid >= QTY_STEP:
