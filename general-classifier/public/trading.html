@@ -811,9 +811,19 @@ async function drawLive(){
           <div><span class="lbl">call</span> <span class="${lab[1]}"><b>${lab[0]}</b></span></div>
           <div><span class="lbl">member votes</span> ${vtxt}</div>
           <div><span class="lbl">quorum</span> ${esc(String(pv.quorum??'—'))}</div>
-          <div><span class="lbl">${pv.acting?'acted at (UTC)':'acts at (UTC)'}</span> <span style="white-space:nowrap">${esc(String(pv.entryUtc||'').replace('T',' ').slice(0,16))}</span></div>
+          <div><span class="lbl">${pv.acting?'due at (UTC)':'acts at (UTC)'}</span> <span style="white-space:nowrap">${esc(String(pv.entryUtc||'').replace('T',' ').slice(0,16))}</span></div>
           ${pv.acting
-            ? `<div><span class="lbl">status</span> <b>acting now — awaiting the fill</b></div>`
+            // PAST ITS MOMENT IS NOT THE SAME AS UNDERWAY (owner, 2026-09-22).
+            // This said "acting now — awaiting the fill" from the second the
+            // entry hour passed, on a clock comparison alone, while the box had
+            // been handed nothing: the intent is not produced until some minutes
+            // after the hour and the box's cycle picks it up later still. The
+            // owner read patience where there was not yet a trade.
+            // It is safe to say the box does not have it: this panel is dropped
+            // the moment ANY decision row exists for the window, from the box's
+            // own INTENT_SEEN or from the profile's decision log. So if this
+            // branch renders at all, neither has happened yet.
+            ? `<div><span class="lbl">status</span> <b>due now — not yet sent to the box</b></div>`
             : `<div><span class="lbl">in</span> <span style="white-space:nowrap" ${pv.entryUtc?`data-when="${esc(pv.entryUtc)}"`:''}>${pv.entryUtc?'…':'—'}</span></div>`}
           <div class="muted" style="font-size:.7rem">window ${esc(String(pv.chunkStart||'').slice(0,10))} · computed ${esc(String(pv.computedUtc||'').replace('T',' ').slice(0,16))} UTC</div>
         </div>`;})()}
