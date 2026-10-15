@@ -33,7 +33,10 @@ and import the screenshot to set the new quantities.
   profile goes quiet (prices still update). **Poll now is a universal
   reset** — from any state it re-checks, notifies immediately if any target
   is exceeded, and restarts the clock. A **screenshot import** re-arms for
-  *new* hits only, and the quiet state auto re-arms after 12 hours.
+  *new* hits only, and the quiet state auto re-arms after 12 hours. Each
+  advice is sent ONCE: the 12h re-arm no longer re-sends unacted alerts; a
+  coin alerts again only when it drifts a full threshold further, or after
+  it recovers and breaches anew.
 - **Recipients are per profile**: a toggle turns alerts on/off, and each
   profile carries its own list of email addresses — no global fallback; with
   no recipients, alerts only appear in the on-screen log. Each recipient can

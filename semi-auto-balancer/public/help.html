@@ -651,6 +651,11 @@
     <code>/start</code>s the bot, then "Find chat IDs"). The state machine:
     <strong>armed</strong> → alert sent → <strong>notified</strong> (quiet) → re-armed by the next sync,
     a screenshot upload, "Poll now", or the 12-hour timeout. "Poll now" is the universal reset.</p>
+    <p><strong>Each piece of advice is sent once.</strong> An alert you haven't acted on is <em>not</em>
+    repeated as time passes. That coin alerts again only when it drifts a <em>full threshold further</em>
+    the same way, or after it comes back near target and breaches anew. A breach on a different coin is
+    always sent. "Poll now" re-sends everything currently off target, on demand. Advice found right
+    after a sync, a confirmed deposit/withdrawal or a manual flow is delivered straight away.</p>
     <p><strong>What the poll button does depends on where you are.</strong> On the master account (and on
     a profile that owns its exchange account alone) it reads <em>Sync &amp; poll</em>: it reads balances
     and trades from the venue, runs attribution/reconciliation, <em>then</em> refreshes prices — so fresh

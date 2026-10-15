@@ -59,7 +59,15 @@ function startScheduler() {
         (s) => s.summary.tradesApplied > 0 || s.summary.autoAppliedFlows > 0
       );
       for (const s of changed) {
-        await pollProfiles({ force: true, profileId: s.profileId }).catch(() => {});
+        // Re-poll EVERY profile linked to the account (a group's fills can
+        // land on any sub-account) and SEND what it finds: these events used
+        // to be dropped while their breaches were marked as sent — the alert
+        // was swallowed until a 12h re-send that no longer exists.
+        const linked = db.prepare('SELECT id FROM profiles WHERE exchange_account_id = ?').all(s.accountId).map((r) => r.id);
+        for (const pid of linked.length ? linked : [s.profileId]) {
+          const { events } = await pollProfiles({ force: true, profileId: pid }).catch(() => ({ events: [] }));
+          if (events.length > 0) await sendAlertEvents(events).catch((err) => console.error('post-sync alert send failed:', err.message));
+        }
         console.log(
           `[${new Date().toISOString()}] synced account ${s.accountId}: ` +
             `${s.summary.tradesApplied} trade(s), ${s.summary.newPendingFlows} pending flow(s)`

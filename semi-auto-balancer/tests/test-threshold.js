@@ -115,6 +115,39 @@ db.prepare("UPDATE profiles SET notify_state = 'notified' WHERE id = 1").run();
   ok(rRep === null, 'per-asset quiet: repeats of already-notified breaches stay silent');
 }
 
+// --- no time-based repeats (live 2026-10-09..15: the same "XRP is
+// overweight" was re-sent 12 times, every 12h). An unacted alert is NOT
+// re-sent when the 12h timeout passes; it goes out again only when it gets a
+// full threshold worse, or after it recovers and breaches anew. ---
+{
+  db.prepare('DELETE FROM alloc_alerts').run();
+  const prof = () => db.prepare('SELECT * FROM profiles WHERE id = 1').get();
+  const evalKeep = () => bal.evaluateProfile(prof(), PRICES, Date.now());
+  const sml = (res) => res.newBreaches.some((b) => b.asset.symbol === 'sml');
+  PRICES = { ...BASE, smallcoin: 110.5 }; // sml drift ≈ +10.0% (trigger 9.56%)
+  let res = evalKeep();
+  const sent = bal.decideNotification(prof(), res, false, Date.now());
+  ok(sent && sent.alerts.some((b) => b.asset.symbol === 'sml'), 'a fresh breach is sent');
+  db.prepare('UPDATE profiles SET notify_state_at = ? WHERE id = 1').run(Date.now() - bal.NOTIFY_TIMEOUT_MS - 1000);
+  bal.applyTimeout(prof(), Date.now());
+  ok(prof().notify_state === 'armed', 'the 12h timeout still re-arms the profile');
+  ok(db.prepare('SELECT COUNT(*) n FROM alloc_alerts').get().n > 0, '…but no longer forgets what was already sent');
+  res = evalKeep();
+  ok(!sml(res) && bal.decideNotification(prof(), res, false, Date.now()) === null, 'unchanged advice is NOT re-sent after 12h');
+  PRICES = { ...BASE, smallcoin: 115 }; // drift ≈ +14.3%: worse, but not a full threshold worse
+  ok(!sml(evalKeep()), 'somewhat worse (less than a full threshold) stays quiet');
+  PRICES = { ...BASE, smallcoin: 121 }; // drift ≈ +20.0% ≥ 10.0 + 9.56
+  res = evalKeep();
+  ok(sml(res), 'a FULL threshold worse is news — sent again');
+  bal.decideNotification(prof(), res, false, Date.now());
+  PRICES = { ...BASE, smallcoin: 100 }; // back to target: the alert clears
+  evalKeep();
+  ok(db.prepare("SELECT COUNT(*) n FROM alloc_alerts aa JOIN assets a ON a.id = aa.asset_id WHERE a.symbol = 'sml'").get().n === 0, 'recovery clears the alert');
+  PRICES = { ...BASE, smallcoin: 110.5 };
+  ok(sml(evalKeep()), 'a breach after recovery is sent again');
+  db.prepare('DELETE FROM alloc_alerts').run();
+}
+
 // --- account-wide context for grouped (sub-account) profiles ---
 // The venue screen shows the SUM across sub-accounts; a shared asset's
 // advice must carry that number and the value the screen should read after

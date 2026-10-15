@@ -662,6 +662,21 @@ app.delete('/api/exchange-accounts/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// Re-value profiles after their books changed and DELIVER whatever new
+// advice that finds. (The events used to be dropped while their breaches
+// were marked as sent, swallowing the alert.) Best-effort: the action that
+// changed the books already succeeded.
+async function repollAndSend(profileIds) {
+  for (const pid of [...new Set(profileIds.filter(Boolean))]) {
+    try {
+      const { events } = await pollProfiles({ force: true, profileId: pid });
+      if (events.length > 0) await sendAlertEvents(events);
+    } catch (err) {
+      console.error(`re-poll of profile ${pid} failed:`, err.message);
+    }
+  }
+}
+
 // Manual "Sync now": reconcile, then force a poll so the pool re-values
 // (and re-alerts if the fills changed the picture).
 app.post('/api/exchange-accounts/:id/sync', async (req, res) => {
@@ -669,7 +684,7 @@ app.post('/api/exchange-accounts/:id/sync', async (req, res) => {
   if (!a) return res.status(404).json({ error: 'not found' });
   try {
     const summary = await sync.syncAccount(a.id);
-    await pollProfiles({ force: true, profileId: a.profile_id }).catch(() => {});
+    await repollAndSend(db.prepare('SELECT id FROM profiles WHERE exchange_account_id = ?').all(a.id).map((r) => r.id).concat(a.profile_id));
     res.json({ ok: true, summary });
   } catch (err) {
     res.status(502).json({ error: err.message });
@@ -684,7 +699,7 @@ app.post('/api/pending-flows/:id/confirm', async (req, res) => {
     // Phase 6: the inbox may redirect the flow to a different linked profile.
     const result = await sync.applyPendingFlow(Number(req.params.id), (req.body || {}).profileId ?? null);
     const flow = db.prepare('SELECT profile_id FROM pending_flows WHERE id = ?').get(req.params.id);
-    if (flow) await pollProfiles({ force: true, profileId: flow.profile_id }).catch(() => {});
+    if (flow) await repollAndSend([flow.profile_id]);
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -997,7 +1012,7 @@ app.patch('/api/assets/:id', async (req, res) => {
       // splices the value index so performance stays continuous; the re-poll
       // then stores fresh prices in the new denomination.
       await setIndexAsset(asset.profile_id, b.is_index ? asset.id : null);
-      await pollProfiles({ force: true, profileId: asset.profile_id }).catch(() => {});
+      await repollAndSend([asset.profile_id]);
     }
     res.json(db.prepare('SELECT * FROM assets WHERE id = ?').get(asset.id));
   } catch (err) {
@@ -1253,7 +1268,7 @@ app.post('/api/profiles/:id/flow', async (req, res) => {
       return { asset_id: asset.id, delta: d.delta };
     });
     const result = await recordFlow(profile.id, deltas, body.note);
-    await pollProfiles({ force: true, profileId: profile.id }).catch(() => {});
+    await repollAndSend([profile.id]);
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(400).json({ error: err.message });

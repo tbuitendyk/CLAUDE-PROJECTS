@@ -244,7 +244,15 @@ function evaluateProfile(profile, usdPrices, now) {
           ...(accountContext(p.asset, p.rel, deltaRel) || {}),
         };
         breaches.push(breach);
-        if (!active) newBreaches.push(breach);
+        // News only: a fresh breach, or one that has drifted a FULL threshold
+        // further (same direction) since it was last sent. Unchanged advice is
+        // never re-sent just because time passed (live 2026-10-09..15: the
+        // same "XRP is overweight" went out 12 times, every 12h).
+        const worsened =
+          active &&
+          Math.sign(driftRel) === Math.sign(active.drift_rel_pct) &&
+          Math.abs(driftRel) * 100 >= Math.abs(active.drift_rel_pct) + tEff * 100;
+        if (!active || worsened) newBreaches.push(breach);
       } else if (active && Math.abs(driftRel) < tEff * REARM_FRACTION) {
         clearActive.run(p.asset.id);
       }
@@ -298,10 +306,13 @@ function markActive(breaches, now) {
   for (const b of breaches) add.run(b.asset.id, now, b.driftRelPct);
 }
 
+// The 12h timeout returns the profile to 'armed' but no longer forgets what
+// was sent: clearing alloc_alerts here re-sent every unacted alert twice a
+// day forever. An asset's alert clears when it converges back toward target
+// (REARM_FRACTION), and "Poll now" still re-sends everything on demand.
 function applyTimeout(profile, now) {
   if (profile.notify_state !== 'armed' && profile.notify_state_at && now - profile.notify_state_at >= NOTIFY_TIMEOUT_MS) {
     setNotifyState(profile.id, 'armed', now);
-    clearProfileAlerts(profile.id);
     profile.notify_state = 'armed';
     profile.notify_state_at = now;
   }

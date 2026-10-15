@@ -32,7 +32,9 @@ the track record and feeds the annualized (compounding) rate. Notifications
 are per-profile (email + optional Telegram via the official Bot API — one
 bot for the app, token in the settings table, per-recipient chat ids;
 replaced CallMeBot WhatsApp, which was unreliable) with the
-armed → notified state machine (12h timeout; "Poll now" = universal reset).
+armed → notified state machine (12h timeout; "Poll now" = universal reset;
+each advice is sent once — re-sent only when a full threshold worse or after
+recovery, never just because 12h passed).
 
 What this branch changes (see PLAN.md for full detail and status):
 - **Thresholds calibrated to price moves** — `threshold_pct` = price-move
