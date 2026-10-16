@@ -243,7 +243,10 @@ function attributeTrade({ trade, holders, shell, now = Date.now() }) {
           /* unreadable sibling deltas — skip that sibling */
         }
       }
-      if (sum > baseQty && fits(sum, advice)) aggMatches.push({ h, minAdviceTs });
+      // …and only while the order was still incomplete WITHOUT this fill: an
+      // advice its earlier fills already satisfied can't absorb an unrelated
+      // later sale (it would pull the user's own sale onto the strategy).
+      if (sum > baseQty && fits(sum, advice) && !fits(sum - baseQty, advice)) aggMatches.push({ h, minAdviceTs });
     }
     if (aggMatches.length === 1) {
       return {
@@ -845,6 +848,24 @@ function fmtLevel(v) {
   return v == null ? '—' : v.toFixed(4);
 }
 
+// Open (unfulfilled) trade advice on a coin in this account: a strategy
+// profile was told to buy or sell it since `sinceTs` and that alert still
+// stands — its alloc_alerts row exists, i.e. the coin hasn't been traded back
+// near target and no target change cleared it. While any is open, a sale of
+// the coin may be that strategy acting on it, so the master can't claim it.
+function openAdvice(accountId, coin, sinceTs) {
+  return db
+    .prepare(
+      `SELECT DISTINCT p.id AS profile_id, p.name, al.side
+         FROM advice_log al
+         JOIN profiles p ON p.id = al.profile_id
+         JOIN assets a ON a.profile_id = p.id AND LOWER(a.symbol) = al.symbol
+         JOIN alloc_alerts aa ON aa.asset_id = a.id
+        WHERE p.exchange_account_id = ? AND p.is_shell = 0 AND al.symbol = ? AND al.ts >= ?`
+    )
+    .all(accountId, String(coin).toLowerCase(), sinceTs);
+}
+
 // Cash a profile received from fills since `sinceTs` on one asset row (gross
 // positive legs, rewound fills excluded) and the pairs that paid it — the
 // withdrawal router's "fresh proceeds" signal.
@@ -1230,6 +1251,7 @@ module.exports = {
   resolveResidual,
   rebookAsFunding,
   recentProceeds,
+  openAdvice,
   stampLevels,
   latestUsdPrices,
   findOverdraft,

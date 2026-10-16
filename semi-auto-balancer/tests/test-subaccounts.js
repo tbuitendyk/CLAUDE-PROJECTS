@@ -543,6 +543,12 @@ const client = {
       fetchFlowsSince: async (since) => V.flows.filter((f) => f.ts > since),
     };
     const T0 = Date.now() + 1000;
+    // ProdX has an open XRP alert (size far from this sale, so no T2 match):
+    // the master-claims-unalerted-sales rule must stand back and leave the
+    // sale ambiguous, as it was in the incident.
+    db.prepare("INSERT INTO advice_log (profile_id, ts, symbol, side, quantity) VALUES (?, ?, 'xrp', 'SELL', 900)").run(PX, T0 - 500);
+    const pxXrp = db.prepare("SELECT id FROM assets WHERE profile_id = ? AND symbol = 'xrp'").get(PX).id;
+    db.prepare('INSERT OR REPLACE INTO alloc_alerts (asset_id, triggered_at, drift_rel_pct) VALUES (?, ?, ?)').run(pxXrp, T0 - 500, 20);
     V.trades = [
       { id: 'inc-buy-1', ts: T0, pair: 'btc_usdc', side: 'buy', price: 50_000, deltas: [
         { code: 'btc', delta: 0.0034 }, { code: 'usdc', delta: -170.27 }] },

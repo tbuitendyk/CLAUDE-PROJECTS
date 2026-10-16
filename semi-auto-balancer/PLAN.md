@@ -756,6 +756,24 @@ changes, both user-chosen:
 Live repair: click Cash-out / cash-in… on any of Production's 2026-10-05
 SELL BTC/MXN fills (legacy path).
 
+### Master-pool rules (2026-10-16, user's call)
+**Status: BUILT (tests green: test-master-rules.js).** The user's routine on
+Bitso MAIN — deposit XRP, sell it for MXN, withdraw the pesos — parked every
+sale in the inbox (Production also holds XRP), pre-selected to the wrong
+profile; unassigned sales left the master's books off for days.
+- **Every deposit lands on the master**, any coin, booked BEFORE the sync's
+  fills (pending + auto-applied up front), so a same-sync sale finds it.
+- **A sale no tier can place is the master's** when the master holds enough
+  of the coin and no strategy profile has an OPEN buy/sell alert on that coin
+  from the past week (`subaccounts.openAdvice`: advice_log row in the window
+  whose asset still has an alloc_alerts row). Kind `trade-auto-master`.
+  Known edge, accepted: a strategy's own off-alert sale of a coin the master
+  also holds files to the master (Reassign fixes it).
+- Bug fixed on the way: aggregate-T2 let a fill join an advice its earlier
+  fills had already satisfied (a personal 40-XRP sale after an advised 300
+  matched 340 ≈ 300 ±15%). A fill now joins only an order still incomplete
+  without it.
+
 ### Non-goals
 No auto-trading, no per-profile API keys, no venue-native sub-accounts
 (Bitso retail has none; Kraken's are institutional). The venue keys stay

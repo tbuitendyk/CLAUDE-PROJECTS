@@ -46,6 +46,9 @@ const SNAP_NOISE = 1e-9;
 // Withdrawal routing: a strategy profile's trade proceeds count as "fresh"
 // (the likely source of a withdrawal of that currency) for this long.
 const PROCEEDS_WINDOW_MS = 7 * 86_400_000;
+// A sale is the master's only while no strategy profile has an open buy/sell
+// alert on that coin issued within this window (the advice log keeps a week).
+const OPEN_ADVICE_WINDOW_MS = 7 * 86_400_000;
 
 function makeClientFor(account) {
   const venue = VENUES[account.venue];
@@ -482,7 +485,7 @@ async function syncAccountMulti(account, client, profiles) {
     linkedProfiles: profiles.length,
     tradesApplied: 0,
     tradesQueued: 0,
-    attribution: { t1: 0, t2: 0, queued: 0 },
+    attribution: { t1: 0, t2: 0, master: 0, queued: 0 },
     tradeDeltas: {},
     newPendingFlows: 0,
     autoAppliedFlows: 0,
@@ -510,6 +513,31 @@ async function syncAccountMulti(account, client, profiles) {
       capability.flows = err.message;
     }
     summary.capability = capability;
+
+    // Every DEPOSIT lands on the master pool (user's call 2026-10-16): money
+    // coming in is unallocated until carved to a strategy. It is booked
+    // BEFORE this sync's fills, so a sale of the just-deposited coin finds it
+    // on the master (deposit → sell → withdraw the pesos, one sync, no inbox).
+    if (shell) {
+      const insDeposit = db.prepare(
+        `INSERT OR IGNORE INTO pending_flows
+           (account_id, profile_id, venue_ref, ts, kind, code, asset_id, amount, raw)
+         VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)`
+      );
+      for (const f of flows) {
+        if (!(f.amount > 0)) continue;
+        const r = insDeposit.run(account.id, shell.id, f.id, f.ts, f.kind, f.code, f.amount, JSON.stringify(f.raw ?? null));
+        if (r.changes === 0) continue; // seen by an earlier sync
+        summary.newPendingFlows++;
+        if (!account.auto_flows) continue;
+        try {
+          await applyPendingFlow(r.lastInsertRowid);
+          summary.autoAppliedFlows++;
+        } catch (err) {
+          console.error(`auto-apply deposit ${r.lastInsertRowid} failed:`, err.message);
+        }
+      }
+    }
 
     const assetsOf = new Map(
       profiles.map((p) => [p.id, db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(p.id)])
@@ -540,7 +568,8 @@ async function syncAccountMulti(account, client, profiles) {
       const unique = holders.length === 1 ? holders[0] : null;
       const def = unique ? unique.profile : shell || profiles[0];
       let route = { profileId: def.id, assetId: unique ? unique.asset.id : null, hold: null };
-      if (!(f.amount < 0)) return route;
+      // Deposits: the master (pre-booked above); without a shell, the plain rule.
+      if (!(f.amount < 0)) return shell ? { profileId: shell.id, assetId: null, hold: null } : route;
       const need = -f.amount;
       const CODE = String(f.code).toUpperCase();
       const num = (n) => String(+Number(n).toFixed(8));
@@ -609,6 +638,21 @@ async function syncAccountMulti(account, client, profiles) {
           holders: holdersOf(baseCode),
           shell,
         });
+        // A SALE nobody could claim is the master's (user's call 2026-10-16)
+        // when the master holds enough of the coin and no strategy profile
+        // has an open buy/sell alert on it from the past week: then it can't
+        // be a strategy following its advice — it's the user's own (deposit →
+        // sell → withdraw). An open alert keeps the sale in the inbox instead.
+        if (decision.queue && shell && baseDelta < 0) {
+          const sh = holdersOf(baseCode).find((h) => h.profile.id === shell.id);
+          if (
+            sh &&
+            (qty.get(sh.asset.id) || 0) + 1e-9 >= -baseDelta &&
+            sub.openAdvice(account.id, baseCode, t.ts - OPEN_ADVICE_WINDOW_MS).length === 0
+          ) {
+            decision = { profileId: shell.id, tier: 'master' };
+          }
+        }
         // EVERY leg must have a home BEFORE anything applies: a leg in an
         // unknown NON-fiat currency demotes the whole fill to the inbox —
         // a partially-applied trade silently destroys money on the books.
@@ -701,7 +745,9 @@ async function syncAccountMulti(account, client, profiles) {
                 ? decision.aggregate
                   ? '(auto: partial fills aggregate-matched its advice)'
                   : '(auto: matched its own advice)'
-                : target.is_shell
+                : decision.tier === 'master'
+                  ? '(auto: the master holds it and no strategy has an open alert on it)'
+                  : target.is_shell
                   ? '(unallocated asset)'
                   : '(only holder)'),
             ts: t.ts,
