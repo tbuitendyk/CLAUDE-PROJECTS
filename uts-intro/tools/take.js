@@ -84,8 +84,15 @@ async function at(t, label, fn) {
   await signIn(page);
   await settle(txt('Trading accounts', true));
   await page.waitForTimeout(3000);
-  const startState = await page.evaluate(() => ({ guided: document.querySelector('#guidedbtn').innerText, theme: document.documentElement.getAttribute('data-theme'), url: location.href, card: !!document.querySelector('#guideVeil') && getComputedStyle(document.querySelector('#guideVeil')).display !== 'none' }));
+  // What the account looks like before the take, so the take can put back exactly this afterwards.
+  const startState = await page.evaluate(() => ({ guidedOn: document.querySelector('#guidedbtn').classList.contains('on'), theme: document.documentElement.getAttribute('data-theme'), scale: (JSON.parse(localStorage.getItem('uts.look') || '{}').scale) || 100, url: location.href }));
   console.log('start state', startState);
+  // The opening shot needs the page guidance card, so page guidance is on for the take whatever it was.
+  if (!startState.guidedOn) {
+    await page.locator('#guidedbtn').click(); await page.waitForTimeout(1500);
+    await page.reload({ waitUntil: 'networkidle' }); await settle(txt('Trading accounts', true)); await page.waitForTimeout(2500);
+  }
+  if (!(await q('#guideVeil').isVisible().catch(() => false))) throw new Error('no page guidance card on the opening screen');
   await a.moveTo(1560, 930, 10);
 
   // ---- start recording
@@ -217,11 +224,12 @@ async function at(t, label, fn) {
     for (let k = 0; k < 6 && await q('#guideVeil').isVisible().catch(() => false); k++) { await page.mouse.click(1700, 1000); await page.waitForTimeout(700); }
     for (let k = 0; k < 10; k++) {
       const fs_ = await page.evaluate(() => (document.body.innerText.match(/FONT SIZE\s*(\d+)%/) || [])[1]);
-      if (+fs_ === 100) break;
-      await q(+fs_ > 100 ? '#pfLookSmaller' : '#pfLookBigger').click(); await page.waitForTimeout(900);
+      if (+fs_ === startState.scale) break;
+      await q(+fs_ > startState.scale ? '#pfLookSmaller' : '#pfLookBigger').click(); await page.waitForTimeout(900);
     }
-    if (!(await q('#guidedbtn').getAttribute('class')).includes(' on')) { await q('#pfGuided').click(); await page.waitForTimeout(1200); }
-    if ((await page.evaluate(() => document.documentElement.getAttribute('data-theme'))) !== 'dark') { await q('#themebtn').click(); await page.waitForTimeout(800); }
+    for (let k = 0; k < 6 && await q('#guideVeil').isVisible().catch(() => false); k++) { await page.mouse.click(1700, 1000); await page.waitForTimeout(700); }
+    if ((await q('#guidedbtn').getAttribute('class')).includes(' on') !== startState.guidedOn) { await q('#pfGuided').click(); await page.waitForTimeout(1200); }
+    if ((await page.evaluate(() => document.documentElement.getAttribute('data-theme'))) !== startState.theme) { await q('#themebtn').click(); await page.waitForTimeout(800); }
     const after = await page.evaluate(() => ({ font: (document.body.innerText.match(/FONT SIZE\s*\d+%/) || [])[0], guided: document.querySelector('#guidedbtn').innerText, theme: document.documentElement.getAttribute('data-theme'), wf: (document.body.innerText.match(/Active:[^\n]*/) || [])[0], release: (document.body.innerText.match(/Release \d+\.\d+\.\d+/) || [])[0] }));
     console.log('restored', after);
     fs.writeFileSync(path.join(OUT, 'restored.json'), JSON.stringify(after, null, 1));

@@ -10,7 +10,8 @@ OFF = tl['offset']
 A = {int(k): v for k, v in tl['A'].items()}
 D = {int(k): v for k, v in tl['D'].items()}
 END = next(e['t'] for e in tl['events'] if e['label'] == 'END')
-P7S, P8S, ECD, XF = 0.9, 5.13, 10.0, 0.8          # must match the cards.js run
+P7S, P8S, ECD = (float(x) for x in (sys.argv[4:7] if len(sys.argv) >= 7 else (0.9, 5.13, 10.0)))  # must match the cards.js run
+XF = 0.8
 E = END - XF                                       # end card starts here (cross-fade begins)
 TOTAL = E + ECD
 NAMES = ['P1-setup-accounts', 'P2-construct-data-to-reserve', 'P3-greenlight', 'P4-trade-paper-books', 'P5-compute-and-accounts', 'P6-profile-guided-workflow']

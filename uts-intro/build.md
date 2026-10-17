@@ -1,5 +1,45 @@
 # uts-intro — build notes
 
+## Version 2 — `uts-intro-v2.mp4` (new voice)
+
+**Result:** `uts-intro-v2.mp4`, 1920×1080, 30 fps, H.264 + AAC, **1:54** (114.2 s), 15.9 MB.
+Same script, same shots, same captions and end card as version 1, with a more natural voice and a fresh take
+(filmed on Release 7.211.0) so every click lines up with the new voice's own timing.
+
+**Voice: Kokoro-82M, voice `af_heart` (American English, female), at 85 % speed**, about 155 words a minute.
+Kokoro is an open-source model (Apache 2.0) that runs on this machine; nothing was sent to a voice service.
+
+How it was chosen: the long second paragraph was spoken by 14 candidates and each was scored two ways.
+The first was UTMOS, a model trained to predict how human listeners rate naturalness, scored out of 5.
+The second was Whisper, which heard every word correctly for every candidate.
+
+| Voice | Naturalness (UTMOS, out of 5) |
+|---|---|
+| **Kokoro `af_heart`, 85 % speed — used** | **4.55** |
+| Kokoro `am_fenrir` (best male voice), 80 % speed | 4.52 |
+| Microsoft `en-US-AvaMultilingualNeural` | 4.47 |
+| Microsoft `en-US-AndrewNeural`, −10 % — version 1 | 4.39 |
+| Chatterbox (Resemble AI), default voice | 4.13 |
+
+Kokoro also ranks top among open voices that run without a graphics card in public blind listening
+tests. Chatterbox was also tried; it rates lower and takes about 8 seconds of computing for every second of speech here.
+Fish Audio rates higher, but its licence rules out commercial use.
+
+If you'd rather have a male voice, Kokoro `am_fenrir` scored almost the same, and switching is one re-run.
+
+Each narration clip was checked by speech recognition: every word came out as written.
+
+The trial account was found with `Guided` **off** this time. It was switched on only for filming, so the
+opening card shows, and put back to off afterwards, along with FONT SIZE 100%, the dark theme and the guided
+workflow at step 2 of 76. The take now records what it finds and puts back exactly that.
+
+New scripts: `tools/ktts.py` (Kokoro voice with word timings), `tools/score.py` (naturalness and accuracy
+scores).
+
+---
+
+## Version 1 — `uts-intro.mp4`
+
 **Result:** `uts-intro.mp4`, 1920×1080, 30 fps, H.264 + AAC, **1:50** (109.7 s), 16.3 MB.
 The share page (https://claude.ai/artifact/1NkbzPwcKkCuFajdSgbCpj) plays a slightly smaller copy of the same cut,
 with each scene's raw recording and each voice clip. Those clips and recordings live there, not in this folder.
