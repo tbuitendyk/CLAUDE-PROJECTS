@@ -29,7 +29,7 @@ added afterwards, and they are plain type.
 | — | (short pause) | Back to Setup, then `◐ Theme` switches to the light theme |
 | 5 | And it runs on your machine… | Compute: Where each part runs → The sweep processor (HOMSSURF02, connected), then Accounts › Trading accounts |
 | 6 | No AI in anything that runs… | Profile: `Enlarge font` twice (FONT SIZE 100% → 120%), zoom on Guidance, `Guided` back on, `Start fresh`, `Activate`, `Open` → the guided step box on Compute, `Next`, pull back |
-| 7–8 | Find a trading rule… / ultimate-trading-system.com | End card: each line appears as it is spoken, then the site name |
+| 7–8 | Find a trading rule… / ultimate trading system dot com | End card: each line appears as it is spoken, then the site name, written ultimate-trading-system.com |
 
 Captions are word for word from your md: *Trust, or check.* · *Tested against "nothing" · held · reserve* ·
 *Greenlight = frozen evidence* · *Paper first* · *Your keys, your machine* · *Deterministic · guided*.
@@ -42,7 +42,9 @@ Captions are word for word from your md: *Trust, or check.* · *Tested against "
   Scenes 5 and 6 are in the light theme; scene 6 changes the font size on screen.
 - **The workflow wasn't re-picked from the list.** It was already set to the Compute workflow, so the
   cursor points at it instead of reopening the list.
-- **The end card runs about 10 s, not 4 s,** because the last two lines take about 7.5 s to say.
+- **The last line is spoken as "ultimate trading system dot com"** (your request after the first cut), not read
+  out with its dashes. The end card still shows the written address, ultimate-trading-system.com.
+- **The end card runs about 10 s, not 4 s,** because the last two lines take about 6.5 s to say.
 - **Total length is 1:50, not about 90 s.** That's the calmer voice plus about 5 s of guided-workflow clicks
   after the narration ends.
 - **A "Please wait" box shows for under a second when Funnel opens** (about 0:25). That's the site's own
