@@ -1,0 +1,1 @@
+And it runs on your machine. Your exchange keys are encrypted in your browser with your own trading machine's key; the server passes them through and keeps nothing. Your machine connects out — nothing connects in.
