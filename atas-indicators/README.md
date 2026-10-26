@@ -6,7 +6,7 @@ It currently holds one starter indicator, **Delta Pulse**, meant as the base for
 | File | What it is |
 |---|---|
 | `AtasIndicators.slnx` | Solution: open this in Visual Studio 2026 |
-| `AtasIndicators/AtasIndicators.csproj` | Targets `net10.0-windows`, references ATAS's DLLs from its install folder, copies the build into ATAS |
+| `AtasIndicators/AtasIndicators.csproj` | Builds for the .NET version your ATAS runs on, references ATAS's DLLs from its install folder, copies the build into ATAS |
 | `AtasIndicators/DeltaPulse.cs` | Starter indicator: per-bar delta histogram, EMA of delta, optional threshold alert |
 | `AtasIndicators/Properties/launchSettings.json` | F5 starts ATAS under the debugger |
 
@@ -15,9 +15,13 @@ It currently holds one starter indicator, **Delta Pulse**, meant as the base for
 - ATAS 8 installed at the default `C:\Program Files (x86)\ATAS Platform`. Elsewhere is fine; see below.
 - Visual Studio 2026 with the **.NET desktop development** workload, which includes the .NET 10 SDK.
 
-The target is `net10.0-windows` because ATAS 8 runs on .NET 10. ATAS's docs say to check the
-`tfm` value in `OFT.Platform.runtimeconfig.json` in the install folder rather than relying on the
-version number. If it ever says `net8.0`, change `<TargetFramework>` to match.
+**.NET version is detected, not hard-coded.** ATAS's Latest channel (8.0.15 included) runs on
+.NET 10, but its Stable channel is still on .NET 8, and the version number doesn't tell them apart.
+An indicator built for the wrong one fails to compile or fails to load. The project reads the `tfm`
+from `OFT.Platform.runtimeconfig.json` in the ATAS install folder and builds for that
+(`net10.0-windows` or `net8.0-windows`). The build output says which: `Copied AtasIndicators.dll
+(net10.0-windows) ...`. Without that file it assumes .NET 10; force a value with
+`/p:AtasTfm=net8.0`.
 
 ## Build and load
 
@@ -68,5 +72,5 @@ Docs: <https://docs.atas.net/en/>.
 - The API calls and project settings were taken from ATAS's official repository (commit `0529e20`,
   2026-10-21) and docs.atas.net, not from memory.
 - The project was compiled with the .NET 10 SDK against a **stub** of that API, with warnings treated
-  as errors. That proves the code and build targets are well-formed. It does **not** prove the
+  as errors, against stand-in installs on .NET 8 and on .NET 10 (each built for the right target). That proves the code and build targets are well-formed. It does **not** prove the
   indicator runs inside ATAS: the first real build against ATAS's own DLLs happens on your machine.

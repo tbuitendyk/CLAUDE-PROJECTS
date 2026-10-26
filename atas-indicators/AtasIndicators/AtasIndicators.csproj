@@ -1,10 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Custom indicators for classic ATAS (the WPF build). Target framework and the platform
-       references mirror ATAS's own public sample project (github.com/AtasPlatform/Indicators,
-       Samples/Indicators.Samples.csproj), which targets net10.0-windows for ATAS 8. -->
+  <!-- Custom indicators for classic ATAS (the WPF build). The platform references mirror ATAS's own
+       public sample project (github.com/AtasPlatform/Indicators, Samples/Indicators.Samples.csproj).
+       TargetFramework is not fixed here: it is read from the installed ATAS further down. -->
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
@@ -19,6 +18,18 @@
     <AtasDir Condition=" '$(AtasDir)' == '' ">C:\Program Files (x86)\ATAS Platform</AtasDir>
     <AtasIndicatorsDir Condition=" '$(AtasIndicatorsDir)' == '' ">$([System.Environment]::GetFolderPath(SpecialFolder.ApplicationData))\ATAS\Indicators</AtasIndicatorsDir>
     <DeployToAtas Condition=" '$(DeployToAtas)' == '' ">true</DeployToAtas>
+  </PropertyGroup>
+
+  <!-- Build for the .NET version the installed ATAS runs on, taken from the "tfm" in its
+       OFT.Platform.runtimeconfig.json. ATAS's Latest channel runs on .NET 10 while Stable is still on
+       .NET 8, and the version number doesn't tell them apart; an indicator built for the wrong one
+       fails to compile or fails to load. Without that file this falls back to .NET 10; force a value
+       with /p:AtasTfm=net8.0. -->
+  <PropertyGroup>
+    <_AtasRuntimeConfig>$(AtasDir)\OFT.Platform.runtimeconfig.json</_AtasRuntimeConfig>
+    <AtasTfm Condition=" '$(AtasTfm)' == '' and Exists('$(_AtasRuntimeConfig)') ">$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(_AtasRuntimeConfig)')), '"tfm"\s*:\s*"(net[0-9.]+)"').Groups[1].Value)</AtasTfm>
+    <AtasTfm Condition=" '$(AtasTfm)' == '' ">net10.0</AtasTfm>
+    <TargetFramework>$(AtasTfm)-windows</TargetFramework>
   </PropertyGroup>
 
   <!-- Referenced from the installed platform, never copied: ATAS supplies them at runtime. -->
@@ -60,7 +71,7 @@
       <_AtasDeployFile Include="$(TargetDir)$(TargetName).pdb" Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
     </ItemGroup>
     <Copy SourceFiles="@(_AtasDeployFile)" DestinationFolder="$(AtasIndicatorsDir)" SkipUnchangedFiles="true" Retries="2" RetryDelayMilliseconds="500" />
-    <Message Importance="high" Text="Copied $(TargetFileName) to $(AtasIndicatorsDir)" />
+    <Message Importance="high" Text="Copied $(TargetFileName) ($(TargetFramework)) to $(AtasIndicatorsDir)" />
   </Target>
 
 </Project>

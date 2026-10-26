@@ -43,9 +43,11 @@ plane), seed its `CLAUDE.md` with this header so the behavior carries forward.
 
 ## Settled facts (verified 2026-10-26, do not re-litigate)
 
-- **Target `net10.0-windows`.** ATAS 8 runs on .NET 10. Source: docs.atas.net BasicIndicator page
-  and ATAS's own sample project. The platform version number does not indicate the runtime: the
-  authority is `tfm` in `OFT.Platform.runtimeconfig.json` in the install folder.
+- **The target framework is detected from the install, never hard-coded.** ATAS's Latest/Beta/
+  Alpha channels run on .NET 10 (since 2026-06-25), Stable on .NET 8 (checked against the
+  `publish_*` branches of github.com/AtasPlatform/Indicators). The version number does not
+  indicate the runtime. The csproj reads `tfm` from `OFT.Platform.runtimeconfig.json` in the install
+  folder; keep it that way. The owner runs 8.0.15.304, which shipped Beta then Latest (.NET 10).
 - **Install folder** `C:\Program Files (x86)\ATAS Platform`. Reference `ATAS.Indicators.dll`
   (required), plus `ATAS.DataFeedsCore`, `OFT.Attributes`, `OFT.Rendering`, `Utils.Common`, all
   with `Private=false`.
