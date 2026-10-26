@@ -1,0 +1,66 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Custom indicators for classic ATAS (the WPF build). Target framework and the platform
+       references mirror ATAS's own public sample project (github.com/AtasPlatform/Indicators,
+       Samples/Indicators.Samples.csproj), which targets net10.0-windows for ATAS 8. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <RootNamespace>AtasIndicators</RootNamespace>
+    <AssemblyName>AtasIndicators</AssemblyName>
+  </PropertyGroup>
+
+  <!-- Machine-specific paths. Defaults match a standard install; override with
+       /p:AtasDir="D:\ATAS Platform" (or /p:AtasIndicatorsDir=...) if yours differ.
+       /p:DeployToAtas=false builds without copying into ATAS. -->
+  <PropertyGroup>
+    <AtasDir Condition=" '$(AtasDir)' == '' ">C:\Program Files (x86)\ATAS Platform</AtasDir>
+    <AtasIndicatorsDir Condition=" '$(AtasIndicatorsDir)' == '' ">$([System.Environment]::GetFolderPath(SpecialFolder.ApplicationData))\ATAS\Indicators</AtasIndicatorsDir>
+    <DeployToAtas Condition=" '$(DeployToAtas)' == '' ">true</DeployToAtas>
+  </PropertyGroup>
+
+  <!-- Referenced from the installed platform, never copied: ATAS supplies them at runtime. -->
+  <ItemGroup>
+    <Reference Include="ATAS.Indicators">
+      <HintPath>$(AtasDir)\ATAS.Indicators.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="ATAS.DataFeedsCore">
+      <HintPath>$(AtasDir)\ATAS.DataFeedsCore.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="OFT.Attributes">
+      <HintPath>$(AtasDir)\OFT.Attributes.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="OFT.Rendering">
+      <HintPath>$(AtasDir)\OFT.Rendering.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Utils.Common">
+      <HintPath>$(AtasDir)\Utils.Common.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- One readable error instead of dozens of "type not found" errors when ATAS isn't where we look. -->
+  <Target Name="CheckAtasInstall" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition=" !Exists('$(AtasDir)\ATAS.Indicators.dll') "
+           Text="ATAS.Indicators.dll not found in '$(AtasDir)'. Install ATAS there, or build with /p:AtasDir=&quot;your ATAS folder&quot;." />
+  </Target>
+
+  <!-- Copy the built DLL (and its .pdb, for debugging) to where ATAS loads custom indicators from
+       (%AppData%\ATAS\Indicators, per docs.atas.net). A running ATAS notices the change and shows a
+       reload button in its status bar; press it after the build finishes, no restart needed. -->
+  <Target Name="CopyToAtasIndicators" AfterTargets="Build" Condition=" '$(DeployToAtas)' == 'true' ">
+    <ItemGroup>
+      <_AtasDeployFile Include="$(TargetPath)" />
+      <_AtasDeployFile Include="$(TargetDir)$(TargetName).pdb" Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_AtasDeployFile)" DestinationFolder="$(AtasIndicatorsDir)" SkipUnchangedFiles="true" Retries="2" RetryDelayMilliseconds="500" />
+    <Message Importance="high" Text="Copied $(TargetFileName) to $(AtasIndicatorsDir)" />
+  </Target>
+
+</Project>

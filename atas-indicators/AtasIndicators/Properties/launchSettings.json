@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "ATAS": {
+      "commandName": "Executable",
+      "executablePath": "C:\\Program Files (x86)\\ATAS Platform\\OFT.Platform.exe",
+      "workingDirectory": "C:\\Program Files (x86)\\ATAS Platform"
+    }
+  }
+}
