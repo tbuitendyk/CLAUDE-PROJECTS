@@ -445,3 +445,63 @@ module.exports.everyFateTheServerEmitsIsRenderedAsASentence = function () {
     `view.js can emit these outcomes and trading.html has no wording for them, so the raw `
     + `value would be printed on the live screen: ${missing.join(', ')}`);
 };
+
+// ---- THE MACHINE'S BANNERS ARE NOT ANY ONE SCREEN'S BUSINESS ----------------
+// 2026-10-30: a HALT sat on the box from 2026-10-29T09:40Z and the owner saw
+// nothing until a LONG failed to open — "no indication of a halt until we had a
+// position that did not open". The banner existed. It was built inside
+// boxControls(), and drawLive() calls that once as `${isP?'':boxControls(box)}`,
+// so it rendered on the LIVE subtab of the Live Trading branch and nowhere
+// else: one screen out of ten, while the DEFAULT landing screen is Paper Books
+// / Greenlights. Dashboard, Greenlights, Setups and Setup detail rendered no
+// halt of any kind. The mail rails left the same gap: live-alert.sh never sees
+// a machine-level event (it skips anything without a setup_id) and
+// pilot-alert.sh pages the condition ONCE on the transition into halted, then
+// stays silent while it persists — one notice at 09:40, then sixteen hours of
+// nothing. The machine's state must not depend on which subtab is open.
+//
+// Watched failing 2026-10-30: deleting `drawBoxAlerts();` from draw() fails
+// theMachinesBannersRideEveryScreen; moving the halt strip back inside
+// boxControls() fails theHaltBannerIsNotBuiltInsideASectionRenderer.
+function ltBody(name) {
+  const m = LT.match(new RegExp(`\\n(?:async )?function ${name}\\s*\\(`));
+  assert.ok(m, `trading.html no longer defines ${name}()`);
+  const i = m.index + 1;
+  const n = LT.slice(i + 1).search(/\n(?:async )?function /);
+  return n < 0 ? LT.slice(i) : LT.slice(i, i + 1 + n);
+}
+
+function theMachinesBannersRideEveryScreen() {
+  const raw = fs.readFileSync(path.join(ROOT, 'public', 'trading.html'), 'utf8');
+  assert.ok(raw.includes('<div id="boxAlerts"></div>'),
+    'trading.html has no #boxAlerts host, so the machine banners have nowhere to live above the screens');
+  assert.ok(raw.indexOf('id="boxAlerts"') < raw.indexOf('id="view"'),
+    '#boxAlerts must sit above #view — inside it, a section render replaces the halt notice');
+  assert.ok(/\bdrawBoxAlerts\(\)/.test(ltBody('draw')),
+    'draw() does not call drawBoxAlerts(), so the halt is drawn only by whichever section bothers to draw it');
+  // The button has to be wired from the same place the banner is drawn, or it
+  // sits on nine screens doing nothing.
+  assert.ok(/\bwireBoxAlerts\(/.test(ltBody('drawBoxAlerts')),
+    'drawBoxAlerts() renders the halt banner without wiring it — "Clear the halt" would be dead on every screen');
+}
+
+function theHaltBannerIsNotBuiltInsideASectionRenderer() {
+  const alerts = ltBody('boxAlerts');
+  assert.ok(alerts.includes('HALT set on the box'),
+    'boxAlerts() no longer carries the box-level halt banner');
+  // A halt stops real entries whichever side is being looked at, and paper is
+  // the branch the page lands on by default.
+  assert.ok(!/\bisP\b/.test(alerts),
+    'the machine banners are gated on the paper/real branch — a halt would be invisible on the default landing screen');
+  for (const name of ['drawLive', 'boxControls']) {
+    assert.ok(!ltBody(name).includes('HALT set on the box'),
+      `${name}() builds the box-level halt banner, so it renders only where ${name}() is called`);
+  }
+  // An unreadable box is not a healthy box.
+  assert.ok(alerts.includes('COULD NOT BE READ'),
+    'boxAlerts() renders nothing when the box state cannot be read, so an outage looks identical to a clean machine');
+}
+
+module.exports.theMachinesBannersRideEveryScreen = theMachinesBannersRideEveryScreen;
+module.exports.theHaltBannerIsNotBuiltInsideASectionRenderer
+  = theHaltBannerIsNotBuiltInsideASectionRenderer;

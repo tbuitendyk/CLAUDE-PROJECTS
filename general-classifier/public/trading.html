@@ -108,6 +108,10 @@
 
   <div class="tabs branch" id="branchTabs"></div>
   <div class="tabs" id="subTabs"></div>
+  <!-- THE MACHINE'S OWN BANNERS, above every screen on both branches. Kept out
+       of #view because #view is replaced wholesale by whichever draw* function
+       runs, and a halt is not any one screen's business (owner, 2026-10-30). -->
+  <div id="boxAlerts"></div>
   <div id="view"></div>
 
 <script>
@@ -643,19 +647,47 @@ function untilStr(iso){ if(!iso)return''; const ms=Date.parse(iso)-Date.now(); i
 // only one hardcoded config could reach, so retiring that config would have
 // taken the owner's start/stop with it. Rendered here once and shown on the
 // real side of whichever config is being watched.
-function boxControls(b){
-  if(!b || b.present===false) return '';
+//
+// THE MACHINE'S BANNERS RIDE EVERY SCREEN (owner, 2026-10-30). They were built
+// in here, and boxControls() is called from exactly one place — drawLive(),
+// gated `isP?'':` so the paper side never got it at all — which is one subtab
+// out of ten. A halt therefore sat on the box from 2026-10-29T09:40Z
+// announcing itself to nobody: Dashboard, Greenlights, Setups and Setup detail
+// render no halt of any kind, and the default landing screen is Paper Books /
+// Greenlights. The mail rails did not cover the gap either — live-alert.sh
+// never sees a machine-level event (it skips anything without a setup_id), and
+// pilot-alert.sh pages such a condition ONCE on the transition into halted and
+// then stays silent for as long as it persists. So: one notice at 09:40, then
+// sixteen hours of nothing. The owner found out when a LONG failed to open —
+// "no indication of a halt until we had a position that did not open".
+//
+// A halt, a silent executor and a stopped engine are facts about the MACHINE,
+// not about whichever config is being watched, so draw() puts them above every
+// screen on both branches. The three moved together and stay one if/else
+// chain: a halted box must not also announce itself as merely STOPPED.
+function boxAlerts(b){
+  const strips=[];
+  // AN UNREADABLE BOX IS NOT A HEALTHY BOX. Returning '' here would render a
+  // failed read identically to a clean machine — the same fault as an empty
+  // panel reading "you have nothing" rather than "I could not ask" (apiOr).
+  if(!b || b.present===false){
+    strips.push(`<div class="banner halted" data-role="box-unreadable">⛔ THE BOX'S STATE COULD NOT BE READ — this screen cannot say whether it is halted, stopped or running. Treat it as unknown, not as healthy.</div>`);
+    return strips.join('');
+  }
   const hbAge=b.lastHeartbeatUtc?(Date.now()-Date.parse(b.lastHeartbeatUtc))/6e4:null;
   const dead=hbAge==null||hbAge>25;
-  const wb=b.walletBalance||{};
-  const strips=[];
-  if(dead)strips.push(`<div class="banner halted">⛔ EXECUTOR SILENT — last heartbeat ${hbAge==null?'never':hbAge.toFixed(0)+' min ago'} (the box runs every ~10 min). Scheduled exits are NOT firing.</div>`);
-  if(b.halted)strips.push(`<div class="banner halted">⛔ HALT set on the box — new entries stopped for every config; scheduled exits still run.
+  if(dead)strips.push(`<div class="banner halted" data-role="box-dead">⛔ EXECUTOR SILENT — last heartbeat ${hbAge==null?'never':hbAge.toFixed(0)+' min ago'} (the box runs every ~10 min). Scheduled exits are NOT firing.</div>`);
+  if(b.halted)strips.push(`<div class="banner halted" data-role="box-halted">⛔ HALT set on the box — new entries stopped for every config; scheduled exits still run.
     <div class="muted" style="font-size:.78rem;margin:.25rem 0">Reason recorded on the box: ${esc(b.haltReason||'(not recorded)')}</div>
     <button id="btnUnhalt" class="danger">Clear the halt</button>
     <span id="unhaltMsg" class="muted" style="font-size:.78rem;margin-left:.5rem">Only after the cause is understood — this does not start trading, and an unfixed cause re-halts on the next check.</span></div>`);
-  else if(!b.armed)strips.push(`<div class="banner stopped">■ engine STOPPED — press START to run. Open positions still exit on schedule.</div>`);
-  return `${strips.join('')}
+  else if(!b.armed)strips.push(`<div class="banner stopped" data-role="box-stopped">■ engine STOPPED — press START to run. Open positions still exit on schedule.</div>`);
+  return strips.join('');
+}
+function boxControls(b){
+  if(!b || b.present===false) return '';
+  const wb=b.walletBalance||{};
+  return `
     <div class="switch"><div><div class="k">Master switch (yours)</div>
       <div style="font-size:1.1rem;font-weight:700" class="${b.armed?'pos':'muted'}">${b.armPending?'<span class="warn">PENDING…</span>':(b.armed?'RUNNING':'STOPPED')}</div></div>
       <div class="spacer"></div>
@@ -679,12 +711,11 @@ function boxControls(b){
         <span id="mfMsg" class="muted" style="font-size:.76rem"></span>
       </div></div>`;
 }
-function wireBoxControls(b){
-  const go=async(armed)=>{ const verb=armed?'START':'STOP';
-    if(!confirm(`${verb} the live engine?`))return;
-    const out=await post(armed?'api/pilot/arm':'api/pilot/disarm'); if(out) draw(); };
-  const bs=$('#btnStart'); if(bs)bs.onclick=()=>go(true);
-  const bp=$('#btnStop'); if(bp)bp.onclick=()=>go(false);
+// THE HALT BANNER IS DRAWN ABOVE EVERY SCREEN, so its button is wired from
+// here and not from wireBoxControls() — that one only runs on the subtab which
+// draws the controls, and a "Clear the halt" button sitting on nine screens
+// with nothing behind it would be worse than no button at all.
+function wireBoxAlerts(b){
   const bu=$('#btnUnhalt');
   if(bu)bu.onclick=async()=>{
     if(!confirm('Clear the halt?\n\nOnly do this once you understand WHY it halted. This does not start trading — '
@@ -701,6 +732,13 @@ function wireBoxControls(b){
       : 'the request could not be written — nothing was sent';
     bu.disabled=false;
   };
+}
+function wireBoxControls(b){
+  const go=async(armed)=>{ const verb=armed?'START':'STOP';
+    if(!confirm(`${verb} the live engine?`))return;
+    const out=await post(armed?'api/pilot/arm':'api/pilot/disarm'); if(out) draw(); };
+  const bs=$('#btnStart'); if(bs)bs.onclick=()=>go(true);
+  const bp=$('#btnStop'); if(bp)bp.onclick=()=>go(false);
   const mf=$('#mfSet');
   if(mf)mf.onclick=async()=>{
     const raw=$('#mfIn').value.trim();
@@ -879,7 +917,20 @@ async function drawLive(){
     su.disabled=false;
   };
 }
+// The machine's banners are fetched and drawn on their own, so a section that
+// throws cannot take the halt notice down with it, and so they do not depend on
+// which subtab happens to be showing.
+async function drawBoxAlerts(){
+  const host=$('#boxAlerts'); if(!host) return;
+  // Deliberately NOT apiOr: fetchFailures belongs to the section render and is
+  // reset on every draw. A failed read here is reported by the banner itself.
+  let b=null;
+  try{ b=await api('api/pilot'); }catch(_){ b=null; }
+  host.innerHTML=boxAlerts(b);
+  wireBoxAlerts(b);
+}
 function draw(){ renderNav();
+  drawBoxAlerts();
   // Reset the failure log for THIS render, then band the screen afterwards if
   // any read failed. Without it a panel that lost its data renders its empty
   // state — "No greenlighted configs yet" — which reads as "you have nothing"
