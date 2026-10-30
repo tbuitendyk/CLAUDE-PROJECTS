@@ -1,0 +1,117 @@
+Classifier: a halt can no longer hide, and one blip no longer costs a day
+
+tl;dr — three fixes are deployed and verified as of 05:45 UTC today. A halt now
+shows on EVERY screen instead of one tab out of ten; a single dropped network
+connection no longer latches a halt that blocks trading all day; and a fault
+that is still happening now emails you every hour instead of once at the moment
+it began. Today's 01:00 LONG was lost to exactly that combination. The box also
+went unreachable separately around 01:35 and came back on its own by about
+03:50 — it is armed, unhalted and reconciling cleanly now. Next entry
+opportunity is Saturday 01:00 UTC. I also caught the deploy shipping the OLD
+executor and fixed that before finishing; details below, because it is the kind
+of thing that could bite again.
+
+WHAT WENT WRONG, IN ORDER
+
+On 29 October at 09:40:07 UTC the box lost one network connection to Binance.
+Three things were written in that same second: it could not read the account,
+it set a halt, and it stopped taking new entries. There was no retry — one
+dropped connection was enough.
+
+That halt was obsolete almost immediately. The same hour recorded five clean
+account reads, and the box went on reading the account cleanly, five or six
+times an hour, right through until the next day. The cause lasted one second.
+The consequence lasted fifteen hours and twenty minutes, because a halt never
+clears itself.
+
+Nothing told you. The halt banner existed, but it was only drawn on one screen
+— the LIVE subtab of Live Trading — and the page opens on Paper Books /
+Greenlights by default. The Dashboard, Greenlights, Setups and Setup detail
+screens showed no halt at all. On the mail side you got one message at 09:40
+and then silence, because an ongoing fault only emailed on the moment it
+started. So the first thing that could tell you was a trade failing to happen,
+which is what you saw this morning.
+
+Correction to something I told you earlier: I said the halt had been sitting
+for about 40 hours. It was 15 hours 20 minutes. The 40 was my error and you
+were right to doubt it.
+
+Had the retry been in place, no halt would ever have been set, and the 01:00
+LONG would have gone in on a box that was perfectly healthy at the time.
+
+TABLE — What was deployed today
+What the table is for: the three changes now running, and which failure each
+one stops from happening again.
+KEY
+  Change        what was altered, in plain words
+  Runs on       which machine it runs on — the VPS (the web server and the
+                watchers) or the box (the machine in Mexico that places orders)
+  Stops         the specific failure it prevents recurring
+
+  Change   A halt, a silent executor, and an unreadable box now appear as a
+           banner above every screen, on both Paper Books and Live Trading
+  Runs on  VPS
+  Stops    A fault being invisible because you were not on one particular tab
+
+  Change   A failed account read holds entries for that cycle but no longer
+           sets a halt until it has failed three cycles in a row (about 20-30
+           minutes). A successful read resets the count
+  Runs on  box
+  Stops    One dropped connection blocking trading until a human notices
+
+  Change   A fault that is still active re-emails you every hour, saying how
+           long it has been going, with "(still)" in the subject
+  Runs on  VPS
+  Stops    An ongoing problem going quiet after its first message
+
+On the second one: entries are still blocked on any cycle where the account
+could not be read. A retry must never buy a trade on a book we cannot see. What
+changed is only that a brief failure no longer leaves a halt behind that needs
+you to clear it.
+
+THE DEPLOY ALMOST SHIPPED THE OLD CODE
+
+Worth knowing, because it is a trap rather than a one-off. The script that
+sends the executor to the box takes it from a SECOND copy that lives on the
+vps-access branch, not from the authoritative file I had fixed. So the first
+deploy ran, reported success, exited zero — and put the OLD executor on the
+box. I only caught it because the script prints the fingerprint of the file it
+sent, and I compared that against the expected one instead of trusting the
+success message.
+
+I updated the second copy, re-deployed, and confirmed the box is now running
+the fixed version. But nothing in the system compares those two copies, so the
+same silent-stale-deploy is possible on any future executor change. It is
+written up as QC 197 with the fix I would propose — the deploy should REFUSE to
+send a copy that disagrees with the recorded fingerprint. I have not built that;
+it changes the deploy path and you have not approved one.
+
+STATE RIGHT NOW
+
+The box is armed, not halted, and reconciling cleanly. Journal sync is current
+to the second, after being frozen for about 70 minutes while the box was
+unreachable. Today's 01:00 call stays in the record as "recorded", which is
+accurate — it never reached the box. The book is flat, so nothing is half-open.
+
+LTC is around 56.33 against this morning's decision price of 54.40, so the
+trade we missed would currently be showing a gain. It would not have closed
+until 4 November, so that is not a realised loss, just the size of the miss.
+
+STILL OPEN, FOR YOUR DECISION
+
+1. The hourly re-page cadence was my choice, not yours — you said "both" and I
+   did not want to stall on it. It reuses the hourly figure the file already
+   used for other repeat alerts. One line changes it if hourly is too much or
+   too little.
+2. QC 197 above — the deploy refusing to ship a mismatched executor.
+3. The alert emails still point at a page you do not use (pilot.html, a legacy
+   file). With re-paging on you would now be sent there hourly instead of once.
+   One line, but it is not what you approved, so it is yours to call.
+4. Your point about the two platforms sharing the AWS host stands and I have
+   not touched it. Our control plane survived because it is on the VPS; only
+   the execution box died. Real separation would mean separate instances.
+
+Everything above is in git: general-classifier e09afc5, b190f89; vps-access
+c00f509, ed687a6.
+
+c.
