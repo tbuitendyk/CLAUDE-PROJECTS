@@ -83,6 +83,15 @@ RECV_WINDOW = 10000
 # is the pilot's job and is untouched.
 FILL_DEV_LIMIT = 0.20      # kill only a CATASTROPHIC (>20%) decision-vs-fill gap
 REJECT_LIMIT = 3           # kill: 3 consecutive rejects (GUESSED)
+# How many CONSECUTIVE unreadable account reads latch a halt (owner, 2026-10-30).
+# GUESSED within bounds that are not: it must be >1, because a halt from a single
+# dropped connection is the 2026-10-29 defect itself (one "[Errno 104] Connection
+# reset by peer" blocked entries for fifteen hours while the account stayed
+# readable five times an hour), and small enough that a GENUINE outage still
+# latches before the next hourly entry — the box runs every ten minutes, so 3
+# cycles is 20-30 min, inside the hour. Any value in 2..5 satisfies both; 3 is
+# chosen to match REJECT_LIMIT rather than to add a second number to remember.
+UNREADABLE_LIMIT = 3
 LOSS_LIMIT_USD = 50.0      # kill: cumulative pilot loss (GUESSED)
 # Isolation guard (independent review 2026-08-12, BLOCKER 1). This box holds ONE
 # isolated-margin sub-account key (F1's) and every setup trades the SAME LTCUSDT
@@ -238,6 +247,15 @@ def derive(events):
     # per-setup (rejects2 / realized2) and drive per-setup halts, never the box.
     consecutive_rejects = 0   # SCHEMA-1 (F1) reject-kill counter
     rejects2 = {}             # setup_id -> consecutive schema-2 rejects
+    # CONSECUTIVE UNREADABLE ACCOUNT READS (owner, 2026-10-30). On 2026-10-29 a
+    # single "[Errno 104] Connection reset by peer" latched a halt in the same
+    # second it arrived, and the halt then blocked every entry for fifteen hours
+    # while the box reconciled cleanly five times an hour the whole time. One
+    # dropped TCP connection is not a fault needing a human; a venue we cannot
+    # read for several cycles running is. Counted here so the judgement survives
+    # the process — the box is a fresh process every ten minutes, so a counter
+    # held in memory would always read 1.
+    unreadable_streak = 0
     realized = 0.0            # ALL real realized (screen/aggregate)
     realized_s1 = 0.0         # SCHEMA-1 realized only (F1's loss kill)
     realized2 = {}            # setup_id -> schema-2 realized
@@ -320,10 +338,18 @@ def derive(events):
             dust_done = True
         elif ev == "SHORTDUST_DONE":
             shortdust_done = True
+        elif ev == "RECONCILE_UNREADABLE":
+            unreadable_streak += 1
+        elif ev in ("RECONCILE_OK", "RECONCILE_MISMATCH"):
+            # A read that SUCCEEDED ends the streak, whatever it found. A
+            # mismatch is a readable account with the wrong contents — it halts
+            # on its own terms, and it proves the transport is working.
+            unreadable_streak = 0
     return {"open": pos, "paper_open": paper, "consecutive_rejects": consecutive_rejects,
             "rejects2": rejects2, "realized": realized, "realized_s1": realized_s1,
             "realized2": realized2, "paper_realized": paper_realized,
-            "dust_done": dust_done, "shortdust_done": shortdust_done}
+            "dust_done": dust_done, "shortdust_done": shortdust_done,
+            "unreadable_streak": unreadable_streak}
 
 
 def intent_seen(events, chunk_start):
@@ -1332,6 +1358,10 @@ def do_run(bx):
     #   short side — exchange debt should be the journal's short nominal PLUS bounded
     #                accrued interest (interest only ADDS; a deficit means a short
     #                vanished and still halts)
+    # Set when THIS cycle could not read the account. Entries are held whenever
+    # it is true, whether or not the streak has reached the halt limit, so a
+    # retry can never mean entering on a book we cannot see.
+    account_unreadable = False
     code, acct = bx.isolated_account()
     if code == 200 and not acct.get("dryrun"):
         free_base = borrowed = None
@@ -1444,7 +1474,22 @@ def do_run(bx):
                      long_qty=round(long_qty, 6), short_nominal=round(short_nominal, 6))
     elif code != 200 and bx.live:
         jlog("RECONCILE_UNREADABLE", http=code, body=json.dumps(acct)[:200])
-        set_halt("executor", f"cannot read account (http {code})")
+        # ONE BLIP MUST NOT COST A DAY (owner, 2026-10-30) — and must not buy a
+        # blind entry either. Both at once: the cycle is held regardless, and
+        # only a SUSTAINED failure latches the halt that needs a human to clear.
+        # st was replayed BEFORE this read, so this one is not counted in it yet.
+        account_unreadable = True
+        streak = st["unreadable_streak"] + 1
+        if streak >= UNREADABLE_LIMIT:
+            set_halt("executor", f"cannot read account (http {code}) on "
+                     f"{streak} consecutive cycles")
+        else:
+            # Loud every time, even though nothing is latched: a venue we cannot
+            # reach is worth knowing about before it becomes a halt.
+            jlog("RECONCILE_RETRYING", http=code, streak=streak,
+                 limit=UNREADABLE_LIMIT,
+                 note="account unreadable — entries held this cycle, no halt "
+                      "latched; a readable account clears the streak")
 
     # 2) kill: cumulative loss, MARK-TO-MARKET. Realized alone is blind to open
     # positions, so several concurrent shorts could bleed unbounded on a rally
@@ -1756,6 +1801,13 @@ def do_run(bx):
         real_blocked = True
     elif st["consecutive_rejects"] >= REJECT_LIMIT:
         set_halt("executor", f"{st['consecutive_rejects']} consecutive rejects")
+        real_blocked = True
+    elif account_unreadable:
+        # Below UNREADABLE_LIMIT no halt was latched, so this is the ONLY thing
+        # keeping entries off an account we could not read. It clears itself on
+        # the next cycle that reads cleanly — no human needed, nothing to unlatch.
+        jlog("ENTRIES_SKIPPED", reason="account unreadable this cycle — held, "
+             "not halted; retrying next cycle")
         real_blocked = True
 
     os.makedirs(INTENTS, exist_ok=True)

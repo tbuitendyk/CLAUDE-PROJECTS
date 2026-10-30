@@ -45,6 +45,10 @@ class MockBinance(BaseHTTPRequestHandler):
                               # outsized fee eating the received qty)
     placed = {}               # newClientOrderId -> venue order record (recovery lookup)
     time_skew_ms = 0          # exchange serverTime minus box OS clock (clock tests)
+    account_fails = False     # when True the isolated-account GET returns 500, so
+                              # the executor cannot read the book (the 2026-10-29
+                              # fault, which arrived as http 0 from a dropped TCP
+                              # connection — same `code != 200` branch)
 
     def _send(self, obj, code=200):
         body = json.dumps(obj).encode()
@@ -73,6 +77,8 @@ class MockBinance(BaseHTTPRequestHandler):
                 return self._send({"code": -2013, "msg": "Order does not exist."}, 400)
             return self._send(rec)
         if self.path.startswith("/sapi/v1/margin/isolated/account"):
+            if MockBinance.account_fails:
+                return self._send({"code": -1000, "msg": "unavailable"}, 500)
             if self.net_asset is not None:
                 na = self.net_asset
                 return self._send({"assets": [{
@@ -234,6 +240,7 @@ class ExecutorTest(unittest.TestCase):
         MockBinance.orders = []
         MockBinance.placed = {}
         MockBinance.time_skew_ms = 0
+        MockBinance.account_fails = False
 
     def tearDown(self):
         shutil.rmtree(self.home, ignore_errors=True)
@@ -500,6 +507,67 @@ class ExecutorTest(unittest.TestCase):
         self.x.do_run(self.bx())
         self.assertIn("RECONCILE_MISMATCH", self.events())
         self.assertTrue(self.x.halted())
+
+    # -- ONE BLIP MUST NOT COST A DAY (owner, 2026-10-30) ---------------------
+    # 2026-10-29T09:40:07Z on the live book: a single "[Errno 104] Connection
+    # reset by peer" wrote RECONCILE_UNREADABLE and HALT_SET in the SAME SECOND,
+    # and that halt blocked every entry for the next fifteen hours — while the
+    # very same hour logged RECONCILE_OK five times and the box went on
+    # reconciling cleanly until the following day. The cause lasted one second;
+    # the consequence lasted a day and cost the 2026-10-30 01:00 LONG.
+    #
+    # Both halves matter. Entries must STILL be held on an account we cannot
+    # read — a retry must never buy a blind entry. What must not happen is
+    # latching a halt that only a human can clear, on one dropped connection.
+    def test_a_single_unreadable_account_holds_entries_without_halting(self):
+        MockBinance.account_fails = True
+        self.write_intent(side="LONG")
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("RECONCILE_UNREADABLE", ev)
+        self.assertIn("RECONCILE_RETRYING", ev)   # loud, but nothing latched
+        self.assertFalse(self.x.halted(),
+                         "one dropped connection latched a halt a human must clear")
+        # ...and nothing was traded against a book we could not see.
+        self.assertNotIn("ENTRY_FILL", ev)
+        self.assertIn("ENTRIES_SKIPPED", ev)
+
+    def test_a_sustained_outage_still_latches_the_halt(self):
+        MockBinance.account_fails = True
+        for _ in range(self.x.UNREADABLE_LIMIT):
+            self.x.do_run(self.bx())
+        self.assertTrue(self.x.halted(),
+                        f"{self.x.UNREADABLE_LIMIT} consecutive unreadable reads did not halt")
+        reasons = [e.get("reason", "") for e in self.x.journal_events()
+                   if e.get("event") == "HALT_SET"]
+        self.assertTrue(any("consecutive cycles" in r for r in reasons),
+                        f"halt reason does not say it was sustained: {reasons}")
+
+    def test_a_readable_account_clears_the_streak(self):
+        # The streak is CONSECUTIVE. Two failures, one clean read, then two more
+        # must not add up to the limit — otherwise a box with an intermittent
+        # link still accumulates its way to a halt it does not deserve.
+        for _ in range(self.x.UNREADABLE_LIMIT - 1):
+            MockBinance.account_fails = True
+            self.x.do_run(self.bx())
+        MockBinance.account_fails = False
+        self.x.do_run(self.bx())
+        self.assertIn("RECONCILE_OK", self.events())
+        for _ in range(self.x.UNREADABLE_LIMIT - 1):
+            MockBinance.account_fails = True
+            self.x.do_run(self.bx())
+        self.assertFalse(self.x.halted(),
+                         "a clean read in the middle did not clear the streak")
+
+    def test_the_unreadable_streak_survives_the_process(self):
+        # The box is a fresh process every ten minutes, so the count has to be
+        # derived from the journal. Held in memory it would always read 1, and
+        # the halt would never arrive however long the venue stayed unreachable.
+        self.x.jlog("RECONCILE_UNREADABLE", http=0)
+        self.x.jlog("RECONCILE_UNREADABLE", http=0)
+        self.assertEqual(self.x.derive(self.x.journal_events())["unreadable_streak"], 2)
+        self.x.jlog("RECONCILE_OK", free_base=0, borrowed=0)
+        self.assertEqual(self.x.derive(self.x.journal_events())["unreadable_streak"], 0)
 
     # -- interest-aware / dust-tolerant reconcile (finding 19) ----------------
     def test_flat_book_subnotional_dust_not_swept_no_halt(self):
