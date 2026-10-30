@@ -92,5 +92,39 @@ echo "$OUT" | grep -q 'dead_heartbeat' \
   && { bad "R6 per-profile fill created a spurious box-level at_risk (dead_heartbeat)"; echo "    out: $OUT"; } \
   || pass "R6 per-profile fill does not inflate the box-level open-position count / at_risk"
 
+# ---- A CONDITION STILL TRUE IS STILL NEWS (owner, 2026-10-30) -------------
+# Conditions fired on TRANSITION only, so a halt pinged once and then went quiet
+# for as long as it lasted. 2026-10-29: HALT_SET at 09:40:07Z paged once and then
+# blocked every entry for fifteen hours in silence. A still-active condition must
+# re-page on CONDITION_REPAGE_MIN, and must say it is a continuation rather than
+# reading as a fresh fault.
+#
+# Watched failing 2026-10-30: with `repaged` dropped from the early-exit test,
+# the third run below goes silent again -- the exact 2026-10-29 behaviour.
+J="$TMP/jrp.jsonl"; S="$TMP/srp.json"
+printf '{"event":"HALT_SET","source":"executor","reason":"cannot read account (http 0)","ts":%s}\n' "$((NOW-60))" > "$J"
+
+OUT="$(run "$J" "$S")"
+echo "$OUT" | grep -q 'halted' && pass "repage: a new halt pages the first time" \
+  || { bad "repage: the first halt did not page at all"; echo "    out: $OUT"; }
+
+# straight away again: inside the cooldown, so silence is correct
+OUT="$(run "$J" "$S")"
+echo "$OUT" | grep -q 'would send' \
+  && { bad "repage: paged twice inside the cooldown (alert fatigue)"; echo "    out: $OUT"; } \
+  || pass "repage: a second run inside the cooldown stays quiet"
+
+# backdate the last-paged stamp past the cooldown; the halt is STILL set
+python3 - "$S" <<'PX'
+import json,sys,time
+p=sys.argv[1]; d=json.load(open(p))
+d["cond_paged_at"]={k: time.time()-7200 for k in d.get("cond_paged_at",{})}
+json.dump(d,open(p,"w"))
+PX
+OUT="$(run "$J" "$S")"
+if echo "$OUT" | grep -q 'still' && echo "$OUT" | grep -q 'halted'; then
+  pass "repage: a halt still set past the cooldown pages again, marked as a continuation"
+else bad "repage: a persistent halt went silent past the cooldown"; echo "    out: $OUT"; fi
+
 echo "----"
 [ "$fail" = 0 ] && { echo "ALL PASS"; exit 0; } || { echo "FAILURES"; exit 1; }

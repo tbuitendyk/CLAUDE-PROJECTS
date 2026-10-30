@@ -52,6 +52,11 @@ DRYRUN = os.environ.get("DRYRUN", "0") == "1"
 DEAD_HB_MIN = 25.0        # box exec runs every 10 min; 2.5 missed cycles = dead
 STALE_SYNC_MIN = 30.0     # VPS sync runs every 5 min; 6 missed cycles = stalled
 STALE_MIRROR_MIN = 90.0   # mirror runs on the hourly tick; >90 min = missed one
+# A CONDITION THAT PAGES ONCE HAS NOT BEEN REPORTED (owner, 2026-10-30). Re-page
+# a condition that is STILL active at most this often. DERIVED: it reuses
+# INCIDENT_COOLDOWN_MIN's cadence rather than adding a second number to remember.
+# One line to change if the owner wants to be nagged harder or less.
+CONDITION_REPAGE_MIN = 60.0
 INCIDENT_COOLDOWN_MIN = 60.0  # re-page a recurring incident KIND at most this often,
                               # so a condition the box re-stamps every cycle pages
                               # once then hourly, not on every alert run (re-review S1)
@@ -237,6 +242,8 @@ prev_keys = set(prev.get("keys", []))
 cur_keys = set(active.keys())          # CONDITIONS only (halt/heartbeat/sync/mirror)
 prev_inc_wm = prev.get("inc_wm", {})   # kind -> last-paged ts (box clock)
 prev_inc_paged = prev.get("inc_paged_at", {})  # kind -> wall epoch we last paged it
+prev_cond_since = prev.get("cond_since", {})     # condition key -> wall epoch first seen
+prev_cond_paged = prev.get("cond_paged_at", {})  # condition key -> wall epoch last paged
 
 # Incidents are edge events, de-duped by KIND via a monotonic per-kind watermark:
 # a kind fires when its latest ts is strictly newer than the last ts we paged for
@@ -274,6 +281,7 @@ def persist():
     with open(tmp, "w") as f:
         json.dump({"keys": sorted(cur_keys), "inc_wm": cur_inc_wm,
                    "inc_paged_at": cur_inc_paged,
+                   "cond_since": cur_cond_since, "cond_paged_at": cur_cond_paged,
                    "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                    "armed": armed, "halted": halted, "open": n_open}, f)
     os.replace(tmp, STATE)
@@ -283,7 +291,34 @@ def persist():
 # ongoing conditions only — incidents are point-in-time and never "clear".
 new_keys = cur_keys - prev_keys
 cleared = bool(prev_keys) and not cur_keys
-if not new_keys and not new_incidents and not cleared:
+
+# A CONDITION STILL TRUE IS STILL NEWS (owner, 2026-10-30). Conditions fired on
+# TRANSITION alone, so one pinged the owner the second it appeared and then went
+# quiet for as long as it lasted. 2026-10-29: a HALT_SET at 09:40:07Z paged once
+# and then blocked every entry for fifteen hours in silence while the box
+# reconciled cleanly five times an hour -- the owner found out the next morning,
+# when a LONG failed to open, and said it plainly: faults should not sit silently
+# lurking in the background. So a condition that is STILL active re-pages on a
+# cooldown, and carries how long it has been going so a repeat is not mistaken
+# for a fresh fault. first-seen is preserved across runs; a cleared condition
+# drops out of cur_keys and its clock starts again if it returns.
+cur_cond_since = {k: prev_cond_since.get(k, _now_wall) for k in cur_keys}
+cur_cond_paged = dict(prev_cond_paged)
+repaged = {k for k in (cur_keys - new_keys)
+           if _now_wall - prev_cond_paged.get(k, 0) >= CONDITION_REPAGE_MIN * 60.0}
+for _k in (new_keys | repaged):
+    cur_cond_paged[_k] = _now_wall
+# Drop the bookkeeping for conditions that are no longer active, so a condition
+# that returns is a NEW appearance rather than one silenced by a stale cooldown.
+cur_cond_paged = {k: v for k, v in cur_cond_paged.items() if k in cur_keys}
+
+def _age(sec):
+    sec = max(0.0, sec)
+    if sec < 3600: return f"{sec/60:.0f} min"
+    if sec < 86400: return f"{sec/3600:.1f} h"
+    return f"{sec/86400:.1f} days"
+
+if not new_keys and not repaged and not new_incidents and not cleared:
     persist()   # no change worth mailing (advance timestamp/watermarks only)
     raise SystemExit(0)
 
@@ -301,11 +336,17 @@ else:
     inc_keys = [f"incident:{k}" for k in sorted(new_incidents)]
     subj_keys = sorted(active.keys()) + inc_keys
     worst = "dead_heartbeat" in active or "halted" in active
-    subject = "PILOT ALERT: " + "; ".join(subj_keys)
+    # A re-page must not read as a fresh fault, or the owner cannot tell a new
+    # problem from one they have already been told about.
+    _still = bool(repaged) and not new_keys and not new_incidents
+    subject = ("PILOT ALERT (still): " if _still else "PILOT ALERT: ") + "; ".join(subj_keys)
     tldr = "tl;dr the live pilot needs attention — " + ("EXECUTOR/HALT issue." if worst else "see below.")
     lines = [tldr, ""]
     for k in sorted(active.keys()):
-        lines.append("• " + active[k])
+        _since = cur_cond_since.get(k)
+        _ago = f" (ONGOING — first seen {_age(_now_wall - _since)} ago)" if (
+            _since is not None and _now_wall - _since >= 60) else ""
+        lines.append("• " + active[k] + _ago)
     for k in sorted(new_incidents):
         lines.append(f"• New incident: {k}.")
     lines += ["",
