@@ -126,5 +126,18 @@ if echo "$OUT" | grep -q 'still' && echo "$OUT" | grep -q 'halted'; then
   pass "repage: a halt still set past the cooldown pages again, marked as a continuation"
 else bad "repage: a persistent halt went silent past the cooldown"; echo "    out: $OUT"; fi
 
+# ---- THE SCREEN LINK MUST GO SOMEWHERE (owner, 2026-10-31) -----------------
+# This alerter linked pilot.html and its sibling linked livetrading.html; both
+# files are gone from public/, so every alert sent the owner to a 404. Nothing
+# checked it, which is how two of them rotted unnoticed. The weaker form of the
+# real check (QC 198 wants the link verified against the served page set, which
+# lives on the other branch) is still enough to catch exactly this rot.
+#
+# Watched failing 2026-10-31: restoring pilot.html in the link fails this.
+LINKS="$(grep -oE 'https://[^"]*\.html' "$SUT" | sort -u)"
+if [ "$LINKS" = "https://www.buitendyk.ca/classifier/trading.html" ]; then
+  pass "screen link points at the page that exists (trading.html, www, one link only)"
+else bad "screen link is wrong or dead"; echo "    found: $LINKS"; fi
+
 echo "----"
 [ "$fail" = 0 ] && { echo "ALL PASS"; exit 0; } || { echo "FAILURES"; exit 1; }

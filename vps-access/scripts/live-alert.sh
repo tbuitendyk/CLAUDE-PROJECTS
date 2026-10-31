@@ -224,7 +224,10 @@ body = ["Per-setup alert from the generalized rail (live-alert.sh).", ""]
 for _, frag, lines, _ in due:
     body.append(f"* {frag}")
     body.extend(f"    {l}" for l in lines if l)
-body += ["", "Screen: https://www.buitendyk.ca/classifier/livetrading.html", "-- live-alert (machine signal)"]
+# THE LINK MUST GO SOMEWHERE (owner, 2026-10-31). This pointed at
+# livetrading.html, which no longer exists in public/. The 2026-10-31 borrow
+# refusal paged correctly within seconds and then sent the owner to a 404.
+body += ["", "Screen: https://www.buitendyk.ca/classifier/trading.html", "-- live-alert (machine signal)"]
 
 # record: a journal incident advances its watermark to the incident's ts (so only
 # a NEWER occurrence re-pages, R13); a mirror/health alert records the wall time.

@@ -151,4 +151,14 @@ echo "$r" | grep -q "s-brw: ENTRY_GAVE_UP" \
   || { echo "$r"; fail "an abandoned period must page on this rail too — it was on the F1 alerter from 2026-08-16 and never added here"; }
 echo "PASS 11: an abandoned entry pages"
 
+# PASS 12: the screen link must go somewhere. This linked livetrading.html,
+# which is gone from public/ — the 2026-10-31 borrow refusal paged correctly in
+# seconds and then sent the owner to a 404. Its sibling pilot-alert.sh had the
+# same rot with pilot.html, and nothing checked either.
+# Watched failing 2026-10-31: restoring livetrading.html in the link fails this.
+LINKS="$(grep -oE 'https://[^"]*\.html' "$HERE/live-alert.sh" | sort -u)"
+[ "$LINKS" = "https://www.buitendyk.ca/classifier/trading.html" ] \
+  || fail "screen link is wrong or dead: $LINKS"
+echo "PASS 12: the screen link points at the page that exists (trading.html)"
+
 echo "ALL live-alert fixture checks PASS"

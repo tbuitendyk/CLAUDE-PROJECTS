@@ -353,7 +353,12 @@ else:
               f"State: armed={armed} halted={halted} open_positions={n_open} "
               f"heartbeat={'never' if hb_age_min is None else f'{hb_age_min:.0f} min ago'} "
               f"sync={sync_age_min:.0f} min ago.",
-              "Screen: https://buitendyk.ca/classifier/pilot.html",
+              # THE LINK MUST GO SOMEWHERE (owner, 2026-10-31). This pointed at
+              # pilot.html, which no longer exists in public/ — so every alert for
+              # months told the owner something was wrong and then sent them to a
+              # 404. It was also the bare domain, which 301s. The page the owner
+              # actually reads is trading.html.
+              "Screen: https://www.buitendyk.ca/classifier/trading.html",
               "This is an automated push alert from the VPS pilot watcher."]
 lines += ["", "c."]
 body = "\n".join(lines)
