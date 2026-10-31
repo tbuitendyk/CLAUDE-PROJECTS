@@ -1,0 +1,69 @@
+Classifier: the alert links were dead — fixed and deployed
+
+tl;dr — both alert emails have been pointing at pages that do not exist, on
+every alert, for months. pilot-alert linked pilot.html and live-alert linked
+livetrading.html; neither file is in the app any more. Both now point at
+trading.html, the page you actually read. Deployed and installed at 08:47 UTC.
+Each alerter's test now checks its own link, and both were watched failing with
+the dead names put back. Nothing else changed — the SHORT that was abandoned
+last night was abandoned by Binance, not by us.
+
+WHAT WAS WRONG
+
+The app serves five pages: constructing.html, help-bracket.html, help.html,
+index.html and trading.html. pilot.html and livetrading.html were retired along
+with the old single-config rail, but the alert bodies were never updated, so
+both kept sending you to a URL that resolves to nothing. pilot-alert's link also
+used the bare domain rather than www, which redirects.
+
+HOW IT CAME TO LIGHT, WHICH IS THE GOOD PART
+
+You pasted last night's alert. Read the chain in it: the box asked Binance to
+lend it LTC, Binance refused with "Borrow is banned for this asset", the box
+retried six times, wrote down the venue's own error text each time, gave up and
+said exactly why, and emailed you within seconds of the sixth refusal. Every
+link in that chain did its job. Then the mail sent you to a 404.
+
+That is the opposite of Thursday, when a halt sat for fifteen hours and nothing
+told you at all. The reporting is working now; this was the last step of it
+pointing at the wrong door.
+
+WHAT I CHANGED
+
+One line in each of the two alerters, both pointing at
+https://www.buitendyk.ca/classifier/trading.html. Fixed together, because the
+two rails are not allowed to drift apart.
+
+Each alerter's own test now asserts the set of page links inside that script is
+exactly that one URL — one link, www, and a page that exists. Both were watched
+failing by restoring the dead filenames first.
+
+AN HONEST LIMIT ON THAT CHECK
+
+The list of pages that exist lives on the classifier branch; the alerters live
+on the carrier branch. So the test compares the link against a fixed string,
+not against what the server actually serves. That catches the rot that just
+happened — a page being deleted from under the link — but a page being RENAMED
+would pass both tests and break both links again. Written up as QC 198 with
+that gap stated rather than glossed. Closing it properly means the test asking
+the running server whether the URL resolves, which I have not built.
+
+LAST NIGHT'S SHORT, FOR THE RECORD
+
+Not our fault and nothing to fix in code. Binance is refusing to lend LTC
+(error -3012). Your API key is fine — margin and trading permissions are both
+still enabled; I checked. The read-only probe that reproduces it exactly is
+maxBorrowable, which returns the same refusal, so there is a one-call test for
+when the ban lifts. Longs need no borrow and are unaffected. Until lending
+works again, a SHORT will be taken by the paper book and refused on the live
+one, so any short-side difference between the two books is Binance's policy
+rather than anything about the trading — worth remembering before that gap gets
+read as a result.
+
+Still waiting on you: the hourly re-page cadence was my choice, and QC 197 (the
+deploy refusing to ship an executor whose fingerprint disagrees with the
+recorded one).
+
+In git: vps-access ac53537.
+
+c.
